@@ -185,7 +185,9 @@ Rewst's public deployment documentation verifies the Europe (DE) endpoint
 hosts. The built-in `euAppSession` cookie name follows the requested regional
 convention and remains configurable if your account uses a different cookie.
 
-Browser support for a Rewst domain does not configure the server's region automatically. Configure the region before transferring its session.
+Browser support for a Rewst domain does not change the server's configured
+region list. Built-in regions are probed automatically; configure a custom
+region before transferring its session.
 
 ## Using the tools
 
