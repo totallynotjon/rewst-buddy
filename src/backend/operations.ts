@@ -322,6 +322,7 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 	let local: vscode.Disposable | undefined;
 	let hub: Awaited<ReturnType<typeof startSharedHttpServer>> | undefined;
 	let remote: BackendConnection | undefined;
+	let ownerDisconnected = false;
 	let pendingListen: Promise<void> | undefined;
 	let runtimeReadyResolve!: () => void;
 	let runtimeReadyReject!: (reason: unknown) => void;
@@ -369,7 +370,10 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 	};
 	const attach = async (descriptor: SharedServerDescriptor): Promise<Client> => {
 		const next = await connectRemote(descriptor, disconnectedClient => {
-			if (remote?.client === disconnectedClient) remote = undefined;
+			if (remote?.client === disconnectedClient) {
+				remote = undefined;
+				ownerDisconnected = true;
+			}
 		});
 		if (disposed) {
 			await closeConnection(next);
@@ -426,7 +430,19 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 	setBackendServerDelegate({
 		getStatus: () => !!hub || (!!remote && activeConnection?.client === remote.client),
 		start: async () => {
+			if (ownerDisconnected) {
+				log.notifyError(
+					'Rewst Buddy owner disconnected. Reload the VS Code window before starting a fresh local server.',
+				);
+				return false;
+			}
 			await ready;
+			if (ownerDisconnected) {
+				log.notifyError(
+					'Rewst Buddy owner disconnected. Reload the VS Code window before starting a fresh local server.',
+				);
+				return false;
+			}
 			if (!remote && !hub) await listen();
 			return true;
 		},

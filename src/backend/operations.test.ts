@@ -414,6 +414,23 @@ describe('shared backend lifecycle', () => {
 		await new Promise(resolve => setImmediate(resolve));
 	});
 
+	it('refuses to bind a replacement listener after the attached owner disconnects', async () => {
+		mocks.shared.discover.mockResolvedValue(mocks.shared.descriptor);
+		const disposable = initializeBackend();
+		await vi.waitFor(() => expect(mocks.transports).toHaveLength(1));
+		await vi.waitFor(() => expect(mocks.sharedConnection).toMatchObject({ owned: false }));
+
+		mocks.transports[0]?.onclose?.();
+		const started = await getBackendServerDelegate()?.start();
+		expect(started).toBe(false);
+		expect(mocks.shared.start).not.toHaveBeenCalled();
+		expect(mocks.runtime.start).not.toHaveBeenCalled();
+		expect(getBackendServerDelegate()?.getStatus()).toBe(false);
+
+		disposable.dispose();
+		await new Promise(resolve => setImmediate(resolve));
+	});
+
 	it('does not fall back to a local runtime when discovery cannot verify the owner', async () => {
 		mocks.shared.discover.mockRejectedValue(new Error('invalid shared-server proof'));
 
