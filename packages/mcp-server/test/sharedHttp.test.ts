@@ -134,6 +134,53 @@ describe('shared HTTP hub', () => {
 		await hub.close();
 	});
 
+	it('delivers request-scoped editor notifications before the tool response', async () => {
+		const dir = await mkdtemp(join(tmpdir(), 'rewst-buddy-http-'));
+		cleanups.push(() => rm(dir, { recursive: true, force: true }));
+		const port = await freePort();
+		const hub = await startSharedHttpServer({
+			port,
+			discoveryDir: dir,
+			createEditorServer: () =>
+				createMcpServer({
+					extraTools: [
+						{
+							name: 'rewst_editor_operation',
+							description: 'Private editor operation',
+							inputSchema: { type: 'object' },
+							async run(_input, context) {
+								await context.emit({ streamId: 'turn-1', event: { kind: 'chunk', text: 'Hello' } });
+								await context.emit({ streamId: 'turn-1', event: { kind: 'complete', content: 'Hello' } });
+								return { streamId: 'turn-1' };
+							},
+						},
+					],
+				}),
+		});
+		cleanups.push(() => hub.close());
+		const client = new Client({ name: 'editor-stream-test', version: '1' });
+		const received: unknown[] = [];
+		client.setNotificationHandler(
+			z.object({ method: z.literal('notifications/rewst/event'), params: z.object({ event: z.unknown() }) }),
+			notification => received.push(notification.params.event),
+		);
+		const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/editor`), {
+			requestInit: { headers: { Authorization: `Bearer ${hub.descriptor.editorToken}` }, redirect: 'error' },
+		});
+		try {
+			await client.connect(transport);
+			const result = await client.callTool({ name: 'rewst_editor_operation', arguments: {} });
+			expect(result.isError).not.toBe(true);
+			expect(received).toEqual([
+				{ streamId: 'turn-1', event: { kind: 'chunk', text: 'Hello' } },
+				{ streamId: 'turn-1', event: { kind: 'complete', content: 'Hello' } },
+			]);
+		} finally {
+			await transport.terminateSession().catch(() => undefined);
+			await client.close().catch(() => undefined);
+		}
+	});
+
 	it('supports reverse editor requests, token rotation, CORS, and session cleanup', async () => {
 		configureRuntimeHost({
 			state: new MemoryStateStore(),

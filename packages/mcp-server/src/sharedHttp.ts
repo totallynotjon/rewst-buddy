@@ -333,7 +333,9 @@ export async function startSharedHttpServer(options: SharedHttpOptions): Promise
 					server = options.createEditorServer();
 					transport = new StreamableHTTPServerTransport({
 						sessionIdGenerator: () => randomUUID(),
-						enableJsonResponse: true,
+						// Conversation events use request-scoped notifications. JSON response
+						// mode discards those notifications, so editor requests need SSE.
+						enableJsonResponse: false,
 					});
 					pair = { server, transport, kind: 'editor', sessionId: '' };
 					transport.onclose = () => closePair(pair as Pair);
