@@ -256,7 +256,7 @@ suite('Unit: SessionManager', () => {
 					allManagedOrgs: [{ id: 'dup-org', name: 'Dup EU' }],
 					region: {
 						name: 'Europe',
-						cookieName: 'euAppSession',
+						cookieName: 'deAppSession',
 						graphqlUrl: 'https://api.rewst.eu/graphql',
 						loginUrl: 'https://app.rewst.eu',
 					},
@@ -329,7 +329,7 @@ suite('Unit: SessionManager', () => {
 					allManagedOrgs: [{ id: 'shared-org', name: 'Shared EU' }],
 					region: {
 						name: 'Europe',
-						cookieName: 'euAppSession',
+						cookieName: 'deAppSession',
 						graphqlUrl: 'https://api.rewst.eu/graphql',
 						loginUrl: 'https://app.rewst.eu',
 					},

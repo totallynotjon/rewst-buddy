@@ -134,7 +134,7 @@ suite('Unit: session configuration boundaries', () => {
 			assert.deepStrictEqual(getRegionConfigs(), configured);
 		});
 
-		test('uses the built-in North America, Asia, and Europe regions when the setting is absent', () => {
+		test('uses the built-in North America, UK, Asia, and Europe regions when the setting is absent', () => {
 			configureRegions(undefined);
 
 			assert.deepStrictEqual(getRegionConfigs(), [
@@ -145,6 +145,12 @@ suite('Unit: session configuration boundaries', () => {
 					loginUrl: 'https://app.rewst.io',
 				},
 				{
+					name: 'United Kingdom',
+					cookieName: 'euAppSession',
+					graphqlUrl: 'https://api.eu.rewst.io/graphql',
+					loginUrl: 'https://app.eu.rewst.io',
+				},
+				{
 					name: 'Asia',
 					cookieName: 'auAppSession',
 					graphqlUrl: 'https://api.rewst.asia/graphql',
@@ -152,7 +158,7 @@ suite('Unit: session configuration boundaries', () => {
 				},
 				{
 					name: 'Europe',
-					cookieName: 'euAppSession',
+					cookieName: 'deAppSession',
 					graphqlUrl: 'https://api.rewst.eu/graphql',
 					loginUrl: 'https://app.rewst.eu',
 				},

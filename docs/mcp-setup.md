@@ -172,18 +172,24 @@ Use `--state-dir PATH` to select another directory. An existing encrypted vault 
 
 ### Rewst regions
 
-North America, Asia, and Europe (DE) are configured by default. The built-in
-Europe entry uses `euAppSession`, `https://api.rewst.eu/graphql`,
-`wss://api.rewst.eu/subscriptions`, `https://engine.rewst.eu`, and
-`https://app.rewst.eu`. For another region, start the owner with `--config
-/absolute/path/regions.json`. The file must contain a non-empty `regions` array
-with your region's `name`, `cookieName`, `graphqlUrl`, and `loginUrl`;
-`subscriptionsUrl` is optional. See the [region configuration
-example](../packages/mcp-server/README.md#regions).
+North America (US), United Kingdom (UK), Asia (AU), and Europe (DE) are
+configured by default. Their built-in endpoints and session-cookie names are:
 
-Rewst's public deployment documentation verifies the Europe (DE) endpoint
-hosts. The built-in `euAppSession` cookie name follows the requested regional
-convention and remains configurable if your account uses a different cookie.
+| Region | App/login                 | GraphQL API                       | Engine                       | Subscriptions                         | Cookie         |
+| ------ | ------------------------- | --------------------------------- | ---------------------------- | ------------------------------------- | -------------- |
+| US     | `https://app.rewst.io`    | `https://api.rewst.io/graphql`    | `https://engine.rewst.io`    | `wss://api.rewst.io/subscriptions`    | `appSession`   |
+| UK     | `https://app.eu.rewst.io` | `https://api.eu.rewst.io/graphql` | `https://engine.eu.rewst.io` | `wss://api.eu.rewst.io/subscriptions` | `euAppSession` |
+| AU     | `https://app.rewst.asia`  | `https://api.rewst.asia/graphql`  | `https://engine.rewst.asia`  | `wss://api.rewst.asia/subscriptions`  | `auAppSession` |
+| DE     | `https://app.rewst.eu`    | `https://api.rewst.eu/graphql`    | `https://engine.rewst.eu`    | `wss://api.rewst.eu/subscriptions`    | `deAppSession` |
+
+Rewst's public deployment documentation verifies these regional app, API, and
+engine hosts. The docs do not publish cookie names; the built-in values above
+match the current regional auth endpoints and remain configurable if your
+account uses a different cookie. For another region, start the owner with
+`--config /absolute/path/regions.json`. The file must contain a non-empty
+`regions` array with your region's `name`, `cookieName`, `graphqlUrl`, and
+`loginUrl`; `subscriptionsUrl` is optional. See the [region configuration
+example](../packages/mcp-server/README.md#regions).
 
 Browser support for a Rewst domain does not change the server's configured
 region list. Built-in regions are probed automatically; configure a custom
