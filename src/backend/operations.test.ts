@@ -382,6 +382,29 @@ describe('shared backend lifecycle', () => {
 		expect(mocks.runtime.stop).not.toHaveBeenCalled();
 	});
 
+	it('does not promote a remote connection when the owner closes during editor attachment', async () => {
+		mocks.shared.discover.mockResolvedValue(mocks.shared.descriptor);
+		let releaseConnect!: () => void;
+		mocks.connectGate = new Promise<void>(resolve => {
+			releaseConnect = resolve;
+		});
+		const disposable = initializeBackend();
+		await vi.waitFor(() => expect(mocks.transports).toHaveLength(1));
+		mocks.clients[0]?.callTool.mockImplementation(async () => {
+			// The attach request is still pending when the owner transport closes.
+			mocks.transports[0]?.onclose?.();
+			return { structuredContent: { result: [] } };
+		});
+
+		releaseConnect();
+		await expect(invoke('tools.list', {})).rejects.toThrow(/disconnected during editor attachment/);
+		expect(getBackendServerDelegate()?.getStatus()).toBe(false);
+		expect(mocks.sharedConnection).toBeUndefined();
+
+		disposable.dispose();
+		await new Promise(resolve => setImmediate(resolve));
+	});
+
 	it('clears the attached editor state when the owner transport closes unexpectedly', async () => {
 		mocks.shared.discover.mockResolvedValue(mocks.shared.descriptor);
 		const disposable = initializeBackend();

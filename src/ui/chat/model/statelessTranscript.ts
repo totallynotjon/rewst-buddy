@@ -93,25 +93,31 @@ function appendChunk(chunks: SeedChunk[], entry: SeedChunk): void {
 	}
 }
 
+function mergeSeedEntries(entries: readonly SeedChunk[]): SeedChunk[] {
+	const chunks: SeedChunk[] = [];
+	for (const entry of entries) appendChunk(chunks, entry);
+	return chunks;
+}
+
+function totalSeedChars(chunks: readonly SeedChunk[]): number {
+	return chunks.reduce((sum, chunk) => sum + chunk.content.length, 0);
+}
+
 function finalizeSeedEntries(entries: readonly SeedChunk[]): SeedChunk[] {
 	const normalized = entries
 		.filter(entry => entry && (entry.role === 'USER' || entry.role === 'ASSISTANT'))
 		.map(entry => ({ role: entry.role, content: truncate(entry.content, MAX_CHUNK_CHARS) }))
 		.filter(entry => entry.content.length > 0);
 	const kept = normalized.slice();
-	let total = kept.reduce((sum, entry) => sum + entry.content.length, 0);
 	let dropped = 0;
-	while (total > MAX_TOTAL_CHARS && kept.length > 1) {
-		const removed = kept.shift();
-		if (!removed) break;
-		total -= removed.content.length;
+	for (;;) {
+		const prefix =
+			dropped > 0 ? [{ role: 'USER' as const, content: `(${dropped} earlier message(s) omitted)` }] : [];
+		const chunks = mergeSeedEntries([...prefix, ...kept]);
+		if (totalSeedChars(chunks) <= MAX_TOTAL_CHARS || kept.length <= 1) return chunks;
+		kept.shift();
 		dropped++;
 	}
-	if (dropped > 0) kept.unshift({ role: 'USER', content: `(${dropped} earlier message(s) omitted)` });
-
-	const chunks: SeedChunk[] = [];
-	for (const entry of kept) appendChunk(chunks, entry);
-	return chunks;
 }
 
 /** Append internal role-aware interaction records while preserving the transcript budget. */

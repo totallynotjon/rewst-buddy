@@ -62,14 +62,9 @@ retry discovery, while unknown listeners fail without sending credentials.
 Standalone HTTP mode keeps the server alive independently of a stdio client or
 VS Code. A process that attaches never stops the shared owner.
 
-When an editor attaches, the owner returns one session snapshot in the attach
-response as well as publishing later session-change notifications. The attached
-window uses that snapshot as its initial view; it does not copy cookies, tokens,
-or secret-store contents into a second session manager. If the private owner
-connection closes unexpectedly, the attached window clears its cached sessions,
-scope, and tool catalog and rejects further backend calls. Reloading without a
-verified owner starts a new local store and only that process's own known
-profiles are shown.
+An attached editor mirrors the owner's current sessions and scope. If the owner
+connection closes unexpectedly, reload the VS Code window before starting a new
+local server.
 
 The public surface has three distinct credential paths. `REWST_SESSION_COOKIE`
 and browser `addSession` supply a Rewst session to the owner. The optional

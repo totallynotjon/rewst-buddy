@@ -1607,6 +1607,7 @@ suite('Unit: workflowTools', () => {
 				executions: unknown[];
 				executionOwnerOrgId: string;
 				executionWorkflowOrgId: string;
+				executionDetailMissingWorkflowOrg: boolean;
 				executionManagingOrgId: string;
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
 			}> = {},
@@ -1646,6 +1647,9 @@ suite('Unit: workflowTools', () => {
 					const where = (variables?.where ?? {}) as { id?: string };
 					const ownerOrgId = over.executionOwnerOrgId ?? 'org-1';
 					const workflowOrgId = over.executionWorkflowOrgId ?? ownerOrgId;
+					const workflow = over.executionDetailMissingWorkflowOrg
+						? { id: 'wf-1', name: 'Sample' }
+						: { id: 'wf-1', name: 'Sample', orgId: workflowOrgId };
 					return {
 						data: {
 							workflowExecution: {
@@ -1656,11 +1660,7 @@ suite('Unit: workflowTools', () => {
 									id: ownerOrgId,
 									managingOrgId: over.executionManagingOrgId,
 								},
-								workflow: {
-									id: 'wf-1',
-									name: 'Sample',
-									orgId: workflowOrgId,
-								},
+								workflow,
 							},
 						},
 					};
@@ -2938,6 +2938,26 @@ suite('Unit: workflowTools', () => {
 				output,
 				/Result: \[Open workflow result\]\(https:\/\/app\.rewst\.io\/organizations\/workflow-org\/results\/exec-new\)/,
 			);
+			assert.doesNotMatch(output, /organizations\/caller-org\/results/);
+		});
+
+		test('buddy_workflow_run preserves the execution id when the owner org is unavailable', async () => {
+			const { deps } = makeDeps({ executionDetailMissingWorkflowOrg: true });
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_RUN_TOOL_NAME,
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'caller-org',
+						wait: false,
+					},
+				},
+				deps,
+			);
+
+			assert.match(output, /executionId: exec-new/);
+			assert.match(output, /Result link unavailable; use the execution id with buddy_execution_logs\./);
 			assert.doesNotMatch(output, /organizations\/caller-org\/results/);
 		});
 

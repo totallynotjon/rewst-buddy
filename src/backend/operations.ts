@@ -372,8 +372,11 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 		const next = await connectRemote(descriptor, disconnectedClient => {
 			if (remote?.client === disconnectedClient) {
 				remote = undefined;
-				ownerDisconnected = true;
 			}
+			// This callback also runs while the initial editor attachment is still
+			// pending, before `remote` can be promoted. Keep the owner-loss state
+			// regardless of which phase the transport reached.
+			ownerDisconnected = true;
 		});
 		if (disposed) {
 			await closeConnection(next);
@@ -524,14 +527,26 @@ async function connectRemote(
 		requestInit: { headers: { Authorization: `Bearer ${descriptor.editorToken}` }, redirect: 'error' },
 	});
 	let intentionalClose = false;
+	let disconnected = false;
+	let disconnectCause: Error | undefined;
+	let rejectDisconnect!: (reason: Error) => void;
+	const disconnectPromise = new Promise<never>((_, reject) => {
+		rejectDisconnect = reject;
+	});
+	void disconnectPromise.catch(() => undefined);
 	const invalidateRemote = (cause?: Error): void => {
 		// Owner shutdown or a broken private connection invalidates the attached
 		// window's view. Do not leave stale active/expired sessions in the facade.
-		if (intentionalClose) return;
+		if (intentionalClose || disconnected) return;
+		disconnected = true;
+		disconnectCause = cause ?? new Error('The shared Rewst Buddy server disconnected during editor attachment.');
+		rejectDisconnect(disconnectCause);
+		onUnexpectedDisconnect?.(client);
+		// During the initial editor attachment there is no active connection yet;
+		// the caller will observe `disconnected` below and reject promotion.
 		if (activeConnection?.client !== client) return;
 		if (cause) log.warn('Attached Rewst Buddy server connection lost', cause);
 		activeConnection = undefined;
-		onUnexpectedDisconnect?.(client);
 		connection = undefined;
 		closed = true;
 		generation++;
@@ -556,11 +571,16 @@ async function connectRemote(
 	};
 	try {
 		await client.connect(transport);
-		const result = await client.callTool({
-			name: 'rewst_editor_operation',
-			arguments: { operation: 'editor.attach', input: { capabilities: getEditorCapabilities() } },
-		});
+		const result = await Promise.race([
+			client.callTool({
+				name: 'rewst_editor_operation',
+				arguments: { operation: 'editor.attach', input: { capabilities: getEditorCapabilities() } },
+			}),
+			disconnectPromise,
+		]);
 		if (result.isError) throw new Error('The shared server rejected the editor attachment.');
+		if (disconnected)
+			throw disconnectCause ?? new Error('The shared Rewst Buddy server disconnected during editor attachment.');
 		const attached = (result.structuredContent as { result?: unknown } | undefined)?.result;
 		if (attached && typeof attached === 'object' && !Array.isArray(attached)) {
 			const snapshot = (attached as { sessions?: unknown }).sessions;

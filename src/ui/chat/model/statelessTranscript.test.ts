@@ -130,4 +130,13 @@ suite('Unit: statelessTranscript', () => {
 		assert.match(flatten(chunks), /earlier message\(s\) omitted/);
 		assert.ok(chunks.every(chunk => chunk.content.length <= 50_000));
 	});
+
+	test('enforces the total seed budget after same-role merges and omission markers', () => {
+		const chunks = serializeVisibleChat(
+			Array.from({ length: 20 }, () => message(User, [text('x'.repeat(20_000))])),
+		);
+
+		assert.ok(chunks.reduce((sum, chunk) => sum + chunk.content.length, 0) <= 400_000);
+		assert.match(flatten(chunks), /earlier message\(s\) omitted/);
+	});
 });

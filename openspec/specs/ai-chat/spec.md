@@ -54,6 +54,14 @@ breadcrumb, so edited and restored history cannot reattach rolled-back turns.
 - **AND** any in-flight disposable conversation is deleted so hidden rolled-back
   turns cannot leak into the new branch
 
+#### Scenario: Seed ids drive cleanup and retries
+
+- **GIVEN** the provider creates a disposable conversation and receives its id
+- **WHEN** the first ask errors before emitting a conversation event
+- **THEN** the ask receives the id returned by the seed operation
+- **AND** the provider deletes that same id before retrying
+- **AND** the retry uses a distinct newly seeded conversation id
+
 ### Requirement: Cap and frame high-noise tool output in the stateless transcript
 
 When a disposable backend conversation is started with a visible transcript,

@@ -113,7 +113,7 @@ function formatBuddyRequestSummary(requests: readonly ToolRequest[]): string {
 				// Tool arguments came from the JSON protocol, but keep seeding safe if a
 				// test seam supplies a non-serializable value.
 			}
-			return `Requested Buddy tool: ${request.tool}${args === '{}' ? '' : ` ${truncateArgsLabel(args)}`}`;
+			return `Requested Buddy tool: ${request.tool}${args === '{}' ? '' : ` ${args}`}`;
 		})
 		.join('\n');
 }

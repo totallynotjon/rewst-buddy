@@ -296,7 +296,9 @@ export async function seedConversation(
 		for (const chunk of chunks) {
 			if (!chunk || (chunk.role !== 'USER' && chunk.role !== 'ASSISTANT'))
 				throw new Error('AI conversation seed contains an unsupported message role.');
-			if (typeof chunk.content !== 'string' || chunk.content.length === 0) continue;
+			if (typeof chunk.content !== 'string')
+				throw new Error('AI conversation seed contains non-string message content.');
+			if (chunk.content.length === 0) continue;
 			const result = await session.rawGraphql(CREATE_CONVERSATION_MESSAGE_MUTATION, {
 				message: { conversationId, role: chunk.role, content: chunk.content },
 			});

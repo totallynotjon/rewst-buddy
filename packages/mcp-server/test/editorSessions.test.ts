@@ -116,6 +116,29 @@ describe('editor session operations', () => {
 		});
 	});
 
+	it('rejects malformed seed content instead of silently dropping it', async () => {
+		const session = new Session({ User: vi.fn().mockResolvedValue({ user: profile().user }) } as never, profile());
+		const rawGraphql = vi
+			.spyOn(session, 'rawGraphql')
+			.mockResolvedValueOnce({ data: { createConversation: { id: 'conv-malformed' } } })
+			.mockResolvedValueOnce({ data: { deleteConversation: 'conv-malformed' } });
+		SessionManager._setSessionsForTesting([session]);
+
+		await expect(
+			editorSessionOperations['conversation.seed'](
+				{
+					sessionId: 'user-1',
+					orgId: 'org-root',
+					conversationType: 'HELP_DOCS',
+					chunks: [{ role: 'USER', content: 42 } as never],
+				},
+				{ signal: new AbortController().signal, emit: async () => {} },
+			),
+		).rejects.toThrow(/non-string message content/);
+		expect(rawGraphql).toHaveBeenCalledTimes(2);
+		expect(rawGraphql.mock.calls[1]?.[1]).toEqual({ id: 'conv-malformed' });
+	});
+
 	it('enforces managed organization scope for SDK calls', async () => {
 		const method = vi.fn().mockResolvedValue({ ok: true });
 		const session = new Session(
