@@ -67,13 +67,13 @@ function computeWorkflowDiff(original: unknown, modified: unknown): DiffResult {
 		}
 		if (isRecord(before) && isRecord(after)) {
 			for (const key of Object.keys(before).sort()) {
-				if (!(key in after)) push({ op: 'remove', path: childPath(path, key) });
+				if (!Object.hasOwn(after, key)) push({ op: 'remove', path: childPath(path, key) });
 			}
 			for (const key of Object.keys(before).sort()) {
-				if (key in after) walk(before[key], after[key], childPath(path, key));
+				if (Object.hasOwn(after, key)) walk(before[key], after[key], childPath(path, key));
 			}
 			for (const key of Object.keys(after).sort()) {
-				if (!(key in before)) push({ op: 'add', path: childPath(path, key), value: after[key] });
+				if (!Object.hasOwn(before, key)) push({ op: 'add', path: childPath(path, key), value: after[key] });
 			}
 			return;
 		}

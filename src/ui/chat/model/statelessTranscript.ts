@@ -93,6 +93,32 @@ function appendChunk(chunks: SeedChunk[], entry: SeedChunk): void {
 	}
 }
 
+function finalizeSeedEntries(entries: readonly SeedChunk[]): SeedChunk[] {
+	const normalized = entries
+		.filter(entry => entry && (entry.role === 'USER' || entry.role === 'ASSISTANT'))
+		.map(entry => ({ role: entry.role, content: truncate(entry.content, MAX_CHUNK_CHARS) }))
+		.filter(entry => entry.content.length > 0);
+	const kept = normalized.slice();
+	let total = kept.reduce((sum, entry) => sum + entry.content.length, 0);
+	let dropped = 0;
+	while (total > MAX_TOTAL_CHARS && kept.length > 1) {
+		const removed = kept.shift();
+		if (!removed) break;
+		total -= removed.content.length;
+		dropped++;
+	}
+	if (dropped > 0) kept.unshift({ role: 'USER', content: `(${dropped} earlier message(s) omitted)` });
+
+	const chunks: SeedChunk[] = [];
+	for (const entry of kept) appendChunk(chunks, entry);
+	return chunks;
+}
+
+/** Append internal role-aware interaction records while preserving the transcript budget. */
+export function appendSeedChunks(base: readonly SeedChunk[], additions: readonly SeedChunk[]): SeedChunk[] {
+	return finalizeSeedEntries([...base, ...additions]);
+}
+
 /** Serialize visible VS Code history into mutation-safe, role-aware seed chunks. */
 export function serializeVisibleChat(messages: readonly RequestMessage[]): SeedChunk[] {
 	const calls = collectCalls(messages);
@@ -115,17 +141,5 @@ export function serializeVisibleChat(messages: readonly RequestMessage[]): SeedC
 		}
 	}
 
-	let dropped = 0;
-	let total = entries.reduce((sum, entry) => sum + entry.content.length, 0);
-	while (total > MAX_TOTAL_CHARS && entries.length > 1) {
-		const removed = entries.shift();
-		if (!removed) break;
-		total -= removed.content.length;
-		dropped++;
-	}
-	if (dropped > 0) entries.unshift({ role: 'USER', content: `(${dropped} earlier message(s) omitted)` });
-
-	const chunks: SeedChunk[] = [];
-	for (const entry of entries) appendChunk(chunks, entry);
-	return chunks;
+	return finalizeSeedEntries(entries);
 }

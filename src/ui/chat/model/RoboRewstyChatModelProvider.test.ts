@@ -317,6 +317,56 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(!out.includes('buddy_workflow_get {'), 'the args line does not repeat the tool name');
 	});
 
+	test('preserves every in-process Buddy round in later disposable seeds', async () => {
+		const firstReply =
+			'First lookup.\n```vscode-tool\n{"tool":"buddy_workflow_get","args":{"workflowId":"a"}}\n```';
+		const secondReply =
+			'Second lookup.\n```vscode-tool\n{"tool":"buddy_workflow_get","args":{"workflowId":"b"}}\n```';
+		const harness = makeHarness([completeTurn(firstReply), completeTurn(secondReply), completeTurn('Done.')], {
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async (_name, args) => ({
+				text: `result-${(args as { workflowId: string }).workflowId}`,
+				isError: false,
+			}),
+		});
+
+		await harness.run([message(User, [text('look up both workflows')])]);
+
+		assert.strictEqual(harness.captured.length, 3, 'both tool rounds and the final answer are requested');
+		const secondSeed = harness.seeded[1].chunks.map(chunk => chunk.content).join('\n');
+		const thirdSeed = harness.seeded[2].chunks.map(chunk => chunk.content).join('\n');
+		assert.match(secondSeed, /Requested Buddy tool: buddy_workflow_get/);
+		assert.ok(!secondSeed.includes('result-a'), 'the latest result stays in the current ask tail');
+		assert.match(thirdSeed, /result-a/, 'the first result is promoted before the next round');
+		assert.match(thirdSeed, /workflowId":"b/, 'the second request is retained in the seeded transcript');
+		assert.match(harness.captured[2].message, /result-b/, 'the latest result reaches the final ask');
+	});
+
+	test('keeps Buddy results when a later native-tool redirect replaces the ask tail', async () => {
+		const buddyReply = 'Lookup.\n```vscode-tool\n{"tool":"buddy_workflow_get","args":{"workflowId":"a"}}\n```';
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-native' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: listWorkflow…',
+				activity: true,
+				tool: { name: 'listWorkflow' },
+			},
+			{ kind: 'complete', content: 'ignored', sources: [], conversationId: 'conv-native' },
+		];
+		const harness = makeHarness([completeTurn(buddyReply), nativeAttempt, completeTurn('Recovered.')], {
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async () => ({ text: 'result-a', isError: false }),
+		});
+
+		await harness.run([message(User, [text('look up workflow a')])]);
+
+		assert.strictEqual(harness.captured.length, 3, 'the result round, redirect, and recovery are requested');
+		const redirectedSeed = harness.seeded[2].chunks.map(chunk => chunk.content).join('\n');
+		assert.match(redirectedSeed, /result-a/, 'the redirect does not erase the previous Buddy result');
+		assert.match(harness.captured[2].message, /vscode-tool/, 'the replacement tail is the redirect correction');
+	});
+
 	test('redirects native Rewst tool activity to the local Buddy tool protocol when Buddy tools are enabled', async () => {
 		const nativeAttempt: ConversationEvent[] = [
 			{ kind: 'conversation', conversationId: 'conv-1' },

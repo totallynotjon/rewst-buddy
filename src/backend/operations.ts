@@ -368,7 +368,9 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 		}
 	};
 	const attach = async (descriptor: SharedServerDescriptor): Promise<Client> => {
-		const next = await connectRemote(descriptor);
+		const next = await connectRemote(descriptor, disconnectedClient => {
+			if (remote?.client === disconnectedClient) remote = undefined;
+		});
 		if (disposed) {
 			await closeConnection(next);
 			throw new Error('Backend disposed');
@@ -422,7 +424,7 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 	})();
 	connection = ready;
 	setBackendServerDelegate({
-		getStatus: () => !!hub || !!remote,
+		getStatus: () => !!hub || (!!remote && activeConnection?.client === remote.client),
 		start: async () => {
 			await ready;
 			if (!remote && !hub) await listen();
@@ -486,7 +488,10 @@ export function initializeBackend(options: BackendOptions = {}): vscode.Disposab
 		},
 	};
 }
-async function connectRemote(descriptor: SharedServerDescriptor): Promise<BackendConnection> {
+async function connectRemote(
+	descriptor: SharedServerDescriptor,
+	onUnexpectedDisconnect?: (client: Client) => void,
+): Promise<BackendConnection> {
 	const client = new Client({ name: 'rewst-buddy-vscode', version: '1.0.0' });
 	client.setNotificationHandler(
 		z.object({ method: z.literal('notifications/rewst/event'), params: z.object({ event: z.unknown() }) }),
@@ -503,23 +508,35 @@ async function connectRemote(descriptor: SharedServerDescriptor): Promise<Backen
 		requestInit: { headers: { Authorization: `Bearer ${descriptor.editorToken}` }, redirect: 'error' },
 	});
 	let intentionalClose = false;
-	transport.onclose = () => {
+	const invalidateRemote = (cause?: Error): void => {
 		// Owner shutdown or a broken private connection invalidates the attached
 		// window's view. Do not leave stale active/expired sessions in the facade.
 		if (intentionalClose) return;
 		if (activeConnection?.client !== client) return;
+		if (cause) log.warn('Attached Rewst Buddy server connection lost', cause);
 		activeConnection = undefined;
+		onUnexpectedDisconnect?.(client);
 		connection = undefined;
 		closed = true;
 		generation++;
 		tools = [];
 		resources = [];
+		setSharedConnection(undefined);
 		events.fire({
 			type: 'sessions',
 			snapshot: { sessions: [], knownProfiles: [] },
 			changeType: 'cleared',
 		});
 		events.fire({ type: 'scope', snapshot: { orgs: [], workflows: [] } });
+	};
+	transport.onclose = () => invalidateRemote();
+	transport.onerror = error => {
+		// The SDK reports a graceful SSE EOF by scheduling reconnects and only
+		// calls onclose for an explicit close(). Treat retry exhaustion as the
+		// equivalent unexpected disconnect so an attached editor cannot retain
+		// stale owner state indefinitely.
+		if (/Maximum reconnection attempts \(\d+\) exceeded\./.test(error.message)) invalidateRemote(error);
+		else log.debug('Attached Rewst Buddy server transport error', error);
 	};
 	try {
 		await client.connect(transport);

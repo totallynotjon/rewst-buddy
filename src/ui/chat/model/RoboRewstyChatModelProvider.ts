@@ -19,13 +19,14 @@ import { setContextUsage } from './contextUsage';
 import { buildEngineeringDirective, buildNativeToolReminder, EDITOR_ONLY_REMINDER_TOOLS } from './engineeringDirective';
 import { setLastAiAnswer } from './lastAnswer';
 import { renderSourcesMarkdown } from './sources';
-import { serializeVisibleChat, type SeedChunk } from './statelessTranscript';
+import { appendSeedChunks, serializeVisibleChat, type SeedChunk } from './statelessTranscript';
 import {
 	chatToolSpecs,
 	extractTrailingToolResults,
 	formatInProcessToolResults,
 	partitionToolRequests,
 	rejectedToolsNote,
+	type ToolRequest,
 } from './toolTranslation';
 
 const VENDOR = 'rewst-buddy';
@@ -99,6 +100,26 @@ function withDeferredToolsNote(
 	if (names.length === 0) return message;
 	const list = names.map(name => `\`${name}\``).join(', ');
 	return `${message}\n\nOther tool requests in that reply were not run here (${list}). Re-request any you still need in a separate reply.`;
+}
+
+/** Keep the model's in-process Buddy requests visible in the seeded transcript. */
+function formatBuddyRequestSummary(requests: readonly ToolRequest[]): string {
+	return requests
+		.map(request => {
+			let args = '{}';
+			try {
+				args = JSON.stringify(request.args) ?? '{}';
+			} catch {
+				// Tool arguments came from the JSON protocol, but keep seeding safe if a
+				// test seam supplies a non-serializable value.
+			}
+			return `Requested Buddy tool: ${request.tool}${args === '{}' ? '' : ` ${truncateArgsLabel(args)}`}`;
+		})
+		.join('\n');
+}
+
+function formatBuddyAssistantTurn(remainder: string, requests: readonly ToolRequest[]): string {
+	return [remainder.trim(), formatBuddyRequestSummary(requests)].filter(Boolean).join('\n\n');
 }
 
 type StatusEvent = Extract<ConversationEvent, { kind: 'status' }>;
@@ -381,6 +402,11 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		const { customInstructions, conversationType, showActivity, maxBuddyToolRounds } = this.deps.aiConfig();
 
 		const trailingResults = extractTrailingToolResults(messages);
+		// Internal Buddy rounds happen before VS Code can replay the response, so
+		// keep their role-aware interaction records alongside the visible history.
+		// The current tail remains the latest result/correction; it is promoted into
+		// this seed history before a later tail replaces it.
+		let seedHistory = serializeVisibleChat(messages);
 
 		// Fire-and-forget delete of a transient per-ask conversation — must not
 		// delay the turn from completing. Every ask seeds a fresh conversation and
@@ -391,6 +417,11 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			});
 		};
 		let conversationId: string | undefined;
+		const deleteCurrentConversation = (): void => {
+			const id = conversationId;
+			conversationId = undefined;
+			if (id) fireDelete(id);
+		};
 		let message: string;
 
 		// Everything reported this turn, used only to decide whether a retry is safe.
@@ -430,6 +461,12 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		// The tail of the ask message: answer instruction on a fresh user turn,
 		// continuation after tool results, or a redirect correction.
 		let tail = trailingResults !== undefined ? CONTINUE_TAIL : ANSWER_TAIL;
+		let tailForSeed: string | undefined;
+		const promoteTail = (): void => {
+			if (!tailForSeed) return;
+			seedHistory = appendSeedChunks(seedHistory, [{ role: 'USER', content: tailForSeed }]);
+			tailForSeed = undefined;
+		};
 		// One retry with a brand-new conversation after a backend error that
 		// produced no output yet and ran no buddy tool.
 		let retriedOnce = false;
@@ -439,232 +476,254 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		let ranBuddyTool = false;
 
 		// Each iteration seeds and asks one disposable backend conversation.
-		turns: for (;;) {
-			const gate = new ChunkGate();
-			let completeContent = '';
-			let sources: ConversationSource[] = [];
-			let sawComplete = false;
-			message = this.buildAskMessage(session, customInstructions, permittedNames, advertisedSpecs, tail);
-			conversationId = await this.deps.seedConversation(
-				session,
-				orgId,
-				conversationType,
-				serializeVisibleChat(messages),
-			);
+		try {
+			turns: for (;;) {
+				// A `continue turns` leaves the previous disposable conversation behind
+				// until this point. Delete it before creating the replacement; the outer
+				// finally handles thrown iterator/ask errors and early returns as well.
+				deleteCurrentConversation();
+				const gate = new ChunkGate();
+				let completeContent = '';
+				let sources: ConversationSource[] = [];
+				let sawComplete = false;
+				message = this.buildAskMessage(session, customInstructions, permittedNames, advertisedSpecs, tail);
+				conversationId = await this.deps.seedConversation(session, orgId, conversationType, seedHistory);
 
-			for await (const event of this.deps.ask({
-				session,
-				orgId,
-				message,
-				conversationId,
-				conversationType,
-				cancellation: token,
-			})) {
-				if (token.isCancellationRequested) {
-					if (conversationId) fireDelete(conversationId);
-					return;
-				}
-				switch (event.kind) {
-					case 'registered':
-						break;
-					case 'status':
-						if (shouldRedirectNativeRewstTool(event)) {
-							if (nativeRewstToolRedirectAttempts >= MAX_NATIVE_REDIRECT_ATTEMPTS) {
-								emitText(gate.push(''));
-								needsSeparator = true;
-								emitText(
-									'*Stopped after a server-side Rewst tool was requested again. Ask again to continue with the local Buddy tools.*\n',
-								);
-								if (conversationId) fireDelete(conversationId);
-								return;
-							}
-							nativeRewstToolRedirectAttempts++;
-							tail = editorToolNames.has(event.tool.name)
-								? buildNativeToEditorCorrection(
-										event.tool,
-										nativeRewstToolRedirectAttempts,
-										MAX_NATIVE_REDIRECT_ATTEMPTS,
-									)
-								: buildNativeToBuddyCorrection(
-										event.tool,
-										allBuddySpecs,
-										nativeRewstToolRedirectAttempts,
-										MAX_NATIVE_REDIRECT_ATTEMPTS,
-									);
-							if (conversationId) fireDelete(conversationId);
-							needsSeparator = true;
-							continue turns;
-						}
-						// Only surface real steps; skip thinking/summarizing churn.
-						if (event.activity) emitStatus(event, gate);
-						break;
-					case 'usage':
-						// Stand-in for VS Code's native context gauge, which a model
-						// provider can't update; the status bar renders the latest.
-						setContextUsage({
-							orgId,
-							orgName: model.detail,
-							totalTokens: event.totalTokens,
-							maxTokens: event.maxTokens,
-							percent: event.percent,
-						});
-						break;
-					case 'conversation':
-						conversationId = event.conversationId;
-						break;
-					case 'chunk':
-						emitText(gate.push(event.text));
-						break;
-					case 'complete':
-						sawComplete = true;
-						completeContent = event.content;
-						sources = event.sources;
-						conversationId = event.conversationId ?? conversationId;
-						break;
-					case 'approval':
-						emitText(
-							'\n\n*RoboRewsty needs approval to run a Rewst-side action. Rewst Buddy no longer exposes Rewst approval as a VS Code chat tool; use the Rewst web app or the MCP approval flow for Rewst-side actions.*\n',
-						);
-						// The backend turn is paused awaiting an approval we never
-						// send, so it never completes. The conversation is disposable.
-						if (conversationId) fireDelete(conversationId);
+				for await (const event of this.deps.ask({
+					session,
+					orgId,
+					message,
+					conversationId,
+					conversationType,
+					cancellation: token,
+				})) {
+					if (token.isCancellationRequested) {
+						deleteCurrentConversation();
 						return;
-					case 'error':
-						if (emittedText === '' && !ranBuddyTool && !retriedOnce) {
-							retriedOnce = true;
-							if (conversationId) fireDelete(conversationId);
-							log.debug(
-								'RoboRewstyChatModelProvider: ask errored before output, retrying with a fresh conversation',
-								event.message,
+					}
+					switch (event.kind) {
+						case 'registered':
+							break;
+						case 'status':
+							if (shouldRedirectNativeRewstTool(event)) {
+								if (nativeRewstToolRedirectAttempts >= MAX_NATIVE_REDIRECT_ATTEMPTS) {
+									emitText(gate.push(''));
+									needsSeparator = true;
+									emitText(
+										'*Stopped after a server-side Rewst tool was requested again. Ask again to continue with the local Buddy tools.*\n',
+									);
+									deleteCurrentConversation();
+									return;
+								}
+								nativeRewstToolRedirectAttempts++;
+								// Preserve any previous tool-result/correction tail before the
+								// redirect replaces it. Otherwise a redirect after a Buddy round
+								// would erase the only copy of that result.
+								promoteTail();
+								tail = editorToolNames.has(event.tool.name)
+									? buildNativeToEditorCorrection(
+											event.tool,
+											nativeRewstToolRedirectAttempts,
+											MAX_NATIVE_REDIRECT_ATTEMPTS,
+										)
+									: buildNativeToBuddyCorrection(
+											event.tool,
+											allBuddySpecs,
+											nativeRewstToolRedirectAttempts,
+											MAX_NATIVE_REDIRECT_ATTEMPTS,
+										);
+								tailForSeed = tail;
+								deleteCurrentConversation();
+								needsSeparator = true;
+								continue turns;
+							}
+							// Only surface real steps; skip thinking/summarizing churn.
+							if (event.activity) emitStatus(event, gate);
+							break;
+						case 'usage':
+							// Stand-in for VS Code's native context gauge, which a model
+							// provider can't update; the status bar renders the latest.
+							setContextUsage({
+								orgId,
+								orgName: model.detail,
+								totalTokens: event.totalTokens,
+								maxTokens: event.maxTokens,
+								percent: event.percent,
+							});
+							break;
+						case 'conversation':
+							conversationId = event.conversationId;
+							break;
+						case 'chunk':
+							emitText(gate.push(event.text));
+							break;
+						case 'complete':
+							sawComplete = true;
+							completeContent = event.content;
+							sources = event.sources;
+							conversationId = event.conversationId ?? conversationId;
+							break;
+						case 'approval':
+							emitText(
+								'\n\n*RoboRewsty needs approval to run a Rewst-side action. Rewst Buddy no longer exposes Rewst approval as a VS Code chat tool; use the Rewst web app or the MCP approval flow for Rewst-side actions.*\n',
 							);
-							lastStatusLabel = undefined;
-							nativeRewstToolRedirectAttempts = 0;
-							continue turns;
-						}
-						if (conversationId) fireDelete(conversationId);
-						throw new Error(event.message);
+							// The backend turn is paused awaiting an approval we never
+							// send, so it never completes. The conversation is disposable.
+							deleteCurrentConversation();
+							return;
+						case 'error':
+							if (emittedText === '' && !ranBuddyTool && !retriedOnce) {
+								retriedOnce = true;
+								deleteCurrentConversation();
+								log.debug(
+									'RoboRewstyChatModelProvider: ask errored before output, retrying with a fresh conversation',
+									event.message,
+								);
+								lastStatusLabel = undefined;
+								nativeRewstToolRedirectAttempts = 0;
+								continue turns;
+							}
+							deleteCurrentConversation();
+							throw new Error(event.message);
+					}
+					if (sawComplete) break;
 				}
-				if (sawComplete) break;
-			}
 
-			if (!sawComplete) {
-				if (conversationId) fireDelete(conversationId);
-				return; // cancelled or the stream ended early
-			}
+				if (!sawComplete) {
+					deleteCurrentConversation();
+					return; // cancelled or the stream ended early
+				}
 
-			// Whatever the chunk stream didn't already show.
-			const remainder = gate.streamedAny || gate.blocked ? gate.flush() : stripToolRequestBlocks(completeContent);
+				// Whatever the chunk stream didn't already show.
+				const remainder =
+					gate.streamedAny || gate.blocked ? gate.flush() : stripToolRequestBlocks(completeContent);
 
-			// Always partition, even with no tools passed: a request for an
-			// unavailable tool must surface as the rejection note instead of
-			// being silently stripped by the chunk gate.
-			const { vscodeCalls, buddyRequests, rejectedNames } = partitionToolRequests(
-				completeContent,
-				vscodeNames,
-				buddyNames,
-			);
+				// Always partition, even with no tools passed: a request for an
+				// unavailable tool must surface as the rejection note instead of
+				// being silently stripped by the chunk gate.
+				const { vscodeCalls, buddyRequests, rejectedNames } = partitionToolRequests(
+					completeContent,
+					vscodeNames,
+					buddyNames,
+				);
 
-			// Buddy (MCP) tools run in-process. Their results become the tail of the
-			// next fresh seed, so they never depend on VS Code's capped options.tools
-			// list. Native/unavailable requests in the same reply are
-			// not run here; the results message tells the backend to re-issue them.
-			if (buddyRequests.length > 0) {
-				emitText(remainder);
-				// A catalog lookup is not Rewst work: it reads this turn's own tool
-				// specs, so charging it against the tool-round cap would spend the
-				// user's budget on reading the manifest instead of doing the task.
-				// It gets its own, separate ceiling so a model that only ever asks
-				// for details still terminates.
-				const chargeable = buddyRequests.filter(request => request.tool !== TOOL_DETAILS_TOOL_NAME);
-				if (chargeable.length === 0) {
-					if (detailsRounds >= MAX_TOOL_DETAILS_ROUNDS) {
+				// Buddy (MCP) tools run in-process. Their results become the tail of the
+				// next fresh seed, so they never depend on VS Code's capped options.tools
+				// list. Native/unavailable requests in the same reply are
+				// not run here; the results message tells the backend to re-issue them.
+				if (buddyRequests.length > 0) {
+					emitText(remainder);
+					// A catalog lookup is not Rewst work: it reads this turn's own tool
+					// specs, so charging it against the tool-round cap would spend the
+					// user's budget on reading the manifest instead of doing the task.
+					// It gets its own, separate ceiling so a model that only ever asks
+					// for details still terminates.
+					const chargeable = buddyRequests.filter(request => request.tool !== TOOL_DETAILS_TOOL_NAME);
+					if (chargeable.length === 0) {
+						if (detailsRounds >= MAX_TOOL_DETAILS_ROUNDS) {
+							needsSeparator = true;
+							emitText(
+								'*Stopped after repeated tool-detail lookups without a final answer. Ask again to continue.*\n',
+							);
+							deleteCurrentConversation();
+							return;
+						}
+						detailsRounds += 1;
+					}
+					// Cap BEFORE running: a capped round must not execute, or a write
+					// would take effect with no result fed back and no final answer.
+					if (chargeable.length > 0 && buddyRounds >= maxBuddyToolRounds) {
 						needsSeparator = true;
 						emitText(
-							'*Stopped after repeated tool-detail lookups without a final answer. Ask again to continue.*\n',
+							`*Stopped after ${maxBuddyToolRounds} Rewst tool call${maxBuddyToolRounds === 1 ? '' : 's'} without a final answer. Ask again to continue.*\n`,
 						);
-						if (conversationId) fireDelete(conversationId);
+						deleteCurrentConversation();
 						return;
 					}
-					detailsRounds += 1;
-				}
-				// Cap BEFORE running: a capped round must not execute, or a write
-				// would take effect with no result fed back and no final answer.
-				if (chargeable.length > 0 && buddyRounds >= maxBuddyToolRounds) {
-					needsSeparator = true;
-					emitText(
-						`*Stopped after ${maxBuddyToolRounds} Rewst tool call${maxBuddyToolRounds === 1 ? '' : 's'} without a final answer. Ask again to continue.*\n`,
-					);
-					if (conversationId) fireDelete(conversationId);
-					return;
-				}
-				if (chargeable.length > 0) buddyRounds += 1;
-				const results: ToolResult[] = [];
-				for (const request of buddyRequests) {
-					// Stop launching further tools (a later one may be a write) once
-					// the user cancels mid-sequence.
-					if (token.isCancellationRequested) {
-						if (conversationId) fireDelete(conversationId);
-						return;
-					}
-					const argsJson = JSON.stringify(request.args);
-					const argsLabel = argsJson === '{}' ? '' : argsJson;
-					emitStatus(
-						{
-							// Args are part of the dedupe label so repeated calls to one
-							// tool with different args still render as distinct cards.
-							label: `Running Buddy tool: ${request.tool} ${argsJson}`,
-							// local: true → renders as "Buddy tool", apart from the
-							// backend's server-side "Rewst tool" calls. The card already
-							// shows the name on its own line, so args is the args alone.
-							tool: {
-								name: request.tool,
-								args: argsLabel ? truncateArgsLabel(argsLabel) : undefined,
-								local: true,
+					if (chargeable.length > 0) buddyRounds += 1;
+					const results: ToolResult[] = [];
+					for (const request of buddyRequests) {
+						// Stop launching further tools (a later one may be a write) once
+						// the user cancels mid-sequence.
+						if (token.isCancellationRequested) {
+							deleteCurrentConversation();
+							return;
+						}
+						const argsJson = JSON.stringify(request.args);
+						const argsLabel = argsJson === '{}' ? '' : argsJson;
+						emitStatus(
+							{
+								// Args are part of the dedupe label so repeated calls to one
+								// tool with different args still render as distinct cards.
+								label: `Running Buddy tool: ${request.tool} ${argsJson}`,
+								// local: true → renders as "Buddy tool", apart from the
+								// backend's server-side "Rewst tool" calls. The card already
+								// shows the name on its own line, so args is the args alone.
+								tool: {
+									name: request.tool,
+									args: argsLabel ? truncateArgsLabel(argsLabel) : undefined,
+									local: true,
+								},
 							},
-						},
-						gate,
-					);
-					// The catalog lookup is answered locally from this turn's advertised
-					// specs — it touches no Rewst data, so it is not a buddy-tool run
-					// and must not block the stateless downgrade path.
-					if (request.tool === TOOL_DETAILS_TOOL_NAME) {
+							gate,
+						);
+						// The catalog lookup is answered locally from this turn's advertised
+						// specs — it touches no Rewst data, so it is not a buddy-tool run
+						// and must not block the stateless downgrade path.
+						if (request.tool === TOOL_DETAILS_TOOL_NAME) {
+							results.push({
+								tool: request.tool,
+								argsLabel,
+								ok: true,
+								output: renderToolDetails(advertisedSpecs, request.args),
+							});
+							continue;
+						}
+						const result = await this.deps.runBuddyTool(request.tool, request.args, orgId);
+						ranBuddyTool = true;
 						results.push({
 							tool: request.tool,
 							argsLabel,
-							ok: true,
-							output: renderToolDetails(advertisedSpecs, request.args),
+							ok: !result.isError,
+							output: result.text,
 						});
-						continue;
 					}
-					const result = await this.deps.runBuddyTool(request.tool, request.args, orgId);
-					ranBuddyTool = true;
-					results.push({
-						tool: request.tool,
-						argsLabel,
-						ok: !result.isError,
-						output: result.text,
-					});
+					// Promote the prior round's result/correction before appending this
+					// round, so the next disposable conversation contains every earlier
+					// interaction and the latest result remains the current ask tail.
+					promoteTail();
+					const resultMessage = withDeferredToolsNote(
+						formatInProcessToolResults(results),
+						vscodeCalls,
+						rejectedNames,
+					);
+					const assistantTurn = formatBuddyAssistantTurn(remainder, buddyRequests);
+					if (assistantTurn)
+						seedHistory = appendSeedChunks(seedHistory, [{ role: 'ASSISTANT', content: assistantTurn }]);
+					tail = resultMessage;
+					tailForSeed = resultMessage;
+					deleteCurrentConversation();
+					needsSeparator = true;
+					continue turns;
 				}
-				tail = withDeferredToolsNote(formatInProcessToolResults(results), vscodeCalls, rejectedNames);
-				if (conversationId) fireDelete(conversationId);
-				needsSeparator = true;
-				continue turns;
-			}
 
-			if (vscodeCalls.length > 0) {
-				emitText(remainder);
-				for (const call of vscodeCalls) progress.report(call);
-				if (conversationId) fireDelete(conversationId);
+				if (vscodeCalls.length > 0) {
+					emitText(remainder);
+					for (const call of vscodeCalls) progress.report(call);
+					deleteCurrentConversation();
+					return;
+				}
+
+				let finalText = remainder;
+				if (rejectedNames.length > 0) finalText += rejectedToolsNote(rejectedNames);
+				if (sources.length > 0) finalText += renderSourcesMarkdown(sources);
+				emitText(finalText);
+				setLastAiAnswer(stripToolRequestBlocks(completeContent));
+				deleteCurrentConversation();
 				return;
 			}
-
-			let finalText = remainder;
-			if (rejectedNames.length > 0) finalText += rejectedToolsNote(rejectedNames);
-			if (sources.length > 0) finalText += renderSourcesMarkdown(sources);
-			emitText(finalText);
-			setLastAiAnswer(stripToolRequestBlocks(completeContent));
-			if (conversationId) fireDelete(conversationId);
-			return;
+		} finally {
+			deleteCurrentConversation();
 		}
 	}
 

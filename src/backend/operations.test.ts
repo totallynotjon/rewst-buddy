@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
 		close: ReturnType<typeof vi.fn>;
 		terminateSession: ReturnType<typeof vi.fn>;
 		onclose?: () => void;
+		onerror?: (error: Error) => void;
 	}[] = [];
 	const shared = {
 		discover: vi.fn(async () => undefined as SharedDescriptor | undefined),
@@ -257,6 +258,7 @@ vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
 		readonly close = vi.fn(async () => {});
 		readonly terminateSession = vi.fn(async () => {});
 		onclose?: () => void;
+		onerror?: (error: Error) => void;
 		constructor() {
 			mocks.transports.push(this);
 		}
@@ -389,6 +391,23 @@ describe('shared backend lifecycle', () => {
 		mocks.transports[0]?.onclose?.();
 		expect(cachedTools()).toEqual([]);
 		expect(cachedResources()).toEqual([]);
+		await expect(invoke('tools.list', {})).rejects.toThrow(/has not been initialized/);
+
+		disposable.dispose();
+		await new Promise(resolve => setImmediate(resolve));
+	});
+
+	it('clears the attached editor state when owner reconnects are exhausted', async () => {
+		mocks.shared.discover.mockResolvedValue(mocks.shared.descriptor);
+		const disposable = initializeBackend();
+		await vi.waitFor(() => expect(mocks.transports).toHaveLength(1));
+		await vi.waitFor(() => expect(mocks.sharedConnection).toMatchObject({ owned: false }));
+
+		mocks.transports[0]?.onerror?.(new Error('Maximum reconnection attempts (0) exceeded.'));
+		expect(cachedTools()).toEqual([]);
+		expect(cachedResources()).toEqual([]);
+		expect(mocks.sharedConnection).toBeUndefined();
+		expect(getBackendServerDelegate()?.getStatus()).toBe(false);
 		await expect(invoke('tools.list', {})).rejects.toThrow(/has not been initialized/);
 
 		disposable.dispose();
