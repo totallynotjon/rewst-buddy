@@ -35,6 +35,12 @@ export function getRegionConfigs(): RegionConfig[] {
 			graphqlUrl: 'https://api.rewst.asia/graphql',
 			loginUrl: 'https://app.rewst.asia',
 		},
+		{
+			name: 'Europe',
+			cookieName: 'euAppSession',
+			graphqlUrl: 'https://api.rewst.eu/graphql',
+			loginUrl: 'https://app.rewst.eu',
+		},
 	]);
 
 	if (regions.length === 0)

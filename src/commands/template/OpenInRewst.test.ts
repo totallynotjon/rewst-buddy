@@ -104,8 +104,8 @@ suite('Unit: OpenInRewst', () => {
 				region: {
 					name: 'EU',
 					cookieName: 'eu_cookie',
-					graphqlUrl: 'https://api.eu.rewst.io/graphql',
-					loginUrl: 'https://app.eu.rewst.io',
+					graphqlUrl: 'https://api.rewst.eu/graphql',
+					loginUrl: 'https://app.rewst.eu',
 				},
 			},
 		});
@@ -159,8 +159,8 @@ suite('Unit: OpenInRewst', () => {
 				region: {
 					name: 'EU',
 					cookieName: 'eu_cookie',
-					graphqlUrl: 'https://api.eu.rewst.io/graphql',
-					loginUrl: 'https://app.eu.rewst.io',
+					graphqlUrl: 'https://api.rewst.eu/graphql',
+					loginUrl: 'https://app.rewst.eu',
 				},
 				org: { id: parentOrgId, name: 'Parent Org' },
 				allManagedOrgs: [

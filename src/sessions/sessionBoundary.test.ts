@@ -63,8 +63,8 @@ suite('Unit: session configuration boundaries', () => {
 
 		test('builds a cookie using the configured regional cookie name', () => {
 			assert.strictEqual(
-				CookieString.fromToken('token-value', region({ cookieName: 'euSession' })).value,
-				'euSession=token-value',
+				CookieString.fromToken('token-value', region({ cookieName: 'euAppSession' })).value,
+				'euAppSession=token-value',
 			);
 		});
 
@@ -83,6 +83,13 @@ suite('Unit: session configuration boundaries', () => {
 			assert.strictEqual(
 				getSubscriptionsUrl(region({ graphqlUrl: 'http://localhost:4000/graphql' })),
 				'ws://localhost:4000/subscriptions',
+			);
+		});
+
+		test('derives the documented Europe subscriptions endpoint', () => {
+			assert.strictEqual(
+				getSubscriptionsUrl(region({ graphqlUrl: 'https://api.rewst.eu/graphql' })),
+				'wss://api.rewst.eu/subscriptions',
 			);
 		});
 
@@ -118,13 +125,16 @@ suite('Unit: session configuration boundaries', () => {
 
 	suite('getRegionConfigs()', () => {
 		test('returns every configured region in configured order', () => {
-			const configured = [region({ name: 'North America' }), region({ name: 'Europe', cookieName: 'euSession' })];
+			const configured = [
+				region({ name: 'North America' }),
+				region({ name: 'Europe', cookieName: 'euAppSession' }),
+			];
 			configureRegions(configured);
 
 			assert.deepStrictEqual(getRegionConfigs(), configured);
 		});
 
-		test('uses the built-in North America and Asia regions when the setting is absent', () => {
+		test('uses the built-in North America, Asia, and Europe regions when the setting is absent', () => {
 			configureRegions(undefined);
 
 			assert.deepStrictEqual(getRegionConfigs(), [
@@ -139,6 +149,12 @@ suite('Unit: session configuration boundaries', () => {
 					cookieName: 'auAppSession',
 					graphqlUrl: 'https://api.rewst.asia/graphql',
 					loginUrl: 'https://app.rewst.asia',
+				},
+				{
+					name: 'Europe',
+					cookieName: 'euAppSession',
+					graphqlUrl: 'https://api.rewst.eu/graphql',
+					loginUrl: 'https://app.rewst.eu',
 				},
 			]);
 		});

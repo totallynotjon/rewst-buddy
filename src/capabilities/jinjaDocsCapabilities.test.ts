@@ -270,6 +270,10 @@ suite('Unit: jinjaDocsCapabilities', () => {
 			assert.strictEqual(engineBaseFromRegion('https://api.rewst.io/graphql'), 'https://engine.rewst.io');
 		});
 
+		test('rewrites the documented Europe API host to its engine host', () => {
+			assert.strictEqual(engineBaseFromRegion('https://api.rewst.eu/graphql'), 'https://engine.rewst.eu');
+		});
+
 		test('falls back to the default engine base for a non-api.* host or undefined input', () => {
 			assert.strictEqual(engineBaseFromRegion('https://console.rewst.io/graphql'), 'https://engine.rewst.io');
 			assert.strictEqual(engineBaseFromRegion(undefined), 'https://engine.rewst.io');

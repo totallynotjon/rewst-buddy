@@ -256,9 +256,9 @@ suite('Unit: SessionManager', () => {
 					allManagedOrgs: [{ id: 'dup-org', name: 'Dup EU' }],
 					region: {
 						name: 'Europe',
-						cookieName: 'appSession',
-						graphqlUrl: 'https://api.eu.rewst.io/graphql',
-						loginUrl: 'https://app.eu.rewst.io',
+						cookieName: 'euAppSession',
+						graphqlUrl: 'https://api.rewst.eu/graphql',
+						loginUrl: 'https://app.rewst.eu',
 					},
 				},
 			});
@@ -329,9 +329,9 @@ suite('Unit: SessionManager', () => {
 					allManagedOrgs: [{ id: 'shared-org', name: 'Shared EU' }],
 					region: {
 						name: 'Europe',
-						cookieName: 'appSession',
-						graphqlUrl: 'https://api.eu.rewst.io/graphql',
-						loginUrl: 'https://app.eu.rewst.io',
+						cookieName: 'euAppSession',
+						graphqlUrl: 'https://api.rewst.eu/graphql',
+						loginUrl: 'https://app.rewst.eu',
 					},
 				},
 			});

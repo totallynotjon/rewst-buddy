@@ -282,7 +282,10 @@ directory.
 
 ## Regions
 
-North America and Asia are built in. For other regions, pass `--config PATH` with
+North America, Asia, and Europe (DE) are built in. The Europe (DE) endpoints are
+`https://api.rewst.eu/graphql`, `wss://api.rewst.eu/subscriptions`,
+`https://engine.rewst.eu`, and `https://app.rewst.eu`; its built-in session
+cookie name is `euAppSession`. For other regions, pass `--config PATH` with
 a JSON object containing a non-empty `regions` array:
 
 ```json

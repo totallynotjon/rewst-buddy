@@ -42,7 +42,9 @@ _Connection diagram. The browser supplies login; your MCP client uses the tools.
 
 You do not need to click the template-opening action to transfer a session. That separate action needs an attached VS Code editor.
 
-If you use a region other than North America, configure the [server's region](mcp-setup.md#rewst-regions) before the handoff.
+The built-in North America, Asia, and Europe (DE) entries are probed
+automatically. If you use another region, configure the [server's
+region](mcp-setup.md#rewst-regions) before the handoff.
 
 ## 5 · Verify it from your assistant
 

@@ -172,7 +172,18 @@ Use `--state-dir PATH` to select another directory. An existing encrypted vault 
 
 ### Rewst regions
 
-North America is configured by default. For another region, start the owner with `--config /absolute/path/regions.json`. The file must contain a non-empty `regions` array with your region's `name`, `cookieName`, `graphqlUrl`, and `loginUrl`; `subscriptionsUrl` is optional. See the [region configuration example](../packages/mcp-server/README.md#regions).
+North America, Asia, and Europe (DE) are configured by default. The built-in
+Europe entry uses `euAppSession`, `https://api.rewst.eu/graphql`,
+`wss://api.rewst.eu/subscriptions`, `https://engine.rewst.eu`, and
+`https://app.rewst.eu`. For another region, start the owner with `--config
+/absolute/path/regions.json`. The file must contain a non-empty `regions` array
+with your region's `name`, `cookieName`, `graphqlUrl`, and `loginUrl`;
+`subscriptionsUrl` is optional. See the [region configuration
+example](../packages/mcp-server/README.md#regions).
+
+Rewst's public deployment documentation verifies the Europe (DE) endpoint
+hosts. The built-in `euAppSession` cookie name follows the requested regional
+convention and remains configurable if your account uses a different cookie.
 
 Browser support for a Rewst domain does not configure the server's region automatically. Configure the region before transferring its session.
 
