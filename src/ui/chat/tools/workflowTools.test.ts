@@ -1726,7 +1726,12 @@ suite('Unit: workflowTools', () => {
 				}
 				return { data: {} };
 			};
-			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute,
+				appBaseUrl: 'https://app.rewst.io',
+			};
 			return { deps, calls };
 		}
 
@@ -2912,6 +2917,28 @@ suite('Unit: workflowTools', () => {
 			const call = calls.find(c => c.query.includes('RewstBuddyTestWorkflow'))!;
 			assert.deepStrictEqual(call.variables!.input, { email: 'x@y.z' }, 'passes the run input through');
 			assert.ok(!calls.some(c => c.query.includes('RewstBuddyExecutions')), 'wait:false does not poll');
+		});
+
+		test('buddy_workflow_run links to the workflow owner org, not the caller org', async () => {
+			const { deps } = makeDeps({ executionOwnerOrgId: 'caller-org', executionWorkflowOrgId: 'workflow-org' });
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_RUN_TOOL_NAME,
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'caller-org',
+						orgName: 'Caller',
+						wait: false,
+					},
+				},
+				deps,
+			);
+			assert.match(
+				output,
+				/Result: \[Open workflow result\]\(https:\/\/app\.rewst\.io\/organizations\/workflow-org\/results\/exec-new\)/,
+			);
+			assert.doesNotMatch(output, /organizations\/caller-org\/results/);
 		});
 
 		test('buddy_workflow_run waits and surfaces the failing task on a failed run', async () => {

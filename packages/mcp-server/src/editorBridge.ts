@@ -5,6 +5,7 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { createMcpServer } from './mcpServer';
 import { createEditorTool, scopeSnapshot } from './editorOperations';
 import { SessionManager } from './sessions/SessionManager';
+import { sessionSnapshots } from './editorSessions';
 import { WorkingScopeManager } from './models/WorkingScopeManager';
 import {
 	getCapability,
@@ -141,7 +142,10 @@ export function createSharedEditorServer(): Server {
 							if (!input || typeof input !== 'object' || Array.isArray(input))
 								throw new Error('Invalid editor attachment');
 							attach(server, input as Record<string, unknown>);
-							return { attached: true, scope: scopeSnapshot() };
+							// Return the owner snapshot in the attach response. Notifications
+							// can race the editor's first subscription, while this response is
+							// consumed synchronously by the attaching VS Code window.
+							return { attached: true, scope: scopeSnapshot(), sessions: sessionSnapshots() };
 						}
 						return original.run(request, ctx);
 					},

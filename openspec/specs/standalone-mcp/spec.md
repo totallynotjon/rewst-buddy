@@ -43,6 +43,40 @@ has already restored its sessions.
 - **AND** it sends the remote update through the private MCP connection
 - **AND** the server validates the session and executes the Rewst update
 
+### Requirement: Synchronize attached editor session lifecycle
+
+The owner process SHALL remain the canonical session store for every attached
+editor. An editor attachment SHALL return a redacted session snapshot in its
+response so the window can render the current sessions immediately; it SHALL
+not copy cookies, tokens, or secret-storage values into a second store. The
+owner SHALL notify attached editors of later session and scope changes. When
+the owner connection closes unexpectedly, an attached editor SHALL clear its
+cached sessions, scope, and capability catalog and reject further backend
+operations. A window that starts without a verified owner SHALL use a fresh
+local store and show only its own known profiles.
+
+#### Scenario: Attach receives the canonical snapshot
+
+- **GIVEN** a standalone owner has restored active and known sessions
+- **WHEN** a VS Code window attaches over the private editor connection
+- **THEN** the attach response contains the owner's current redacted session
+  snapshot
+- **AND** the editor does not receive cookies, tokens, or secret-store values
+
+#### Scenario: Owner shutdown invalidates an attached editor
+
+- **GIVEN** a VS Code window is attached to the owner
+- **WHEN** the private owner connection closes unexpectedly
+- **THEN** the editor clears its session, scope, and tool caches
+- **AND** subsequent backend operations fail instead of using stale state
+
+#### Scenario: Reload without an owner starts fresh
+
+- **GIVEN** no compatible verified owner is available during startup
+- **WHEN** a VS Code window initializes its backend
+- **THEN** it creates or loads only its own local session store
+- **AND** it does not import another process's credentials or profiles
+
 ### Requirement: Separate editor and agent authority
 
 Trusted editor operations SHALL be registered only on private embedded or separately authenticated editor MCP

@@ -7,6 +7,7 @@ import {
 	runWorkflowExecutions,
 	runWorkflowRun,
 } from './executions';
+import { runWorkflowDiff } from './diff';
 import { applyWorkflowMutation, requireScopeFields, type WorkflowOperation } from './graphMutations';
 import { runWorkflowSearch } from './searchIndex';
 import {
@@ -14,6 +15,7 @@ import {
 	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+	WORKFLOW_DIFF_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
 } from './specs';
@@ -53,6 +55,8 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 		}
 		case WORKFLOW_RUN_TOOL_NAME:
 			return runWorkflowRun(request, bound);
+		case WORKFLOW_DIFF_TOOL_NAME:
+			return runWorkflowDiff(request);
 		case 'buddy_workflow_executions':
 			return runWorkflowExecutions(request, bound);
 		case WORKFLOW_EXECUTION_LOGS_TOOL_NAME:

@@ -160,10 +160,9 @@ function partText(part: unknown): string {
 }
 
 /**
- * Compact message feeding tool outputs back into the same backend conversation
- * that emitted the calls (the reuse path). The conversation already holds the
- * question and prior context, so only the results — labeled by tool name and
- * args — are sent, not the whole transcript.
+ * Compact message feeding tool outputs back into the next disposable backend
+ * conversation. The visible transcript is seeded separately; this message is
+ * only the results, labeled by tool name and args.
  */
 export function formatToolResultsMessage(
 	results: readonly ToolResultPartLike[],

@@ -81,6 +81,41 @@ describe('editor session operations', () => {
 		expect(result).not.toHaveProperty('cookies');
 	});
 
+	it('seeds a role-aware conversation and returns its id', async () => {
+		const session = new Session({ User: vi.fn().mockResolvedValue({ user: profile().user }) } as never, profile());
+		const rawGraphql = vi
+			.spyOn(session, 'rawGraphql')
+			.mockResolvedValueOnce({ data: { createConversation: { id: 'conv-1' } } })
+			.mockResolvedValueOnce({ data: { createConversationMessage: { id: 'msg-1' } } })
+			.mockResolvedValueOnce({ data: { createConversationMessage: { id: 'msg-2' } } });
+		SessionManager._setSessionsForTesting([session]);
+
+		const result = await editorSessionOperations['conversation.seed'](
+			{
+				sessionId: 'user-1',
+				orgId: 'org-root',
+				conversationType: 'HELP_DOCS',
+				chunks: [
+					{ role: 'USER', content: 'what is a trigger?' },
+					{ role: 'ASSISTANT', content: 'An event that starts a workflow.' },
+				],
+			},
+			{ signal: new AbortController().signal, emit: async () => {} },
+		);
+
+		expect(result).toBe('conv-1');
+		expect(rawGraphql).toHaveBeenCalledTimes(3);
+		expect(rawGraphql.mock.calls[0]?.[1]).toEqual({
+			conversation: { orgId: 'org-root', title: 'rewst-buddy', type: 'HELP_DOCS' },
+		});
+		expect(rawGraphql.mock.calls[1]?.[1]).toEqual({
+			message: { conversationId: 'conv-1', role: 'USER', content: 'what is a trigger?' },
+		});
+		expect(rawGraphql.mock.calls[2]?.[1]).toEqual({
+			message: { conversationId: 'conv-1', role: 'ASSISTANT', content: 'An event that starts a workflow.' },
+		});
+	});
+
 	it('enforces managed organization scope for SDK calls', async () => {
 		const method = vi.fn().mockResolvedValue({ ok: true });
 		const session = new Session(

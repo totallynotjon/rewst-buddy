@@ -9,11 +9,6 @@ export {
 } from './chat/model/contextUsage';
 export { ContextUsageStatusBar } from './ContextUsageStatusBar';
 export { RoboRewstyChatModelProvider } from './chat/model/RoboRewstyChatModelProvider';
-export {
-	conversationMap,
-	type ConversationMapStorage,
-	type PersistedConversationMap,
-} from './chat/model/conversationMap';
 export { ProposedContentProvider, PROPOSED_SCHEME } from './chat/ProposedContentProvider';
 export * from './pickers';
 export { StatusBar } from './StatusBarIcon';

@@ -20,6 +20,11 @@ export interface AskOptions {
 	inactivityTimeoutMs?: number;
 }
 
+export interface SeedChunk {
+	role: 'USER' | 'ASSISTANT';
+	content: string;
+}
+
 export interface ConversationVariables extends Record<string, unknown> {
 	message: string;
 	orgId: string;
@@ -42,6 +47,21 @@ export function conversationVariables(options: AskOptions, orgId: string): Conve
 		metadata: { orgId },
 		resumeRequestId: options.resumeRequestId ?? null,
 	};
+}
+
+/** Create a disposable backend conversation and seed its visible chat history. */
+export async function seedConversation(
+	session: Session,
+	orgId: string,
+	conversationType: string,
+	chunks: readonly SeedChunk[],
+): Promise<string> {
+	return invoke<string>('conversation.seed', {
+		sessionId: session.sessionId ?? session.profile.user.id,
+		orgId,
+		conversationType,
+		chunks,
+	});
 }
 
 let streamCounter = 0;

@@ -29,6 +29,12 @@ export function getRegionConfigs(): RegionConfig[] {
 			graphqlUrl: 'https://api.rewst.io/graphql',
 			loginUrl: 'https://app.rewst.io',
 		},
+		{
+			name: 'Asia',
+			cookieName: 'auAppSession',
+			graphqlUrl: 'https://api.rewst.asia/graphql',
+			loginUrl: 'https://app.rewst.asia',
+		},
 	]);
 
 	if (regions.length === 0)

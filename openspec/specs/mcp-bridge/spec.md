@@ -194,6 +194,29 @@ explicit in the tool description and result.
 - **AND** any tool that can overwrite local file contents is either classified as
   write-tier or has an explicit local-file overwrite contract and target guard
 
+### Requirement: Compare workflow snapshots without a mutation
+
+The system SHALL expose `buddy_workflow_diff` as a read-only workflow capability.
+It SHALL accept two full snapshots from `buddy_workflow_get`, produce a
+deterministic JSON Patch-style operation list with escaped JSON Pointer paths,
+and never read or mutate Rewst data. Object keys and array operations SHALL be
+ordered deterministically, and output SHALL be bounded with an explicit cap
+notice rather than an invalid synthetic operation.
+
+#### Scenario: Review an edit before saving
+
+- **GIVEN** an agent has original and modified full workflow snapshots
+- **WHEN** it calls `buddy_workflow_diff`
+- **THEN** the bridge returns stable add, remove, and replace operations
+- **AND** it does not call Rewst or change the workflow
+
+#### Scenario: Diff output reaches its cap
+
+- **GIVEN** the snapshots contain more changes than the bounded diff output
+- **WHEN** `buddy_workflow_diff` is called
+- **THEN** the response contains at most the configured operation cap
+- **AND** it clearly states that additional operations were omitted
+
 ### Requirement: Bound writes to the effective allowed organizations
 
 For every write tool, the system SHALL verify the target organization is in the

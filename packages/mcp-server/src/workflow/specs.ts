@@ -10,6 +10,7 @@ import { workflowEditOperationGrammar } from './operationGrammar';
 export const WORKFLOW_EDIT_TOOL_NAME = 'buddy_workflow_edit';
 export const WORKFLOW_AUTOLAYOUT_TOOL_NAME = 'buddy_workflow_autolayout';
 export const WORKFLOW_RUN_TOOL_NAME = 'buddy_workflow_run';
+export const WORKFLOW_DIFF_TOOL_NAME = 'buddy_workflow_diff';
 export const WORKFLOW_EXECUTION_LOGS_TOOL_NAME = 'buddy_execution_logs';
 export const WORKFLOW_DIAGNOSE_TOOL_NAME = 'buddy_workflow_diagnose';
 export const WORKFLOW_SEARCH_TOOL_NAME = 'buddy_workflow_search';
@@ -202,7 +203,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	{
 		name: WORKFLOW_RUN_TOOL_NAME,
 		description:
-			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from buddy_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate buddy_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to buddy_execution_logs or buddy_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval every time.",
+			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from buddy_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate buddy_execution_logs round-trip. Pass wait:false to return immediately with the execution id. The execution id is included either way, together with a clickable result link built from the workflow owner's organization; feed the id to buddy_execution_logs or buddy_render_jinja to dig further. If the owner cannot be resolved, the output says the link is unavailable instead of guessing from the caller's organization. This actually executes the workflow's automation, so it requires user approval every time.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -228,6 +229,29 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 				},
 			},
 			required: ['workflowId', 'workflowName', 'orgId', 'orgName'],
+		},
+	},
+	{
+		name: WORKFLOW_DIFF_TOOL_NAME,
+		description:
+			'Compare two full workflow snapshots and show a deterministic, read-only JSON Patch-style diff. Pass the original and modified JSON returned by buddy_workflow_get with detail:"full"; object keys are sorted and array changes are reported by index so repeated comparisons are stable. This tool does not read or mutate Rewst and is useful for reviewing a workflow edit before saving it. Include fromVersion/toVersion when the snapshots came from known revisions.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				workflowId: { type: 'string', description: 'The workflow id being compared.' },
+				orgId: { type: 'string', description: 'The organization that owns the workflow.' },
+				original: {
+					description: 'Original full workflow snapshot as an object or JSON string.',
+					oneOf: [{ type: 'object' }, { type: 'array' }, { type: 'string' }],
+				},
+				modified: {
+					description: 'Modified full workflow snapshot as an object or JSON string.',
+					oneOf: [{ type: 'object' }, { type: 'array' }, { type: 'string' }],
+				},
+				fromVersion: { type: 'string', description: 'Optional original revision/version token.' },
+				toVersion: { type: 'string', description: 'Optional modified revision/version token.' },
+			},
+			required: ['workflowId', 'orgId', 'original', 'modified'],
 		},
 	},
 	{

@@ -282,8 +282,8 @@ directory.
 
 ## Regions
 
-North America is built in. For other regions, pass `--config PATH` with a JSON
-object containing a non-empty `regions` array:
+North America and Asia are built in. For other regions, pass `--config PATH` with
+a JSON object containing a non-empty `regions` array:
 
 ```json
 {

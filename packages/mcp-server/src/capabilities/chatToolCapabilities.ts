@@ -1,6 +1,7 @@
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_DIAGNOSE_TOOL_NAME,
+	WORKFLOW_DIFF_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
@@ -25,6 +26,7 @@ const workflowAccess: Record<string, CapabilityAccess> = {
 	[WORKFLOW_EXECUTION_LOGS_TOOL_NAME]: 'read',
 	buddy_render_jinja: 'read',
 	[WORKFLOW_DIAGNOSE_TOOL_NAME]: 'read',
+	[WORKFLOW_DIFF_TOOL_NAME]: 'read',
 };
 
 const doesNotRequireOrg = new Set<string>([

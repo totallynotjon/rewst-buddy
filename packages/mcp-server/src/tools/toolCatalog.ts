@@ -186,12 +186,9 @@ function renderNameList(specs: readonly ToolSpec[], budget: number): string {
 }
 
 /**
- * Compact stand-in for the manifest on a turn that reuses a warm backend
- * conversation. The conversation already carries the full manifest from its
- * opening message, so re-sending it costs thousands of characters per turn for
- * text the backend has already read. This keeps what actually needs recency —
- * the protocol rules and the exact set of names available right now — and points
- * at `buddy_tool_details` for anything the manifest only summarized.
+ * Compact stand-in for callers that already supplied the full manifest. This
+ * keeps what needs recency — the protocol rules and exact names available now —
+ * and points at `buddy_tool_details` for anything the manifest only summarized.
  */
 export function buildToolRefresher(specs: readonly ToolSpec[], budget: number): string {
 	if (specs.length === 0) return '';

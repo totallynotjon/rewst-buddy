@@ -2,9 +2,11 @@ export {
 	askRewstAi,
 	runConversation,
 	conversationVariables,
+	seedConversation,
 	type AskOptions,
 	type CancellationToken,
 	type ConversationVariables,
+	type SeedChunk,
 } from './ConversationClient';
 export {
 	ConversationEventMapper,

@@ -502,6 +502,25 @@ async function connectRemote(descriptor: SharedServerDescriptor): Promise<Backen
 	const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${descriptor.port}/editor`), {
 		requestInit: { headers: { Authorization: `Bearer ${descriptor.editorToken}` }, redirect: 'error' },
 	});
+	let intentionalClose = false;
+	transport.onclose = () => {
+		// Owner shutdown or a broken private connection invalidates the attached
+		// window's view. Do not leave stale active/expired sessions in the facade.
+		if (intentionalClose) return;
+		if (activeConnection?.client !== client) return;
+		activeConnection = undefined;
+		connection = undefined;
+		closed = true;
+		generation++;
+		tools = [];
+		resources = [];
+		events.fire({
+			type: 'sessions',
+			snapshot: { sessions: [], knownProfiles: [] },
+			changeType: 'cleared',
+		});
+		events.fire({ type: 'scope', snapshot: { orgs: [], workflows: [] } });
+	};
 	try {
 		await client.connect(transport);
 		const result = await client.callTool({
@@ -509,15 +528,37 @@ async function connectRemote(descriptor: SharedServerDescriptor): Promise<Backen
 			arguments: { operation: 'editor.attach', input: { capabilities: getEditorCapabilities() } },
 		});
 		if (result.isError) throw new Error('The shared server rejected the editor attachment.');
+		const attached = (result.structuredContent as { result?: unknown } | undefined)?.result;
+		if (attached && typeof attached === 'object' && !Array.isArray(attached)) {
+			const snapshot = (attached as { sessions?: unknown }).sessions;
+			if (
+				snapshot &&
+				typeof snapshot === 'object' &&
+				!Array.isArray(snapshot) &&
+				Array.isArray((snapshot as { sessions?: unknown }).sessions) &&
+				Array.isArray((snapshot as { knownProfiles?: unknown }).knownProfiles)
+			) {
+				events.fire({ type: 'sessions', snapshot, changeType: 'saved' });
+			}
+		}
 	} catch (error) {
+		intentionalClose = true;
 		await transport.terminateSession().catch(() => undefined);
 		await client.close();
 		throw error;
 	}
+	const closeRemote = async (): Promise<void> => {
+		intentionalClose = true;
+		await transport.terminateSession().catch(() => undefined);
+	};
+	const closeClientTransport = async (): Promise<void> => {
+		intentionalClose = true;
+		await transport.close().catch(() => undefined);
+	};
 	return {
 		client,
 		remote: true,
-		clientTransport: transport,
-		serverTransport: { close: () => transport.terminateSession().catch(() => undefined) },
+		clientTransport: { close: closeClientTransport },
+		serverTransport: { close: closeRemote },
 	};
 }

@@ -51,6 +51,8 @@ export interface GraphqlToolDeps {
 	 * same extension host never reuses another session's data. Undefined in tests.
 	 */
 	cacheScope?: string;
+	/** Region application origin used for links to Rewst-owned resources. */
+	appBaseUrl?: string;
 	/**
 	 * Deps bound to the OTHER active sessions. A tool that looks an entity up by
 	 * a globally unique id (e.g. execution logs by execution id) can sweep these
@@ -205,6 +207,7 @@ export function createGraphqlDeps(session: Session): GraphqlToolDeps {
 		execute: (query, variables) => session.rawGraphql(query, variables),
 		// Partition per-session caches by the org behind this session.
 		cacheScope: session.profile.org.id,
+		appBaseUrl: session.profile.region.loginUrl,
 	};
 }
 

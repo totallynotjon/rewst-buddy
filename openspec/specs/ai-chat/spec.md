@@ -30,35 +30,34 @@ active organization's session.
 
 ### Requirement: Preserve conversation continuity safely
 
-The system SHALL reuse a warm backend conversation for follow-up turns in the
-same visible chat when the replayed VS Code history is still at the backend
-conversation tip. It SHALL fork a fresh backend conversation when the visible
-history has been rewound, and SHALL forget/delete the stale backend conversation
-so rolled-back turns are not reattached later.
+The system SHALL create a disposable backend conversation for every provider
+turn. It SHALL seed that conversation with the visible VS Code history as
+explicit USER and ASSISTANT messages, then delete the conversation after the
+stream, redirect, or local-tool round finishes. Follow-ups SHALL replay the
+visible history rather than relying on a hidden backend id or assistant
+breadcrumb, so edited and restored history cannot reattach rolled-back turns.
 
-#### Scenario: Follow-up turn
+#### Scenario: Follow-up turn gets a fresh seed
 
-- **GIVEN** a user has sent a first message and the backend returned a
-  conversation id
+- **GIVEN** a user has sent a first message
 - **WHEN** the user sends the next message in the same visible chat
-- **THEN** the extension sends only the incremental user turn to the existing
-  backend conversation
-- **AND** it does not re-send the full visible transcript or the transport
-  directive
+- **THEN** the extension creates a new disposable backend conversation
+- **AND** it seeds the full visible history with role-aware messages
+- **AND** it deletes the disposable conversation when the turn ends
 
 #### Scenario: Restored checkpoint
 
 - **GIVEN** a visible chat has been restored to an earlier checkpoint
 - **WHEN** the user asks a different follow-up
-- **THEN** the extension starts a fresh backend conversation with a stateless
-  visible transcript
-- **AND** the old backend conversation is forgotten so hidden rolled-back turns
-  cannot leak into the new branch
+- **THEN** the extension starts a fresh backend conversation seeded only from the
+  restored visible branch
+- **AND** any in-flight disposable conversation is deleted so hidden rolled-back
+  turns cannot leak into the new branch
 
 ### Requirement: Cap and frame high-noise tool output in the stateless transcript
 
-When a fresh backend conversation is started with a stateless visible
-transcript, the system SHALL serialize editor tool results by tool name. A
+When a disposable backend conversation is started with a visible transcript,
+the system SHALL serialize editor tool results by tool name. A
 tool result whose tool name matches a terminal-reading tool (e.g.
 `run_in_terminal`, `get_terminal_output`) SHALL be capped far tighter than
 other tool results and prefixed with an explicit note that the content is raw
@@ -187,21 +186,19 @@ Source: `src/ui/chat/tools/toolCatalog.ts`, `src/ui/chat/tools/toolProtocol.ts`.
   exact args schema, without calling the capability registry
 - **AND** the assistant can then call the tool with correct arguments
 
-#### Scenario: Follow-up turn in a warm conversation
+#### Scenario: Follow-up turn receives the current manifest
 
-- **GIVEN** a backend conversation that already received the tool manifest for
-  the current tool set
-- **WHEN** the user sends a follow-up turn that reuses that conversation
-- **THEN** the manifest is not re-sent
-- **AND** the turn carries only a compact refresher: the protocol rules, the tool
-  names available this turn, and how to expand a summarized tool
+- **GIVEN** a user sends a follow-up turn with the current tool set
+- **WHEN** the extension creates the disposable backend conversation
+- **THEN** the current manifest is sent again with the transport instructions
+- **AND** the visible history is seeded independently of any earlier backend id
 
 #### Scenario: Tool set changes mid-chat
 
-- **GIVEN** a warm conversation whose manifest was sent for a different set of
-  tools (e.g. the user changed the chat's tool selection)
+- **GIVEN** a prior turn used a different set of tools (e.g. the user changed
+  the chat's tool selection)
 - **WHEN** the next turn is assembled
-- **THEN** the full manifest is sent again for the new tool set
+- **THEN** the full manifest is sent for the new disposable conversation
 
 #### Scenario: Unknown name in a details request
 
@@ -236,7 +233,7 @@ answered (see `Keep every turn message within the backend's length limit`).
 
 - **GIVEN** `rewst-buddy.ai.customInstructions` is long enough to fill the
   message budget on its own
-- **WHEN** a message is sent on either the stateless or the reuse path
+- **WHEN** a message is sent
 - **THEN** the instructions are trimmed with an explicit truncation marker
 - **AND** the user's own turn is still carried in the message
 
@@ -354,8 +351,8 @@ expected outcome.
 
 - **GIVEN** Buddy tools are advertised locally
 - **WHEN** the backend emits activity for a native Rewst tool
-- **THEN** the extension sends a correction turn in the same backend conversation
-  explaining the local fenced protocol
+- **THEN** the extension sends a correction turn in a new disposable backend
+  conversation explaining the local fenced protocol
 - **AND** the abandoned native tool card and output are not shown to the user
 
 #### Scenario: External MCP disabled but Buddy tools available

@@ -21,7 +21,11 @@ const mocks = vi.hoisted(() => {
 	const activeProfiles: unknown[] = [];
 	const knownProfiles: unknown[] = [];
 	const clients: { close: AsyncMock; callTool: AsyncMock }[] = [];
-	const transports: { close: ReturnType<typeof vi.fn>; terminateSession: ReturnType<typeof vi.fn> }[] = [];
+	const transports: {
+		close: ReturnType<typeof vi.fn>;
+		terminateSession: ReturnType<typeof vi.fn>;
+		onclose?: () => void;
+	}[] = [];
 	const shared = {
 		discover: vi.fn(async () => undefined as SharedDescriptor | undefined),
 		start: vi.fn(async () => {
@@ -252,6 +256,7 @@ vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => ({
 	StreamableHTTPClientTransport: class {
 		readonly close = vi.fn(async () => {});
 		readonly terminateSession = vi.fn(async () => {});
+		onclose?: () => void;
 		constructor() {
 			mocks.transports.push(this);
 		}
@@ -373,6 +378,21 @@ describe('shared backend lifecycle', () => {
 		expect(mocks.transports[0]?.terminateSession).toHaveBeenCalled();
 		expect(mocks.transports[0]?.close).toHaveBeenCalled();
 		expect(mocks.runtime.stop).not.toHaveBeenCalled();
+	});
+
+	it('clears the attached editor state when the owner transport closes unexpectedly', async () => {
+		mocks.shared.discover.mockResolvedValue(mocks.shared.descriptor);
+		const disposable = initializeBackend();
+		await vi.waitFor(() => expect(mocks.transports).toHaveLength(1));
+		await vi.waitFor(() => expect(mocks.sharedConnection).toMatchObject({ owned: false }));
+
+		mocks.transports[0]?.onclose?.();
+		expect(cachedTools()).toEqual([]);
+		expect(cachedResources()).toEqual([]);
+		await expect(invoke('tools.list', {})).rejects.toThrow(/has not been initialized/);
+
+		disposable.dispose();
+		await new Promise(resolve => setImmediate(resolve));
 	});
 
 	it('does not fall back to a local runtime when discovery cannot verify the owner', async () => {

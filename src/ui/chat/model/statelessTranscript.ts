@@ -1,34 +1,20 @@
-import { truncateToBudget } from '@utils';
 import vscode from 'vscode';
 
-const MAX_ENTRY_CHARS = 8_000;
-/**
- * Default ceiling when the caller passes no budget. Kept under the backend's
- * per-message cap; the provider passes a tighter, computed budget that accounts
- * for the directive and tool manifest sharing the same message.
- */
-const MAX_TOTAL_CHARS = 48_000;
-// Terminal-reading tools (VS Code agent mode's run_in_terminal, get_terminal_output,
-// etc.) can surface scrollback from an unrelated session in the same integrated
-// terminal. Cap and frame that output much tighter than other tool results so the
-// backend doesn't treat leftover terminal text as an implicit directive (#168).
+const MAX_CHUNK_CHARS = 50_000;
+const MAX_ENTRY_CHARS = 48_000;
+// Keep enough history for long chats while leaving headroom for backend metadata.
+const MAX_TOTAL_CHARS = 400_000;
+const TRUNCATION_MARKER = '...(truncated)';
 const TERMINAL_TOOL_NAME_PATTERN = /terminal/i;
 const MAX_TERMINAL_OUTPUT_CHARS = 2_000;
 const TERMINAL_OUTPUT_FRAME =
 	'(raw terminal output — likely unrelated to the current request unless the user explicitly asked about the terminal)';
 
-const OPEN_TAG = '<visible_chat_transcript>';
-const CLOSE_TAG = '</visible_chat_transcript>';
-// Descriptive, not authority-shaped: this rides in the user-message channel, so
-// wording that claims special standing invites the backend's prompt-injection
-// reflex (see CLAUDE.md, "AI Prompt Steering Directives").
-const TRANSCRIPT_INSTRUCTION =
-	'This is the visible chat transcript from VS Code, provided as conversation context. Answer the latest USER entry; earlier entries are background.';
-const ENTRY_SEPARATOR = '\n\n';
-/** Wrapper tags, instruction line and the newlines joining them to the entries. */
-const FRAME_CHARS = OPEN_TAG.length + CLOSE_TAG.length + TRANSCRIPT_INSTRUCTION.length + 4;
-/** Headroom for the "(N earlier message(s) omitted)" disclosure when it appears. */
-const OMISSION_RESERVE = 40;
+export type SeedRole = 'USER' | 'ASSISTANT';
+export interface SeedChunk {
+	role: SeedRole;
+	content: string;
+}
 
 type RequestMessage = Pick<vscode.LanguageModelChatRequestMessage, 'role' | 'content'>;
 
@@ -64,110 +50,82 @@ function stripActivity(text: string): string {
 }
 
 function truncate(text: string, max: number): string {
-	return text.length > max ? `${text.slice(0, max)} ...(truncated)` : text;
-}
-
-function roleLabel(role: vscode.LanguageModelChatMessageRole): string {
-	if (role === vscode.LanguageModelChatMessageRole.User) return 'USER';
-	if (role === vscode.LanguageModelChatMessageRole.Assistant) return 'ASSISTANT';
-	return 'MESSAGE';
+	if (text.length <= max) return text;
+	return `${text.slice(0, Math.max(0, max - TRUNCATION_MARKER.length))}${TRUNCATION_MARKER}`;
 }
 
 function collectCalls(messages: readonly RequestMessage[]): Map<string, ToolCallInfo> {
 	const calls = new Map<string, ToolCallInfo>();
-	for (const message of messages) {
+	for (const message of messages)
 		for (const part of message.content) {
 			const candidate = part as PartLike;
 			if (typeof candidate?.callId === 'string' && typeof candidate.name === 'string') {
 				calls.set(candidate.callId, { name: candidate.name, input: candidate.input });
 			}
 		}
-	}
 	return calls;
 }
 
-function serializePart(part: unknown, calls: ReadonlyMap<string, ToolCallInfo>): string {
-	const text = stripActivity(textOf(part));
-	if (text) return text;
-
+function serializeToolPart(part: unknown, calls: ReadonlyMap<string, ToolCallInfo>): string {
 	const candidate = part as PartLike;
 	if (typeof candidate?.callId !== 'string') return '';
-
 	if (typeof candidate.name === 'string') {
 		const args = candidate.input === undefined ? '' : ` ${safeJson(candidate.input)}`;
 		return `Requested editor tool: ${candidate.name}${args}`;
 	}
-
-	if (Array.isArray(candidate.content)) {
-		const call = calls.get(candidate.callId);
-		const name = call?.name ?? 'tool';
-		const args = call?.input === undefined ? '' : ` ${safeJson(call.input)}`;
-		const rawOutput = candidate.content.map(textOf).filter(Boolean).join('\n');
-		if (TERMINAL_TOOL_NAME_PATTERN.test(name)) {
-			const output = truncate(rawOutput, MAX_TERMINAL_OUTPUT_CHARS);
-			return `Editor tool result: ${name}${args}\n${TERMINAL_OUTPUT_FRAME}\n${output}`;
-		}
-		return `Editor tool result: ${name}${args}\n${rawOutput}`;
+	if (!Array.isArray(candidate.content)) return '';
+	const call = calls.get(candidate.callId);
+	const name = call?.name ?? 'tool';
+	const args = call?.input === undefined ? '' : ` ${safeJson(call.input)}`;
+	const rawOutput = candidate.content.map(textOf).filter(Boolean).join('\n');
+	if (TERMINAL_TOOL_NAME_PATTERN.test(name)) {
+		return `Editor tool result: ${name}${args}\n${TERMINAL_OUTPUT_FRAME}\n${truncate(rawOutput, MAX_TERMINAL_OUTPUT_CHARS)}`;
 	}
-
-	return '';
+	return `Editor tool result: ${name}${args}\n${rawOutput}`;
 }
 
-/**
- * Serializes the visible chat for a stateless turn, within `maxTotalChars`.
- * Oldest entries are dropped first; if the newest entry alone still overflows it
- * is truncated, so the caller's overall message budget always holds (#189).
- */
-export function serializeVisibleChat(messages: readonly RequestMessage[], maxTotalChars = MAX_TOTAL_CHARS): string {
-	const calls = collectCalls(messages);
-	const entries: string[] = [];
-
-	for (const message of messages) {
-		const body = message.content
-			.map(part => serializePart(part, calls))
-			.filter(Boolean)
-			.join('\n')
-			.trim();
-		if (!body) continue;
-		entries.push(
-			`${roleLabel(message.role as vscode.LanguageModelChatMessageRole)}: ${truncate(body, MAX_ENTRY_CHARS)}`,
-		);
+function appendChunk(chunks: SeedChunk[], entry: SeedChunk): void {
+	const previous = chunks[chunks.length - 1];
+	if (previous?.role === entry.role && previous.content.length + 1 + entry.content.length <= MAX_CHUNK_CHARS) {
+		previous.content += `\n${entry.content}`;
+	} else {
+		chunks.push({ ...entry });
 	}
+}
 
-	if (entries.length === 0) return '';
-
-	// maxTotalChars bounds the WHOLE serialized transcript, so the wrapper tags,
-	// the fixed instruction line, the omission disclosure and the separators
-	// between the entries that are actually kept all count against it. Capacity is
-	// recomputed as entries are dropped — charging separators for entries that were
-	// already removed would discard more context than the budget requires.
-	const capacityFor = (kept: number, dropped: number): number =>
-		Math.max(
-			0,
-			maxTotalChars -
-				FRAME_CHARS -
-				Math.max(0, kept - 1) * ENTRY_SEPARATOR.length -
-				(dropped > 0 ? OMISSION_RESERVE : 0),
-		);
+/** Serialize visible VS Code history into mutation-safe, role-aware seed chunks. */
+export function serializeVisibleChat(messages: readonly RequestMessage[]): SeedChunk[] {
+	const calls = collectCalls(messages);
+	const entries: SeedChunk[] = [];
+	for (const message of messages) {
+		// SYSTEM and other provider-only roles must never be written as conversation
+		// messages: the backend accepts only USER and ASSISTANT seed records.
+		if (
+			message.role !== vscode.LanguageModelChatMessageRole.User &&
+			message.role !== vscode.LanguageModelChatMessageRole.Assistant
+		)
+			continue;
+		const textRole: SeedRole =
+			message.role === vscode.LanguageModelChatMessageRole.Assistant ? 'ASSISTANT' : 'USER';
+		for (const part of message.content) {
+			const text = stripActivity(textOf(part));
+			if (text) entries.push({ role: textRole, content: truncate(text, MAX_ENTRY_CHARS) });
+			const tool = serializeToolPart(part, calls);
+			if (tool) entries.push({ role: 'USER', content: truncate(tool, MAX_ENTRY_CHARS) });
+		}
+	}
 
 	let dropped = 0;
-	let total = entries.reduce((sum, entry) => sum + entry.length, 0);
-	while (total > capacityFor(entries.length, dropped + 1) && entries.length > 1) {
+	let total = entries.reduce((sum, entry) => sum + entry.content.length, 0);
+	while (total > MAX_TOTAL_CHARS && entries.length > 1) {
 		const removed = entries.shift();
-		if (removed === undefined) break;
-		total -= removed.length;
+		if (!removed) break;
+		total -= removed.content.length;
 		dropped++;
 	}
-	// The newest entry is kept even when it alone exceeds the budget (dropping it
-	// would discard the actual request), so trim it to fit.
-	const capacity = capacityFor(entries.length, dropped);
-	if (total > capacity) {
-		entries[entries.length - 1] = truncateToBudget(entries[entries.length - 1], capacity);
-	}
+	if (dropped > 0) entries.unshift({ role: 'USER', content: `(${dropped} earlier message(s) omitted)` });
 
-	const omitted = dropped > 0 ? `\n(${dropped} earlier message(s) omitted)` : '';
-	const transcript = `${OPEN_TAG}\n${TRANSCRIPT_INSTRUCTION}${omitted}\n\n${entries.join(ENTRY_SEPARATOR)}\n${CLOSE_TAG}`;
-	// A budget smaller than the fixed envelope leaves no room even for the wrapper;
-	// the bound still holds, so the output is cut rather than overrunning it.
-	return truncateToBudget(transcript, maxTotalChars);
+	const chunks: SeedChunk[] = [];
+	for (const entry of entries) appendChunk(chunks, entry);
+	return chunks;
 }

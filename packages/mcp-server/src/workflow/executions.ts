@@ -125,6 +125,35 @@ const MAX_INLINE_SUB_EXECUTIONS = 5;
 const MAX_SUB_EXECUTION_FETCHES = 25;
 const MAX_DEPTH = 5;
 
+/** Build the Rewst result URL from the workflow owner's org, never the caller org. */
+export function buildWorkflowResultUrl(
+	appBaseUrl: string | undefined,
+	workflowOrgId: string | undefined,
+	executionId: string | undefined,
+): string | undefined {
+	if (!appBaseUrl || !workflowOrgId?.trim() || !executionId?.trim()) return undefined;
+	try {
+		const base = new URL(appBaseUrl);
+		if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password) return undefined;
+		return `${base.origin}/organizations/${encodeURIComponent(workflowOrgId.trim())}/results/${encodeURIComponent(executionId.trim())}`;
+	} catch {
+		return undefined;
+	}
+}
+
+async function workflowResultLink(deps: GraphqlToolDeps, executionId: string): Promise<string | undefined> {
+	try {
+		// The execution may run under a managing org while the workflow itself is
+		// owned by a child org. Only this authoritative detail query tells us which
+		// org belongs in the UI URL; do not guess from the caller's orgId.
+		const detail = await fetchExecutionDetail(deps, executionId);
+		return buildWorkflowResultUrl(deps.appBaseUrl, detail?.workflow?.orgId ?? undefined, executionId);
+	} catch {
+		// A run result is still useful when the optional detail lookup is unavailable.
+		return undefined;
+	}
+}
+
 function asDepthArg(args: unknown, key: string, defaultVal: number): number {
 	const raw = (args as Record<string, unknown>)?.[key];
 	if (raw === undefined || raw === null) return defaultVal;
@@ -692,21 +721,25 @@ export async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps
 		?.executionId;
 	if (!executionId) throw new Error('testWorkflow returned no execution id.');
 	const name = asStringArg(request.args, 'workflowName');
+	const resultUrl = await workflowResultLink(deps, executionId);
+	const resultLink = resultUrl
+		? `Result: [Open workflow result](${resultUrl})`
+		: 'Result link unavailable; use the execution id with buddy_execution_logs.';
 
 	if (request.args.wait === false) {
-		return `Started a run of "${name}". executionId: ${executionId}\n\nWatch it with buddy_execution_logs {"executionId": "${executionId}"}, or inspect context with buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}. `;
+		return `Started a run of "${name}". executionId: ${executionId}\n${resultLink}\n\nWatch it with buddy_execution_logs {"executionId": "${executionId}"}, or inspect context with buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}. `;
 	}
 
 	const { status, timedOut } = await pollExecutionStatus(deps, executionId);
 	if (timedOut) {
-		return `Started a run of "${name}". executionId: ${executionId}\nStill ${status ?? 'running'} after ${Math.round(RUN_MAX_WAIT_MS / 1000)}s — check back with buddy_execution_logs {"executionId": "${executionId}"}.`;
+		return `Started a run of "${name}". executionId: ${executionId}\n${resultLink}\nStill ${status ?? 'running'} after ${Math.round(RUN_MAX_WAIT_MS / 1000)}s — check back with buddy_execution_logs {"executionId": "${executionId}"}.`;
 	}
 	const head = `Run of "${name}" finished: ${(status ?? 'unknown').toUpperCase()}. executionId: ${executionId}`;
 	if (isFailedStatus(status)) {
 		const rows = await fetchTaskLogs(deps, executionId);
-		return `${head}\n\nFailing task(s):\n${formatTaskLogs(rows, { failedOnly: true })}\n\nFull logs: buddy_execution_logs {"executionId": "${executionId}"}. For a one-call root-cause digest (transition path + sub-executions + context), use buddy_workflow_diagnose {"executionId": "${executionId}"}.`;
+		return `${head}\n${resultLink}\n\nFailing task(s):\n${formatTaskLogs(rows, { failedOnly: true })}\n\nFull logs: buddy_execution_logs {"executionId": "${executionId}"}. For a one-call root-cause digest (transition path + sub-executions + context), use buddy_workflow_diagnose {"executionId": "${executionId}"}.`;
 	}
-	return `${head}\n\nInspect what it produced with buddy_execution_logs {"executionId": "${executionId}", "includeResult": true} or buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}. `;
+	return `${head}\n${resultLink}\n\nInspect what it produced with buddy_execution_logs {"executionId": "${executionId}", "includeResult": true} or buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}. `;
 }
 
 // ---------------------------------------------------------------------------

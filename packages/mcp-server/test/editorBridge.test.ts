@@ -68,6 +68,40 @@ test('only an attached editor receives UI requests and disconnect removes it', a
 	await client.close();
 	await expect(requestAttachedEditor('token.request', {})).rejects.toThrow(/editor/i);
 });
+
+test('attach returns the owner session snapshot without copying credentials', async () => {
+	const session = {
+		profile: {
+			user: { id: 'owner-user', username: 'owner@example.test' },
+			org: { id: 'owner-org', name: 'Owner Org' },
+			allManagedOrgs: [],
+		},
+		isExpired: () => false,
+		onExpired: () => ({ dispose() {} }),
+	};
+	SessionManager._setSessionsForTesting([session as never]);
+	const client = await editor();
+	try {
+		const result = await client.callTool({
+			name: 'rewst_editor_operation',
+			arguments: { operation: 'editor.attach', input: { capabilities: [] } },
+		});
+		expect(result.isError).not.toBe(true);
+		expect(result.structuredContent).toMatchObject({
+			result: {
+				attached: true,
+				sessions: {
+					sessions: [{ sessionId: 'owner-user', expired: false }],
+					knownProfiles: [{ user: { id: 'owner-user' } }],
+				},
+			},
+		});
+		expect(JSON.stringify(result)).not.toMatch(/cookie|token|secret/i);
+	} finally {
+		await client.close();
+		SessionManager._resetForTesting();
+	}
+});
 test('browser open-template delegates to the attached editor', async () => {
 	await expect(
 		handleSharedBrowserAction({ action: 'openTemplate', orgId: 'org', templateId: 'template' }),
@@ -115,6 +149,7 @@ test('each shared editor routes host capabilities to its own attached client', a
 	SessionManager._setSessionsForTesting([
 		{
 			profile: { user: { id: 'user-1' }, org: { id: 'org-1', name: 'Org' }, allManagedOrgs: [] },
+			isExpired: () => false,
 			onExpired: () => ({ dispose() {} }),
 		} as never,
 	]);
@@ -261,6 +296,8 @@ test.each(['buddy_template_sync', 'buddy_template_sync_status'])(
 		const session = {
 			profile: { user: { id: 'user' }, org: { id: 'org', name: 'Org' }, allManagedOrgs: [] },
 			validate,
+			isExpired: () => false,
+			onExpired: () => ({ dispose() {} }),
 		};
 		const sessions = vi.spyOn(SessionManager, 'getActiveSessions').mockReturnValue([session as never]);
 		const resolve = vi.spyOn(SessionManager, 'getSessionForOrg').mockResolvedValue(session as never);

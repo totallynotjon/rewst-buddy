@@ -6,8 +6,8 @@
  * instructions appended to the user's message describe the available tools and
  * ask it to request them via fenced ```vscode-tool JSON blocks. The chat model
  * provider parses those blocks out of each answer and translates them into
- * VS Code tool calls (toolTranslation.ts), whose results come back as the next
- * turn of the same conversation.
+ * VS Code tool calls (toolTranslation.ts). The provider seeds those results
+ * into the next disposable conversation turn.
  */
 
 import { truncateToBudget } from '../utils/messageBudget';

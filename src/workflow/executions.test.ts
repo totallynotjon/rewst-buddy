@@ -12,7 +12,7 @@ import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import type { GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
-import { evaluateRenderJinja } from './executions';
+import { buildWorkflowResultUrl, evaluateRenderJinja } from './executions';
 
 const { suite, test, setup } = Mocha;
 
@@ -97,5 +97,21 @@ suite('Unit: evaluateRenderJinja', () => {
 				return true;
 			},
 		);
+	});
+});
+
+suite('Unit: buildWorkflowResultUrl', () => {
+	test('uses the workflow owner org and safely encodes path segments', () => {
+		assert.strictEqual(
+			buildWorkflowResultUrl('https://app.rewst.io/', 'workflow/org', 'execution id'),
+			'https://app.rewst.io/organizations/workflow%2Forg/results/execution%20id',
+		);
+	});
+
+	test('returns undefined when the authoritative ids or base URL are missing', () => {
+		assert.strictEqual(buildWorkflowResultUrl(undefined, 'org-1', 'exec-1'), undefined);
+		assert.strictEqual(buildWorkflowResultUrl('https://app.rewst.io', undefined, 'exec-1'), undefined);
+		assert.strictEqual(buildWorkflowResultUrl('https://app.rewst.io', 'org-1', undefined), undefined);
+		assert.strictEqual(buildWorkflowResultUrl('javascript:alert(1)', 'org-1', 'exec-1'), undefined);
 	});
 });

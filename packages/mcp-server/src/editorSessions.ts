@@ -6,7 +6,7 @@
 
 import { SessionManager } from './sessions/SessionManager';
 import type Session from './sessions/Session';
-import { askRewstAi, type ConversationEvent } from './sessions/conversation';
+import { askRewstAi, seedConversation, type ConversationEvent, type SeedChunk } from './sessions/conversation';
 import type { Sdk } from './sessions/graphql/sdk';
 import type SessionProfile from './sessions/SessionProfile';
 
@@ -84,7 +84,7 @@ interface SessionSnapshotResult {
 	knownProfiles: SessionProfile[];
 }
 
-function allSnapshots(): SessionSnapshotResult {
+export function sessionSnapshots(): SessionSnapshotResult {
 	const activeSessions = SessionManager.getActiveSessions();
 	const active = new Map(activeSessions.map(session => [userId(session), snapshot(session)]));
 	const profileById = new Map(
@@ -97,6 +97,8 @@ function allSnapshots(): SessionSnapshotResult {
 		knownProfiles,
 	};
 }
+
+const allSnapshots = sessionSnapshots;
 
 async function requireSession(input: Record<string, unknown>, requireOrg = false): Promise<Session> {
 	const session = findSession(input);
@@ -244,6 +246,13 @@ const operations: Record<string, Operation> = {
 	},
 	'session.getTemplate': async input => getTemplate(input),
 	'conversation.ask': ask,
+	'conversation.seed': async input => {
+		const session = await requireSession({ ...input, orgId: input.orgId }, true);
+		const orgId = orgIdInput(input);
+		const conversationType = stringInput(input, 'conversationType');
+		if (!Array.isArray(input.chunks)) throw new Error('conversation.seed requires a chunks array.');
+		return seedConversation(session, orgId, conversationType, input.chunks as SeedChunk[]);
+	},
 };
 
 for (const method of SDK_METHODS) {

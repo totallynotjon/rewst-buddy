@@ -15,19 +15,27 @@ function text(value: string): vscode.LanguageModelTextPart {
 	return new vscode.LanguageModelTextPart(value);
 }
 
+function flatten(chunks: ReturnType<typeof serializeVisibleChat>): string {
+	return chunks.map(chunk => `${chunk.role}: ${chunk.content}`).join('\n');
+}
+
 suite('Unit: statelessTranscript', () => {
 	setup(() => {
 		initTestEnvironment();
 	});
 
-	test('serializes visible user and assistant text in order', () => {
-		const transcript = serializeVisibleChat([
+	test('serializes visible user and assistant text in order with explicit roles', () => {
+		const chunks = serializeVisibleChat([
 			message(User, [text('what is a trigger?')]),
 			message(Assistant, [text('An event that starts a workflow.')]),
 			message(User, [text('give me an example')]),
 		]);
 
-		assert.match(transcript, /<visible_chat_transcript>/);
+		assert.deepStrictEqual(
+			chunks.map(chunk => chunk.role),
+			['USER', 'ASSISTANT', 'USER'],
+		);
+		const transcript = flatten(chunks);
 		assert.ok(transcript.indexOf('USER: what is a trigger?') < transcript.indexOf('ASSISTANT:'));
 		assert.match(transcript, /ASSISTANT: An event that starts a workflow\./);
 		assert.match(transcript, /USER: give me an example/);
@@ -36,22 +44,26 @@ suite('Unit: statelessTranscript', () => {
 	test('includes tool calls and tool results by tool name', () => {
 		const call = new vscode.LanguageModelToolCallPart('call-1', 'read_file', { path: 'a.txt' });
 		const result = new vscode.LanguageModelToolResultPart('call-1', [text('file contents')]);
-		const transcript = serializeVisibleChat([
+		const chunks = serializeVisibleChat([
 			message(User, [text('check a.txt')]),
 			message(Assistant, [text('Looking.'), call]),
 			message(User, [result]),
 		]);
+		const transcript = flatten(chunks);
 
 		assert.match(transcript, /Requested editor tool: read_file \{"path":"a\.txt"\}/);
 		assert.match(transcript, /Editor tool result: read_file \{"path":"a\.txt"\}/);
 		assert.match(transcript, /file contents/);
+		assert.strictEqual(chunks.find(chunk => chunk.content.startsWith('Requested editor tool'))?.role, 'USER');
 	});
 
 	test('strips activity lines from assistant text', () => {
-		const transcript = serializeVisibleChat([
-			message(User, [text('hi')]),
-			message(Assistant, [text('Before\n> _Searching documentation..._\nAfter')]),
-		]);
+		const transcript = flatten(
+			serializeVisibleChat([
+				message(User, [text('hi')]),
+				message(Assistant, [text('Before\n> _Searching documentation..._\nAfter')]),
+			]),
+		);
 
 		assert.match(transcript, /Before\s+After/);
 		assert.ok(!transcript.includes('Searching documentation'));
@@ -61,94 +73,61 @@ suite('Unit: statelessTranscript', () => {
 		const call = new vscode.LanguageModelToolCallPart('call-1', 'run_in_terminal', { command: 'ls' });
 		const longOutput = 'x'.repeat(5_000);
 		const result = new vscode.LanguageModelToolResultPart('call-1', [text(longOutput)]);
-		const transcript = serializeVisibleChat([
-			message(User, [text('what does the terminal say?')]),
-			message(Assistant, [text('Checking.'), call]),
-			message(User, [result]),
-		]);
+		const transcript = flatten(
+			serializeVisibleChat([
+				message(User, [text('what does the terminal say?')]),
+				message(Assistant, [call]),
+				message(User, [result]),
+			]),
+		);
 
 		assert.match(transcript, /Editor tool result: run_in_terminal/);
 		assert.match(
 			transcript,
 			/raw terminal output — likely unrelated to the current request unless the user explicitly asked about the terminal/,
 		);
-		assert.ok(
-			!transcript.includes(longOutput),
-			'the full 5,000-char terminal output should be capped, not included verbatim',
-		);
+		assert.ok(!transcript.includes(longOutput), 'terminal output is capped');
 	});
 
-	test('does not cap or frame non-terminal tool output beyond the default cap', () => {
+	test('does not apply the tighter terminal cap to non-terminal output', () => {
 		const call = new vscode.LanguageModelToolCallPart('call-1', 'read_file', { path: 'a.txt' });
 		const longOutput = 'y'.repeat(5_000);
 		const result = new vscode.LanguageModelToolResultPart('call-1', [text(longOutput)]);
-		const transcript = serializeVisibleChat([
-			message(User, [text('check a.txt')]),
-			message(Assistant, [text('Looking.'), call]),
-			message(User, [result]),
+		const transcript = flatten(
+			serializeVisibleChat([
+				message(User, [text('check a.txt')]),
+				message(Assistant, [call]),
+				message(User, [result]),
+			]),
+		);
+
+		assert.ok(!transcript.includes('raw terminal output'));
+		assert.ok(transcript.includes(longOutput));
+	});
+
+	test('skips system/provider-only messages and merges adjacent same-role entries', () => {
+		const chunks = serializeVisibleChat([
+			message('system' as unknown as vscode.LanguageModelChatMessageRole, [text('do not seed this')]),
+			message(User, [text('one'), text('two')]),
+			message(Assistant, [text('answer')]),
 		]);
 
-		assert.ok(
-			!transcript.includes('raw terminal output'),
-			'non-terminal tool output is not framed as terminal output',
-		);
-		assert.ok(
-			transcript.includes(longOutput),
-			'non-terminal tool output is not capped by the tighter terminal limit',
-		);
+		assert.deepStrictEqual(chunks, [
+			{ role: 'USER', content: 'one\ntwo' },
+			{ role: 'ASSISTANT', content: 'answer' },
+		]);
 	});
-	suite('message length budget (#189)', () => {
-		test('drops the oldest entries to fit an explicit budget, tags included', () => {
-			const budget = 2_000;
-			const transcript = serializeVisibleChat(
-				[
-					message(User, [text('a'.repeat(3_000))]),
-					message(Assistant, [text('b'.repeat(3_000))]),
-					message(User, [text('c'.repeat(1_000))]),
-				],
-				budget,
-			);
 
-			// The budget bounds the WHOLE serialized transcript, wrapper tags and the
-			// fixed instruction line included — not just the entries inside it.
-			assert.ok(transcript.length <= budget, `transcript was ${transcript.length} chars, budget ${budget}`);
-			assert.ok(transcript.includes('c'.repeat(1_000)), 'the latest turn is kept');
-			assert.ok(transcript.includes('earlier message(s) omitted'), 'the drop is disclosed');
-		});
+	test('drops oldest entries when the total seed budget is exceeded', () => {
+		const chunks = serializeVisibleChat(
+			Array.from({ length: 10 }, (_, index) =>
+				message(index % 2 === 0 ? User : Assistant, [text(`turn-${index} ${'x'.repeat(48_000)}`)]),
+			),
+		);
 
-		test('keeps as many short entries as the retained separators allow', () => {
-			// Capacity is recomputed as entries drop, so separators for already-dropped
-			// entries are not charged against what is kept.
-			const budget = 1_200;
-			const transcript = serializeVisibleChat(
-				Array.from({ length: 30 }, (_, i) =>
-					message(i % 2 === 0 ? User : Assistant, [text(`turn ${i} `.repeat(5))]),
-				),
-				budget,
-			);
-
-			assert.ok(transcript.length <= budget, `transcript was ${transcript.length} chars, budget ${budget}`);
-			assert.ok(transcript.includes('turn 29'), 'the latest entry survives');
-			assert.ok(transcript.includes('turn 28'), 'earlier entries are kept while capacity remains');
-		});
-
-		test('stays within a budget smaller than the wrapper itself', () => {
-			for (const budget of [0, 40, 120]) {
-				const transcript = serializeVisibleChat([message(User, [text('hello '.repeat(100))])], budget);
-				assert.ok(
-					transcript.length <= budget,
-					`transcript was ${transcript.length} chars for a budget of ${budget}`,
-				);
-			}
-		});
-
-		test('truncates the newest entry when it alone overruns the budget', () => {
-			const budget = 3_000;
-			const transcript = serializeVisibleChat([message(User, [text('c'.repeat(20_000))])], budget);
-
-			assert.ok(transcript.length <= budget, `transcript was ${transcript.length} chars, budget ${budget}`);
-			assert.ok(/truncated/.test(transcript), 'the cut is marked');
-			assert.ok(transcript.endsWith('</visible_chat_transcript>'), 'the wrapper survives the trim');
-		});
+		assert.ok(chunks.length > 0);
+		assert.ok(flatten(chunks).includes('turn-9'), 'latest entry survives');
+		assert.match(flatten(chunks), /earlier message\(s\) omitted/);
+		assert.ok(chunks.every(chunk => chunk.content.length <= 50_000));
 	});
 });

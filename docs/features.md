@@ -147,8 +147,8 @@ Talk to Rewst's AI assistant directly from VS Code's chat — as its own model, 
 
 - **Multi-turn** — follow-up questions are grounded in the visible VS Code chat transcript, so Restore Checkpoint and edited history naturally remove rolled-back turns from the assistant's context
 - **Resume** — `Rewst Buddy: Resume Rewst AI Conversation` (command palette) lists your recent Rewst conversations (the same history as the Rewst web app) and opens the picked transcript
-- **Lives in Rewst** — each turn is processed through a transient Rewst conversation; the extension keeps the latest successful one and cleans up older transient conversations
-- **Fast follow-ups** — a follow-up reuses the same warm Rewst conversation instead of re-sending the whole transcript, and that link is remembered across window reloads, so picking an earlier chat back up stays quick rather than starting from scratch
+- **Lives in Rewst** — each turn is processed through a disposable Rewst conversation seeded from the visible transcript; the extension deletes it after the stream or local-tool round completes
+- **Safe follow-ups** — every follow-up replays the visible role-aware history, so Restore Checkpoint and edited branches cannot reconnect to hidden backend turns
 - **Organization** — each Cage-Free Rewsty model is tied to a session's organization; pick the org by picking the model
 - **Latency** — full answers typically take 20–40 seconds. Cancel any time with the stop button
 
@@ -162,7 +162,7 @@ Cage-Free Rewsty is still told your VS Code working directory when one is open, 
 
 Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of the chat LM tool surface. MCP exposure uses three switches:
 
-- `rewst-buddy.mcp.enable` exposes all read capabilities: `buddy_list_orgs`, `buddy_search_templates`, `buddy_get_template`, `buddy_list_workflows`, `buddy_get_workflow`, `buddy_workflow_lint`, `buddy_graphql_query`, `buddy_graphql_schema`, `buddy_search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_workflow_diagnose`, `buddy_render_jinja`, `buddy_action_search`, `buddy_workflow_impact`, `buddy_search_crates`, `buddy_get_jinja_filter_docs`, and `buddy_result_read`.
+- `rewst-buddy.mcp.enable` exposes all read capabilities: `buddy_list_orgs`, `buddy_search_templates`, `buddy_get_template`, `buddy_list_workflows`, `buddy_get_workflow`, `buddy_workflow_lint`, `buddy_graphql_query`, `buddy_graphql_schema`, `buddy_search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_workflow_diagnose`, `buddy_render_jinja`, `buddy_action_search`, `buddy_workflow_impact`, `buddy_search_crates`, `buddy_get_jinja_filter_docs`, `buddy_result_read`, and `buddy_workflow_diff`.
 - `rewst-buddy.mcp.enableWriteTools` adds the write tools that change Rewst data: workflow editing, auto-layout, and runs; workflow create/delete; template create, edit, rename, delete, and sync; and org-variable, tag, and trigger changes.
 - `rewst-buddy.mcp.enableDangerousGraphqlMutation` unlocks only `buddy_graphql_mutate`, the raw GraphQL mutation tool.
 
@@ -172,7 +172,7 @@ The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement i
 
 When the server is registered with VS Code's own MCP client (the `Add MCP Server to VS Code` command), flipping any of these exposure switches re-advertises the server with a new version, so VS Code reconnects and refreshes the tool set in chat — no window reload needed.
 
-**Cage-Free Rewsty uses these Rewst tools directly.** When the MCP server is on, Cage-Free Rewsty advertises the same exposed Rewst tools in its `vscode-tool` protocol and runs them in-process. That keeps them available even when VS Code's limit of 128 tools per chat request would otherwise drop them — the cap is easy to hit once many built-in or other MCP tools are enabled, and dropped Rewst tools are why the assistant used to mis-call them. They honor the same read/write switches, [working scope](#working-scope), and approval as any other MCP call. With the MCP server off, no Rewst tools are advertised in chat.
+**Cage-Free Rewsty uses these Rewst tools directly.** Cage-Free Rewsty advertises the same exposed Rewst tools in its `vscode-tool` protocol and runs them in-process, even when the external MCP bridge is disabled. That keeps them available when VS Code's limit of 128 tools per chat request would otherwise drop them — the cap is easy to hit once many built-in or other MCP tools are enabled, and dropped Rewst tools are why the assistant used to mis-call them. They honor the same read/write switches, [working scope](#working-scope), and approval as any other MCP call.
 
 **Enabling vs. registering — when you need each.** The master switch (`rewst-buddy.mcp.enable`) and registering the server with VS Code (`Add MCP Server to VS Code`) are independent:
 

@@ -32,14 +32,12 @@ import { SessionManager } from '@sessions';
 import {
 	BundleTreeDataProvider,
 	ContextUsageStatusBar,
-	conversationMap,
 	ProposedContentProvider,
 	RewstViewProvider,
 	RoboRewstyChatModelProvider,
 	SessionTreeDataProvider,
 	StatusBar,
 	WorkingScopeStatusBar,
-	type PersistedConversationMap,
 } from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
@@ -141,16 +139,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Publish the MCP server to VS Code's native MCP surface so it shows up in the
 	// editor's server list (the "Add MCP to VS Code" command toggles it on).
 	context.subscriptions.push(McpDefinitionProvider.init());
-	// Persist chat continuity across window reloads so warm conversations are
-	// reused instead of every chat re-shipping its full transcript statelessly.
-	const conversationMapKey = 'RewstConversationMap';
-	conversationMap.hydrate({
-		load: () => context.workspaceState.get<PersistedConversationMap>(conversationMapKey),
-		save: state =>
-			void Promise.resolve(context.workspaceState.update(conversationMapKey, state)).catch(error =>
-				log.debug('conversationMap: persist failed', error),
-			),
-	});
 	context.subscriptions.push(new RoboRewstyChatModelProvider().init());
 	context.subscriptions.push(ProposedContentProvider.init());
 	context.subscriptions.push(RewstContentProvider.init());

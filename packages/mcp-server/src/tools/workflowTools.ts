@@ -27,6 +27,7 @@ export {
 	isWorkflowTool,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_DIAGNOSE_TOOL_NAME,
+	WORKFLOW_DIFF_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
@@ -83,6 +84,7 @@ export {
 // Re-exports: adapter (workflow_get + action_search)
 // ---------------------------------------------------------------------------
 export { runWorkflowTool } from '../workflow/toolRunner';
+export { runWorkflowDiff } from '../workflow/diff';
 export { runActionSearch, runWorkflowGet, summarizeWorkflow } from '../workflow/workflowAdapter';
 
 // ---------------------------------------------------------------------------

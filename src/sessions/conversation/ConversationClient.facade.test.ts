@@ -1,6 +1,6 @@
 import { expect, vi } from 'vitest';
 import { teardown as afterEach, setup as beforeEach, suite as describe, test as it } from '../../test/tdd';
-import { askRewstAi, type AskOptions } from './ConversationClient';
+import { askRewstAi, seedConversation, type AskOptions, type SeedChunk } from './ConversationClient';
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('../../backend/operations', () => ({ invoke: mocks.invoke }));
@@ -72,5 +72,22 @@ describe('editor conversation cleanup', () => {
 		expect(operationSignal.aborted).toBe(true);
 		expect(operationClosed).toBe(true);
 		expect(await iterator.next()).toEqual({ done: true, value: undefined });
+	});
+
+	it('seeds a disposable conversation through the trusted editor operation', async () => {
+		mocks.invoke.mockResolvedValueOnce('conv-seeded');
+		const chunks: SeedChunk[] = [
+			{ role: 'USER', content: 'what is a trigger?' },
+			{ role: 'ASSISTANT', content: 'An event that starts a workflow.' },
+		];
+		const session = { sessionId: 'user-1', profile: { user: { id: 'user-1' } } } as AskOptions['session'];
+
+		await expect(seedConversation(session, 'org-1', 'HELP_DOCS', chunks)).resolves.toBe('conv-seeded');
+		expect(mocks.invoke).toHaveBeenCalledWith('conversation.seed', {
+			sessionId: 'user-1',
+			orgId: 'org-1',
+			conversationType: 'HELP_DOCS',
+			chunks,
+		});
 	});
 });

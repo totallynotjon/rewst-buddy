@@ -54,6 +54,12 @@
 							"cookieName": "appSession",
 							"graphqlUrl": "https://api.rewst.io/graphql",
 							"loginUrl": "https://app.rewst.io"
+						},
+						{
+							"name": "Asia",
+							"cookieName": "auAppSession",
+							"graphqlUrl": "https://api.rewst.asia/graphql",
+							"loginUrl": "https://app.rewst.asia"
 						}
 					],
 					"description": "Regional configuration for different Rewst instances",

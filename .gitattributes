@@ -1,0 +1,3 @@
+# The pre-existing provider contained an embedded NUL in a retired fingerprint
+# helper. Keep future provider changes reviewable as source-text diffs.
+src/ui/chat/model/RoboRewstyChatModelProvider.ts diff

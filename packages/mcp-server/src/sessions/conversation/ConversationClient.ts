@@ -164,6 +164,12 @@ export interface ConversationVariables extends Record<string, unknown> {
 	resumeRequestId: string | null;
 }
 
+/** A role-aware message written into a disposable conversation before asking. */
+export interface SeedChunk {
+	role: 'USER' | 'ASSISTANT';
+	content: string;
+}
+
 /**
  * Subscription variables for one turn. Separated from the transport so the wire's
  * last-defense clamp is testable: the backend rejects an over-long message
@@ -243,5 +249,65 @@ export async function* askRewstAi(options: AskOptions): AsyncGenerator<Conversat
 	} finally {
 		cancelListener?.dispose();
 		dispose();
+	}
+}
+
+const CREATE_CONVERSATION_MUTATION = `mutation RewstBuddyCreateConversation($conversation: ConversationInput!) {
+	createConversation(conversation: $conversation) { id }
+}`;
+const CREATE_CONVERSATION_MESSAGE_MUTATION = `mutation RewstBuddyCreateConversationMessage($message: ConversationMessageInput!) {
+	createConversationMessage(message: $message) { id }
+}`;
+const DELETE_CONVERSATION_MUTATION = `mutation RewstBuddyDeleteConversation($id: ID!) {
+	deleteConversation(id: $id)
+}`;
+
+function graphqlError(result: { errors?: unknown }): string | undefined {
+	if (!Array.isArray(result.errors) || result.errors.length === 0) return undefined;
+	return result.errors
+		.map(error =>
+			error && typeof error === 'object' && 'message' in error ? String(error.message) : String(error),
+		)
+		.join('; ');
+}
+
+/**
+ * Create a single-use AI conversation and seed the visible chat history. The
+ * server only incorporates mutation-written messages when the first
+ * conversation subscription ask is made, so callers must create one per ask.
+ */
+export async function seedConversation(
+	session: Session,
+	orgId: string,
+	conversationType: string,
+	chunks: readonly SeedChunk[],
+): Promise<string> {
+	const created = await session.rawGraphql(CREATE_CONVERSATION_MUTATION, {
+		conversation: { orgId, title: 'rewst-buddy', type: conversationType },
+	});
+	const createError = graphqlError(created);
+	if (createError) throw new Error(`Failed to create AI conversation: ${createError}`);
+	const conversationId = (created.data as { createConversation?: { id?: unknown } } | undefined)?.createConversation
+		?.id;
+	if (typeof conversationId !== 'string' || conversationId.length === 0)
+		throw new Error('Failed to create AI conversation: the API returned no conversation id.');
+
+	try {
+		for (const chunk of chunks) {
+			if (!chunk || (chunk.role !== 'USER' && chunk.role !== 'ASSISTANT'))
+				throw new Error('AI conversation seed contains an unsupported message role.');
+			if (typeof chunk.content !== 'string' || chunk.content.length === 0) continue;
+			const result = await session.rawGraphql(CREATE_CONVERSATION_MESSAGE_MUTATION, {
+				message: { conversationId, role: chunk.role, content: chunk.content },
+			});
+			const error = graphqlError(result);
+			if (error) throw new Error(`Failed to seed AI conversation: ${error}`);
+		}
+		return conversationId;
+	} catch (error) {
+		// Best-effort cleanup prevents a partial seed from becoming an orphaned
+		// backend conversation. Preserve the original failure for the caller.
+		await session.rawGraphql(DELETE_CONVERSATION_MUTATION, { id: conversationId }).catch(() => undefined);
+		throw error;
 	}
 }
