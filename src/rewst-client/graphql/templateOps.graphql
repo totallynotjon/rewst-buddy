@@ -1,0 +1,58 @@
+query listTemplatesMinimal($orgId : ID!) {
+    templates(where: { orgId: $orgId }) {
+        id
+        name
+        orgId
+    }
+}
+
+mutation createTemplateMinimal($name : String!, $orgId : ID!) { 
+    template : createTemplate(template: { name : $name, orgId : $orgId, body : ""}) { 
+    id 
+    name 
+    description 
+    body 
+    contentType 
+    language 
+    cloneOverrides 
+    orgId
+  } 
+} 
+
+
+
+mutation updateTemplate($template: TemplateUpdateInput!) {
+  template: updateTemplate(template: $template) {
+    id
+    name
+    description
+    body
+    updatedAt
+    contentType
+    language
+    cloneOverrides
+    __typename
+  }
+}
+
+mutation UpdateTemplateBody($body: String, $id : ID!) {
+    updateTemplate( template: { body: $body, id: $id }) {
+        body
+        id
+    }
+}
+
+mutation UpdateTemplateName($name: String, $id : ID!) {
+    updateTemplate( template: { name: $name, id: $id }) {
+        name
+        id
+    }
+}
+
+
+query getTemplateBody($id: ID!) {
+    template(where: { id: $id }) {
+        body
+    }
+}
+

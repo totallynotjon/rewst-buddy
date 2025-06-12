@@ -1,0 +1,40 @@
+{
+	"compilerOptions": {
+		"module": "Node16",
+		"target": "ES2023",
+		"moduleResolution": "node16",
+		"outDir": "out",
+		"rootDir": "src",
+		"lib": [
+			"DOM",
+			"DOM.Iterable",
+			"ES2023"
+		],
+		"baseUrl": "src",
+		"paths": {
+			"@fs/*": [
+				"fs/*",
+				"fs/model/*"
+			],
+			"@commands": [
+				"commands/index.js"
+			],
+			"@commands/*": [
+				"commands/*"
+			]
+		},
+		"sourceMap": true,
+		"strict": true,
+		"declaration": true,
+		"declarationMap": true,
+		"incremental": true,
+		"tsBuildInfoFile": "node_modules/.cache/.tsbuildinfo",
+		"noErrorTruncation": true,
+		"plugins": [
+			{
+				"name": "@0no-co/graphqlsp",
+				"schema": "./schema.graphql"
+			}
+		]
+	}
+}

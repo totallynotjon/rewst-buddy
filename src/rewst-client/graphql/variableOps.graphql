@@ -1,0 +1,11 @@
+mutation createOrgVariable($orgVariable: OrgVariableCreateInput!) {
+  createOrgVariable(orgVariable: $orgVariable) {
+    category
+    createdAt
+    id
+    name
+    orgId
+    updatedAt
+    value
+  }
+}

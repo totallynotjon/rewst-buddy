@@ -1,0 +1,208 @@
+{
+  "publisher": "JBramley",
+  "type": "module",
+  "name": "rewst-buddy",
+  "displayName": "rewst-buddy",
+  "description": "Buddy for Rewst",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "rewst",
+    "Rewst",
+    "buddy"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "rewst-buddy.NewClient",
+        "title": "Add Rewst Instance",
+        "icon": "$(plus)"
+      },
+      {
+        "command": "rewst-buddy.LoadClients",
+        "title": "Rewst LoadClients"
+      },
+      {
+        "command": "rewst-buddy.Rename",
+        "title": "Rename...",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "rewst-buddy.ClearProfiles",
+        "title": "Rewst ClearProfiles"
+      },
+      {
+        "command": "rewst-buddy.RefreshView",
+        "title": "Refresh",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "rewst-buddy.SaveFolderStructure",
+        "title": "Save Folder Structure",
+        "icon": "$(save)"
+      },
+      {
+        "command": "rewst-buddy.ReadTest",
+        "title": "ReadTest"
+      },
+      {
+        "command": "rewst-buddy.CreateTemplateFolder",
+        "title": "Create Folder",
+        "icon": "$(file-directory-create)"
+      },
+      {
+        "command": "rewst-buddy.CreateTemplate",
+        "title": "Create Template",
+        "icon": "$(file-add)"
+      },
+      {
+        "command": "rewst-buddy.CopyId",
+        "title": "Copy ID"
+      },
+      {
+        "command": "rewst-buddy.DeleteTemplate",
+        "title": "Delete Template"
+      },
+      {
+        "command": "rewst-buddy.ChangeTemplateFiletypePowershell",
+        "title": "Powershell"
+      },
+      {
+        "command": "rewst-buddy.ChangeTemplateFiletypeHTML",
+        "title": "HTML"
+      },
+      {
+        "command": "rewst-buddy.ChangeTemplateFiletypeYAML",
+        "title": "YAML"
+      },
+      {
+        "command": "rewst-buddy.ChangeTemplateFiletypeCustom",
+        "title": "Custom"
+      }
+    ],
+    "views": {
+      "explorer": [
+        {
+          "id": "RewstView",
+          "name": "Rewst View",
+          "icon": "Rewst Buddy"
+        }
+      ]
+    },
+    "submenus": [
+      {
+        "id": "rewst-buddy.templateType",
+        "label": "Template Type"
+      }
+    ],
+    "menus": {
+      "rewst-buddy.templateType": [
+        {
+          "command": "rewst-buddy.ChangeTemplateFiletypePowershell"
+        },
+        {
+          "command": "rewst-buddy.ChangeTemplateFiletypeHTML"
+        },
+        {
+          "command": "rewst-buddy.ChangeTemplateFiletypeYAML"
+        },
+        {
+          "command": "rewst-buddy.ChangeTemplateFiletypeCustom"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "rewst-buddy.RefreshView",
+          "group": "navigation"
+        },
+        {
+          "command": "rewst-buddy.NewClient",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "rewst-buddy.CopyId",
+          "group": "copy@00"
+        },
+        {
+          "command": "rewst-buddy.CreateTemplate",
+          "when": "viewItem =~ /has-templates/",
+          "group": "inline"
+        },
+        {
+          "command": "rewst-buddy.CreateTemplateFolder",
+          "when": "viewItem =~ /has-templatefolders/",
+          "group": "inline"
+        },
+        {
+          "command": "rewst-buddy.Rename",
+          "when": "viewItem =~ /renamable/",
+          "group": "inline"
+        },
+        {
+          "submenu": "rewst-buddy.templateType",
+          "when": "viewItem =~ /is-template/"
+        },
+        {
+          "command": "rewst-buddy.Rename",
+          "when": "viewItem =~ /renamable/",
+          "group": "fileops@10"
+        },
+        {
+          "command": "rewst-buddy.DeleteTemplate",
+          "when": "viewItem =~ /is-template/",
+          "group": "fileops@100"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "codegen": "graphql-codegen --config src/codegen.ts",
+    "lint": "eslint src",
+    "check-types": "tsc --noEmit --watch",
+    "minify": "node esbuild.js --production",
+    "test": "vscode-test",
+    "compile": "npm run check-types && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json"
+  },
+  "devDependencies": {
+    "@0no-co/graphqlsp": "^1.12.16",
+    "@eslint/js": "^9.28.0",
+    "@graphql-codegen/cli": "^5.0.6",
+    "@graphql-codegen/client-preset": "^4.8.1",
+    "@graphql-codegen/schema-ast": "^4.1.0",
+    "@graphql-codegen/typescript": "^4.1.6",
+    "@graphql-codegen/typescript-graphql-request": "^6.2.1",
+    "@graphql-codegen/typescript-operations": "^4.6.1",
+    "@parcel/watcher": "^2.5.1",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.17.51",
+    "@types/vscode": "^1.100.0",
+    "@typescript-eslint/eslint-plugin": "^8.33.0",
+    "@typescript-eslint/parser": "^8.33.0",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.5.2",
+    "esbuild": "^0.25.5",
+    "eslint": "^9.28.0",
+    "globals": "^16.2.0",
+    "graphql": "^16.11.0",
+    "graphql-request": "^7.1.2",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.33.0"
+  },
+  "dependencies": {
+    "uuidv7": "^1.0.2"
+  }
+}

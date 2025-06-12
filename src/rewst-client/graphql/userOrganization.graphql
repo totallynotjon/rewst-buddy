@@ -1,0 +1,13 @@
+query UserOrganization {
+    userOrganization {
+        createdAt
+        domain
+        id
+        managingOrgId
+        name
+        orgSlug
+        resultsRetentionDays
+        rocSiteId
+        tid
+    }
+}
