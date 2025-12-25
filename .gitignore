@@ -3,7 +3,14 @@ dist
 node_modules
 .vscode-test/
 *.vsix
-src/graphql_sdk.ts
-src\graphql_sdk.ts
+tsconfig.tsbuildinfo
+
+# Claude Code files
+.claude/
+.claudeignore
+CLAUDE.md
 .claude
+
+
 .LOCAL
+CLAUDE.md
