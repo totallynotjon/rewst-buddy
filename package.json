@@ -77,7 +77,7 @@
 		"commands": [
 			{
 				"command": "rewst-buddy.NewSession",
-				"title": "Rewst Buddy: Add Rewst Session",
+				"title": "Rewst Buddy: New Rewst Session",
 				"icon": "$(plus)"
 			},
 			{
