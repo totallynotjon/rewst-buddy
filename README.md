@@ -31,9 +31,6 @@ Since Rewst does not expose API keys for working with GraphQL directly, we do re
 - Create new templates directly from VS Code
 - Save local files as new Rewst templates with one button
 
-**Auto-Sync on Save**
-- Optional automatic sync when saving files
-
 **Smart Re-Linking**
 - Automatic re-linking after file renames/moves
 - Hash-based matching to reconnect templates
@@ -66,6 +63,24 @@ Access via Command Palette (Cmd/Ctrl + Shift + P):
 ### Status Bar Buttons
 - **Link Template** - Appears when editor is open and file is not linked
 - **Sync Template** - Appears when editor has an active template link
+
+### Auto-Sync on Save
+By default, linked templates automatically sync to Rewst when you save the file. This provides a seamless workflow similar to autosave in the browser interface.
+
+To disable automatic syncing:
+1. Open VS Code Settings (Cmd/Ctrl + ,)
+2. Search for "rewst-buddy"
+3. Uncheck "Enable Sync On Save" (or set to false in settings.json)
+
+```json
+{
+  "rewst-buddy.enableSyncOnSave": false
+}
+```
+
+When disabled, use the **Sync Template** button or command to manually sync changes.
+
+> Note: Auto-sync performs the same safety checks as manual sync, preventing overwrites if the template was modified in Rewst since your last sync.
 
 ### Multi-Region Setup
 For non-NA Rewst instances, configure custom regions in VS Code settings:

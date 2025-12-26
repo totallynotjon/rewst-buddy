@@ -1,7 +1,5 @@
 import { RegionConfig } from './RegionConfig';
 
-export type RewstSessionProfiles = Record<string, RewstSessionProfile>;
-
 export default interface RewstSessionProfile {
 	region: RegionConfig;
 	orgId: string;

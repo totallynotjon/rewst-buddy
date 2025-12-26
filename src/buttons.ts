@@ -19,11 +19,10 @@ async function checkVisibility(e: vscode.TextEditor | undefined) {
 		syncButton.hide();
 		return;
 	}
-	const uri = e.document.uri;
 
-	const isLinked = TemplateLinkManager.getLink(uri);
+	const isLinked = TemplateLinkManager.isLinked(e.document.uri);
 
-	if (isLinked !== undefined) {
+	if (isLinked) {
 		linkButton.hide();
 		syncButton.show();
 	} else {

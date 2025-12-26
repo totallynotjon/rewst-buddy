@@ -2,7 +2,7 @@ import vscode from 'vscode';
 
 interface CommandContext {
 	context: vscode.ExtensionContext;
-	commandPrefix: string;
+	extPrefix: string;
 }
 
 export default abstract class GenericCommand {

@@ -1,4 +1,4 @@
-import { commandPrefix, context } from '@global';
+import { context, extPrefix } from '@global';
 import { log } from '@log';
 import vscode from 'vscode';
 import * as Commands from './exportedCommands';
@@ -12,7 +12,7 @@ export default class CommandInitiater {
 
 		types.forEach(type => {
 			const cmd = createCommand(type);
-			const name = `${commandPrefix}.${cmd.commandName}`;
+			const name = `${extPrefix}.${cmd.commandName}`;
 			log.debug(`Registering command: ${name}`);
 			context.subscriptions.push(
 				vscode.commands.registerCommand(name, async (...args: any[]) => {

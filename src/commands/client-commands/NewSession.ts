@@ -9,7 +9,6 @@ export class NewSession extends GenericCommand {
 		const session = await SessionManager.createSession();
 		if (await session.validate()) {
 			log.notifyInfo(`Created new session for '${session.profile.label}'`);
-			await SessionManager.init();
 		}
 	}
 }

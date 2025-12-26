@@ -23,28 +23,26 @@ export default class TemplateLinkManager {
 		log.debug('Saved new link:', link);
 	}
 
-	public static linkFromEditor(editor: vscode.TextEditor): TemplateLink {
-		const uri = editor.document.uri;
-
-		const link = TemplateLinkManager.getLink(uri);
-
-		if (link === undefined) {
-			throw log.error(`Template link could not be found for url ${uri.toString()}`);
-		}
-		return link;
-	}
-
 	public static getLinks(): TemplateLink[] {
 		return context.globalState.get<TemplateLink[]>(TemplateLinkManager.stateKey) ?? [];
 	}
 
-	public static getLink(uri: vscode.Uri): TemplateLink | undefined {
+	public static isLinked(uri: vscode.Uri): boolean {
+		try {
+			TemplateLinkManager.getLink(uri);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	public static getLink(uri: vscode.Uri): TemplateLink {
 		const links = TemplateLinkManager.getLinks();
 		for (const link of links) {
 			if (link.uriString === uri.toString()) {
 				return link;
 			}
 		}
-		return undefined;
+		throw log.error(`Could not find link for uri ${uri.toString()}`);
 	}
 }

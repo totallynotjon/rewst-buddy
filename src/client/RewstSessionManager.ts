@@ -2,14 +2,11 @@ import { context } from '@global';
 import { log } from '@log';
 import vscode from 'vscode';
 import RewstSession from './RewstSession';
-import RewstSessionProfile, { RewstSessionProfiles } from './RewstSessionProfile';
+import RewstSessionProfile from './RewstSessionProfile';
 
 class RewstSessionManager {
-	sessions!: RewstSession[];
-
-	public async init() {
-		this.sessions = await this.loadSessions();
-	}
+	sessions: RewstSession[] = [];
+	profiles: RewstSessionProfile[] = [];
 
 	async createFromProfile(profile: RewstSessionProfile): Promise<RewstSession> {
 		let session = new RewstSession(undefined, profile);
@@ -51,7 +48,7 @@ class RewstSessionManager {
 		const session = new RewstSession(sdk, profile);
 		await session.refreshToken();
 
-		this.saveProfile(session.profile);
+		this.saveNewProfile(session.profile);
 
 		return session;
 	}
@@ -76,7 +73,7 @@ class RewstSessionManager {
 
 	async getOrgSession(orgId: string, baseURL: URL): Promise<RewstSession> {
 		log.debug('getOrgSession');
-		for (const session of this.sessions) {
+		for (const session of await this.loadSessions()) {
 			const regionURL = new URL(session.profile.region.loginUrl);
 			if (regionURL.host !== baseURL.host) {
 				continue;
@@ -108,11 +105,16 @@ class RewstSessionManager {
 		return token ?? '';
 	}
 
-	async loadSessions(): Promise<RewstSession[]> {
-		const profileObj = this.getSavedProfiles();
-		const profiles = Object.values(profileObj);
+	private newProfiles(): RewstSessionProfile[] {
+		const profiles = this.getSavedProfiles();
+		const existing = this.profiles.map(p => JSON.stringify(p));
+		return profiles.filter(f => !existing.includes(JSON.stringify(f)));
+	}
 
-		const resultsPromises = profiles.map(async profile => {
+	async loadSessions(): Promise<RewstSession[]> {
+		const newProfiles = this.newProfiles();
+
+		const resultsPromises = newProfiles.map(async profile => {
 			try {
 				return await this.createSession(await RewstSession.getToken(profile.orgId));
 			} catch (err) {
@@ -123,20 +125,29 @@ class RewstSessionManager {
 
 		const results = await Promise.all(resultsPromises);
 
-		const clients = results.filter((c): c is RewstSession => c !== undefined);
-		log.info(`Successfully loaded ${clients.length} clients`);
+		const sessions = results.filter((c): c is RewstSession => c !== undefined);
+		log.info(`Successfully loaded ${sessions.length} sessions`);
 
-		return clients;
+		this.sessions = this.sessions.concat(sessions);
+		this.profiles = this.sessions.map(s => s.profile);
+		this.saveProfiles(this.profiles);
+		// only keep track of open session profiles
+
+		return this.sessions;
 	}
 
-	private saveProfile(profile: RewstSessionProfile) {
-		const profiles = this.getSavedProfiles();
-		profiles[profile.orgId] = profile;
+	private saveProfiles(profiles: RewstSessionProfile[]) {
 		context.globalState.update('RewstSessionProfiles', profiles);
 	}
 
-	private getSavedProfiles(): RewstSessionProfiles {
-		return context.globalState.get<RewstSessionProfiles>('RewstSessionProfiles') ?? {};
+	private saveNewProfile(profile: RewstSessionProfile) {
+		const profiles = this.getSavedProfiles();
+
+		context.globalState.update('RewstSessionProfiles', profiles.concat(profile));
+	}
+
+	private getSavedProfiles(): RewstSessionProfile[] {
+		return context.globalState.get<RewstSessionProfile[]>('RewstSessionProfiles') ?? [];
 	}
 
 	public clearProfiles() {

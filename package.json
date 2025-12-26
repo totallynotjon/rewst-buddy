@@ -71,6 +71,11 @@
 							"loginUrl"
 						]
 					}
+				},
+				"rewst-buddy.enableSyncOnSave": {
+					"type": "boolean",
+					"default": true,
+					"description": "Enable Sync on Save."
 				}
 			}
 		},
