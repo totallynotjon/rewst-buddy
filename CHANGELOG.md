@@ -4,6 +4,23 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.12.1] - 2025-12-26
+
+### Added
+- **Auto-Sync on Save**: Automatically sync templates to Rewst when files are saved
+  - Configurable via `rewst-buddy.enableSyncOnSave` setting (enabled by default)
+  - Only syncs files that have active template links
+  - Respects conflict detection rules from v0.10.0
+
+### Changed
+- **Session Management Improvements**: Enhanced session handling and token refresh logic
+- **Error Handling**: Improved error messages and handling for template operations
+- **Template Operations**: Better reliability for sync operations
+
+### Fixed
+- Template sync reliability improvements
+- Session token refresh edge cases
+
 ## [0.10.0] - 2025-12-24
 
 ### Major Architectural Redesign
