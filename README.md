@@ -13,7 +13,7 @@
 5. Edit the file, then click the **Sync Template** button to push changes
 
 ### Auto-Sync on Save
-By default, linked templates automatically sync to Rewst when you save the file. This provides a seamless workflow similar to autosave in the browser interface.
+By default, linked templates automatically sync to Rewst when you save the file.
 
 To disable automatic syncing:
 1. Open VS Code Settings (Cmd/Ctrl + ,)
