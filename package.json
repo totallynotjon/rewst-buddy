@@ -12,13 +12,13 @@
 	],
 	"repository": {
 		"type": "git",
-		"url": "git@github.com:Brostash/rewst-buddy.git"
+		"url": "git@github.com:totallynotjon/rewst-buddy.git"
 	},
 	"bugs": {
-		"url": "https://github.com/Brostash/rewst-buddy/issues"
+		"url": "https://github.com/totallynotjon/rewst-buddy/issues"
 	},
 	"license": "MIT",
-	"homepage": "https://github.com/Brostash/rewst-buddy/blob/master/README.md",
+	"homepage": "https://github.com/totallynotjon/rewst-buddy/blob/master/README.md",
 	"keywords": [
 		"rewst",
 		"Rewst",
