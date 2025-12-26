@@ -12,6 +12,24 @@
    - `Link Template` - Link your current file to an existing template (extension command or **Link Template** in bottom left)
 5. Edit the file, then click the **Sync Template** button to push changes
 
+### Auto-Sync on Save
+By default, linked templates automatically sync to Rewst when you save the file. This provides a seamless workflow similar to autosave in the browser interface.
+
+To disable automatic syncing:
+1. Open VS Code Settings (Cmd/Ctrl + ,)
+2. Search for "rewst-buddy"
+3. Uncheck "Enable Sync On Save" (or set to false in settings.json)
+
+```json
+{
+  "rewst-buddy.enableSyncOnSave": false
+}
+```
+
+When disabled, use the **Sync Template** button or command to manually sync changes.
+
+> Note: Auto-sync performs the same safety checks as manual sync, preventing overwrites if the template was modified in Rewst since your last sync.
+
 ## About
 
 I work with Rewst templates a lot. I made this extension to make it easier to make small tweaks and changes to templates when developing scripts/html in Rewst. Instead of having tabs open in a browser, you can make edits directly to files in your filesystem. This means you can have all the power of vscode while managing your Rewst templates folders, extensions, git, ai agents editing files, etc.
@@ -64,23 +82,6 @@ Access via Command Palette (Cmd/Ctrl + Shift + P):
 - **Link Template** - Appears when editor is open and file is not linked
 - **Sync Template** - Appears when editor has an active template link
 
-### Auto-Sync on Save
-By default, linked templates automatically sync to Rewst when you save the file. This provides a seamless workflow similar to autosave in the browser interface.
-
-To disable automatic syncing:
-1. Open VS Code Settings (Cmd/Ctrl + ,)
-2. Search for "rewst-buddy"
-3. Uncheck "Enable Sync On Save" (or set to false in settings.json)
-
-```json
-{
-  "rewst-buddy.enableSyncOnSave": false
-}
-```
-
-When disabled, use the **Sync Template** button or command to manually sync changes.
-
-> Note: Auto-sync performs the same safety checks as manual sync, preventing overwrites if the template was modified in Rewst since your last sync.
 
 ### Multi-Region Setup
 For non-NA Rewst instances, configure custom regions in VS Code settings:
