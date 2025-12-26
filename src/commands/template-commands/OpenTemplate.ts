@@ -1,6 +1,6 @@
 import { SessionManager } from '@client';
 import { log } from '@log';
-import { getTemplateURLParams, SimpleTemplate, TemplateLinkManager } from '@models';
+import { getTemplateURLParams, TemplateLinkManager } from '@models';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
 
@@ -45,7 +45,7 @@ export class OpenTemplate extends GenericCommand {
 
 		TemplateLinkManager.saveLink({
 			sessionProfile: session.profile,
-			template: SimpleTemplate(response.template),
+			template: response.template,
 			uriString: resultUri.toString(),
 		});
 	}

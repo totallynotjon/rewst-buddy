@@ -1,78 +1,78 @@
-query listTemplatesMinimal($orgId: ID!) {
-	templates(where: { orgId: $orgId }) {
+fragment template on Template {
+	id
+	name
+	description
+	body
+	contentType
+	context
+	language
+	cloneOverrides
+	clonedFromId
+	isShared
+	isSynchronized
+	orgId
+	unpackedFromId
+	createdAt
+	updatedAt
+	updatedById
+	organization {
 		id
 		name
-		orgId
-		updatedAt
+	}
+	tags {
+		id
+		name
+		color
+	}
+	clonedFrom {
+		id
+		name
+	}
+	updatedBy {
+		id
+		username
+	}
+	unpackedFrom {
+		id
+		name
+	}
+}
+
+query listTemplatesMinimal($orgId: ID!) {
+	templates(where: { orgId: $orgId }) {
+		...template
 	}
 }
 
 mutation createTemplateMinimal($name: String!, $orgId: ID!) {
 	template: createTemplate(template: { name: $name, orgId: $orgId, body: "" }) {
-		id
-		name
-		description
-		body
-		contentType
-		language
-		cloneOverrides
-		orgId
-		updatedAt
+		...template
 	}
 }
 
 mutation updateTemplate($template: TemplateUpdateInput!) {
 	template: updateTemplate(template: $template) {
-		id
-		name
-		description
-		body
-		updatedAt
-		contentType
-		language
-		cloneOverrides
-		__typename
+		...template
 	}
 }
 
 mutation updateTemplateBody($body: String, $id: ID!) {
-	updateTemplate(template: { body: $body, id: $id }) {
-		body
-		id
-		updatedAt
+	template: updateTemplate(template: { body: $body, id: $id }) {
+		...template
 	}
 }
 
 mutation updateTemplateName($name: String, $id: ID!) {
-	updateTemplate(template: { name: $name, id: $id }) {
-		name
-		id
-		updatedAt
-	}
-}
-
-query getTemplateBody($id: ID!) {
-	template(where: { id: $id }) {
-		body
-		updatedAt
+	template: updateTemplate(template: { name: $name, id: $id }) {
+		...template
 	}
 }
 
 query getTemplate($id: ID!) {
 	template(where: { id: $id }) {
-		id
-		name
-		description
-		body
-		contentType
-		language
-		cloneOverrides
-		orgId
-		updatedAt
+		...template
 	}
 }
-
-
 
 mutation deleteTemplate($id: ID!) {
 	deleteTemplate(id: $id)

@@ -1,6 +1,6 @@
-import { log } from '@log';
-import { Template } from '@sdk';
 import { RewstSessionProfile } from '@client';
+import { log } from '@log';
+import { TemplateFragment } from '@sdk';
 import UrlPattern from 'url-pattern';
 import { validate as uuidValidate } from 'uuid';
 
@@ -57,6 +57,6 @@ export async function getTemplateURLParams(templateURL: string | undefined): Pro
 
 export default interface TemplateLink {
 	sessionProfile: RewstSessionProfile;
-	template: Template;
+	template: TemplateFragment;
 	uriString: string;
 }

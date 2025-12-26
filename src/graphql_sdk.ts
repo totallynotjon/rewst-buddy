@@ -7548,12 +7548,14 @@ export type String_Comparison_Exp = {
   _substr?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type TemplateFragment = { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null };
+
 export type ListTemplatesMinimalQueryVariables = Exact<{
   orgId: Scalars['ID']['input'];
 }>;
 
 
-export type ListTemplatesMinimalQuery = { __typename?: 'Query', templates: Array<{ __typename?: 'Template', id: string, name: string, orgId: string, updatedAt: string }> };
+export type ListTemplatesMinimalQuery = { __typename?: 'Query', templates: Array<{ __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null }> };
 
 export type CreateTemplateMinimalMutationVariables = Exact<{
   name: Scalars['String']['input'];
@@ -7561,14 +7563,14 @@ export type CreateTemplateMinimalMutationVariables = Exact<{
 }>;
 
 
-export type CreateTemplateMinimalMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, language: string, cloneOverrides?: any | null, orgId: string, updatedAt: string } | null };
+export type CreateTemplateMinimalMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
 
 export type UpdateTemplateMutationVariables = Exact<{
   template: TemplateUpdateInput;
 }>;
 
 
-export type UpdateTemplateMutation = { __typename?: 'Mutation', template?: { __typename: 'Template', id: string, name: string, description?: string | null, body: string, updatedAt: string, contentType: string, language: string, cloneOverrides?: any | null } | null };
+export type UpdateTemplateMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
 
 export type UpdateTemplateBodyMutationVariables = Exact<{
   body?: InputMaybe<Scalars['String']['input']>;
@@ -7576,7 +7578,7 @@ export type UpdateTemplateBodyMutationVariables = Exact<{
 }>;
 
 
-export type UpdateTemplateBodyMutation = { __typename?: 'Mutation', updateTemplate?: { __typename?: 'Template', body: string, id: string, updatedAt: string } | null };
+export type UpdateTemplateBodyMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
 
 export type UpdateTemplateNameMutationVariables = Exact<{
   name?: InputMaybe<Scalars['String']['input']>;
@@ -7584,21 +7586,14 @@ export type UpdateTemplateNameMutationVariables = Exact<{
 }>;
 
 
-export type UpdateTemplateNameMutation = { __typename?: 'Mutation', updateTemplate?: { __typename?: 'Template', name: string, id: string, updatedAt: string } | null };
-
-export type GetTemplateBodyQueryVariables = Exact<{
-  id: Scalars['ID']['input'];
-}>;
-
-
-export type GetTemplateBodyQuery = { __typename?: 'Query', template?: { __typename?: 'Template', body: string, updatedAt: string } | null };
+export type UpdateTemplateNameMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
 
 export type GetTemplateQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type GetTemplateQuery = { __typename?: 'Query', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, language: string, cloneOverrides?: any | null, orgId: string, updatedAt: string } | null };
+export type GetTemplateQuery = { __typename?: 'Query', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
 
 export type DeleteTemplateMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7612,103 +7607,89 @@ export type UserOrganizationQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type UserOrganizationQuery = { __typename?: 'Query', userOrganization?: { __typename?: 'Organization', createdAt?: string | null, domain?: string | null, id?: string | null, managingOrgId?: string | null, name: string, orgSlug?: string | null, resultsRetentionDays?: number | null, rocSiteId?: string | null, tid?: string | null, managedOrgs: Array<{ __typename?: 'Organization', id?: string | null, name: string }> } | null };
 
-export type CreateOrgVariableMutationVariables = Exact<{
-  orgVariable: OrgVariableCreateInput;
-}>;
-
-
-export type CreateOrgVariableMutation = { __typename?: 'Mutation', createOrgVariable?: { __typename?: 'OrgVariable', category: OrgVariableCategory, createdAt: string, id: string, name: string, orgId: string, updatedAt?: string | null, value?: string | null } | null };
-
-export type GetOrgVariableQueryVariables = Exact<{
-  orgId: Scalars['ID']['input'];
-  name: Scalars['String']['input'];
-}>;
-
-
-export type GetOrgVariableQuery = { __typename?: 'Query', orgVariable?: { __typename?: 'OrgVariable', category: OrgVariableCategory, createdAt: string, id: string, name: string, orgId: string, updatedAt?: string | null, value?: string | null } | null };
-
-
+export const TemplateFragmentDoc = gql`
+    fragment template on Template {
+  id
+  name
+  description
+  body
+  contentType
+  context
+  language
+  cloneOverrides
+  clonedFromId
+  isShared
+  isSynchronized
+  orgId
+  unpackedFromId
+  createdAt
+  updatedAt
+  updatedById
+  organization {
+    id
+    name
+  }
+  tags {
+    id
+    name
+    color
+  }
+  clonedFrom {
+    id
+    name
+  }
+  updatedBy {
+    id
+    username
+  }
+  unpackedFrom {
+    id
+    name
+  }
+}
+    `;
 export const ListTemplatesMinimalDocument = gql`
     query listTemplatesMinimal($orgId: ID!) {
   templates(where: {orgId: $orgId}) {
-    id
-    name
-    orgId
-    updatedAt
+    ...template
   }
 }
-    `;
+    ${TemplateFragmentDoc}`;
 export const CreateTemplateMinimalDocument = gql`
     mutation createTemplateMinimal($name: String!, $orgId: ID!) {
   template: createTemplate(template: {name: $name, orgId: $orgId, body: ""}) {
-    id
-    name
-    description
-    body
-    contentType
-    language
-    cloneOverrides
-    orgId
-    updatedAt
+    ...template
   }
 }
-    `;
+    ${TemplateFragmentDoc}`;
 export const UpdateTemplateDocument = gql`
     mutation updateTemplate($template: TemplateUpdateInput!) {
   template: updateTemplate(template: $template) {
-    id
-    name
-    description
-    body
-    updatedAt
-    contentType
-    language
-    cloneOverrides
-    __typename
+    ...template
   }
 }
-    `;
+    ${TemplateFragmentDoc}`;
 export const UpdateTemplateBodyDocument = gql`
     mutation updateTemplateBody($body: String, $id: ID!) {
-  updateTemplate(template: {body: $body, id: $id}) {
-    body
-    id
-    updatedAt
+  template: updateTemplate(template: {body: $body, id: $id}) {
+    ...template
   }
 }
-    `;
+    ${TemplateFragmentDoc}`;
 export const UpdateTemplateNameDocument = gql`
     mutation updateTemplateName($name: String, $id: ID!) {
-  updateTemplate(template: {name: $name, id: $id}) {
-    name
-    id
-    updatedAt
+  template: updateTemplate(template: {name: $name, id: $id}) {
+    ...template
   }
 }
-    `;
-export const GetTemplateBodyDocument = gql`
-    query getTemplateBody($id: ID!) {
-  template(where: {id: $id}) {
-    body
-    updatedAt
-  }
-}
-    `;
+    ${TemplateFragmentDoc}`;
 export const GetTemplateDocument = gql`
     query getTemplate($id: ID!) {
   template(where: {id: $id}) {
-    id
-    name
-    description
-    body
-    contentType
-    language
-    cloneOverrides
-    orgId
-    updatedAt
+    ...template
   }
 }
-    `;
+    ${TemplateFragmentDoc}`;
 export const DeleteTemplateDocument = gql`
     mutation deleteTemplate($id: ID!) {
   deleteTemplate(id: $id)
@@ -7730,32 +7711,6 @@ export const UserOrganizationDocument = gql`
     resultsRetentionDays
     rocSiteId
     tid
-  }
-}
-    `;
-export const CreateOrgVariableDocument = gql`
-    mutation createOrgVariable($orgVariable: OrgVariableCreateInput!) {
-  createOrgVariable(orgVariable: $orgVariable) {
-    category
-    createdAt
-    id
-    name
-    orgId
-    updatedAt
-    value
-  }
-}
-    `;
-export const GetOrgVariableDocument = gql`
-    query getOrgVariable($orgId: ID!, $name: String!) {
-  orgVariable(where: {orgId: $orgId, name: $name}) {
-    category
-    createdAt
-    id
-    name
-    orgId
-    updatedAt
-    value
   }
 }
     `;
@@ -7782,9 +7737,6 @@ export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = 
     updateTemplateName(variables: UpdateTemplateNameMutationVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<UpdateTemplateNameMutation> {
       return withWrapper((wrappedRequestHeaders) => client.request<UpdateTemplateNameMutation>({ document: UpdateTemplateNameDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'updateTemplateName', 'mutation', variables);
     },
-    getTemplateBody(variables: GetTemplateBodyQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<GetTemplateBodyQuery> {
-      return withWrapper((wrappedRequestHeaders) => client.request<GetTemplateBodyQuery>({ document: GetTemplateBodyDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'getTemplateBody', 'query', variables);
-    },
     getTemplate(variables: GetTemplateQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<GetTemplateQuery> {
       return withWrapper((wrappedRequestHeaders) => client.request<GetTemplateQuery>({ document: GetTemplateDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'getTemplate', 'query', variables);
     },
@@ -7793,12 +7745,6 @@ export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = 
     },
     UserOrganization(variables?: UserOrganizationQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<UserOrganizationQuery> {
       return withWrapper((wrappedRequestHeaders) => client.request<UserOrganizationQuery>({ document: UserOrganizationDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'UserOrganization', 'query', variables);
-    },
-    createOrgVariable(variables: CreateOrgVariableMutationVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<CreateOrgVariableMutation> {
-      return withWrapper((wrappedRequestHeaders) => client.request<CreateOrgVariableMutation>({ document: CreateOrgVariableDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'createOrgVariable', 'mutation', variables);
-    },
-    getOrgVariable(variables: GetOrgVariableQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<GetOrgVariableQuery> {
-      return withWrapper((wrappedRequestHeaders) => client.request<GetOrgVariableQuery>({ document: GetOrgVariableDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'getOrgVariable', 'query', variables);
     }
   };
 }

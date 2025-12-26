@@ -1,6 +1,5 @@
 import { SessionManager } from '@client';
 import { log } from '@log';
-import { SimpleTemplate } from '@models';
 import vscode from 'vscode';
 import TemplateLinkManager from './TemplateLinkManager';
 
@@ -15,14 +14,13 @@ export default class TemplateSyncManager {
 				id: link.template.id,
 				body: doc.getText() ?? '',
 			});
-			log.debug('Template response:', response?.updateTemplate);
+			log.debug('Template response:', response?.template);
 
-			if (response?.updateTemplate?.id === undefined) {
+			if (response?.template?.id === undefined) {
 				throw new Error();
 			}
 
-			link.template.body = response.updateTemplate?.body ?? '';
-			link.template.updatedAt = response.updateTemplate.updatedAt;
+			link.template = response.template;
 
 			TemplateLinkManager.saveLink(link);
 
@@ -93,7 +91,7 @@ export default class TemplateSyncManager {
 
 					TemplateLinkManager.saveLink({
 						sessionProfile: session.profile,
-						template: SimpleTemplate(response.template),
+						template: response.template,
 						uriString: doc.uri.toString(),
 					});
 

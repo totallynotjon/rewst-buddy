@@ -1,7 +1,7 @@
+import { updateButtonVisibility } from '@buttons';
 import { SessionManager } from '@client';
 import { log } from '@log';
-import { getTemplateURLParams, SimpleTemplate, TemplateLinkManager } from '@models';
-import { updateButtonVisibility } from '@buttons';
+import { getTemplateURLParams, TemplateLinkManager } from '@models';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
 
@@ -29,13 +29,12 @@ export class LinkTemplate extends GenericCommand {
 			const resultUri = await vscode.workspace.saveAs(editor.document.uri);
 
 			if (!resultUri) {
-				log.error('Must save document to disk before linking');
-				return;
+				throw log.error('Must save document to disk before linking');
 			}
 		}
 
-		const link = TemplateLinkManager.getLink(editor.document.uri);
-		if (link !== undefined) {
+		if (TemplateLinkManager.isLinked(editor.document.uri)) {
+			const link = TemplateLinkManager.getLink(editor.document.uri);
 			throw log.notifyError(
 				`Active document is already linked to ${link.template.name} in ${link.template.orgId}/${link.sessionProfile.label}`,
 			);
@@ -57,7 +56,7 @@ export class LinkTemplate extends GenericCommand {
 			);
 		}
 
-		const template = SimpleTemplate(response.template);
+		const template = response.template;
 		template.body = editor.document.getText();
 		template.updatedAt = '0';
 
