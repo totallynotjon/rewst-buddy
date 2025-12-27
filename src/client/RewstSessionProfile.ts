@@ -1,8 +1,11 @@
+import { Org } from '@models';
+import { UserFragment } from '@sdk';
 import { RegionConfig } from './RegionConfig';
 
 export default interface RewstSessionProfile {
 	region: RegionConfig;
-	orgId: string;
+	org: Org;
+	allManagedOrgs: Org[];
 	label: string;
-	managedOrgs: Map<string, string>;
+	user: UserFragment;
 } // commands/index.ts

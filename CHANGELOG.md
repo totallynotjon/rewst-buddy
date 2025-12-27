@@ -4,6 +4,44 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.14.0] - 2025-12-27
+
+### Added
+- **Interactive Template Selection**: New QuickPick-based UI for browsing and selecting templates
+  - `SessionPicker` for selecting active sessions (auto-selects when only one available)
+  - `OrganizationPicker` for choosing between primary org and managed sub-organizations
+  - `TemplatePicker` for browsing and selecting templates with search support
+  - Pickers chain together seamlessly: template → org → session
+
+- **New Interactive Commands**:
+  - `Rewst Buddy: Open Template` - Browse and open templates via quick picks
+  - `Rewst Buddy: Link Template` - Link current file to a template via quick picks
+  - URL-based commands renamed for clarity (`Open Template from URL`, `Link Template from URL`)
+
+### Changed
+- **Session Management Refactor**: Changed from organization-based to user-based session identification
+  - Sessions now keyed by user ID instead of organization ID
+  - Replaced separate `sessions`/`profiles` arrays with unified `sessionMap`
+  - Profile label now shows `username (orgName)` format
+
+- **Profile Structure**: Expanded session profile with richer data
+  - Changed `orgId` string to full `Org` object with id and name
+  - Added `allManagedOrgs` array for sub-organization access
+  - Added `user` property containing full user data from API
+
+- **GraphQL API Updates**:
+  - Replaced `UserOrganization` query with `User` (me) query
+  - Added `org` fragment for consistent organization field selection
+  - Added `user` fragment for user data
+  - Removed deprecated `userOrganization.graphql`
+
+- **Button Visibility**: Now updates after opening/linking templates interactively
+
+### Breaking Changes
+- **Session Profile Structure Changed**: Existing saved profiles are incompatible
+  - Run `Rewst Buddy: Clear Sessions` to remove old profiles
+  - Re-add sessions using `Rewst Buddy: Add Rewst Session`
+
 ## [0.13.1] - 2025-12-26
 
 ### Fixed

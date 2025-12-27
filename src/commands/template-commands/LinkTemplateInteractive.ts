@@ -1,12 +1,12 @@
 import { updateButtonVisibility } from '@buttons';
-import { SessionManager } from '@client';
 import { log } from '@log';
-import { getTemplateURLParams, TemplateLinkManager } from '@models';
+import { TemplateLinkManager } from '@models';
+import { pickTemplate } from '@ui';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
 
-export class LinkTemplate extends GenericCommand {
-	commandName = 'LinkTemplate';
+export class LinkTemplateInteractive extends GenericCommand {
+	commandName = 'LinkTemplateInteractive';
 
 	async execute(...args: unknown[]): Promise<void> {
 		const editor = vscode.window.activeTextEditor;
@@ -40,20 +40,15 @@ export class LinkTemplate extends GenericCommand {
 			);
 		}
 
-		const templateURL = await vscode.window.showInputBox({
-			placeHolder: 'https://:base_url/:org_id/templates/:template_id',
-			prompt: 'Enter the template url to link',
-		});
 
-		const params = await getTemplateURLParams(templateURL);
+		const templatePick = await pickTemplate();
+		if (!templatePick) return;
+		const session = templatePick.session;
+		const org = templatePick.org;
 
-		const session = await SessionManager.getOrgSession(params.orgId, params.baseURL);
-
-		const response = await session.sdk?.getTemplate({ id: params.templateId });
+		const response = await session.sdk?.getTemplate({ id: templatePick.template.id });
 		if (response?.template === undefined || response?.template === null) {
-			throw log.error(
-				`Could not find template with id '${params.templateId}' under organization '${params.orgId}'`,
-			);
+			throw log.error(`Failed to load the template for linking ${templatePick.template.name}`);
 		}
 
 		const template = response.template;

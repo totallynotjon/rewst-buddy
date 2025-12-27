@@ -71,8 +71,8 @@ export default class RewstSession {
 
 	private static async validateSdk(sdk: Sdk): Promise<boolean> {
 		try {
-			const response = await sdk.UserOrganization();
-			return typeof response.userOrganization?.id === 'string';
+			const response = await sdk.User();
+			return typeof response.user?.id === 'string';
 		} catch (error) {
 			log.error(`SDK validation failed: ${error}`);
 			return false;
@@ -130,9 +130,9 @@ export default class RewstSession {
 				throw log.notifyError('Refreshed token failed SDK validation');
 			}
 
-			await this.secrets.store(this.profile.orgId, appSession);
+			await this.secrets.store(this.profile.org.id, appSession);
 			this.sdk = sdk;
-			log.info(`Successfully refreshed token for ${this.profile.label} ${this.profile.orgId}`);
+			log.info(`Successfully refreshed token for ${this.profile.label} ${this.profile.org.id}`);
 		} catch (error) {
 			log.notifyError(`Token refresh failed for ${this.profile.label}: ${error}`);
 			throw error;
@@ -150,6 +150,6 @@ export default class RewstSession {
 	}
 
 	async getToken(): Promise<string> {
-		return await RewstSession.getToken(this.profile.orgId);
+		return await RewstSession.getToken(this.profile.org.id);
 	}
 }

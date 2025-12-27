@@ -1,11 +1,12 @@
+import { updateButtonVisibility } from '@buttons';
 import { SessionManager } from '@client';
 import { log } from '@log';
 import { getTemplateURLParams, TemplateLinkManager } from '@models';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
 
-export class OpenTemplate extends GenericCommand {
-	commandName = 'OpenTemplate';
+export class OpenTemplateFromURL extends GenericCommand {
+	commandName = 'OpenTemplateFromURL';
 
 	async execute(...args: unknown[]): Promise<void> {
 		const templateURL = await vscode.window.showInputBox({
@@ -48,5 +49,7 @@ export class OpenTemplate extends GenericCommand {
 			template: response.template,
 			uriString: resultUri.toString(),
 		}).save();
+
+		await updateButtonVisibility();
 	}
 }

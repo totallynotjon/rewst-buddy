@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.13.1",
+	"version": "0.14.0",
 	"engines": {
 		"vscode": "^1.107.0"
 	},
@@ -96,7 +96,12 @@
 				"icon": "$(sync)"
 			},
 			{
-				"command": "rewst-buddy.LinkTemplate",
+				"command": "rewst-buddy.LinkTemplateFromURL",
+				"title": "Rewst Buddy: Link Template from URL",
+				"icon": "$(link-external)"
+			},
+			{
+				"command": "rewst-buddy.LinkTemplateInteractive",
 				"title": "Rewst Buddy: Link Template",
 				"icon": "$(link-external)"
 			},
@@ -105,8 +110,12 @@
 				"title": "Rewst Buddy: Clear Sessions"
 			},
 			{
-				"command": "rewst-buddy.OpenTemplate",
+				"command": "rewst-buddy.OpenTemplateFromURL",
 				"title": "Rewst Buddy: Open Template from URL"
+			},
+			{
+				"command": "rewst-buddy.OpenTemplateInteractive",
+				"title": "Rewst Buddy: Open Template"
 			},
 			{
 				"command": "rewst-buddy.ClearTemplateLinks",

@@ -1,0 +1,29 @@
+fragment user on User {
+        createdAt
+        id
+        isApiUser
+        isTokenUser
+        isSuperuser
+        isTestUser
+        orgId
+        roleIds
+        roles
+        sub
+        username
+        parentUserId
+        parentUsername
+}
+
+query User {
+    user : me {
+		...user
+		
+        organization {
+            ...org
+        }
+        allManagedOrgs : managedOrgs {
+            ...org
+        }
+    }
+}
+

@@ -37,6 +37,7 @@ const config = {
 			'@log': path.resolve(__dirname, 'src/log.ts'),
 			'@global': path.resolve(__dirname, 'src/global-context/index.ts'),
 			'@buttons': path.resolve(__dirname, 'src/buttons.ts'),
+			'@ui': path.resolve(__dirname, 'src/ui/index.ts'),
 		},
 		modules: ['node_modules'],
 	},

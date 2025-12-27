@@ -1,12 +1,12 @@
 import { context } from '@global';
 import { log } from '@log';
+import { Org } from '@models';
 import vscode from 'vscode';
 import RewstSession from './RewstSession';
 import RewstSessionProfile from './RewstSessionProfile';
 
 class RewstSessionManager {
-	sessions: RewstSession[] = [];
-	profiles: RewstSessionProfile[] = [];
+	sessionMap: Map<string, RewstSession> = new Map<string, RewstSession>();
 
 	async createFromProfile(profile: RewstSessionProfile): Promise<RewstSession> {
 		let session = new RewstSession(undefined, profile);
@@ -25,30 +25,46 @@ class RewstSessionManager {
 
 		const [sdk, regionConfig] = await RewstSession.newSdk(token);
 
-		const response = await sdk.UserOrganization();
-		const org = response.userOrganization;
-
-		if (typeof org?.id !== 'string') {
-			throw log.notifyError('Failed to retrieve organization ID from API');
+		const response = await sdk.User();
+		const user = response.user;
+		if (user === undefined) {
+			throw log.notifyError('Failed to retrieve current user from Rewst');
 		}
 
-		const managedOrgs: Map<string, string> = new Map<string, string>();
-
-		for (const orgItem of org?.managedOrgs ?? []) {
-			managedOrgs.set(orgItem.id ?? '', org.name);
+		if (user?.organization === undefined) {
+			throw log.notifyError('Failed to retrieve org of current user from Rewst');
 		}
+
+		if (user?.allManagedOrgs === undefined) {
+			throw log.notifyError('Failed to retrieve managed orgs of current user from Rewst');
+		}
+
+		const org: Org = {
+			id: user.organization?.id ?? '',
+			name: user.organization?.name ?? ''
+		};
+
+		const allManagedOrgs: Org[] = user.allManagedOrgs.map(o => {
+			return {
+				id: o.id ?? '',
+				name: o.name ?? ''
+			};
+		});
+
 
 		await context.secrets.store(org.id, token);
 		const profile: RewstSessionProfile = {
 			region: regionConfig,
-			orgId: org.id,
-			label: org.name,
-			managedOrgs: managedOrgs,
+			label: `${user.username} (${org.name})`,
+			org: org,
+			allManagedOrgs: allManagedOrgs,
+			user: user
 		};
 		const session = new RewstSession(sdk, profile);
 		await session.refreshToken();
 
-		this.saveNewProfile(session.profile);
+
+		this.saveSession(session);
 
 		return session;
 	}
@@ -68,7 +84,7 @@ class RewstSessionManager {
 	}
 
 	async getProfileSession(profile: RewstSessionProfile): Promise<RewstSession> {
-		return this.getOrgSession(profile.orgId, new URL(profile.region.loginUrl));
+		return this.getOrgSession(profile.org.id, new URL(profile.region.loginUrl));
 	}
 
 	async getOrgSession(orgId: string, baseURL: URL): Promise<RewstSession> {
@@ -83,13 +99,11 @@ class RewstSessionManager {
 				continue;
 			}
 
-			if (session.profile.orgId === orgId) {
+			if (session.profile.org.id === orgId) {
 				return session;
 			}
 
-			if (orgId in session.profile.managedOrgs.keys()) {
-				return session;
-			}
+			// make a call to the org and check if this has access
 		}
 
 		throw log.error(`No active session found with access to org '${orgId}' in region '${baseURL.host}'`);
@@ -107,8 +121,8 @@ class RewstSessionManager {
 
 	private newProfiles(): RewstSessionProfile[] {
 		const profiles = this.getSavedProfiles();
-		const existing = this.profiles.map(p => JSON.stringify(p));
-		return profiles.filter(f => !existing.includes(JSON.stringify(f)));
+		const existing = Array.from(this.sessionMap.values()).map(s => s.profile.user.id ?? '');
+		return profiles.filter(f => !existing.includes(f.user.id ?? ''));
 	}
 
 	async loadSessions(): Promise<RewstSession[]> {
@@ -116,34 +130,30 @@ class RewstSessionManager {
 
 		const resultsPromises = newProfiles.map(async profile => {
 			try {
-				return await this.createSession(await RewstSession.getToken(profile.orgId));
+				return await this.createSession(await RewstSession.getToken(profile.org.id));
 			} catch (err) {
-				log.error(`Failed to create client for ${profile.orgId}: ${err}`);
+				log.error(`Failed to create client for ${profile.org.id}: ${err}`);
 				return undefined;
 			}
 		});
 
-		const results = await Promise.all(resultsPromises);
+		await Promise.all(resultsPromises);
 
-		const sessions = results.filter((c): c is RewstSession => c !== undefined);
-		log.info(`Successfully loaded ${sessions.length} sessions`);
+		return Array.from(this.sessionMap.values());
 
-		this.sessions = this.sessions.concat(sessions);
-		this.profiles = this.sessions.map(s => s.profile);
-		this.saveProfiles(this.profiles);
-		// only keep track of open session profiles
-
-		return this.sessions;
 	}
 
-	private saveProfiles(profiles: RewstSessionProfile[]) {
-		context.globalState.update('RewstSessionProfiles', profiles);
+	private saveProfiles() {
+		context.globalState.update('RewstSessionProfiles', Array.from(this.sessionMap.values()).map(s => s.profile));
 	}
 
-	private saveNewProfile(profile: RewstSessionProfile) {
-		const profiles = this.getSavedProfiles();
+	private saveSession(session: RewstSession) {
+		if (typeof session.profile.user.id !== 'string') {
+			throw log.error(`Session user doesn't have an id, this should always exist`);
+		}
 
-		context.globalState.update('RewstSessionProfiles', profiles.concat(profile));
+		this.sessionMap.set(session.profile.user.id, session);
+		this.saveProfiles();
 	}
 
 	private getSavedProfiles(): RewstSessionProfile[] {
@@ -151,7 +161,7 @@ class RewstSessionManager {
 	}
 
 	public clearProfiles() {
-		context.globalState.update('RewstSessionProfiles', {});
+		context.globalState.update('RewstSessionProfiles', []);
 	}
 }
 

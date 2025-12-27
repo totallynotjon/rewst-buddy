@@ -1,0 +1,6 @@
+fragment org on Organization {
+	id!
+	name!
+}
+
+

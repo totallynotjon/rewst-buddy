@@ -6,7 +6,7 @@ import vscode from 'vscode';
 export const linkButton: vscode.StatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
 export const syncButton: vscode.StatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
 
-linkButton.command = 'rewst-buddy.LinkTemplate';
+linkButton.command = 'rewst-buddy.LinkTemplateInteractive';
 linkButton.text = '$(link) Link Template';
 
 syncButton.command = 'rewst-buddy.SyncTemplate';

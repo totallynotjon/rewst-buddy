@@ -16,8 +16,7 @@ fragment template on Template {
 	updatedAt
 	updatedById
 	organization {
-		id
-		name
+		...org
 	}
 	tags {
 		id
