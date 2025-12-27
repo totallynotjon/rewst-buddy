@@ -4,6 +4,22 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.13.1] - 2025-12-26
+
+### Fixed
+- **Sync Re-entry Loop**: Fixed issue where downloading remote template during conflict resolution would trigger another sync when save-on-sync is enabled
+  - Added re-entry guard using `syncingUris` Set to prevent concurrent syncs on same document
+  - Prevents unnecessary API calls and potential race conditions
+  - Resolves both save-on-sync and manual sync dirty-document-save paths
+
+### Changed
+- **Code Structure**: Refactored `TemplateSyncManager.syncTemplate()` for better readability and maintainability
+  - Extracted `syncTemplateInternal()` for core sync orchestration
+  - Extracted `fetchRemoteTemplate()` for remote API calls
+  - Extracted `handleConflict()` for user conflict resolution prompts
+  - Extracted `downloadAndApplyRemote()` for applying remote content
+  - Each method now has single, focused responsibility
+
 ## [0.13.0] - 2025-12-26
 
 ### Added
