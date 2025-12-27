@@ -1,10 +1,10 @@
 import { SessionManager } from '@client';
 import { log } from '@log';
 import vscode from 'vscode';
-import TemplateLinkManager from './TemplateLinkManager';
+import { TemplateLinkManager } from './TemplateLinkManager';
 
-export default class TemplateSyncManager {
-	public static async updateTemplateBody(doc: vscode.TextDocument) {
+export const TemplateSyncManager = new (class TemplateSyncManager {
+	async updateTemplateBody(doc: vscode.TextDocument) {
 		const link = TemplateLinkManager.getLink(doc.uri);
 
 		const session = await SessionManager.getProfileSession(link.sessionProfile);
@@ -22,7 +22,7 @@ export default class TemplateSyncManager {
 
 			link.template = response.template;
 
-			TemplateLinkManager.saveLink(link);
+			TemplateLinkManager.addLink(link).save();
 
 			log.info('Saved updated info to template');
 		} catch {
@@ -30,7 +30,7 @@ export default class TemplateSyncManager {
 		}
 	}
 
-	public static async syncTemplate(doc: vscode.TextDocument) {
+	async syncTemplate(doc: vscode.TextDocument) {
 		if (doc.isUntitled) {
 			throw log.error('Attempting sync before document is titled/saved to disk. This should be impossible.');
 		}
@@ -65,7 +65,7 @@ export default class TemplateSyncManager {
 		log.debug(`Rewst: ${rewstUpdatedAt}`);
 
 		if (link.template.updatedAt.localeCompare(rewstUpdatedAt) === 0) {
-			await TemplateSyncManager.updateTemplateBody(doc);
+			await this.updateTemplateBody(doc);
 		} else {
 			log.info(`Rewst and last update of local template are out of sync need to remediate before push`);
 
@@ -79,7 +79,7 @@ export default class TemplateSyncManager {
 
 			switch (choice) {
 				case 'Force Override':
-					await TemplateSyncManager.updateTemplateBody(doc);
+					await this.updateTemplateBody(doc);
 					break;
 				case 'Download Latest':
 					editor.replace(
@@ -89,11 +89,11 @@ export default class TemplateSyncManager {
 					);
 					await vscode.workspace.applyEdit(editor);
 
-					TemplateLinkManager.saveLink({
+					await TemplateLinkManager.addLink({
 						sessionProfile: session.profile,
 						template: response.template,
 						uriString: doc.uri.toString(),
-					});
+					}).save();
 
 					if ((await vscode.workspace.save(doc.uri)) === undefined) {
 						throw log.error('Failed to save downloaded template to active editor');
@@ -106,4 +106,4 @@ export default class TemplateSyncManager {
 			log.debug('User choice:', choice);
 		}
 	}
-}
+})();

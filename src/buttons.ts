@@ -13,7 +13,7 @@ syncButton.command = 'rewst-buddy.SyncTemplate';
 syncButton.text = '$(sync) Sync Template';
 
 async function checkVisibility(e: vscode.TextEditor | undefined) {
-	log.debug('Editor change');
+	log.debug('Editor change', e);
 	if (e === undefined) {
 		linkButton.hide();
 		syncButton.hide();
@@ -34,11 +34,10 @@ async function checkVisibility(e: vscode.TextEditor | undefined) {
 export async function activateButtons() {
 	context.subscriptions.push(linkButton);
 	context.subscriptions.push(syncButton);
-	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(checkVisibility));
 
-	await checkVisibility(vscode.window.activeTextEditor);
+	await updateButtonVisibility();
 }
 
-export async function updateButtonVisibility() {
-	await checkVisibility(vscode.window.activeTextEditor);
+export async function updateButtonVisibility(e?: vscode.TextEditor | undefined) {
+	await checkVisibility(e ?? vscode.window.activeTextEditor);
 }

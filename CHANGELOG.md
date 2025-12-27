@@ -4,6 +4,42 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.13.0] - 2025-12-26
+
+### Added
+- **File Rename Support**: Template links now automatically update when files or folders are renamed/moved
+  - Automatic detection of file and folder rename operations
+  - Recursive update of all child template links when folders are renamed
+  - Preserves template associations across file system operations
+- **In-Memory Link Caching**: Improved performance with lazy-loaded link map
+  - Links loaded on-demand and cached in memory
+  - Reduced redundant storage reads
+  - `loadIfNotAlready()` pattern for efficient initialization
+
+### Changed
+- **Singleton Architecture**: Converted managers to singleton pattern for better resource management
+  - `TemplateLinkManager` now singleton instance instead of static class
+  - `TemplateSyncManager` now singleton instance instead of static class
+  - Improved method chaining support
+- **Batch Operations**: Optimized link operations to reduce storage writes
+  - Single save operation for batch link updates
+  - Deferred saves for rename operations
+- **Button Visibility**: Improved status bar button update logic
+  - Editor parameter support in `updateButtonVisibility()`
+  - More efficient visibility checks
+
+### Fixed
+- **Race Conditions**: Eliminated multiple race conditions in rename handling
+  - Fixed parallel save conflicts during batch folder renames
+  - Added proper error boundaries around rename event handlers
+- **Error Handling**: Improved error handling for edge cases
+  - Graceful handling of missing links during rename operations
+  - Individual error handling for each rename operation in batch
+  - Top-level error boundary prevents extension crashes
+- **Path Transformations**: Fixed edge cases in URI path manipulation
+  - Explicit prefix replacement instead of string replace
+  - Proper handling of nested path segments
+
 ## [0.12.1] - 2025-12-26
 
 ### Added

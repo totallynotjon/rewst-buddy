@@ -43,10 +43,10 @@ export class OpenTemplate extends GenericCommand {
 			return;
 		}
 
-		TemplateLinkManager.saveLink({
+		await TemplateLinkManager.addLink({
 			sessionProfile: session.profile,
 			template: response.template,
 			uriString: resultUri.toString(),
-		});
+		}).save();
 	}
 }

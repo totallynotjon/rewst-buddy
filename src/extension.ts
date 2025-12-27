@@ -1,13 +1,12 @@
-import { activateButtons } from '@buttons';
+import { activateButtons, updateButtonVisibility } from '@buttons';
 import { SessionManager } from '@client';
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
 import { log } from '@log';
-import { SaveHandler } from '@models';
+import { RenameHandler, SaveHandler } from '@models';
 import vscode from 'vscode';
 
 export async function activate(context: vscode.ExtensionContext) {
-
 	globalVSContext.init(context);
 
 	log.init(context);
@@ -21,6 +20,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	CommandInitiater.registerCommands();
 
 	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(SaveHandler));
+
+	context.subscriptions.push(vscode.workspace.onDidRenameFiles(RenameHandler));
+
+	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(updateButtonVisibility));
 
 	log.info(`Finished activation of extension ${extPrefix}`);
 }

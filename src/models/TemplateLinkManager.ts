@@ -3,46 +3,78 @@ import { log } from '@log';
 import vscode from 'vscode';
 import TemplateLink from './TemplateLink';
 
-export default class TemplateLinkManager {
-	static async clearTemplateLinks() {
-		await context.globalState.update(TemplateLinkManager.stateKey, []);
-	}
-	static stateKey = 'RewstTemplateLinks';
+export const TemplateLinkManager = new (class TemplateLinkManager {
+	readonly stateKey = 'RewstTemplateLinks';
+	linkMap = new Map<string, TemplateLink>();
+	loaded = false;
 
-	public static saveLink(link: TemplateLink) {
-		if (link.uriString === 'untitled:Untitled-1') {
-			log.notifyError("Can't link to unsaved document");
-			return;
-		}
-		const links = TemplateLinkManager.getLinks()
-			.filter(l => l.uriString !== link.uriString)
-			.concat(link);
-
-		context.globalState.update(TemplateLinkManager.stateKey, links);
-
-		log.debug('Saved new link:', link);
+	async clearTemplateLinks(): Promise<TemplateLinkManager> {
+		await context.globalState.update(this.stateKey, []);
+		this.linkMap.clear();
+		return this;
 	}
 
-	public static getLinks(): TemplateLink[] {
-		return context.globalState.get<TemplateLink[]>(TemplateLinkManager.stateKey) ?? [];
+	removeLink(uriString: string): TemplateLinkManager {
+		this.linkMap.delete(uriString);
+		return this;
 	}
 
-	public static isLinked(uri: vscode.Uri): boolean {
-		try {
-			TemplateLinkManager.getLink(uri);
-			return true;
-		} catch {
-			return false;
-		}
+	addLink(link: TemplateLink): TemplateLinkManager {
+		this.linkMap.set(link.uriString, link);
+		return this;
 	}
 
-	public static getLink(uri: vscode.Uri): TemplateLink {
-		const links = TemplateLinkManager.getLinks();
+	moveLink(oldUriString: string, newUriString: string): TemplateLinkManager {
+		const link = this.linkMap.get(oldUriString);
+		if (link === undefined) throw log.error(`Tried to move a link that doesn't exist`, oldUriString, newUriString);
+
+		link.uriString = newUriString;
+
+		this.removeLink(oldUriString).addLink(link);
+
+		log.trace(`Move processed for  (${oldUriString} => (${newUriString}) `);
+
+		return this;
+	}
+
+	async save(): Promise<TemplateLinkManager> {
+		const links: TemplateLink[] = Array.from(this.linkMap.values());
+		await context.globalState.update(this.stateKey, links);
+		return this;
+	}
+
+	loadLinks(): TemplateLinkManager {
+		const links = context.globalState.get<TemplateLink[]>(this.stateKey) ?? [];
+		this.linkMap.clear();
+
 		for (const link of links) {
-			if (link.uriString === uri.toString()) {
-				return link;
-			}
+			this.addLink(link);
 		}
-		throw log.error(`Could not find link for uri ${uri.toString()}`);
+		this.loaded = true;
+		return this;
 	}
-}
+
+	loadIfNotAlready(): TemplateLinkManager {
+		if (!this.loaded) this.loadLinks();
+		return this;
+	}
+
+	isLinked(uri: vscode.Uri): boolean {
+		this.loadIfNotAlready();
+		return this.linkMap.has(uri.toString());
+	}
+
+	getLink(uri: vscode.Uri): TemplateLink {
+		this.loadIfNotAlready();
+		const link = this.linkMap.get(uri.toString());
+
+		if (link === undefined) throw log.error(`Could not find link for uri ${uri.toString()}`);
+
+		return link;
+	}
+
+	getAllUris(): string[] {
+		this.loadIfNotAlready();
+		return Array.from(this.linkMap.keys());
+	}
+})();

@@ -2,13 +2,13 @@
 {
 	"files.exclude": {
 		"out": false, // set this to true to hide the "out" folder with the compiled JS files
-		"node_modules" : true,
-		"dist" : true,
+		"node_modules": true,
+		"dist": true
 	},
 	"search.exclude": {
 		"out": true, // set this to false to include "out" folder in search results
-		"node_modules" : true,
-		"dist" : true,
+		"node_modules": true,
+		"dist": true
 	},
 	// Turn off tsc task auto detection since we have the necessary tasks as npm scripts
 	"typescript.tsc.autoDetect": "off",
@@ -26,7 +26,7 @@
 	},
 	// Language-specific settings
 	"[typescript]": {
-		"editor.defaultFormatter": "esbenp.prettier-vscode"
+		"editor.defaultFormatter": "vscode.typescript-language-features"
 	},
 	"[javascript]": {
 		"editor.defaultFormatter": "esbenp.prettier-vscode"

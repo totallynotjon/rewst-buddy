@@ -60,11 +60,11 @@ export class LinkTemplate extends GenericCommand {
 		template.body = editor.document.getText();
 		template.updatedAt = '0';
 
-		TemplateLinkManager.saveLink({
+		await TemplateLinkManager.addLink({
 			sessionProfile: session.profile,
 			template: template,
 			uriString: editor.document.uri.toString(),
-		});
+		}).save();
 
 		await updateButtonVisibility();
 
