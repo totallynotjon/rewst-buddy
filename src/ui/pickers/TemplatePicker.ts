@@ -7,21 +7,17 @@ import { pickOrganization } from './OrganizationPicker';
 import { pickSession } from './SessionPicker';
 
 export interface TemplatePick {
-	session: RewstSession,
-	org: Org,
-	template: TemplateFragment
-};
+	session: RewstSession;
+	org: Org;
+	template: TemplateFragment;
+}
 
 export async function pickTemplate(session?: RewstSession, org?: Org): Promise<TemplatePick | undefined> {
-
-	if (!session)
-		session = await pickSession();
+	if (!session) session = await pickSession();
 	if (!session) return undefined;
 
-	if (!org)
-		org = (await pickOrganization(session))?.org;
+	if (!org) org = (await pickOrganization(session))?.org;
 	if (!org) return undefined;
-
 
 	const response = await session.sdk?.listTemplatesMinimal({ orgId: org.id });
 	const templates = response?.templates ?? [];
@@ -51,6 +47,6 @@ export async function pickTemplate(session?: RewstSession, org?: Org): Promise<T
 	return {
 		org: org,
 		session: session,
-		template: picked?.template
+		template: picked?.template,
 	};
 }

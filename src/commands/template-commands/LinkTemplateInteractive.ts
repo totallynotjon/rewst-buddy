@@ -40,7 +40,6 @@ export class LinkTemplateInteractive extends GenericCommand {
 			);
 		}
 
-
 		const templatePick = await pickTemplate();
 		if (!templatePick) return;
 		const session = templatePick.session;

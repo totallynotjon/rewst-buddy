@@ -9,7 +9,6 @@ export class OpenTemplateInteractive extends GenericCommand {
 	commandName = 'OpenTemplateInteractive';
 
 	async execute(...args: unknown[]): Promise<void> {
-
 		const pick = await pickTemplate();
 		if (!pick) return;
 
@@ -18,9 +17,7 @@ export class OpenTemplateInteractive extends GenericCommand {
 
 		const response = await session.sdk?.getTemplate({ id: template.id });
 		if (response?.template === undefined || response?.template === null) {
-			throw log.error(
-				`Could not find template with id '${template.id}' under organization '${pick.org.name}'`,
-			);
+			throw log.error(`Could not find template with id '${template.id}' under organization '${pick.org.name}'`);
 		}
 
 		const content = response.template?.body ?? '';

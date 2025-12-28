@@ -41,16 +41,15 @@ class RewstSessionManager {
 
 		const org: Org = {
 			id: user.organization?.id ?? '',
-			name: user.organization?.name ?? ''
+			name: user.organization?.name ?? '',
 		};
 
 		const allManagedOrgs: Org[] = user.allManagedOrgs.map(o => {
 			return {
 				id: o.id ?? '',
-				name: o.name ?? ''
+				name: o.name ?? '',
 			};
 		});
-
 
 		await context.secrets.store(org.id, token);
 		const profile: RewstSessionProfile = {
@@ -58,11 +57,10 @@ class RewstSessionManager {
 			label: `${user.username} (${org.name})`,
 			org: org,
 			allManagedOrgs: allManagedOrgs,
-			user: user
+			user: user,
 		};
 		const session = new RewstSession(sdk, profile);
 		await session.refreshToken();
-
 
 		this.saveSession(session);
 
@@ -140,11 +138,13 @@ class RewstSessionManager {
 		await Promise.all(resultsPromises);
 
 		return Array.from(this.sessionMap.values());
-
 	}
 
 	private saveProfiles() {
-		context.globalState.update('RewstSessionProfiles', Array.from(this.sessionMap.values()).map(s => s.profile));
+		context.globalState.update(
+			'RewstSessionProfiles',
+			Array.from(this.sessionMap.values()).map(s => s.profile),
+		);
 	}
 
 	private saveSession(session: RewstSession) {
