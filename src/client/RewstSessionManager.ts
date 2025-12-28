@@ -2,6 +2,7 @@ import { context } from '@global';
 import { log } from '@log';
 import { Org } from '@models';
 import vscode from 'vscode';
+import CookieString from './CookeString';
 import RewstSession from './RewstSession';
 import RewstSessionProfile from './RewstSessionProfile';
 
@@ -11,19 +12,23 @@ class RewstSessionManager {
 	async createFromProfile(profile: RewstSessionProfile): Promise<RewstSession> {
 		let session = new RewstSession(undefined, profile);
 		try {
-			session = await this.createSession(await session.getToken());
+			session = await this.createSession(await session.getCookies());
 		} catch {
 			log.info('Rewst session could not be loaded from profile');
 		}
 		return session;
 	}
 
-	async createSession(token?: string): Promise<RewstSession> {
-		if (!token) {
-			token = await this.getTokenForCreation();
-		}
+	async createSession(cookies?: string): Promise<RewstSession> {
+		let sdk;
+		let regionConfig;
 
-		const [sdk, regionConfig] = await RewstSession.newSdk(token);
+		if (cookies === undefined) {
+			const token = await this.getTokenForCreation();
+			[sdk, regionConfig] = await RewstSession.newSdk(token);
+		} else {
+			[sdk, regionConfig] = await RewstSession.newSdk(undefined, new CookieString(cookies));
+		}
 
 		const response = await sdk.User();
 		const user = response.user;
@@ -51,7 +56,6 @@ class RewstSessionManager {
 			};
 		});
 
-		await context.secrets.store(org.id, token);
 		const profile: RewstSessionProfile = {
 			region: regionConfig,
 			label: `${user.username} (${org.name})`,
@@ -60,9 +64,17 @@ class RewstSessionManager {
 			user: user,
 		};
 		const session = new RewstSession(sdk, profile);
-		await session.refreshToken();
 
 		this.saveSession(session);
+
+		try {
+			await session.refreshToken();
+		} catch {
+			log.error(
+				`Failed to refresh token for new session. This is strange and probably shouldn't happen. Something might be going wrong in the refresh method.`,
+				session.profile.label,
+			);
+		}
 
 		return session;
 	}
@@ -128,7 +140,7 @@ class RewstSessionManager {
 
 		const resultsPromises = newProfiles.map(async profile => {
 			try {
-				return await this.createSession(await RewstSession.getToken(profile.org.id));
+				return await this.createSession(await RewstSession.getCookies(profile.org.id));
 			} catch (err) {
 				log.error(`Failed to create client for ${profile.org.id}: ${err}`);
 				return undefined;
@@ -162,6 +174,7 @@ class RewstSessionManager {
 
 	public clearProfiles() {
 		context.globalState.update('RewstSessionProfiles', []);
+		this.sessionMap.clear();
 	}
 }
 

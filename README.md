@@ -61,17 +61,34 @@ Template links now automatically update when you rename or move files:
 No more broken links when reorganizing your workspace.
 
 
+### Session Receiver Server (v0.15)
+A local HTTP server that can receive session cookies from a browser extension, eliminating the need to manually copy/paste cookies.
+
+**How it works:**
+1. Server listens on `127.0.0.1:27121` (localhost only for security)
+2. Browser extension sends your Rewst cookies to the server
+3. Session is created automatically in VS Code
+
+**Configuration:**
+```json
+{
+  "rewst-buddy.server.enabled": true,
+  "rewst-buddy.server.port": 27121,
+  "rewst-buddy.server.host": "127.0.0.1"
+}
+```
+
+The server is enabled by default. Use `Start Server` / `Stop Server` commands for manual control.
+
 ### Planned Features
 
 **Template Creation**
 - Create new templates directly from VS Code
 - Save local files as new Rewst templates with one button
 
-**Browser Extension Integration**
-- Accept session tokens via URI protocol
-- Background server for constant connectivity
-- Browser extension that automatically shares Rewst cookies
-- One-click setup from browser
+**Browser Extension**
+- Browser extension that automatically sends Rewst cookies to the session receiver
+- One-click session setup from browser
 
 **Bulk Operations**
 - Pull all templates from organization to local folder
@@ -99,6 +116,10 @@ Access via Command Palette (Cmd/Ctrl + Shift + P):
 **Sync & Maintenance**
 - `Sync Template` - Push changes with conflict detection
 - `Clear Template Links` - Remove all file-to-template associations
+
+**Server**
+- `Start Server` - Start the session receiver server
+- `Stop Server` - Stop the session receiver server
 
 ### Status Bar Buttons
 - **Link Template** - Appears when editor is open and file is not linked

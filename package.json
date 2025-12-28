@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.14.1",
+	"version": "0.15.0",
 	"engines": {
 		"vscode": "^1.107.0"
 	},
@@ -76,6 +76,23 @@
 					"type": "boolean",
 					"default": true,
 					"description": "Enable Sync on Save."
+				},
+				"rewst-buddy.server.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Enable the local HTTP server to receive session tokens from browser extensions"
+				},
+				"rewst-buddy.server.port": {
+					"type": "number",
+					"default": 27121,
+					"minimum": 1024,
+					"maximum": 65535,
+					"description": "Port number for the local HTTP server (default: 27121)"
+				},
+				"rewst-buddy.server.host": {
+					"type": "string",
+					"default": "127.0.0.1",
+					"description": "Host address to bind the server (default: 127.0.0.1 for localhost-only access)"
 				}
 			}
 		},
@@ -120,6 +137,14 @@
 			{
 				"command": "rewst-buddy.ClearTemplateLinks",
 				"title": "Rewst Buddy: Clear Template Links"
+			},
+			{
+				"command": "rewst-buddy.StartServer",
+				"title": "Rewst Buddy: Start Server"
+			},
+			{
+				"command": "rewst-buddy.StopServer",
+				"title": "Rewst Buddy: Stop Server"
 			}
 		],
 		"views": {},

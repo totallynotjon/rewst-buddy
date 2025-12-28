@@ -17,7 +17,8 @@
 			"@log": ["log"],
 			"@global": ["global-context/index.ts"],
 			"@buttons": ["buttons.ts"],
-			"@ui": ["ui/index.ts"]
+			"@ui": ["ui/index.ts"],
+			"@server": ["server/index.ts"]
 		},
 		"sourceMap": true,
 		"strict": true,
@@ -36,7 +37,7 @@
 		"synchronousWatchDirectory": true,
 		// Finally, two additional settings for reducing the amount of possible
 		// files to track  work from these directories
-		"excludeDirectories": ["**/node_modules", "dist"],
+		"excludeDirectories": ["**/node_modules", "dist", ".LOCAL"],
 		"excludeFiles": []
 	}
 }

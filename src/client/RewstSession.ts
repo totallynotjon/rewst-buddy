@@ -3,6 +3,7 @@ import { log } from '@log';
 import { getSdk, Sdk, SdkFunctionWrapper } from '@sdk';
 import { GraphQLClient } from 'graphql-request';
 import vscode from 'vscode';
+import CookieString from './CookeString';
 import { getRegionConfigs, RegionConfig } from './RegionConfig';
 import RewstSessionProfile from './RewstSessionProfile';
 import { createRetryWrapper } from './wrappers';
@@ -33,12 +34,12 @@ export default class RewstSession {
 		this.secrets = context.secrets;
 	}
 
-	private static newSdkAtRegion(token: string, config: RegionConfig): Sdk {
+	private static newSdkAtRegion(cookieString: CookieString, config: RegionConfig): Sdk {
 		const client = new GraphQLClient(config.graphqlUrl, {
 			errorPolicy: 'all',
 			method: 'POST',
 			headers: () => ({
-				cookie: `${config.cookieName}=${token}`,
+				cookie: cookieString.value,
 			}),
 		});
 
@@ -47,15 +48,24 @@ export default class RewstSession {
 		return sdk;
 	}
 
-	public static async newSdk(token: string): Promise<[Sdk, RegionConfig]> {
+	public static async newSdk(token?: string, cookieString?: CookieString): Promise<[Sdk, RegionConfig]> {
+		if (cookieString === undefined && token === undefined) {
+			throw log.error('Must provide a token or set of cookies to make a new sdk');
+		}
+
 		const configs = getRegionConfigs();
 		let sdk;
 		let myConfig;
 		for (const config of configs) {
-			sdk = RewstSession.newSdkAtRegion(token, config);
-			if (await RewstSession.validateSdk(sdk)) {
-				myConfig = config;
-				break;
+			const cookies = cookieString ?? CookieString.fromToken(token ?? '', config);
+			sdk = RewstSession.newSdkAtRegion(cookies, config);
+			try {
+				if (await RewstSession.validateSdk(sdk)) {
+					myConfig = config;
+					break;
+				}
+			} catch {
+				log.trace(`Couldn't init for region ${config.name}`);
 			}
 		}
 		if (!sdk || !myConfig) {
@@ -100,12 +110,12 @@ export default class RewstSession {
 	public async refreshToken() {
 		const config = this.profile.region;
 		try {
-			const oldToken = await this.getToken();
+			const oldCookies = await this.getCookies();
 
 			const response = await fetch(config.loginUrl, {
 				method: 'GET',
 				headers: {
-					cookie: `${config.cookieName}=${oldToken}`,
+					cookie: oldCookies,
 				},
 			});
 
@@ -118,19 +128,12 @@ export default class RewstSession {
 				throw log.notifyError('Token refresh response missing set-cookie header');
 			}
 
-			const cookies = parseCookieString(cookieString);
-			const appSession = cookies[config.cookieName];
-
-			if (typeof appSession !== 'string') {
-				throw log.notifyError('New session token not found in response cookies');
-			}
-
-			const sdk = RewstSession.newSdkAtRegion(appSession, config);
+			const sdk = RewstSession.newSdkAtRegion(new CookieString(cookieString), config);
 			if (!(await RewstSession.validateSdk(sdk))) {
 				throw log.notifyError('Refreshed token failed SDK validation');
 			}
 
-			await this.secrets.store(this.profile.org.id, appSession);
+			await this.secrets.store(this.profile.org.id, cookieString);
 			this.sdk = sdk;
 			log.info(`Successfully refreshed token for ${this.profile.label} ${this.profile.org.id}`);
 		} catch (error) {
@@ -139,7 +142,7 @@ export default class RewstSession {
 		}
 	}
 
-	public static async getToken(orgId: string): Promise<string> {
+	public static async getCookies(orgId: string): Promise<string> {
 		const token = await context.secrets.get(orgId);
 
 		if (typeof token !== 'string') {
@@ -149,7 +152,7 @@ export default class RewstSession {
 		return token;
 	}
 
-	async getToken(): Promise<string> {
-		return await RewstSession.getToken(this.profile.org.id);
+	async getCookies(): Promise<string> {
+		return await RewstSession.getCookies(this.profile.org.id);
 	}
 }

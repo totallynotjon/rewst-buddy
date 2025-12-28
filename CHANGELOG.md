@@ -4,6 +4,42 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.15.0] - 2025-12-28
+
+### Added
+- **Session Receiver Server**: Local HTTP server for receiving session cookies from browser extensions
+  - Listens on configurable port (default: 27121) for JSON requests
+  - Accepts `addSession` requests with cookies to create new sessions automatically
+  - CORS headers enabled for browser extension compatibility
+  - Graceful error handling for port conflicts and permission issues
+
+- **New Commands**:
+  - `Rewst Buddy: Start Server` - Manually start the server
+  - `Rewst Buddy: Stop Server` - Manually stop the server
+
+- **New Configuration Options**:
+  - `rewst-buddy.server.enabled` - Enable/disable the session receiver (default: true)
+  - `rewst-buddy.server.port` - Server port (default: 27121)
+  - `rewst-buddy.server.host` - Server host (default: 127.0.0.1 for localhost-only)
+
+- **Server Lifecycle Management**:
+  - Auto-starts on extension activation if enabled
+  - Auto-stops on extension deactivation
+  - Responds to configuration changes in real-time
+
+### Changed
+- **Cookie Storage Refactor**: Now stores full cookie string instead of just the token
+  - Added `CookieString` class for cookie handling
+  - Renamed `getToken()` to `getCookies()` throughout session management
+  - Token refresh now preserves complete cookie data from server response
+
+- **Session Creation**: Improved error handling during token refresh for new sessions
+
+### Breaking Changes
+- **Stored Session Format Changed**: Sessions stored with previous versions are incompatible
+  - Run `Rewst Buddy: Clear Sessions` to remove old sessions
+  - Re-add sessions using `Rewst Buddy: New Rewst Session` or via the session receiver server
+
 ## [0.14.0] - 2025-12-27
 
 ### Added

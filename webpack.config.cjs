@@ -38,6 +38,7 @@ const config = {
 			'@global': path.resolve(__dirname, 'src/global-context/index.ts'),
 			'@buttons': path.resolve(__dirname, 'src/buttons.ts'),
 			'@ui': path.resolve(__dirname, 'src/ui/index.ts'),
+			'@server': path.resolve(__dirname, 'src/server/index.ts'),
 		},
 		modules: ['node_modules'],
 	},
