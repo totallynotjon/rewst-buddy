@@ -1,15 +1,29 @@
 # rewst-buddy - VS Code Extension
 
+## About
+
+I work with Rewst templates a lot. I made this extension to make it easier to make small tweaks and changes to templates when developing scripts/html in Rewst. Instead of having tabs open in a browser, you can make edits directly to files in your filesystem. This means you can have all the power of vscode while managing your Rewst templates: folders, extensions, git, ai agents editing files, etc.
+
+This works by a 'Link & Sync' methodology. You first 'link' a template to a local file. After a file is linked you can then 'sync' it to Rewst.
+
+Our sync should be even safer than using tabs in your browser. As part of a sync operation, we pull the template and make sure it hasn't been edited since the lastest version we got from Rewst. (In your browser it would just override it).
+
+The extension works by using your Rewst cookies and making the calls to Rewst as if from the browser. Your session is linked from the 'appSession' cookie (or a similar cookie if you are in another region, see [Multi-Region Setup](#multi-region-setup)). (I am planning to make a browser extension to automate this process to make it easier and allow less technical users to not get their cookie over and over).
+
+Since Rewst does not expose API keys for working with GraphQL directly, we do rely on using your cookie locally. This is not stored beyond VSCodes secret storage, and no external calls are made beyond to Rewst. If you have security concerns feel free to audit the codebase and raise any issues.
+
 ## Quick Start
 
 **Everything requires a session first:**
 
 1. Copy your `appSession` cookie from your browser while logged into Rewst
-2. Run command: `Rewst Buddy: New Rewst Session`
-3. Paste your session token when prompted
+2. Run command in VS Code: `Rewst Buddy: New Rewst Session`
+3. Paste your session token
 4. Choose a workflow:
-   - `Open Template from URL` - Open and link a template directly (extension command)
-   - `Link Template` - Link your current file to an existing template (extension command or **Link Template** in bottom left)
+   - `Open Template` - **Browse and select templates** via interactive picker (NEW in v0.14)
+   - `Link Template` - Link your current file by browsing templates interactively
+   - `Open Template from URL` - Open a template directly from a URL
+   - `Link Template from URL` - Link current file using a template URL
 5. Edit the file, then click the **Sync Template** button to push changes
 
 ### Auto-Sync on Save
@@ -30,17 +44,21 @@ When disabled, use the **Sync Template** button or command to manually sync chan
 
 > Note: Auto-sync performs the same safety checks as manual sync, preventing overwrites if the template was modified in Rewst since your last sync.
 
-## About
+### Interactive Template Browsing (v0.14)
+Browse and select templates without needing to copy URLs:
 
-I work with Rewst templates a lot. I made this extension to make it easier to make small tweaks and changes to templates when developing scripts/html in Rewst. Instead of having tabs open in a browser, you can make edits directly to files in your filesystem. This means you can have all the power of vscode while managing your Rewst templates folders, extensions, git, ai agents editing files, etc.
+1. Run `Open Template` or `Link Template` from the command palette
+2. Select your session (auto-selects if you only have one)
+3. Choose your organization
+4. Search and select from your templates list
 
-This works by a 'Link & Sync' methodology. You first 'link' a template to a local file. After a file is linked you can then 'sync' it to Rewst.
+### File Rename Support (v0.13)
+Template links now automatically update when you rename or move files:
+- Rename a linked file → link stays connected
+- Move a file to a different folder → link follows
+- Rename a folder → all child links update recursively
 
-Our sync should be even safer than using tabs in your browser. As part of a sync operation, we pull the template and make sure it hasn't been edited since the lastest version we got from Rewst. (In your browser it would just override it). We let you know and give you some options.
-
-The extension works by using your Rewst cookies and making the calls to Rewst as if you are in the browser. This is retrieved from the 'appSession' cookie from your browser. (I am planning to make a browser extension to automate this process to make it easier and allow less technical users to not get their cookie over and over).
-
-Since Rewst does not expose API keys for working with GraphQL directly, we do rely on using your cookie locally. This is not stored beyond VSCodes secret storage, and no external calls are made beyond to Rewst. If you have security concerns feel free to audit the codebase and raise any issues.
+No more broken links when reorganizing your workspace.
 
 
 ### Planned Features
@@ -48,12 +66,6 @@ Since Rewst does not expose API keys for working with GraphQL directly, we do re
 **Template Creation**
 - Create new templates directly from VS Code
 - Save local files as new Rewst templates with one button
-
-**Smart Re-Linking**
-- Automatic re-linking after file renames/moves
-- Hash-based matching to reconnect templates
-- Content-based matching for reliability
-- Watch VS Code file operations to maintain links
 
 **Browser Extension Integration**
 - Accept session tokens via URI protocol
@@ -71,12 +83,22 @@ Since Rewst does not expose API keys for working with GraphQL directly, we do re
 
 ### Available Commands
 Access via Command Palette (Cmd/Ctrl + Shift + P):
-- `Rewst Buddy: New Rewst Session` - New a new session with token
-- `Rewst Buddy: Clear Sessions` - Remove all saved sessions
-- `Rewst Buddy: Open Template from URL` - Open and link a template directly from URL
-- `Rewst Buddy: Link Template` - Link current editor file to a template
-- `Rewst Buddy: Sync Template` - Sync current file with linked template
-- `Rewst Buddy: Clear Template Links` - Remove all file-to-template associations
+
+**Session Management**
+- `New Rewst Session` - Add a new session with token
+- `Clear Sessions` - Remove all saved sessions
+
+**Template Operations (Interactive)**
+- `Open Template` - Browse and open templates via picker (v0.14)
+- `Link Template` - Link current file via template picker (v0.14)
+
+**Template Operations (URL-based)**
+- `Open Template from URL` - Open a template directly from URL
+- `Link Template from URL` - Link current file using a URL
+
+**Sync & Maintenance**
+- `Sync Template` - Push changes with conflict detection
+- `Clear Template Links` - Remove all file-to-template associations
 
 ### Status Bar Buttons
 - **Link Template** - Appears when editor is open and file is not linked
