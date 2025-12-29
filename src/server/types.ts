@@ -9,6 +9,7 @@ export interface SuccessResponse {
 	success: true;
 	message: string;
 	sessionLabel?: string;
+	orgIds?: string[];
 }
 
 export interface ErrorResponse {

@@ -47,10 +47,16 @@ export async function handleAddSession(
 
 		if (await session.validate()) {
 			log.notifyInfo(`Session created via server: '${session.profile.label}'`);
+			// Collect all org IDs (current org + all managed orgs)
+			const allOrgIds = [
+				session.profile.org.id,
+				...session.profile.allManagedOrgs.map(org => org.id),
+			];
 			sendResponse(res, 200, {
 				success: true,
 				message: 'Session created successfully',
 				sessionLabel: session.profile.label,
+				orgIds: allOrgIds,
 			});
 		} else {
 			sendResponse(res, 400, {

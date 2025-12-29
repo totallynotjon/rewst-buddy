@@ -4,6 +4,20 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.15.1] - 2025-12-29
+
+### Fixed
+- **Session persistence**: Cookies are now properly stored in VS Code secrets when creating a session, ensuring sessions can be refreshed without re-authentication
+
+### Changed
+- **API response enhancement**: The `addSession` endpoint now returns all organization IDs (current org + managed orgs) in the response to prevent unnecessary reprocessing when navigating between organizations
+
+### Technical Details
+- Modified `RewstSession.newSdk()` to return the `CookieString` alongside the SDK and region config (src/client/RewstSession.ts:51)
+- Updated `RewstSessionManager.createSession()` to store cookies in VS Code secrets using `context.secrets.store()` (src/client/RewstSessionManager.ts:70)
+- Enhanced `SuccessResponse` interface to include optional `orgIds` field (src/server/types.ts:12)
+- Added logic in session handler to collect and return all org IDs (current + managed) in the response (src/server/handlers.ts:50-58)
+
 ## [0.15.0] - 2025-12-28
 
 ### Added

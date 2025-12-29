@@ -48,31 +48,25 @@ export default class RewstSession {
 		return sdk;
 	}
 
-	public static async newSdk(token?: string, cookieString?: CookieString): Promise<[Sdk, RegionConfig]> {
+	public static async newSdk(token?: string, cookieString?: CookieString): Promise<[Sdk, RegionConfig, CookieString]> {
 		if (cookieString === undefined && token === undefined) {
 			throw log.error('Must provide a token or set of cookies to make a new sdk');
 		}
 
 		const configs = getRegionConfigs();
-		let sdk;
-		let myConfig;
+
 		for (const config of configs) {
 			const cookies = cookieString ?? CookieString.fromToken(token ?? '', config);
-			sdk = RewstSession.newSdkAtRegion(cookies, config);
+			const sdk = RewstSession.newSdkAtRegion(cookies, config);
 			try {
 				if (await RewstSession.validateSdk(sdk)) {
-					myConfig = config;
-					break;
+					return [sdk, config, cookies];
 				}
 			} catch {
 				log.trace(`Couldn't init for region ${config.name}`);
 			}
 		}
-		if (!sdk || !myConfig) {
-			throw log.notifyError('Could not initialize session with any known region. Did you enter a valid cookie?');
-		}
-
-		return [sdk, myConfig];
+		throw log.notifyError('Could not initialize session with any known region. Did you enter a valid cookie?');
 	}
 
 	private static getWrapper(): SdkFunctionWrapper | undefined {

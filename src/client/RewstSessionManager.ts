@@ -22,10 +22,12 @@ class RewstSessionManager {
 	async createSession(cookies?: string): Promise<RewstSession> {
 		let sdk;
 		let regionConfig;
+		let cookieString;
 
 		if (cookies === undefined) {
 			const token = await this.getTokenForCreation();
-			[sdk, regionConfig] = await RewstSession.newSdk(token);
+			[sdk, regionConfig, cookieString] = await RewstSession.newSdk(token);
+			cookies = cookieString.value;
 		} else {
 			[sdk, regionConfig] = await RewstSession.newSdk(undefined, new CookieString(cookies));
 		}
@@ -65,6 +67,7 @@ class RewstSessionManager {
 		};
 		const session = new RewstSession(sdk, profile);
 
+		await context.secrets.store(org.id, cookies);
 		this.saveSession(session);
 
 		try {
