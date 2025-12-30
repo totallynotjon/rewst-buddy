@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.18.1",
+	"version": "0.19.0",
 	"engines": {
 		"vscode": "^1.107.0"
 	},
@@ -98,56 +98,70 @@
 		},
 		"commands": [
 			{
-				"command": "rewst-buddy.NewSession",
+				"command": "rewst-buddy.prefix.NewSession",
 				"title": "Rewst Buddy: New Rewst Session",
 				"icon": "$(plus)"
 			},
 			{
-				"command": "rewst-buddy.CreateTemplate",
+				"command": "rewst-buddy.prefix.CreateTemplate",
 				"title": "Rewst Buddy: Create Template",
 				"icon": "$(file-add)"
 			},
 			{
-				"command": "rewst-buddy.SyncTemplate",
+				"command": "rewst-buddy.prefix.SyncTemplate",
 				"title": "Rewst Buddy: Sync Template",
 				"icon": "$(sync)"
 			},
 			{
-				"command": "rewst-buddy.LinkTemplateFromURL",
-				"title": "Rewst Buddy: Link Template from URL",
+				"command": "rewst-buddy.SyncTemplate",
+				"title": "Sync Template",
+				"icon": "$(sync)"
+			},
+			{
+				"command": "rewst-buddy.prefix.LinkTemplateFromURL",
+				"title": "Rewst Buddy: Link File to Template from URL",
+				"icon": "$(link-external)"
+			},
+			{
+				"command": "rewst-buddy.prefix.LinkTemplateInteractive",
+				"title": "Rewst Buddy: Link File to Template",
 				"icon": "$(link-external)"
 			},
 			{
 				"command": "rewst-buddy.LinkTemplateInteractive",
-				"title": "Rewst Buddy: Link Template",
+				"title": "Link File to Template",
 				"icon": "$(link-external)"
 			},
 			{
-				"command": "rewst-buddy.ClearSessions",
+				"command": "rewst-buddy.prefix.ClearSessions",
 				"title": "Rewst Buddy: Clear Sessions"
 			},
 			{
-				"command": "rewst-buddy.OpenTemplateFromURL",
+				"command": "rewst-buddy.prefix.OpenTemplateFromURL",
 				"title": "Rewst Buddy: Open Template from URL"
 			},
 			{
-				"command": "rewst-buddy.OpenTemplateInteractive",
+				"command": "rewst-buddy.prefix.OpenTemplateInteractive",
 				"title": "Rewst Buddy: Open Template"
 			},
 			{
-				"command": "rewst-buddy.UnlinkAllTemplates",
+				"command": "rewst-buddy.prefix.UnlinkAllTemplates",
 				"title": "Rewst Buddy: Unlink All Templates"
 			},
 			{
-				"command": "rewst-buddy.UnlinkTemplate",
-				"title": "Rewst Buddy: Unlink Template"
+				"command": "rewst-buddy.prefix.UnlinkTemplate",
+				"title": "Rewst Buddy: Unlink from Template"
 			},
 			{
-				"command": "rewst-buddy.StartServer",
+				"command": "rewst-buddy.UnlinkTemplate",
+				"title": "Unlink from Template"
+			},
+			{
+				"command": "rewst-buddy.prefix.StartServer",
 				"title": "Rewst Buddy: Start Server"
 			},
 			{
-				"command": "rewst-buddy.StopServer",
+				"command": "rewst-buddy.prefix.StopServer",
 				"title": "Rewst Buddy: Stop Server"
 			}
 		],
@@ -156,11 +170,11 @@
 		"menus": {
 			"commandPalette": [
 				{
-					"command": "rewst-buddy.SyncTemplate",
+					"command": "rewst-buddy.prefix.SyncTemplate",
 					"when": "resourcePath in rewst-buddy.linkedTemplates"
 				},
 				{
-					"command": "rewst-buddy.UnlinkTemplate",
+					"command": "rewst-buddy.prefix.UnlinkTemplate",
 					"when": "resourcePath in rewst-buddy.linkedTemplates"
 				}
 			],

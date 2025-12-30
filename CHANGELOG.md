@@ -4,6 +4,14 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.19.0] - 2025-12-30
+
+### Changed
+- **Command Registration**: Commands now registered with dual IDs for cleaner context menus
+  - Context menu commands show short titles (e.g., "Sync Template", "Link File to Template")
+  - Command palette commands retain "Rewst Buddy:" prefix
+  - Internal change - no user action required
+
 ## [0.18.0] - 2025-12-30
 
 ### Changed

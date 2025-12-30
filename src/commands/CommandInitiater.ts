@@ -12,14 +12,16 @@ export default class CommandInitiater {
 
 		types.forEach(type => {
 			const cmd = createCommand(type);
-			const name = `${extPrefix}.${cmd.commandName}`;
-			log.debug(`Registering command: ${name}`);
-			context.subscriptions.push(
-				vscode.commands.registerCommand(name, async (...args: any[]) => {
-					log.trace(`Executing command ${cmd.commandName} with args:`, args);
-					return await cmd.execute(args);
-				}),
-			);
+
+			[`${extPrefix}.${cmd.commandName}`, `${extPrefix}.prefix.${cmd.commandName}`].forEach(name => {
+				log.trace(name);
+				context.subscriptions.push(
+					vscode.commands.registerCommand(name, async (...args: any[]) => {
+						log.trace(`Executing command ${cmd.commandName} with args:`, args);
+						return await cmd.execute(args);
+					}),
+				);
+			});
 		});
 	}
 }
