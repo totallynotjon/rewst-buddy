@@ -1,4 +1,3 @@
-import { updateButtonVisibility } from '@buttons';
 import { log } from '@log';
 import { TemplateLinkManager } from '@models';
 import vscode from 'vscode';
@@ -18,10 +17,7 @@ export class UnlinkAllTemplates extends GenericCommand {
 			case 'Clear Links':
 				await TemplateLinkManager.clearTemplateLinks().save();
 				log.notifyInfo('Cleared Template Links');
-				updateButtonVisibility();
 				break;
 		}
-
-		await updateButtonVisibility();
 	}
 }

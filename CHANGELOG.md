@@ -4,6 +4,43 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.17.0] - 2025-12-30
+
+### Added
+- **Context Menu Support**: Right-click context menus for template operations in both file explorer and editor
+  - **Sync Template** - Available when right-clicking a linked file
+  - **Link Template** - Available when right-clicking an unlinked file
+  - **Unlink Template** - Available when right-clicking a linked file
+  - Commands appear in their own "z_rewst" group at the bottom of context menus
+  - Uses VS Code's `setContext` API to dynamically track linked template paths
+
+- **Status Bar Tooltip**: Rich markdown tooltip when hovering over the status bar icon
+  - Displays template name and description
+  - Shows organization name
+  - Shows session label and region information
+
+- **Command Palette Filtering**: Sync and Unlink commands now only appear in command palette when relevant
+  - Uses `when` clause to check if current file is a linked template
+  - Reduces command palette clutter for unlinked files
+
+### Changed
+- **Status Bar Refactor**: Replaced dual-button system with unified status bar icon
+  - Single icon shows "Linked" or "Unlinked" status with appropriate icons
+  - Removed separate Link/Sync buttons in favor of context menu actions
+  - Cleaner, less intrusive UI
+
+- **SyncTemplate Command**: Now accepts file URI parameter from context menu
+  - Can sync files directly from file explorer without opening them first
+  - Falls back to active editor when invoked from command palette
+
+### Technical Details
+- Removed `src/buttons.ts` and `@buttons` path alias
+- Added `src/ui/LinkChangeHandler.ts` for unified link state management
+- Added `src/ui/StatusBarIcon.ts` for status bar icon
+- `TemplateLinkManager.getAllUris()` now returns `vscode.Uri[]` instead of strings
+- Added `getAllUriStrings()` method for backward compatibility
+- Context is updated via `setContext('rewst-buddy.linkedTemplates', pathObject)` on every link change
+
 ## [0.16.0] - 2025-12-29
 
 ### Added

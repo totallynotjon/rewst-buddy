@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.16.0",
+	"version": "0.17.0",
 	"engines": {
 		"vscode": "^1.107.0"
 	},
@@ -153,7 +153,52 @@
 		],
 		"views": {},
 		"submenus": [],
-		"menus": {}
+		"menus": {
+			"commandPalette": [
+				{
+					"command": "rewst-buddy.SyncTemplate",
+					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.UnlinkTemplate",
+					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				}
+			],
+			"explorer/context": [
+				{
+					"command": "rewst-buddy.SyncTemplate",
+					"group": "z_rewst",
+					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.LinkTemplateInteractive",
+					"group": "z_rewst",
+					"when": "resourcePath not in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.UnlinkTemplate",
+					"group": "z_rewst",
+					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				}
+			],
+			"editor/context": [
+				{
+					"command": "rewst-buddy.SyncTemplate",
+					"group": "z_rewst",
+					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.LinkTemplateInteractive",
+					"group": "z_rewst",
+					"when": "resourcePath not in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.UnlinkTemplate",
+					"group": "z_rewst",
+					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				}
+			]
+		}
 	},
 	"scripts": {
 		"format:pretty": "prettier --write \"./**/*.{js,jsx,mjs,cjs,ts,tsx,json}\"",

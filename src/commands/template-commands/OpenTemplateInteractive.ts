@@ -1,4 +1,3 @@
-import { updateButtonVisibility } from '@buttons';
 import { log } from '@log';
 import { TemplateLinkManager } from '@models';
 import { pickTemplate } from '@ui';
@@ -44,7 +43,5 @@ export class OpenTemplateInteractive extends GenericCommand {
 			template: response.template,
 			uriString: resultUri.toString(),
 		}).save();
-
-		await updateButtonVisibility();
 	}
 }

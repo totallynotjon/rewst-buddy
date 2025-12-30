@@ -1,4 +1,3 @@
-import { updateButtonVisibility } from '@buttons';
 import { log } from '@log';
 import { TemplateLinkManager } from '@models';
 import vscode from 'vscode';
@@ -21,7 +20,5 @@ export class UnlinkTemplate extends GenericCommand {
 
 		await TemplateLinkManager.removeLink(uri.toString()).save();
 		log.notifyInfo(`SUCCESS: Unlinked template from uri ${uri.toString()}`);
-		await updateButtonVisibility();
-
 	}
 }

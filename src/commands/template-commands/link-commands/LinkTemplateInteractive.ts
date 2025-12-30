@@ -1,4 +1,3 @@
-import { updateButtonVisibility } from '@buttons';
 import { log } from '@log';
 import { TemplateLinkManager } from '@models';
 import { pickTemplate } from '@ui';
@@ -59,8 +58,6 @@ export class LinkTemplateInteractive extends GenericCommand {
 			template: template,
 			uriString: editor.document.uri.toString(),
 		}).save();
-
-		await updateButtonVisibility();
 
 		log.notifyInfo('SUCCESS: Linked template');
 	}

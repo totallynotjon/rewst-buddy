@@ -16,7 +16,6 @@
 			"@sdk": ["graphql_sdk.ts"],
 			"@log": ["log"],
 			"@global": ["global-context/index.ts"],
-			"@buttons": ["buttons.ts"],
 			"@ui": ["ui/index.ts"],
 			"@server": ["server/index.ts"]
 		},

@@ -1,5 +1,6 @@
 import { context } from '@global';
 import { log } from '@log';
+import { LinkChangeHandler } from '@ui';
 import vscode from 'vscode';
 import TemplateLink from './TemplateLink';
 
@@ -39,6 +40,7 @@ export const TemplateLinkManager = new (class TemplateLinkManager {
 	async save(): Promise<TemplateLinkManager> {
 		const links: TemplateLink[] = Array.from(this.linkMap.values());
 		await context.globalState.update(this.stateKey, links);
+		await LinkChangeHandler();
 		return this;
 	}
 
@@ -72,8 +74,13 @@ export const TemplateLinkManager = new (class TemplateLinkManager {
 		return link;
 	}
 
-	getAllUris(): string[] {
+	getAllUriStrings(): string[] {
 		this.loadIfNotAlready();
 		return Array.from(this.linkMap.keys());
+	}
+
+	getAllUris(): vscode.Uri[] {
+		this.loadIfNotAlready();
+		return Array.from(this.linkMap.keys()).map(uri => vscode.Uri.parse(uri));
 	}
 })();

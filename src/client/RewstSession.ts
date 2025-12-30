@@ -48,7 +48,10 @@ export default class RewstSession {
 		return sdk;
 	}
 
-	public static async newSdk(token?: string, cookieString?: CookieString): Promise<[Sdk, RegionConfig, CookieString]> {
+	public static async newSdk(
+		token?: string,
+		cookieString?: CookieString,
+	): Promise<[Sdk, RegionConfig, CookieString]> {
 		if (cookieString === undefined && token === undefined) {
 			throw log.error('Must provide a token or set of cookies to make a new sdk');
 		}

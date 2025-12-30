@@ -36,7 +36,6 @@ const config = {
 			'@sdk': path.resolve(__dirname, 'src/graphql_sdk.ts'),
 			'@log': path.resolve(__dirname, 'src/log.ts'),
 			'@global': path.resolve(__dirname, 'src/global-context/index.ts'),
-			'@buttons': path.resolve(__dirname, 'src/buttons.ts'),
 			'@ui': path.resolve(__dirname, 'src/ui/index.ts'),
 			'@server': path.resolve(__dirname, 'src/server/index.ts'),
 		},

@@ -1,4 +1,3 @@
-import { updateButtonVisibility } from '@buttons';
 import { log } from '@log';
 import vscode from 'vscode';
 import { TemplateLinkManager } from './TemplateLinkManager';
@@ -26,7 +25,7 @@ export default async function RenameHandler(e: vscode.FileRenameEvent) {
 			if (!isFile && !isDir) continue;
 
 			if (isDir) {
-				const uris = manager.getAllUris();
+				const uris = manager.getAllUriStrings();
 				const oldPrefix = file.oldUri.toString();
 				const newPrefix = file.newUri.toString();
 
@@ -50,7 +49,6 @@ export default async function RenameHandler(e: vscode.FileRenameEvent) {
 		}
 
 		await manager.save();
-		await updateButtonVisibility();
 	} catch (error) {
 		log.error('Failed to handle rename event', error);
 	}

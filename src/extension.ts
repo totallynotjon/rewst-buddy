@@ -1,10 +1,10 @@
-import { activateButtons, updateButtonVisibility } from '@buttons';
 import { SessionManager } from '@client';
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
 import { log } from '@log';
 import { RenameHandler, SaveHandler } from '@models';
 import { Server } from '@server';
+import { LinkChangeHandler, StatusBarIcon } from '@ui';
 import vscode from 'vscode';
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -16,15 +16,17 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	SessionManager.loadSessions();
 
-	activateButtons();
-
 	CommandInitiater.registerCommands();
 
 	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(SaveHandler));
 
 	context.subscriptions.push(vscode.workspace.onDidRenameFiles(RenameHandler));
 
-	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(updateButtonVisibility));
+	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(LinkChangeHandler));
+
+	context.subscriptions.push(StatusBarIcon);
+
+	await LinkChangeHandler();
 
 	// Start server if enabled
 	await Server.startIfEnabled();

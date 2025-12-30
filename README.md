@@ -14,67 +14,62 @@ Since Rewst does not expose API keys for working with GraphQL directly, we do re
 
 ## Quick Start
 
-**Everything requires a session first:**
+**1. Set up a session (one-time):**
 
 1. Copy your `appSession` cookie from your browser while logged into Rewst
-2. Run command in VS Code: `Rewst Buddy: New Rewst Session`
+2. Run command: `Rewst Buddy: New Rewst Session` (Cmd/Ctrl + Shift + P)
 3. Paste your session token
-4. Choose a workflow:
-   - `Open Template` - **Browse and select templates** via interactive picker (NEW in v0.14)
-   - `Link Template` - Link your current file by browsing templates interactively
-   - `Open Template from URL` - Open a template directly from a URL
-   - `Link Template from URL` - Link current file using a template URL
-5. Edit the file, then click the **Sync Template** button to push changes
+
+**2. Link a file to a template:**
+
+1. Open or create a local file
+2. Right-click in the editor or file explorer → **Link Template**
+3. Select your organization and browse/search for the template
+
+**3. Edit and sync:**
+
+- Make your changes and **save** - templates auto-sync on save by default
+- Or right-click → **Sync Template** to manually push changes
+
+**4. Unlink when done:**
+
+- Right-click → **Unlink Template** to remove the association
+
+The status bar shows whether the current file is **Linked** or **Unlinked**. Hover for template details.
 
 ### Auto-Sync on Save
-By default, linked templates automatically sync to Rewst when you save the file.
 
-To disable automatic syncing:
-1. Open VS Code Settings (Cmd/Ctrl + ,)
-2. Search for "rewst-buddy"
-3. Uncheck "Enable Sync On Save" (or set to false in settings.json)
+By default, linked templates automatically sync to Rewst when you save. To disable:
 
 ```json
 {
-  "rewst-buddy.enableSyncOnSave": false
+	"rewst-buddy.enableSyncOnSave": false
 }
 ```
 
-When disabled, use the **Sync Template** button or command to manually sync changes.
+> Auto-sync performs the same safety checks as manual sync, preventing overwrites if the template was modified in Rewst since your last sync.
 
-> Note: Auto-sync performs the same safety checks as manual sync, preventing overwrites if the template was modified in Rewst since your last sync.
+### File Rename Support
 
-### Interactive Template Browsing (v0.14)
-Browse and select templates without needing to copy URLs:
-
-1. Run `Open Template` or `Link Template` from the command palette
-2. Select your session (auto-selects if you only have one)
-3. Choose your organization
-4. Search and select from your templates list
-
-### File Rename Support (v0.13)
-Template links now automatically update when you rename or move files:
-- Rename a linked file → link stays connected
-- Move a file to a different folder → link follows
-- Rename a folder → all child links update recursively
-
-No more broken links when reorganizing your workspace.
-
+Template links automatically update when you rename or move files - no broken links when reorganizing your workspace.
 
 ### Session Receiver Server (v0.15)
+
 A local HTTP server that can receive session cookies from a browser extension, eliminating the need to manually copy/paste cookies.
 
 **How it works:**
+
 1. Server listens on `127.0.0.1:27121` (localhost only for security)
 2. Browser extension sends your Rewst cookies to the server
 3. Session is created automatically in VS Code
 
 **Configuration:**
+
 ```json
 {
-  "rewst-buddy.server.enabled": true,
-  "rewst-buddy.server.port": 27121,
-  "rewst-buddy.server.host": "127.0.0.1"
+	"rewst-buddy.server.enabled": true,
+	"rewst-buddy.server.port": 27121,
+	"rewst-buddy.server.host": "127.0.0.1"
 }
 ```
 
@@ -83,14 +78,17 @@ The server is enabled by default. Use `Start Server` / `Stop Server` commands fo
 ### Planned Features
 
 **Template Creation**
+
 - Create new templates directly from VS Code
 - Save local files as new Rewst templates with one button
 
 **Browser Extension**
+
 - Browser extension that automatically sends Rewst cookies to the session receiver
 - One-click session setup from browser
 
 **Bulk Operations**
+
 - Pull all templates from organization to local folder
 - Automatic linking of downloaded templates
 - Folder sync: auto-create/link new templates from Rewst
@@ -99,35 +97,42 @@ The server is enabled by default. Use `Start Server` / `Stop Server` commands fo
 ## Configuration
 
 ### Available Commands
-Access via Command Palette (Cmd/Ctrl + Shift + P):
+
+All commands are also available via Command Palette (Cmd/Ctrl + Shift + P):
 
 **Session Management**
+
 - `New Rewst Session` - Add a new session with token
 - `Clear Sessions` - Remove all saved sessions
 
 **Template Operations (Interactive)**
+
 - `Open Template` - Browse and open templates via picker (v0.14)
 - `Link Template` - Link current file via template picker (v0.14)
 
 **Template Operations (URL-based)**
+
 - `Open Template from URL` - Open a template directly from URL
 - `Link Template from URL` - Link current file using a URL
 
 **Sync & Maintenance**
+
 - `Sync Template` - Push changes with conflict detection
 - `Unlink Template` - Remove template link from current file
 - `Unlink All Templates` - Remove all file-to-template associations
 
 **Server**
+
 - `Start Server` - Start the session receiver server
 - `Stop Server` - Stop the session receiver server
 
-### Status Bar Buttons
-- **Link Template** - Appears when editor is open and file is not linked
-- **Sync Template** - Appears when editor has an active template link
+### Status Bar
 
+- Shows **Linked** or **Unlinked** status with icon
+- Hover for tooltip with template details (name, description, organization, session info)
 
 ### Multi-Region Setup
+
 For non-NA Rewst instances, configure custom regions in VS Code settings:
 
 1. Open VS Code Settings (Cmd/Ctrl + ,)
@@ -136,20 +141,20 @@ For non-NA Rewst instances, configure custom regions in VS Code settings:
 
 ```json
 {
-  "rewst-buddy.regions": [
-    {
-      "name": "North America",
-      "cookieName": "appSession",
-      "graphqlUrl": "https://api.rewst.io/graphql",
-      "loginUrl": "https://app.rewst.io"
-    },
-    {
-      "name": "Europe",
-      "cookieName": "appSession",
-      "graphqlUrl": "https://api.eu.rewst.io/graphql",
-      "loginUrl": "https://app.eu.rewst.io"
-    }
-  ]
+	"rewst-buddy.regions": [
+		{
+			"name": "North America",
+			"cookieName": "appSession",
+			"graphqlUrl": "https://api.rewst.io/graphql",
+			"loginUrl": "https://app.rewst.io"
+		},
+		{
+			"name": "Europe",
+			"cookieName": "appSession",
+			"graphqlUrl": "https://api.eu.rewst.io/graphql",
+			"loginUrl": "https://app.eu.rewst.io"
+		}
+	]
 }
 ```
 
