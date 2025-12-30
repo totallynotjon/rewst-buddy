@@ -4,6 +4,11 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.19.1] - 2025-12-30
+
+### Added
+- **Extension Icon**: Added rewst-buddy.png as the extension marketplace icon
+
 ## [0.19.0] - 2025-12-30
 
 ### Changed
