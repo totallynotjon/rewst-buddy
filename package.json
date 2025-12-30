@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.15.1",
+	"version": "0.16.0",
 	"engines": {
 		"vscode": "^1.107.0"
 	},
@@ -18,7 +18,7 @@
 		"url": "https://github.com/totallynotjon/rewst-buddy/issues"
 	},
 	"license": "MIT",
-	"homepage": "https://github.com/totallynotjon/rewst-buddy/blob/master/README.md",
+	"homepage": "https://github.com/totallynotjon/rewst-buddy/blob/main/README.md",
 	"keywords": [
 		"rewst",
 		"Rewst",
@@ -135,8 +135,12 @@
 				"title": "Rewst Buddy: Open Template"
 			},
 			{
-				"command": "rewst-buddy.ClearTemplateLinks",
-				"title": "Rewst Buddy: Clear Template Links"
+				"command": "rewst-buddy.UnlinkAllTemplates",
+				"title": "Rewst Buddy: Unlink All Templates"
+			},
+			{
+				"command": "rewst-buddy.UnlinkTemplate",
+				"title": "Rewst Buddy: Unlink Template"
 			},
 			{
 				"command": "rewst-buddy.StartServer",

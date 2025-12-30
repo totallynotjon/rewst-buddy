@@ -4,6 +4,35 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.16.0] - 2025-12-29
+
+### Added
+- **Unlink Template Command**: New command to unlink a single template from the currently active editor
+  - `Rewst Buddy: Unlink Template` - Removes the template link from the active file
+  - Automatically updates button visibility after unlinking
+  - Validates that a template link exists before attempting to unlink
+
+### Changed
+- **Command Rename**: `Clear Template Links` renamed to `Unlink All Templates` for clarity
+  - Better describes the action of removing template associations
+  - Consistent naming with new single-file unlink command
+- **Code Organization**: Reorganized template link commands into `link-commands` subfolder
+  - `LinkTemplateFromURL`, `LinkTemplateInteractive`, `UnlinkAllTemplates`, and `UnlinkTemplate` now in dedicated folder
+  - Improved code structure and maintainability
+
+### Fixed
+- **Template Link Manager**: `clearTemplateLinks()` method now properly chainable
+  - Returns `this` for method chaining support
+  - Synchronous operation for better performance
+  - Added explicit `.save()` calls after unlink operations to ensure persistence
+
+### Technical Details
+- Renamed `ClearTemplateLinks` class to `UnlinkAllTemplates` (src/commands/template-commands/link-commands/UnlinkAllTemplates.ts)
+- Added new `UnlinkTemplate` command class (src/commands/template-commands/link-commands/UnlinkTemplate.ts:1-27)
+- Moved link commands to dedicated subfolder (src/commands/template-commands/link-commands/)
+- Updated command exports in index files for new structure
+- Updated button visibility logic to refresh after unlink operations
+
 ## [0.15.1] - 2025-12-29
 
 ### Fixed

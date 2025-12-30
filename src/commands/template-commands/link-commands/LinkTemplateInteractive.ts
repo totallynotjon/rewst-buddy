@@ -3,7 +3,7 @@ import { log } from '@log';
 import { TemplateLinkManager } from '@models';
 import { pickTemplate } from '@ui';
 import vscode from 'vscode';
-import GenericCommand from '../GenericCommand';
+import GenericCommand from '../../GenericCommand';
 
 export class LinkTemplateInteractive extends GenericCommand {
 	commandName = 'LinkTemplateInteractive';

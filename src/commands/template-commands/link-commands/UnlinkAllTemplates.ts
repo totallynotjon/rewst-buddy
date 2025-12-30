@@ -1,11 +1,11 @@
-import { log } from '@log';
 import { updateButtonVisibility } from '@buttons';
+import { log } from '@log';
 import { TemplateLinkManager } from '@models';
 import vscode from 'vscode';
-import GenericCommand from '../GenericCommand';
+import GenericCommand from '../../GenericCommand';
 
-export class ClearTemplateLinks extends GenericCommand {
-	commandName = 'ClearTemplateLinks';
+export class UnlinkAllTemplates extends GenericCommand {
+	commandName = 'UnlinkAllTemplates';
 
 	async execute(...args: unknown[]): Promise<void> {
 		const choice = await vscode.window.showInformationMessage(
@@ -16,10 +16,12 @@ export class ClearTemplateLinks extends GenericCommand {
 
 		switch (choice) {
 			case 'Clear Links':
-				await TemplateLinkManager.clearTemplateLinks();
+				await TemplateLinkManager.clearTemplateLinks().save();
 				log.notifyInfo('Cleared Template Links');
 				updateButtonVisibility();
 				break;
 		}
+
+		await updateButtonVisibility();
 	}
 }

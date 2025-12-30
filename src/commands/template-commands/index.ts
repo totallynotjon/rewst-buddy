@@ -1,7 +1,6 @@
-export { ClearTemplateLinks } from './ClearTemplateLinks';
 export { CreateTemplate } from './CreateTemplate';
-export { LinkTemplateFromURL } from './LinkTemplateFromURL';
-export { LinkTemplateInteractive } from './LinkTemplateInteractive';
+export * from './link-commands';
 export { OpenTemplateFromURL } from './OpenTemplateFromURL';
 export { OpenTemplateInteractive } from './OpenTemplateInteractive';
 export { SyncTemplate } from './SyncTemplate';
+

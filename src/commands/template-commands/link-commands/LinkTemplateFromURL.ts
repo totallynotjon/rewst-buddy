@@ -3,7 +3,7 @@ import { SessionManager } from '@client';
 import { log } from '@log';
 import { getTemplateURLParams, TemplateLinkManager } from '@models';
 import vscode from 'vscode';
-import GenericCommand from '../GenericCommand';
+import GenericCommand from '../../GenericCommand';
 
 export class LinkTemplateFromURL extends GenericCommand {
 	commandName = 'LinkTemplateFromURL';

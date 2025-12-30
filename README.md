@@ -115,7 +115,8 @@ Access via Command Palette (Cmd/Ctrl + Shift + P):
 
 **Sync & Maintenance**
 - `Sync Template` - Push changes with conflict detection
-- `Clear Template Links` - Remove all file-to-template associations
+- `Unlink Template` - Remove template link from current file
+- `Unlink All Templates` - Remove all file-to-template associations
 
 **Server**
 - `Start Server` - Start the session receiver server

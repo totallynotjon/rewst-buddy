@@ -8,8 +8,7 @@ export const TemplateLinkManager = new (class TemplateLinkManager {
 	linkMap = new Map<string, TemplateLink>();
 	loaded = false;
 
-	async clearTemplateLinks(): Promise<TemplateLinkManager> {
-		await context.globalState.update(this.stateKey, []);
+	clearTemplateLinks(): TemplateLinkManager {
 		this.linkMap.clear();
 		return this;
 	}
