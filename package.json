@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.17.0",
+	"version": "0.18.0",
 	"engines": {
 		"vscode": "^1.107.0"
 	},
@@ -211,12 +211,12 @@
 		"test": "vscode-test",
 		"build": "npm run package",
 		"dev": "npm run watch",
-		"watch": "NODE_ENV=development npm-run-all -p watch:*",
+		"watch": "npm-run-all -p watch:*",
 		"watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-		"watch:webpack": "NODE_ENV=development webpack --mode development --watch",
-		"compile": "NODE_ENV=development webpack --mode development",
+		"watch:webpack": "webpack --mode development --watch",
+		"compile": "webpack --mode development",
 		"vscode:prepublish": "npm run package",
-		"package": "NODE_ENV=production webpack --mode production --devtool hidden-source-map"
+		"package": "webpack --mode production --devtool hidden-source-map"
 	},
 	"devDependencies": {
 		"@0no-co/graphqlsp": "^1.15.2",

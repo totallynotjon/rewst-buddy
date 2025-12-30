@@ -1,5 +1,5 @@
 import { SessionManager } from '@client';
-import { log } from '@log';
+import { log } from '@utils';
 import GenericCommand from '../GenericCommand';
 
 export class NewSession extends GenericCommand {

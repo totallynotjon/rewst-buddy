@@ -1,6 +1,6 @@
+import { onLinksSaved } from '@events';
 import { context } from '@global';
-import { log } from '@log';
-import { LinkChangeHandler } from '@ui';
+import { log } from '@utils';
 import vscode from 'vscode';
 import TemplateLink from './TemplateLink';
 
@@ -40,7 +40,7 @@ export const TemplateLinkManager = new (class TemplateLinkManager {
 	async save(): Promise<TemplateLinkManager> {
 		const links: TemplateLink[] = Array.from(this.linkMap.values());
 		await context.globalState.update(this.stateKey, links);
-		await LinkChangeHandler();
+		await onLinksSaved();
 		return this;
 	}
 

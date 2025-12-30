@@ -1,6 +1,6 @@
-import { log } from '@log';
+import { log } from '@utils';
+import { TemplateLinkManager } from '@models';
 import vscode from 'vscode';
-import { TemplateLinkManager } from './TemplateLinkManager';
 
 function isDescendant(parent: vscode.Uri, candidate: vscode.Uri): boolean {
 	if (parent.scheme !== candidate.scheme || parent.authority !== candidate.authority) {

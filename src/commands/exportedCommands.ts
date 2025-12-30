@@ -1,3 +1,4 @@
-export * from './client-commands/index';
-export * from './template-commands/index';
-export * from './server-commands/index';
+export * from './client/index';
+export * from './server/index';
+export * from './template/index';
+

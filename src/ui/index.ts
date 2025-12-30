@@ -1,3 +1,2 @@
-export { LinkChangeHandler } from './LinkChangeHandler';
 export * from './pickers';
-export { StatusBarIcon } from './StatusBarIcon';
+export { StatusBarIcon, updateStatusBar } from './StatusBarIcon';

@@ -1,4 +1,4 @@
-import { log } from '@log';
+import { log } from '@utils';
 import { TemplateLinkManager } from '@models';
 import { pickTemplate } from '@ui';
 import vscode from 'vscode';

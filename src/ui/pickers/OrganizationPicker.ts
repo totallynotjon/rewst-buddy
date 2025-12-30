@@ -1,5 +1,5 @@
 import RewstSession from '@client';
-import { log } from '@log';
+import { log } from '@utils';
 import { Org } from '@models';
 import vscode, { QuickPickItem } from 'vscode';
 import { pickSession } from './SessionPicker';

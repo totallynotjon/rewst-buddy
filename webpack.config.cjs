@@ -8,7 +8,6 @@
 'use strict';
 
 const path = require('path');
-const webpack = require('webpack');
 
 /**@type {import('webpack').Configuration}*/
 const config = {
@@ -33,11 +32,12 @@ const config = {
 			'@models': path.resolve(__dirname, 'src/models/index.ts'),
 			'@commands': path.resolve(__dirname, 'src/commands/index.ts'),
 			'@client': path.resolve(__dirname, 'src/client/index.ts'),
-			'@sdk': path.resolve(__dirname, 'src/graphql_sdk.ts'),
-			'@log': path.resolve(__dirname, 'src/log.ts'),
-			'@global': path.resolve(__dirname, 'src/global-context/index.ts'),
+			'@sdk': path.resolve(__dirname, 'src/client/graphql/sdk.ts'),
+			'@utils': path.resolve(__dirname, 'src/utils/index.ts'),
+			'@global': path.resolve(__dirname, 'src/context/index.ts'),
 			'@ui': path.resolve(__dirname, 'src/ui/index.ts'),
 			'@server': path.resolve(__dirname, 'src/server/index.ts'),
+			'@events': path.resolve(__dirname, 'src/events/index.ts'),
 		},
 		modules: ['node_modules'],
 	},
@@ -59,11 +59,6 @@ const config = {
 	optimization: {
 		usedExports: true,
 	},
-	plugins: [
-		new webpack.DefinePlugin({
-			__DEV__: JSON.stringify(process.env.NODE_ENV === 'development'),
-		}),
-	],
 };
 
 module.exports = config;

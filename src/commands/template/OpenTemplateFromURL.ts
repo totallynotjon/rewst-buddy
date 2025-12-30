@@ -1,6 +1,6 @@
 import { SessionManager } from '@client';
-import { log } from '@log';
-import { getTemplateURLParams, TemplateLinkManager } from '@models';
+import { TemplateLinkManager } from '@models';
+import { getTemplateURLParams, log } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
 

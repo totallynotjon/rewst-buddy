@@ -1,12 +1,12 @@
 import { context } from '@global';
-import { log } from '@log';
+import { log } from '@utils';
 import { getSdk, Sdk, SdkFunctionWrapper } from '@sdk';
 import { GraphQLClient } from 'graphql-request';
 import vscode from 'vscode';
-import CookieString from './CookeString';
+import CookieString from './CookieString';
 import { getRegionConfigs, RegionConfig } from './RegionConfig';
 import RewstSessionProfile from './RewstSessionProfile';
-import { createRetryWrapper } from './wrappers';
+import { createRetryWrapper } from './retryWrapper';
 
 function parseCookieString(cookieString: string): Record<string, string> {
 	const cookies: Record<string, string> = {};

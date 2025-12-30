@@ -1,4 +1,4 @@
-import { log } from '@log';
+import { log } from '@utils';
 import http, { IncomingMessage, ServerResponse } from 'http';
 import { getServerConfig } from './config';
 import { handleAddSession, validateRequest } from './handlers';

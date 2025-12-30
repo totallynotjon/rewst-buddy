@@ -4,6 +4,58 @@ All notable changes to the "rewst-buddy" extension will be documented in this fi
 
 Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
 
+## [0.18.0] - 2025-12-30
+
+### Changed
+
+#### Project Structure Reorganization
+- **Expanded `utils/` folder**: Now contains URL parsing utilities
+  - Moved `log.ts` to `utils/log.ts`
+  - Added `templateUrl.ts` with `getTemplateURLParams()` function
+  - Replaced `@log` alias with `@utils`
+
+- **New `events/` folder**: Separated event handlers by source
+  - `events/vscode/` - VS Code API event handlers (onSave, onRename, onEditorChange)
+  - `events/internal/` - Internal application events (onLinksSaved)
+  - Replaced `@handlers` alias with `@events`
+  - Event handlers renamed to `onAction` convention (e.g., `SaveHandler` → `onSave`)
+
+- **Renamed `global-context/` to `context/`**: Clearer naming
+
+- **Flattened `client/wrappers/`**: Moved `retryWrapper.ts` directly into `client/`
+
+- **Moved GraphQL SDK**: `graphql_sdk.ts` → `client/graphql/sdk.ts`
+
+- **Fixed typo**: `CookeString.ts` → `CookieString.ts`
+
+- **Simplified command folder names**: Removed `-commands` suffix
+  - `client-commands/` → `client/`
+  - `server-commands/` → `server/`
+  - `template-commands/` → `template/`
+
+#### Event Handler Architecture
+- **Decoupled `TemplateLinkManager` from UI**: Models no longer import from `@ui`
+  - `TemplateLinkManager.save()` now calls `onLinksSaved()` from `@events`
+  - Cleaner dependency direction: `models → events → ui`
+
+- **Split `LinkChangeHandler` into focused modules**:
+  - `events/vscode/onEditorChange.ts` - Handles editor change events
+  - `events/internal/onLinksSaved.ts` - Handles link state changes, updates VS Code context
+  - `ui/StatusBarIcon.ts` - Contains `updateStatusBar()` function
+
+- **Performance improvement**: `updateLinkedTemplatesContext()` now only runs when links change, not on every editor switch
+
+### Removed
+- **Removed unused `__DEV__` build constant**: Development mode detection now uses `vscode.ExtensionMode.Development` at runtime instead of compile-time constant
+- **Removed `types/` folder**: No longer needed after `__DEV__` removal
+
+### Technical Details
+- Updated path aliases in `tsconfig.json` and `webpack.config.cjs`
+- Updated `codegen.ts` output path for GraphQL SDK
+- Simplified webpack config by removing `DefinePlugin`
+- All imports updated to use new module paths
+- No breaking changes to extension functionality
+
 ## [0.17.0] - 2025-12-30
 
 ### Added

@@ -1,6 +1,4 @@
 fragment org on Organization {
-	id!
-	name!
+	id
+	name
 }
-
-

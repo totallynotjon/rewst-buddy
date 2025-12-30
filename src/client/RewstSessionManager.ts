@@ -1,8 +1,8 @@
 import { context } from '@global';
-import { log } from '@log';
+import { log } from '@utils';
 import { Org } from '@models';
 import vscode from 'vscode';
-import CookieString from './CookeString';
+import CookieString from './CookieString';
 import RewstSession from './RewstSession';
 import RewstSessionProfile from './RewstSessionProfile';
 

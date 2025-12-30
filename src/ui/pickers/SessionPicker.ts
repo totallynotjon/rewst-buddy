@@ -1,5 +1,5 @@
 import RewstSession, { SessionManager } from '@client';
-import { log } from '@log';
+import { log } from '@utils';
 import vscode from 'vscode';
 
 export async function pickSession(): Promise<RewstSession | undefined> {

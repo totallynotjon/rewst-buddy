@@ -1,5 +1,5 @@
 import { extPrefix } from '@global';
-import { log } from '@log';
+import { log } from '@utils';
 import { TemplateLinkManager, TemplateSyncManager } from '@models';
 import vscode from 'vscode';
 

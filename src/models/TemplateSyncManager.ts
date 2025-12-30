@@ -1,5 +1,5 @@
 import { SessionManager } from '@client';
-import { log } from '@log';
+import { log } from '@utils';
 import { TemplateFragment } from '@sdk';
 import vscode from 'vscode';
 import { TemplateLinkManager } from './TemplateLinkManager';

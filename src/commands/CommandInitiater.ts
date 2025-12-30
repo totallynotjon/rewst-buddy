@@ -1,5 +1,5 @@
 import { context, extPrefix } from '@global';
-import { log } from '@log';
+import { log } from '@utils';
 import vscode from 'vscode';
 import * as Commands from './exportedCommands';
 import GenericCommand, { createCommand } from './GenericCommand';

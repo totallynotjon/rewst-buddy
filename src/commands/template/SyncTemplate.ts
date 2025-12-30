@@ -1,4 +1,4 @@
-import { log } from '@log';
+import { log } from '@utils';
 import { TemplateSyncManager } from '@models';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';

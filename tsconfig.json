@@ -13,11 +13,12 @@
 			"@models": ["models/index.ts"],
 			"@commands": ["commands/index.ts"],
 			"@client": ["client/index.ts"],
-			"@sdk": ["graphql_sdk.ts"],
-			"@log": ["log"],
-			"@global": ["global-context/index.ts"],
+			"@sdk": ["client/graphql/sdk.ts"],
+			"@utils": ["utils/index.ts"],
+			"@global": ["context/index.ts"],
 			"@ui": ["ui/index.ts"],
-			"@server": ["server/index.ts"]
+			"@server": ["server/index.ts"],
+			"@events": ["events/index.ts"]
 		},
 		"sourceMap": true,
 		"strict": true,
