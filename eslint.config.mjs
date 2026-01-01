@@ -12,7 +12,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
 	{
-		ignores: ['out', 'dist', 'webpack.config.cjs', 'src/graphql_sdk.ts'],
+		ignores: ['out', 'dist', 'webpack.config.cjs', 'src/client/graphql/sdk.ts'],
 	},
 	js.configs.recommended,
 	...tseslint.configs.recommended,

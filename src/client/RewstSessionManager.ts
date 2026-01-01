@@ -1,3 +1,4 @@
+import type { SessionChangeEvent } from '@events';
 import { context } from '@global';
 import { Org } from '@models';
 import { log } from '@utils';
@@ -5,7 +6,6 @@ import vscode from 'vscode';
 import CookieString from './CookieString';
 import RewstSession from './RewstSession';
 import RewstSessionProfile from './RewstSessionProfile';
-import type { SessionChangeEvent } from '@events';
 
 class RewstSessionManager {
 	sessionMap: Map<string, RewstSession> = new Map<string, RewstSession>();

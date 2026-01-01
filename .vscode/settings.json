@@ -26,12 +26,15 @@
 	},
 	// Language-specific settings
 	"[typescript]": {
-		"editor.defaultFormatter": "vscode.typescript-language-features"
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	},
 	"[javascript]": {
 		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	},
 	"[json]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[markdown]": {
 		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	},
 	// Tool configuration

@@ -1,0 +1,27 @@
+#!/usr/bin/env sh
+
+# Husky pre-commit hook for rewst-buddy-vscode
+
+# Check if any .graphql files are staged
+GRAPHQL_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.graphql$' || true)
+
+if [ -n "$GRAPHQL_FILES" ]; then
+  echo "GraphQL files detected in commit, running codegen..."
+  npm run codegen
+
+  # Stage the generated SDK file if it changed
+  if [ -f "src/client/graphql/sdk.ts" ]; then
+    git add src/client/graphql/sdk.ts
+    echo "Auto-staged generated SDK file"
+  fi
+fi
+
+# Run lint-staged on all staged files
+npx lint-staged
+
+# Run type-check on entire project
+echo "Running type-check..."
+npm run type-check
+
+# Exit with type-check status
+exit $?
