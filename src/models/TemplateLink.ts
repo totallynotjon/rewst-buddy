@@ -1,5 +1,5 @@
-import { RewstSessionProfile } from '@client';
-import { TemplateFragment } from '@sdk';
+import { RewstSessionProfile } from '@sessions';
+import { TemplateFragment } from 'sessions/graphql/sdk';
 
 export default interface TemplateLink {
 	sessionProfile: RewstSessionProfile;

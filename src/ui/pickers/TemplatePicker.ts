@@ -1,7 +1,6 @@
-import RewstSession from '@client';
-import { log } from '@utils';
 import { Org } from '@models';
-import { TemplateFragment } from '@sdk';
+import RewstSession, { TemplateFragment } from '@sessions';
+import { log } from '@utils';
 import vscode from 'vscode';
 import { pickOrganization } from './OrganizationPicker';
 import { pickSession } from './SessionPicker';

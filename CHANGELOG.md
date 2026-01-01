@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.23.0]
+
+### Added
+
+- **Automatic Session Refresh** - Sessions now automatically refresh every 15 minutes
+    - Keeps authentication cookies fresh without manual intervention
+    - Prevents unexpected session expiration during active work
+    - Runs in background with automatic cleanup on extension deactivation
+
+- **Expired Session Tracking** - Session tree view now displays both active and expired sessions
+    - Active sessions show green checkmark icon
+    - Expired sessions show red error icon with "EXPIRED" status in tooltip
+    - Helps identify which sessions need to be refreshed or recreated
+
+### Changed
+
+- **Refactored Path Aliases** - Consolidated `@client` and `@sdk` aliases into single `@sessions` alias
+    - Renamed `src/client/` directory to `src/sessions/` to better reflect its purpose
+    - Updated all imports throughout the codebase (23+ files)
+    - Simplified tsconfig.json and webpack.config.cjs path alias configuration
+
+- **Session Management Architecture** - Enhanced session lifecycle and state management
+    - Sessions now load asynchronously on extension activation with proper loading guards
+    - Added `getActiveSessions()` for synchronous access to current sessions
+    - Added `getAllKnownProfiles()` to track all sessions (active and expired)
+    - `loadSessions()` now idempotent - returns cached sessions if already loaded
+    - `getSessionForOrg()` changed from async to sync method
+
+- **Session Tree View** - Improved visibility and renamed for clarity
+    - Tree view name changed from "Active Sessions" to "Sessions"
+    - Now displays all known sessions with visual status indicators
+    - Enhanced tooltips show active/expired state
+
+- **Session Events** - Enhanced event data structure
+    - Added `'saved'` event type to `SessionChangeType`
+    - Event payload now includes `allProfiles` (all known) and `activeProfiles` (currently active)
+    - Removed `allSessions` field in favor of profile-based tracking
+
+- **Error Messages** - Improved clarity in TemplateSyncManager
+    - Sync errors now provide specific failure context
+    - Missing template ID errors include detailed API response information
+
+### Fixed
+
+- **Session Loading** - Prevented race conditions during parallel session loads with loading state guards
+- **Cookie Storage** - Fixed token refresh to properly update stored cookies using CookieString value
+
+### Technical
+
+- Extension activation order adjusted to load sessions after UI initialization
+- Path alias count reduced from 8 to 7 (merged `@client` + `@sdk` → `@sessions`)
+- Added periodic refresh interval (15 minutes) with proper disposal cleanup
+- SessionManager refactored to singleton pattern with inline class syntax
+
 ## [0.22.2]
 
 ### Added

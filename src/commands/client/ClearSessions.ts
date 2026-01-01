@@ -1,4 +1,4 @@
-import { SessionManager } from '@client';
+import { SessionManager } from '@sessions';
 import { log } from '@utils';
 import GenericCommand from '../GenericCommand';
 

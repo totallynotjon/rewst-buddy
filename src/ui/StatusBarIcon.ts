@@ -1,6 +1,6 @@
-import RewstSession, { SessionManager } from '@client';
 import { extPrefix } from '@global';
 import { TemplateLink, TemplateLinkManager } from '@models';
+import RewstSession, { SessionManager } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
 
@@ -51,7 +51,7 @@ export class StatusBar implements vscode.Disposable {
 
 		let session: RewstSession;
 		try {
-			session = await SessionManager.getSessionForOrg(link.template.orgId);
+			session = SessionManager.getSessionForOrg(link.template.orgId);
 		} catch (e) {
 			log.error(`No session found with access to org ${link.template.organization.name}`);
 			this.privateWarnNoSession();

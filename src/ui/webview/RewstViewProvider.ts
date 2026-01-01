@@ -1,6 +1,6 @@
-import vscode from 'vscode';
-import { SessionManager } from '@client';
+import { SessionManager } from '@sessions';
 import { log } from '@utils';
+import vscode from 'vscode';
 
 export class RewstViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = 'rewst-buddy.sessionInput';

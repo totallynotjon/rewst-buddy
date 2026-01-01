@@ -1,9 +1,9 @@
-import RewstSession, { SessionManager } from '@client';
+import RewstSession, { SessionManager } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
 
 export async function pickSession(): Promise<RewstSession | undefined> {
-	const sessions = await SessionManager.loadSessions();
+	const sessions = await SessionManager.getActiveSessions();
 
 	if (sessions.length === 0) {
 		log.notifyWarn('No sessions available. Add a session first.');

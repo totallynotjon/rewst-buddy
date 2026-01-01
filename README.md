@@ -128,7 +128,11 @@ All commands are also available via Command Palette (Cmd/Ctrl + Shift + P):
 Click the Rewst Buddy icon in the activity bar to open the sidebar:
 
 - **Session Panel**: Enter your token/cookie to connect
-- **Active Sessions**: View all connected sessions with organization and region info
+- **Sessions**: View all known sessions with organization and region info
+    - Active sessions display with green checkmark icon
+    - Expired sessions display with red error icon
+    - Sessions automatically refresh every 15 minutes to stay active
+    - With automatic refresh, sessions can stay alive for about 1 week with daily extension use
 
 ### Status Bar
 

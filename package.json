@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.22.2",
+	"version": "0.23.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -200,7 +200,7 @@
 				},
 				{
 					"id": "rewst-buddy.sessionTree",
-					"name": "Active Sessions",
+					"name": "Sessions",
 					"icon": ""
 				}
 			]
@@ -258,7 +258,7 @@
 		"lint": "eslint src",
 		"type-check": "tsc --noEmit",
 		"codegen": "graphql-codegen --config src/codegen.ts",
-		"codegen:check": "npm run codegen && git diff --exit-code src/client/graphql/sdk.ts || (echo 'SDK is out of sync! Run: npm run codegen' && exit 1)",
+		"codegen:check": "npm run codegen && git diff --exit-code src/sessions/graphql/sdk.ts || (echo 'SDK is out of sync! Run: npm run codegen' && exit 1)",
 		"lint:staged": "lint-staged",
 		"pre-commit": "bash .husky/pre-commit",
 		"check-types": "tsc --noEmit --watch",
@@ -310,7 +310,7 @@
 		"webpack-cli": "^6.0.1"
 	},
 	"lint-staged": {
-		"src/client/graphql/sdk.ts": [],
+		"src/sessions/graphql/sdk.ts": [],
 		"*.{ts,js,mjs,cjs}": [
 			"eslint --fix",
 			"prettier --write"

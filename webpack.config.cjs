@@ -31,8 +31,7 @@ const config = {
 		alias: {
 			'@models': path.resolve(__dirname, 'src/models/index.ts'),
 			'@commands': path.resolve(__dirname, 'src/commands/index.ts'),
-			'@client': path.resolve(__dirname, 'src/client/index.ts'),
-			'@sdk': path.resolve(__dirname, 'src/client/graphql/sdk.ts'),
+			'@sessions': path.resolve(__dirname, 'src/sessions/index.ts'),
 			'@utils': path.resolve(__dirname, 'src/utils/index.ts'),
 			'@global': path.resolve(__dirname, 'src/context/index.ts'),
 			'@ui': path.resolve(__dirname, 'src/ui/index.ts'),

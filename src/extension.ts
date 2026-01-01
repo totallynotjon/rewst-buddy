@@ -1,9 +1,9 @@
-import { SessionManager } from '@client';
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
 import { TemplateLinkManager, TemplateSyncManager } from '@models';
 import { Server } from '@server';
-import { StatusBar, RewstViewProvider, SessionTreeDataProvider } from '@ui';
+import { SessionManager } from '@sessions';
+import { RewstViewProvider, SessionTreeDataProvider, StatusBar } from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
 
@@ -13,8 +13,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	log.init(context);
 
 	log.info(`Starting activation of extension ${extPrefix}`);
-
-	SessionManager.loadSessions();
 
 	CommandInitiater.registerCommands();
 
@@ -42,6 +40,20 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Start server if enabled
 	await Server.startIfEnabled();
+
+	await SessionManager.loadSessions();
+
+	const refresh = async () => {
+		await SessionManager.refreshActiveSessions();
+	};
+
+	await refresh();
+
+	const interval = setInterval(refresh, 15 * 60 * 1000); // Refresh all sessions every 15 minutes
+
+	context.subscriptions.push({
+		dispose: () => clearInterval(interval), // Stop on deactivate
+	});
 
 	log.info(`Finished activation of extension ${extPrefix}`);
 }

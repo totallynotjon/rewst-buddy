@@ -1,5 +1,5 @@
 import { Org } from '@models';
-import { UserFragment } from '@sdk';
+import { UserFragment } from 'sessions/graphql/sdk';
 import { RegionConfig } from './RegionConfig';
 
 export default interface RewstSessionProfile {

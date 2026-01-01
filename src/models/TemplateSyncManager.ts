@@ -1,6 +1,5 @@
-import { SessionManager } from '@client';
 import { extPrefix } from '@global';
-import { TemplateFragment } from '@sdk';
+import { SessionManager, TemplateFragment } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
 import { TemplateLinkManager } from './TemplateLinkManager';
@@ -48,7 +47,7 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 			log.debug('Template response:', response?.template);
 
 			if (response?.template?.id === undefined) {
-				throw new Error();
+				throw new Error('Failed to update template: Invalid response from Rewst API (missing template ID)');
 			}
 
 			link.template = response.template;
@@ -73,7 +72,7 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 		try {
 			await this.syncTemplateInternal(doc);
 		} catch (e) {
-			throw log.error('', e);
+			throw log.error('Failed to sync template to Rewst', e);
 		} finally {
 			this.syncingUris.delete(uriKey);
 		}

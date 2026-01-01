@@ -1,5 +1,5 @@
 import { context } from '@global';
-import { getSdk, Sdk, SdkFunctionWrapper } from '@sdk';
+import { getSdk, Sdk, SdkFunctionWrapper } from '@sessions';
 import { log } from '@utils';
 import { GraphQLClient } from 'graphql-request';
 import vscode from 'vscode';

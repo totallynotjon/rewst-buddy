@@ -1,27 +1,33 @@
+import { SessionChangeEvent } from '@events';
+import { RewstSessionProfile, SessionManager } from '@sessions';
 import vscode from 'vscode';
-import RewstSession, { SessionManager } from '@client';
 
 export class SessionTreeItem extends vscode.TreeItem {
 	constructor(
-		public readonly session: RewstSession,
+		public readonly profile: RewstSessionProfile,
+		public readonly active: boolean,
 		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
 	) {
-		super(session.profile.label, collapsibleState);
+		super(profile.label, collapsibleState);
 
-		this.description = session.profile.region.name;
+		this.description = profile.region.name;
 		this.tooltip = this.buildTooltip();
-		this.iconPath = new vscode.ThemeIcon('account');
+		if (this.active) {
+			this.iconPath = new vscode.ThemeIcon('check');
+		} else {
+			this.iconPath = new vscode.ThemeIcon('error');
+		}
+
 		this.contextValue = 'session';
 	}
 
 	private buildTooltip(): vscode.MarkdownString {
-		const { profile } = this.session;
 		const lines = [
-			`**${profile.label}**`,
+			`**${this.active ? 'Active' : 'EXPIRED'}: ${this.profile.label}**`,
 			``,
-			`**Organization:** ${profile.org.name}`,
-			`**Region:** ${profile.region.name}`,
-			`**Managed Orgs:** ${profile.allManagedOrgs.length}`,
+			`**Organization:** ${this.profile.org.name}`,
+			`**Region:** ${this.profile.region.name}`,
+			`**Managed Orgs:** ${this.profile.allManagedOrgs.length}`,
 		];
 		return new vscode.MarkdownString(lines.join('\n'));
 	}
@@ -32,15 +38,23 @@ export class SessionTreeDataProvider implements vscode.TreeDataProvider<SessionT
 	readonly onDidChangeTreeData = this.changeEmitter.event;
 	private disposables: vscode.Disposable[] = [];
 
+	private allKnownProfiles: RewstSessionProfile[] = [];
+	private activeProfileUserIDs: string[] = [];
+
 	constructor() {
-		this.disposables.push(SessionManager.onSessionChange(() => this.refresh()));
+		this.disposables.push(SessionManager.onSessionChange(e => this.refresh(e)));
 	}
 
 	dispose(): void {
 		this.disposables.forEach(d => d.dispose());
 	}
 
-	refresh(): void {
+	refresh(e?: SessionChangeEvent): void {
+		if (e !== undefined) {
+			this.activeProfileUserIDs = e.activeProfiles.map(profile => profile.user.id ?? '');
+			this.allKnownProfiles = e.allProfiles;
+		}
+
 		this.changeEmitter.fire();
 	}
 
@@ -53,8 +67,14 @@ export class SessionTreeDataProvider implements vscode.TreeDataProvider<SessionT
 			return Promise.resolve([]);
 		}
 
-		const sessions = Array.from(SessionManager.sessionMap.values());
-		const items = sessions.map(session => new SessionTreeItem(session, vscode.TreeItemCollapsibleState.None));
+		const items = this.allKnownProfiles.map(
+			profile =>
+				new SessionTreeItem(
+					profile,
+					this.activeProfileUserIDs.includes(profile.user.id ?? ''),
+					vscode.TreeItemCollapsibleState.None,
+				),
+		);
 
 		return Promise.resolve(items);
 	}

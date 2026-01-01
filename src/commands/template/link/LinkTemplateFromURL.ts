@@ -1,5 +1,5 @@
-import { SessionManager } from '@client';
 import { TemplateLinkManager } from '@models';
+import { SessionManager } from '@sessions';
 import { ensureSavedDocument, getTemplateURLParams, log, requireUnlinked } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../../GenericCommand';

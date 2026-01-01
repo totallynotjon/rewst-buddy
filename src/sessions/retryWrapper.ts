@@ -1,5 +1,5 @@
 import { log } from '@utils';
-import { SdkFunctionWrapper } from '@sdk';
+import { SdkFunctionWrapper } from 'sessions/graphql/sdk';
 
 export interface RetryOptions {
 	maxRetries: number;

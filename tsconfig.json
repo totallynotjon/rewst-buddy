@@ -12,8 +12,7 @@
 		"paths": {
 			"@models": ["models/index.ts"],
 			"@commands": ["commands/index.ts"],
-			"@client": ["client/index.ts"],
-			"@sdk": ["client/graphql/sdk.ts"],
+			"@sessions": ["sessions/index.ts"],
 			"@utils": ["utils/index.ts"],
 			"@global": ["context/index.ts"],
 			"@ui": ["ui/index.ts"],
