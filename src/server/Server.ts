@@ -1,12 +1,38 @@
 import { log } from '@utils';
 import http, { IncomingMessage, ServerResponse } from 'http';
+import vscode from 'vscode';
 import { getServerConfig } from './config';
 import { handleAddSession, validateRequest } from './handlers';
 import { AddSessionRequest, Response, ServerConfig } from './types';
 
-export const Server = new (class Server {
+export const Server = new (class Server implements vscode.Disposable {
 	private server: http.Server | null = null;
 	private isRunning = false;
+	private disposables: vscode.Disposable[] = [];
+
+	constructor() {
+		this.disposables.push(
+			vscode.workspace.onDidChangeConfiguration(e => {
+				if (e.affectsConfiguration('rewst-buddy.server')) {
+					this.handleConfigChange();
+				}
+			}),
+		);
+	}
+
+	dispose(): void {
+		this.stop();
+		this.disposables.forEach(d => d.dispose());
+	}
+
+	private async handleConfigChange(): Promise<void> {
+		const config = getServerConfig();
+		if (config.enabled && !this.isRunning) {
+			await this.start();
+		} else if (!config.enabled && this.isRunning) {
+			await this.stop();
+		}
+	}
 
 	async startIfEnabled(): Promise<void> {
 		const config = getServerConfig();

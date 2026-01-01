@@ -5,9 +5,13 @@ import vscode from 'vscode';
 import CookieString from './CookieString';
 import RewstSession from './RewstSession';
 import RewstSessionProfile from './RewstSessionProfile';
+import type { SessionChangeEvent } from '@events';
 
 class RewstSessionManager {
 	sessionMap: Map<string, RewstSession> = new Map<string, RewstSession>();
+
+	private readonly sessionChangeEmitter = new vscode.EventEmitter<SessionChangeEvent>();
+	readonly onSessionChange = this.sessionChangeEmitter.event;
 
 	async createFromProfile(profile: RewstSessionProfile): Promise<RewstSession> {
 		let session = new RewstSession(undefined, profile);
@@ -69,6 +73,12 @@ class RewstSessionManager {
 
 		await context.secrets.store(org.id, cookies);
 		this.saveSession(session);
+
+		this.sessionChangeEmitter.fire({
+			type: 'added',
+			session,
+			allSessions: Array.from(this.sessionMap.values()),
+		});
 
 		return session;
 	}
@@ -169,6 +179,11 @@ class RewstSessionManager {
 	public clearProfiles() {
 		context.globalState.update('RewstSessionProfiles', []);
 		this.sessionMap.clear();
+
+		this.sessionChangeEmitter.fire({
+			type: 'cleared',
+			allSessions: [],
+		});
 	}
 }
 

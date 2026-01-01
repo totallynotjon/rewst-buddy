@@ -27,9 +27,18 @@ export class SessionTreeItem extends vscode.TreeItem {
 	}
 }
 
-export class SessionTreeDataProvider implements vscode.TreeDataProvider<SessionTreeItem> {
+export class SessionTreeDataProvider implements vscode.TreeDataProvider<SessionTreeItem>, vscode.Disposable {
 	private changeEmitter = new vscode.EventEmitter<SessionTreeItem | undefined | null | void>();
 	readonly onDidChangeTreeData = this.changeEmitter.event;
+	private disposables: vscode.Disposable[] = [];
+
+	constructor() {
+		this.disposables.push(SessionManager.onSessionChange(() => this.refresh()));
+	}
+
+	dispose(): void {
+		this.disposables.forEach(d => d.dispose());
+	}
 
 	refresh(): void {
 		this.changeEmitter.fire();

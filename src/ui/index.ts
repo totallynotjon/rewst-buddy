@@ -1,3 +1,3 @@
 export * from './pickers';
-export { StatusBarIcon, updateStatusBar } from './StatusBarIcon';
+export { StatusBar } from './StatusBarIcon';
 export { RewstViewProvider, SessionTreeDataProvider, SessionTreeItem } from './webview';

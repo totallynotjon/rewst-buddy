@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.21.0]
+
+### Changed
+- Refactored event handling to self-registration pattern
+- Managers now subscribe to VS Code events internally (TemplateLinkManager, TemplateSyncManager, Server)
+- UI components self-register for domain events (SessionTreeDataProvider, StatusBar)
+- Simplified extension.ts by removing external event wiring
+
+### Removed
+- Deleted `src/events/vscode/` folder (handlers moved into managers)
+- Removed `onRename.ts`, `onSave.ts`, `onEditorChange.ts`, `onLinksSaved.ts`
+
 ## [0.20.0]
 
 ### Added

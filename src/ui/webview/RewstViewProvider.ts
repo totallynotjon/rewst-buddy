@@ -1,16 +1,12 @@
 import vscode from 'vscode';
 import { SessionManager } from '@client';
 import { log } from '@utils';
-import { SessionTreeDataProvider } from './SessionTreeDataProvider';
 
 export class RewstViewProvider implements vscode.WebviewViewProvider {
 	public static readonly viewType = 'rewst-buddy.sessionInput';
 	private view?: vscode.WebviewView;
 
-	constructor(
-		private readonly extensionUri: vscode.Uri,
-		private readonly sessionTreeProvider: SessionTreeDataProvider,
-	) {}
+	constructor(private readonly extensionUri: vscode.Uri) {}
 
 	public resolveWebviewView(
 		webviewView: vscode.WebviewView,
@@ -42,7 +38,6 @@ export class RewstViewProvider implements vscode.WebviewViewProvider {
 
 		try {
 			await SessionManager.createSession(token.trim());
-			this.sessionTreeProvider.refresh();
 		} catch (error) {
 			log.error(`Failed to create session: ${error}`);
 		}

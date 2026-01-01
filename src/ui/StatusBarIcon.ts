@@ -2,58 +2,75 @@ import { log } from '@utils';
 import { TemplateLink, TemplateLinkManager } from '@models';
 import vscode from 'vscode';
 
-export const StatusBarIcon: vscode.StatusBarItem = vscode.window.createStatusBarItem(
-	vscode.StatusBarAlignment.Left,
-	100,
-);
-StatusBarIcon.show();
+export class StatusBar implements vscode.Disposable {
+	private item: vscode.StatusBarItem;
+	private disposables: vscode.Disposable[] = [];
 
-export async function updateStatusBar(e?: vscode.TextEditor | undefined) {
-	const editor = e ?? vscode.window.activeTextEditor;
-	if (editor === undefined) {
-		clear();
-		return;
+	constructor() {
+		this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+		this.item.show();
+
+		this.disposables.push(
+			TemplateLinkManager.onLinksSaved(() => this.update()),
+			vscode.window.onDidChangeActiveTextEditor(() => this.update()),
+		);
+
+		// Initial update
+		this.update();
 	}
 
-	const isLinked = TemplateLinkManager.isLinked(editor.document.uri);
-
-	if (!isLinked) {
-		clear();
-		return;
+	dispose(): void {
+		this.item.dispose();
+		this.disposables.forEach(d => d.dispose());
 	}
 
-	StatusBarIcon.text = 'Rewst Buddy: $(check) Linked';
+	update(editor?: vscode.TextEditor): void {
+		const activeEditor = editor ?? vscode.window.activeTextEditor;
+		if (activeEditor === undefined) {
+			this.clear();
+			return;
+		}
 
-	let link;
-	try {
-		link = TemplateLinkManager.getLink(editor.document.uri);
-	} catch {
-		log.error('We failed to get the link of the active document for some reason.');
-		return;
+		const isLinked = TemplateLinkManager.isLinked(activeEditor.document.uri);
+
+		if (!isLinked) {
+			this.clear();
+			return;
+		}
+
+		this.item.text = 'Rewst Buddy: $(check) Linked';
+
+		let link;
+		try {
+			link = TemplateLinkManager.getLink(activeEditor.document.uri);
+		} catch {
+			log.error('We failed to get the link of the active document for some reason.');
+			return;
+		}
+
+		this.item.tooltip = this.buildTooltip(link);
 	}
 
-	StatusBarIcon.tooltip = buildTooltip(link);
-}
+	private buildTooltip(link: TemplateLink): vscode.MarkdownString {
+		const { template, sessionProfile } = link;
 
-function buildTooltip(link: TemplateLink): vscode.MarkdownString {
-	const { template, sessionProfile } = link;
+		const lines: string[] = [`## ${template.name}`];
 
-	const lines: string[] = [`## ${template.name}`];
+		if (template.description) {
+			lines.push('', template.description);
+		}
 
-	if (template.description) {
-		lines.push('', template.description);
+		lines.push('', '---', '', `**Organization:** ${template.organization.name}`);
+
+		lines.push('', '---', '', `**Session:** ${sessionProfile.label}`, `**Region:** ${sessionProfile.region.name}`);
+
+		const md = new vscode.MarkdownString(lines.join('\n'));
+		md.isTrusted = true;
+		return md;
 	}
 
-	lines.push('', '---', '', `**Organization:** ${template.organization.name}`);
-
-	lines.push('', '---', '', `**Session:** ${sessionProfile.label}`, `**Region:** ${sessionProfile.region.name}`);
-
-	const md = new vscode.MarkdownString(lines.join('\n'));
-	md.isTrusted = true;
-	return md;
-}
-
-function clear() {
-	StatusBarIcon.text = 'Rewst Buddy: $(circle-large-outline) Unlinked';
-	StatusBarIcon.tooltip = '';
+	private clear(): void {
+		this.item.text = 'Rewst Buddy: $(circle-large-outline) Unlinked';
+		this.item.tooltip = '';
+	}
 }

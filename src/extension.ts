@@ -1,9 +1,9 @@
 import { SessionManager } from '@client';
 import { CommandInitiater } from '@commands';
-import { onEditorChange, onRename, onSave } from '@events';
 import { extPrefix, context as globalVSContext } from '@global';
+import { TemplateLinkManager, TemplateSyncManager } from '@models';
 import { Server } from '@server';
-import { StatusBarIcon, RewstViewProvider, SessionTreeDataProvider } from '@ui';
+import { StatusBar, RewstViewProvider, SessionTreeDataProvider } from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
 
@@ -18,55 +18,35 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	CommandInitiater.registerCommands();
 
-	// Register TreeDataProvider (must be created first for RewstViewProvider to reference)
+	// Register managers (self-register for their respective VS Code events)
+	context.subscriptions.push(TemplateLinkManager);
+	context.subscriptions.push(TemplateSyncManager);
+	context.subscriptions.push(Server);
+
+	// Register TreeDataProvider (self-registers for session change events)
 	const sessionTreeProvider = new SessionTreeDataProvider();
 	context.subscriptions.push(
+		sessionTreeProvider,
 		vscode.window.registerTreeDataProvider('rewst-buddy.sessionTree', sessionTreeProvider),
 	);
 
-	// Register WebviewViewProvider (receives sessionTreeProvider to call refresh internally)
-	const rewstViewProvider = new RewstViewProvider(context.extensionUri, sessionTreeProvider);
+	// Register WebviewViewProvider
+	const rewstViewProvider = new RewstViewProvider(context.extensionUri);
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(RewstViewProvider.viewType, rewstViewProvider),
 	);
 
-	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(onSave));
-
-	context.subscriptions.push(vscode.workspace.onDidRenameFiles(onRename));
-
-	context.subscriptions.push(vscode.window.onDidChangeActiveTextEditor(onEditorChange));
-
-	context.subscriptions.push(StatusBarIcon);
-
-	await onEditorChange();
+	// StatusBar self-registers for link and editor change events
+	const statusBar = new StatusBar();
+	context.subscriptions.push(statusBar);
 
 	// Start server if enabled
 	await Server.startIfEnabled();
 
-	// Listen for configuration changes to auto start/stop server
-	context.subscriptions.push(
-		vscode.workspace.onDidChangeConfiguration(async e => {
-			if (e.affectsConfiguration('rewst-buddy.server')) {
-				await handleServerConfigChange();
-			}
-		}),
-	);
-
 	log.info(`Finished activation of extension ${extPrefix}`);
 }
 
-async function handleServerConfigChange(): Promise<void> {
-	const config = vscode.workspace.getConfiguration('rewst-buddy.server');
-	const enabled = config.get<boolean>('enabled', false);
-
-	if (enabled && !Server.getStatus()) {
-		await Server.start();
-	} else if (!enabled && Server.getStatus()) {
-		await Server.stop();
-	}
-}
-
-export async function deactivate() {
+export function deactivate() {
 	log.info('Deactivating rewst-buddy extension');
-	await Server.stop();
+	// Server.dispose() is called automatically via context.subscriptions
 }

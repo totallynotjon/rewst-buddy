@@ -1,11 +1,41 @@
 import { SessionManager } from '@client';
+import { extPrefix } from '@global';
 import { log } from '@utils';
 import { TemplateFragment } from '@sdk';
 import vscode from 'vscode';
 import { TemplateLinkManager } from './TemplateLinkManager';
 
-export const TemplateSyncManager = new (class TemplateSyncManager {
+export const TemplateSyncManager = new (class TemplateSyncManager implements vscode.Disposable {
 	private syncingUris = new Set<string>();
+	private disposables: vscode.Disposable[] = [];
+
+	constructor() {
+		this.disposables.push(
+			vscode.workspace.onDidSaveTextDocument(doc => this.handleSave(doc)),
+		);
+	}
+
+	dispose(): void {
+		this.disposables.forEach(d => d.dispose());
+	}
+
+	private async handleSave(document: vscode.TextDocument): Promise<void> {
+		log.trace('Handling save', document);
+
+		const config = vscode.workspace.getConfiguration(extPrefix);
+		const enabled = config.get<boolean>('enableSyncOnSave', false);
+
+		if (!enabled) return;
+
+		if (!TemplateLinkManager.isLinked(document.uri)) return;
+
+		try {
+			await this.syncTemplate(document);
+			log.notifyInfo('SUCCESS: Synced template');
+		} catch (e) {
+			log.notifyError('Failed to sync template:', e);
+		}
+	}
 
 	async updateTemplateBody(doc: vscode.TextDocument) {
 		const link = TemplateLinkManager.getLink(doc.uri);
