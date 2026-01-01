@@ -2,14 +2,14 @@ import { GraphQLClient, RequestOptions } from 'graphql-request';
 import { gql } from 'graphql-request';
 export type Maybe<T> = T | null;
 export type InputMaybe<T> = Maybe<T>;
-export type Exact<T extends { [key: string]: unknown }> = { [K in keyof T]: T[K] };
+export type Exact<T extends Record<string, unknown>> = { [K in keyof T]: T[K] };
 export type MakeOptional<T, K extends keyof T> = Omit<T, K> & { [SubKey in K]?: Maybe<T[SubKey]> };
 export type MakeMaybe<T, K extends keyof T> = Omit<T, K> & { [SubKey in K]: Maybe<T[SubKey]> };
-export type MakeEmpty<T extends { [key: string]: unknown }, K extends keyof T> = { [_ in K]?: never };
+export type MakeEmpty<T extends Record<string, unknown>, K extends keyof T> = Partial<Record<K, never>>;
 export type Incremental<T> = T | { [P in keyof T]?: P extends ' $fragmentName' | '__typename' ? T[P] : never };
 type GraphQLClientRequestHeaders = RequestOptions['requestHeaders'];
 /** All built-in and custom scalars, mapped to their actual values */
-export type Scalars = {
+export interface Scalars {
   ID: { input: string; output: string; }
   String: { input: string; output: string; }
   Boolean: { input: boolean; output: boolean; }
@@ -18,11 +18,11 @@ export type Scalars = {
   JSON: { input: any; output: any; }
   Upload: { input: any; output: any; }
   Void: { input: any; output: any; }
-};
+}
 
-export type Action = {
+export interface Action {
   __typename?: 'Action';
-  actionOptions: Array<ActionOption>;
+  actionOptions: ActionOption[];
   category?: Maybe<Scalars['String']['output']>;
   className?: Maybe<Scalars['String']['output']>;
   defaultHumanSecondsSaved?: Maybe<Scalars['Int']['output']>;
@@ -44,21 +44,21 @@ export type Action = {
   ref?: Maybe<Scalars['String']['output']>;
   runner?: Maybe<Runner>;
   uid?: Maybe<Scalars['ID']['output']>;
-  visibleForOrganizations: Array<Organization>;
+  visibleForOrganizations: Organization[];
   workflow?: Maybe<Workflow>;
-};
+}
 
 
-export type ActionPackArgs = {
+export interface ActionPackArgs {
   where?: InputMaybe<PackInput>;
-};
+}
 
 
-export type ActionParametersArgs = {
+export interface ActionParametersArgs {
   populateOptions?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type ActionInput = {
+export interface ActionInput {
   category?: InputMaybe<Scalars['String']['input']>;
   deprecated?: InputMaybe<Scalars['Boolean']['input']>;
   deprecationMessage?: InputMaybe<Scalars['String']['input']>;
@@ -74,11 +74,11 @@ export type ActionInput = {
   ref?: InputMaybe<Scalars['String']['input']>;
   runner_type?: InputMaybe<Scalars['String']['input']>;
   uid?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type ActionOption = {
+export interface ActionOption {
   __typename?: 'ActionOption';
-  actions?: Maybe<Array<Action>>;
+  actions?: Maybe<Action[]>;
   id?: Maybe<Scalars['ID']['output']>;
   optionLabel?: Maybe<Scalars['String']['output']>;
   optionValue?: Maybe<Scalars['String']['output']>;
@@ -87,35 +87,35 @@ export type ActionOption = {
   packConfig?: Maybe<PackConfig>;
   packConfigId?: Maybe<Scalars['ID']['output']>;
   resourceName?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type ActionOptionInput = {
+export interface ActionOptionInput {
   optionLabel?: InputMaybe<Scalars['String']['input']>;
   optionValue?: InputMaybe<Scalars['String']['input']>;
   organizationId?: InputMaybe<Scalars['ID']['input']>;
   packConfigId?: InputMaybe<Scalars['ID']['input']>;
   resourceName?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type ActionOptionSearchInput = {
+export interface ActionOptionSearchInput {
   optionLabel?: InputMaybe<String_Comparison_Exp>;
   optionValue?: InputMaybe<String_Comparison_Exp>;
   organizationId?: InputMaybe<Id_Comparison_Exp>;
   packConfig?: InputMaybe<PackConfigSearch>;
   packConfigId?: InputMaybe<Id_Comparison_Exp>;
   resourceName?: InputMaybe<String_Comparison_Exp>;
-};
+}
 
-export type ActionOptionWhereInput = {
+export interface ActionOptionWhereInput {
   optionLabel?: InputMaybe<Scalars['String']['input']>;
   optionValue?: InputMaybe<Scalars['String']['input']>;
   organizationId?: InputMaybe<Scalars['ID']['input']>;
   packConfig?: InputMaybe<PackConfigWhereInput>;
   packConfigId?: InputMaybe<Scalars['ID']['input']>;
   resourceName?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type ActionSearch = {
+export interface ActionSearch {
   category?: InputMaybe<String_Comparison_Exp>;
   deprecated?: InputMaybe<Bool_Comparison_Exp>;
   description?: InputMaybe<String_Comparison_Exp>;
@@ -128,9 +128,9 @@ export type ActionSearch = {
   parameters?: InputMaybe<Json_Comparison_Exp>;
   ref?: InputMaybe<String_Comparison_Exp>;
   uid?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type ActionUpdateInput = {
+export interface ActionUpdateInput {
   category?: InputMaybe<Scalars['String']['input']>;
   deprecated?: InputMaybe<Scalars['Boolean']['input']>;
   deprecationMessage?: InputMaybe<Scalars['String']['input']>;
@@ -142,9 +142,9 @@ export type ActionUpdateInput = {
   outputSchema?: InputMaybe<Scalars['JSON']['input']>;
   parameters?: InputMaybe<Scalars['JSON']['input']>;
   ref?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type ApiClient = {
+export interface ApiClient {
   __typename?: 'ApiClient';
   auth0ClientId: Scalars['String']['output'];
   clientType: ApiClientType;
@@ -160,27 +160,27 @@ export type ApiClient = {
   secretRotatedAt?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['String']['output'];
   updatedById?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type ApiClientList = {
+export interface ApiClientList {
   __typename?: 'ApiClientList';
-  apiClients: Array<ApiClient>;
+  apiClients: ApiClient[];
   hasMore: Scalars['Boolean']['output'];
   totalCount: Scalars['Int']['output'];
-};
+}
 
-export type ApiClientListInput = {
+export interface ApiClientListInput {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-};
+}
 
-export type ApiClientSecretRotation = {
+export interface ApiClientSecretRotation {
   __typename?: 'ApiClientSecretRotation';
   auth0ClientId: Scalars['String']['output'];
   auth0ClientSecret: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   secretRotatedAt: Scalars['String']['output'];
-};
+}
 
 export enum ApiClientStatus {
   Active = 'ACTIVE',
@@ -192,13 +192,13 @@ export enum ApiClientType {
   Organization = 'ORGANIZATION'
 }
 
-export type ApiClientWhereInput = {
+export interface ApiClientWhereInput {
   clientType?: InputMaybe<ApiClientType>;
   id?: InputMaybe<Scalars['ID']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type ApiClientWithSecret = {
+export interface ApiClientWithSecret {
   __typename?: 'ApiClientWithSecret';
   auth0ClientId: Scalars['String']['output'];
   auth0ClientSecret: Scalars['String']['output'];
@@ -213,9 +213,9 @@ export type ApiClientWithSecret = {
   organization: Organization;
   secretRotatedAt?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['String']['output'];
-};
+}
 
-export type AppPlatformReservedDomain = {
+export interface AppPlatformReservedDomain {
   __typename?: 'AppPlatformReservedDomain';
   createdAt?: Maybe<Scalars['String']['output']>;
   createdBy?: Maybe<User>;
@@ -227,46 +227,46 @@ export type AppPlatformReservedDomain = {
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
   useStrictMatch?: Maybe<Scalars['Boolean']['output']>;
-};
+}
 
-export type AppPlatformReservedDomainCreateInput = {
+export interface AppPlatformReservedDomainCreateInput {
   domain: Scalars['String']['input'];
   isStaffAllowed?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type AppPlatformReservedDomainSearchInput = {
+export interface AppPlatformReservedDomainSearchInput {
   createdBy?: InputMaybe<UserSearchInput>;
   domain?: InputMaybe<String_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   isStaffAllowed?: InputMaybe<Bool_Comparison_Exp>;
   updatedBy?: InputMaybe<UserSearchInput>;
-};
+}
 
-export type AppPlatformReservedDomainUpdateInput = {
+export interface AppPlatformReservedDomainUpdateInput {
   domain?: InputMaybe<Scalars['String']['input']>;
   isStaffAllowed?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type AppPlatformReservedDomainWhereInput = {
+export interface AppPlatformReservedDomainWhereInput {
   createdBy?: InputMaybe<UserWhereInput>;
   domain?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   isStaffAllowed?: InputMaybe<Scalars['Boolean']['input']>;
   updatedBy?: InputMaybe<UserWhereInput>;
   useStrictMatch?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type AssociatedPack = {
+export interface AssociatedPack {
   __typename?: 'AssociatedPack';
   id: Scalars['String']['output'];
   name: Scalars['String']['output'];
-};
+}
 
-export type AuthUrlResponse = {
+export interface AuthUrlResponse {
   __typename?: 'AuthUrlResponse';
   authUrl?: Maybe<Scalars['String']['output']>;
   error?: Maybe<Scalars['String']['output']>;
-};
+}
 
 export type AzureFunctionAppInterpreterDeploymentStreamEvent = AzureFunctionAppInterpreterDeploymentStreamFailureResponse | AzureFunctionAppInterpreterDeploymentStreamMessage | AzureFunctionAppInterpreterDeploymentStreamSuccessResponse;
 
@@ -290,70 +290,70 @@ export type AzureFunctionAppInterpreterDeploymentStreamSuccessResponse = BaseStr
   phase: Scalars['String']['output'];
 };
 
-export type BaseCloneObjectSuccessResponse = {
+export interface BaseCloneObjectSuccessResponse {
   id: Scalars['ID']['output'];
   orgId: Scalars['ID']['output'];
   type: CloneableObjectType;
-};
+}
 
-export type BaseCloningResponse = {
+export interface BaseCloningResponse {
   didSucceed: Scalars['Boolean']['output'];
   isFinished: Scalars['Boolean']['output'];
-};
+}
 
-export type BaseMicrosoftCspConsentResponse = {
+export interface BaseMicrosoftCspConsentResponse {
   event: Scalars['String']['output'];
   isFinished: Scalars['Boolean']['output'];
-};
+}
 
-export type BaseStreamEvent = {
+export interface BaseStreamEvent {
   isFinished: Scalars['Boolean']['output'];
-};
+}
 
-export type BaseStreamResponse = {
+export interface BaseStreamResponse {
   didSucceed: Scalars['Boolean']['output'];
   isFinished: Scalars['Boolean']['output'];
-};
+}
 
-export type CspApplicationGrant = {
+export interface CspApplicationGrant {
   enterpriseApplicationId: Scalars['String']['input'];
   scope: Scalars['String']['input'];
-};
+}
 
 export enum CspConsentAction {
   Create = 'CREATE',
   Revoke = 'REVOKE'
 }
 
-export type CspConsentResult = {
+export interface CspConsentResult {
   __typename?: 'CSPConsentResult';
   action: CspConsentAction;
-  errors: Array<Scalars['String']['output']>;
+  errors: Scalars['String']['output'][];
   packConfigId: Scalars['ID']['output'];
-  tenantIdsWithConsent: Array<Scalars['ID']['output']>;
-  updatedCustomers: Array<CspCustomerRecord>;
-};
+  tenantIdsWithConsent: Scalars['ID']['output'][];
+  updatedCustomers: CspCustomerRecord[];
+}
 
-export type CspCustomerRecord = {
+export interface CspCustomerRecord {
   __typename?: 'CSPCustomerRecord';
   companyName: Scalars['String']['output'];
   domain: Scalars['String']['output'];
   tenantId: Scalars['ID']['output'];
-};
+}
 
-export type CheckAuthorizationInput = {
+export interface CheckAuthorizationInput {
   fullyConsistent?: InputMaybe<Scalars['Boolean']['input']>;
   objectId: Scalars['String']['input'];
   objectType: Scalars['String']['input'];
   relation: Scalars['String']['input'];
   userId: Scalars['ID']['input'];
-};
+}
 
-export type CheckInput = {
+export interface CheckInput {
   objectId: Scalars['String']['input'];
   objectType: Scalars['String']['input'];
   relation: Scalars['String']['input'];
-};
+}
 
 export type CloneFormStreamSuccessResponse = BaseCloneObjectSuccessResponse & BaseCloningResponse & BaseStreamEvent & {
   __typename?: 'CloneFormStreamSuccessResponse';
@@ -416,14 +416,14 @@ export type CloningExportPhaseStreamFailureResponse = BaseCloningResponse & Base
   code?: Maybe<Scalars['String']['output']>;
   didSucceed: Scalars['Boolean']['output'];
   error?: Maybe<Scalars['String']['output']>;
-  failures: Array<ExportErrorObject>;
+  failures: ExportErrorObject[];
   isFinished: Scalars['Boolean']['output'];
   phase: ClonePhase;
 };
 
 export type CloningExportPhaseStreamMessage = BaseStreamEvent & ExportObjectsProgressMessage & PhasedCloneEvent & {
   __typename?: 'CloningExportPhaseStreamMessage';
-  errors?: Maybe<Array<Scalars['String']['output']>>;
+  errors?: Maybe<Scalars['String']['output'][]>;
   failed: Scalars['Boolean']['output'];
   identity: ExportObjectIdentifier;
   isFinished: Scalars['Boolean']['output'];
@@ -449,7 +449,7 @@ export type CloningImportPhaseStreamMessage = BaseStreamEvent & ImportProgressMe
   progress: ImportProgressInfo;
 };
 
-export type CommonlyUsedAction = {
+export interface CommonlyUsedAction {
   __typename?: 'CommonlyUsedAction';
   category?: Maybe<Scalars['String']['output']>;
   deprecated?: Maybe<Scalars['Boolean']['output']>;
@@ -460,29 +460,29 @@ export type CommonlyUsedAction = {
   pack?: Maybe<Pack>;
   ref?: Maybe<Scalars['String']['output']>;
   usageCount?: Maybe<Scalars['Int']['output']>;
-};
+}
 
-export type CompletionListenerCreateInput = {
+export interface CompletionListenerCreateInput {
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   handlerWorkflowId: Scalars['ID']['input'];
   listeningToWorkflowId: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
-  packOverrides?: InputMaybe<Array<InputMaybe<PackOverrideInput>>>;
-  triggerOnStatuses: Array<Scalars['String']['input']>;
-};
+  packOverrides?: InputMaybe<InputMaybe<PackOverrideInput>[]>;
+  triggerOnStatuses: Scalars['String']['input'][];
+}
 
-export type CompletionListenerUpdateInput = {
+export interface CompletionListenerUpdateInput {
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   handlerWorkflowId: Scalars['ID']['input'];
   listeningToWorkflowId: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
-  packOverrides?: InputMaybe<Array<InputMaybe<PackOverrideInput>>>;
+  packOverrides?: InputMaybe<InputMaybe<PackOverrideInput>[]>;
   triggerId: Scalars['ID']['input'];
-  triggerOnStatuses: Array<Scalars['String']['input']>;
-};
+  triggerOnStatuses: Scalars['String']['input'][];
+}
 
-export type Component = {
+export interface Component {
   __typename?: 'Component';
   createdAt?: Maybe<Scalars['String']['output']>;
   createdBy?: Maybe<User>;
@@ -495,15 +495,15 @@ export type Component = {
   updatedAt?: Maybe<Scalars['String']['output']>;
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
-  versions?: Maybe<Array<ComponentVersion>>;
-};
+  versions?: Maybe<ComponentVersion[]>;
+}
 
-export type ComponentGeneratorResponse = {
+export interface ComponentGeneratorResponse {
   __typename?: 'ComponentGeneratorResponse';
   tsx: Scalars['String']['output'];
-};
+}
 
-export type ComponentInstance = {
+export interface ComponentInstance {
   __typename?: 'ComponentInstance';
   componentVersionId?: Maybe<Scalars['String']['output']>;
   createdAt?: Maybe<Scalars['String']['output']>;
@@ -511,40 +511,40 @@ export type ComponentInstance = {
   pageId: Scalars['ID']['output'];
   pageNodes?: Maybe<Scalars['String']['output']>;
   updatedAt?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type ComponentInstanceCreateInput = {
+export interface ComponentInstanceCreateInput {
   pageId: Scalars['ID']['input'];
   pageNodes: Scalars['String']['input'];
-};
+}
 
-export type ComponentInstanceCreationResult = {
+export interface ComponentInstanceCreationResult {
   __typename?: 'ComponentInstanceCreationResult';
   componentInstance?: Maybe<ComponentInstance>;
   componentVersionId: Scalars['ID']['output'];
-};
+}
 
-export type ComponentInstanceInput = {
+export interface ComponentInstanceInput {
   componentVersionId?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['String']['input']>;
   pageId: Scalars['ID']['input'];
   pageNodes?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type ComponentInstanceResult = {
+export interface ComponentInstanceResult {
   __typename?: 'ComponentInstanceResult';
-  componentInstances?: Maybe<Array<Maybe<ComponentInstance>>>;
-  errors?: Maybe<Array<Maybe<Scalars['String']['output']>>>;
+  componentInstances?: Maybe<Maybe<ComponentInstance>[]>;
+  errors?: Maybe<Maybe<Scalars['String']['output']>[]>;
   message?: Maybe<Scalars['String']['output']>;
   success: Scalars['Boolean']['output'];
-};
+}
 
-export type ComponentInstanceUpdateInput = {
+export interface ComponentInstanceUpdateInput {
   componentVersionId: Scalars['ID']['input'];
   pageId: Scalars['ID']['input'];
-};
+}
 
-export type ComponentTree = {
+export interface ComponentTree {
   __typename?: 'ComponentTree';
   component: Component;
   createdAt?: Maybe<Scalars['String']['output']>;
@@ -553,9 +553,9 @@ export type ComponentTree = {
   updatedAt?: Maybe<Scalars['String']['output']>;
   updatedBy?: Maybe<User>;
   versionNumber?: Maybe<Scalars['Int']['output']>;
-};
+}
 
-export type ComponentVersion = {
+export interface ComponentVersion {
   __typename?: 'ComponentVersion';
   componentId: Scalars['ID']['output'];
   createdAt?: Maybe<Scalars['String']['output']>;
@@ -567,8 +567,8 @@ export type ComponentVersion = {
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
   versionNumber: Scalars['Int']['output'];
-  workflows?: Maybe<Array<Maybe<Workflow>>>;
-};
+  workflows?: Maybe<Maybe<Workflow>[]>;
+}
 
 export enum ConfigFallbackModes {
   FailAction = 'FAIL_ACTION',
@@ -588,11 +588,11 @@ export enum ConfigSelectionModes {
   UseSelectedId = 'USE_SELECTED_ID'
 }
 
-export type Conversation = {
+export interface Conversation {
   __typename?: 'Conversation';
   createdAt: Scalars['String']['output'];
   id: Scalars['ID']['output'];
-  messages: Array<ConversationMessage>;
+  messages: ConversationMessage[];
   metadata?: Maybe<Scalars['JSON']['output']>;
   orgId: Scalars['ID']['output'];
   organization: Organization;
@@ -601,24 +601,24 @@ export type Conversation = {
   updatedAt: Scalars['String']['output'];
   user: User;
   userId: Scalars['ID']['output'];
-};
+}
 
 
-export type ConversationMessagesArgs = {
+export interface ConversationMessagesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-};
+}
 
-export type ConversationInput = {
+export interface ConversationInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   metadata?: InputMaybe<Scalars['JSON']['input']>;
   orgId: Scalars['ID']['input'];
   title?: InputMaybe<Scalars['String']['input']>;
   type?: InputMaybe<ConversationType>;
   userId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type ConversationMessage = {
+export interface ConversationMessage {
   __typename?: 'ConversationMessage';
   content: Scalars['String']['output'];
   conversation: Conversation;
@@ -630,18 +630,18 @@ export type ConversationMessage = {
   updatedAt: Scalars['String']['output'];
   user?: Maybe<User>;
   userId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type ConversationMessageInput = {
+export interface ConversationMessageInput {
   content: Scalars['String']['input'];
   conversationId: Scalars['ID']['input'];
   id?: InputMaybe<Scalars['ID']['input']>;
   metadata?: InputMaybe<Scalars['JSON']['input']>;
   role: ConversationRole;
   userId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type ConversationMessageItemResponse = {
+export interface ConversationMessageItemResponse {
   __typename?: 'ConversationMessageItemResponse';
   content: Scalars['String']['output'];
   conversation: Conversation;
@@ -653,18 +653,18 @@ export type ConversationMessageItemResponse = {
   updatedAt: Scalars['String']['output'];
   user?: Maybe<User>;
   userId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type ConversationMessageResponse = {
+export interface ConversationMessageResponse {
   __typename?: 'ConversationMessageResponse';
   conversation_id: Scalars['ID']['output'];
   error?: Maybe<Scalars['String']['output']>;
   message?: Maybe<ConversationMessage>;
   metadata?: Maybe<Scalars['JSON']['output']>;
   status: Scalars['String']['output'];
-};
+}
 
-export type ConversationMessageVote = {
+export interface ConversationMessageVote {
   __typename?: 'ConversationMessageVote';
   comment?: Maybe<Scalars['String']['output']>;
   conversationMessageId: Scalars['ID']['output'];
@@ -676,23 +676,23 @@ export type ConversationMessageVote = {
   user?: Maybe<User>;
   userId: Scalars['ID']['output'];
   vote: VoteType;
-};
+}
 
-export type ConversationMessageVoteInput = {
+export interface ConversationMessageVoteInput {
   comment?: InputMaybe<Scalars['String']['input']>;
   conversationMessageId: Scalars['ID']['input'];
   id?: InputMaybe<Scalars['ID']['input']>;
   reason?: InputMaybe<VoteReason>;
   vote: VoteType;
-};
+}
 
-export type ConversationMessageVoteWhereInput = {
+export interface ConversationMessageVoteWhereInput {
   conversationMessageId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   reason?: InputMaybe<VoteReason>;
   userId?: InputMaybe<Scalars['ID']['input']>;
   vote?: InputMaybe<VoteType>;
-};
+}
 
 export enum ConversationRole {
   Assistant = 'ASSISTANT',
@@ -707,18 +707,18 @@ export enum ConversationType {
   WorkflowDiagnosis = 'WORKFLOW_DIAGNOSIS'
 }
 
-export type ConversationWhereInput = {
+export interface ConversationWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   type?: InputMaybe<ConversationType>;
   userId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type Crate = {
+export interface Crate {
   __typename?: 'Crate';
-  associatedPacks?: Maybe<Array<Pack>>;
+  associatedPacks?: Maybe<Pack[]>;
   category?: Maybe<Scalars['String']['output']>;
-  crateTriggers?: Maybe<Array<CrateTrigger>>;
+  crateTriggers?: Maybe<CrateTrigger[]>;
   createdAt?: Maybe<Scalars['String']['output']>;
   createdById?: Maybe<Scalars['ID']['output']>;
   /** Description of the crate */
@@ -732,30 +732,30 @@ export type Crate = {
   /** Name of the crate */
   name: Scalars['String']['output'];
   orgId: Scalars['ID']['output'];
-  overrides?: Maybe<Array<CrateOverride>>;
+  overrides?: Maybe<CrateOverride[]>;
   primaryPack?: Maybe<Pack>;
   primaryPackId?: Maybe<Scalars['ID']['output']>;
   providedValue?: Maybe<Scalars['String']['output']>;
-  replicationRegions?: Maybe<Array<CrateReplicationRegion>>;
-  requiredOrgVariables?: Maybe<Array<Scalars['String']['output']>>;
+  replicationRegions?: Maybe<CrateReplicationRegion[]>;
+  requiredOrgVariables?: Maybe<Scalars['String']['output'][]>;
   setupAssistance?: Maybe<Scalars['Boolean']['output']>;
   setupTime?: Maybe<Scalars['Int']['output']>;
   sourceEnvironment?: Maybe<Scalars['String']['output']>;
   status: CrateStatus;
-  tagIds?: Maybe<Array<Scalars['ID']['output']>>;
-  tags?: Maybe<Array<Tag>>;
-  tokens: Array<CrateToken>;
-  triggers?: Maybe<Array<Trigger>>;
+  tagIds?: Maybe<Scalars['ID']['output'][]>;
+  tags?: Maybe<Tag[]>;
+  tokens: CrateToken[];
+  triggers?: Maybe<Trigger[]>;
   unpackedWorkflowId?: Maybe<Scalars['ID']['output']>;
   unpackingCount?: Maybe<Scalars['Int']['output']>;
   updatedAt?: Maybe<Scalars['String']['output']>;
   updatedById?: Maybe<Scalars['ID']['output']>;
   workflow?: Maybe<Workflow>;
   workflowId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type CrateCreateInput = {
-  associatedPacks?: InputMaybe<Array<Scalars['ID']['input']>>;
+export interface CrateCreateInput {
+  associatedPacks?: InputMaybe<Scalars['ID']['input'][]>;
   category?: InputMaybe<Scalars['String']['input']>;
   createdAt?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
@@ -767,17 +767,17 @@ export type CrateCreateInput = {
   orgId: Scalars['ID']['input'];
   primaryPackId?: InputMaybe<Scalars['ID']['input']>;
   providedValue?: InputMaybe<Scalars['String']['input']>;
-  replicationRegions?: InputMaybe<Array<CrateReplicationRegion>>;
-  requiredOrgVariables?: InputMaybe<Array<Scalars['String']['input']>>;
+  replicationRegions?: InputMaybe<CrateReplicationRegion[]>;
+  requiredOrgVariables?: InputMaybe<Scalars['String']['input'][]>;
   setupAssistance?: InputMaybe<Scalars['Boolean']['input']>;
   setupTime?: InputMaybe<Scalars['Int']['input']>;
   sourceEnvironment?: InputMaybe<Scalars['String']['input']>;
   status?: InputMaybe<CrateStatus>;
-  tagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
-  tokens?: InputMaybe<Array<InputMaybe<CrateTokenInput>>>;
-  triggers?: InputMaybe<Array<CrateTriggerInput>>;
+  tagIds?: InputMaybe<Scalars['ID']['input'][]>;
+  tokens?: InputMaybe<InputMaybe<CrateTokenInput>[]>;
+  triggers?: InputMaybe<CrateTriggerInput[]>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 export enum CrateMaturity {
   Egg = 'EGG',
@@ -788,11 +788,11 @@ export enum CrateMaturity {
   Soaring = 'SOARING'
 }
 
-export type CrateOverride = {
+export interface CrateOverride {
   __typename?: 'CrateOverride';
   crate: Crate;
   crateId: Scalars['ID']['output'];
-  crateTriggers?: Maybe<Array<CrateTrigger>>;
+  crateTriggers?: Maybe<CrateTrigger[]>;
   crateUnpackingArgument?: Maybe<CrateUnpackingArgument>;
   crateUnpackingArgumentId?: Maybe<Scalars['ID']['output']>;
   createdAt?: Maybe<Scalars['String']['output']>;
@@ -805,20 +805,20 @@ export type CrateOverride = {
   isMultiselect: Scalars['Boolean']['output'];
   label: Scalars['String']['output'];
   name: Scalars['String']['output'];
-  options: Array<CrateOverrideOption>;
+  options: CrateOverrideOption[];
   updatedAt?: Maybe<Scalars['String']['output']>;
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
-};
+}
 
 export enum CrateOverrideEntityType {
   Parameter = 'parameter',
   Var = 'var'
 }
 
-export type CrateOverrideInput = {
+export interface CrateOverrideInput {
   crateId?: InputMaybe<Scalars['ID']['input']>;
-  crateTriggerIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  crateTriggerIds?: InputMaybe<Scalars['ID']['input'][]>;
   defaultValue?: InputMaybe<Scalars['String']['input']>;
   entity?: InputMaybe<CrateOverrideEntityType>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -826,10 +826,10 @@ export type CrateOverrideInput = {
   isMultiselect?: InputMaybe<Scalars['Boolean']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-  options?: InputMaybe<Array<CrateOverrideOptionInput>>;
-};
+  options?: InputMaybe<CrateOverrideOptionInput[]>;
+}
 
-export type CrateOverrideOption = {
+export interface CrateOverrideOption {
   __typename?: 'CrateOverrideOption';
   crateOverride: CrateOverride;
   crateOverrideId: Scalars['ID']['output'];
@@ -843,15 +843,15 @@ export type CrateOverrideOption = {
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
   value: Scalars['String']['output'];
-};
+}
 
-export type CrateOverrideOptionInput = {
+export interface CrateOverrideOptionInput {
   crateOverrideId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   isDefault?: InputMaybe<Scalars['Boolean']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
   value?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 export enum CrateReplicationRegion {
   Au = 'AU',
@@ -863,7 +863,7 @@ export enum CrateReplicationRegion {
   Us = 'US'
 }
 
-export type CrateSearchInput = {
+export interface CrateSearchInput {
   description?: InputMaybe<String_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   lastPublishedAt?: InputMaybe<String_Comparison_Exp>;
@@ -871,21 +871,21 @@ export type CrateSearchInput = {
   primaryPack?: InputMaybe<PackSearchInput>;
   tokens?: InputMaybe<Json_Comparison_Exp>;
   workflow?: InputMaybe<WorkflowSearch>;
-};
+}
 
 export enum CrateStatus {
   Draft = 'DRAFT',
   Published = 'PUBLISHED'
 }
 
-export type CrateTagInput = {
+export interface CrateTagInput {
   id: Scalars['ID']['input'];
-};
+}
 
-export type CrateToken = {
+export interface CrateToken {
   __typename?: 'CrateToken';
-  appliedToCrateTriggers?: Maybe<Array<CrateTrigger>>;
-  children?: Maybe<Array<Maybe<CrateToken>>>;
+  appliedToCrateTriggers?: Maybe<CrateTrigger[]>;
+  children?: Maybe<Maybe<CrateToken>[]>;
   crate?: Maybe<Crate>;
   crateId: Scalars['ID']['output'];
   emptyLabel?: Maybe<Scalars['String']['output']>;
@@ -893,31 +893,31 @@ export type CrateToken = {
   index: Scalars['Int']['output'];
   isMultiselect?: Maybe<Scalars['Boolean']['output']>;
   name?: Maybe<Scalars['String']['output']>;
-  options: Array<CrateTokenOption>;
+  options: CrateTokenOption[];
   parent?: Maybe<CrateToken>;
   parentId?: Maybe<Scalars['ID']['output']>;
   previewText?: Maybe<Scalars['String']['output']>;
   type?: Maybe<CrateTokenType>;
   value?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type CrateTokenInput = {
-  appliedToCrateTriggers?: InputMaybe<Array<Scalars['ID']['input']>>;
-  appliedToTriggers?: InputMaybe<Array<Scalars['ID']['input']>>;
+export interface CrateTokenInput {
+  appliedToCrateTriggers?: InputMaybe<Scalars['ID']['input'][]>;
+  appliedToTriggers?: InputMaybe<Scalars['ID']['input'][]>;
   crateId?: InputMaybe<Scalars['ID']['input']>;
   emptyLabel?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   index?: InputMaybe<Scalars['Int']['input']>;
   isMultiselect?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-  options?: InputMaybe<Array<CrateTokenOptionInput>>;
+  options?: InputMaybe<CrateTokenOptionInput[]>;
   parentId?: InputMaybe<Scalars['ID']['input']>;
   previewText?: InputMaybe<Scalars['String']['input']>;
   type?: InputMaybe<Scalars['String']['input']>;
   value?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type CrateTokenOption = {
+export interface CrateTokenOption {
   __typename?: 'CrateTokenOption';
   crate: Crate;
   crateId: Scalars['ID']['output'];
@@ -929,9 +929,9 @@ export type CrateTokenOption = {
   token: CrateToken;
   tokenId: Scalars['ID']['output'];
   value?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type CrateTokenOptionInput = {
+export interface CrateTokenOptionInput {
   crateId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   isDefault?: InputMaybe<Scalars['Boolean']['input']>;
@@ -939,7 +939,7 @@ export type CrateTokenOptionInput = {
   packId?: InputMaybe<Scalars['ID']['input']>;
   tokenId?: InputMaybe<Scalars['ID']['input']>;
   value?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 export enum CrateTokenType {
   InputTriggerParam = 'inputTriggerParam',
@@ -955,27 +955,27 @@ export enum CrateTokenType {
   Text = 'text'
 }
 
-export type CrateTrigger = {
+export interface CrateTrigger {
   __typename?: 'CrateTrigger';
   crate: Crate;
   crateId: Scalars['ID']['output'];
-  crateOverrides?: Maybe<Array<CrateOverride>>;
-  defaultPackOverrides?: Maybe<Array<PackOverride>>;
+  crateOverrides?: Maybe<CrateOverride[]>;
+  defaultPackOverrides?: Maybe<PackOverride[]>;
   id: Scalars['ID']['output'];
   trigger: Trigger;
   triggerId: Scalars['ID']['output'];
-};
+}
 
-export type CrateTriggerInput = {
+export interface CrateTriggerInput {
   crateId?: InputMaybe<Scalars['ID']['input']>;
-  defaultPackOverrides?: InputMaybe<Array<PackOverrideInput>>;
+  defaultPackOverrides?: InputMaybe<PackOverrideInput[]>;
   triggerId: Scalars['ID']['input'];
-};
+}
 
-export type CrateTriggerUnpacking = {
+export interface CrateTriggerUnpacking {
   __typename?: 'CrateTriggerUnpacking';
-  activateForOrgIds?: Maybe<Array<Scalars['ID']['output']>>;
-  activateForTagIds?: Maybe<Array<Scalars['ID']['output']>>;
+  activateForOrgIds?: Maybe<Scalars['ID']['output'][]>;
+  activateForTagIds?: Maybe<Scalars['ID']['output'][]>;
   autoActivateManagedOrgs: Scalars['Boolean']['output'];
   crateTrigger: CrateTrigger;
   crateUnpackingArgumentSet: CrateUnpackingArgumentSet;
@@ -983,42 +983,42 @@ export type CrateTriggerUnpacking = {
   enabled: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
   isActivatedForOwner: Scalars['Boolean']['output'];
-  packOverrides: Array<PackOverride>;
+  packOverrides: PackOverride[];
   triggerName: Scalars['String']['output'];
-};
+}
 
-export type CrateTriggerUnpackingInput = {
-  activateForOrgIds?: InputMaybe<Array<Scalars['ID']['input']>>;
-  activateForTagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+export interface CrateTriggerUnpackingInput {
+  activateForOrgIds?: InputMaybe<Scalars['ID']['input'][]>;
+  activateForTagIds?: InputMaybe<Scalars['ID']['input'][]>;
   autoActivateManagedOrgs: Scalars['Boolean']['input'];
   crateTriggerId: Scalars['ID']['input'];
   criteria?: InputMaybe<Scalars['JSON']['input']>;
   enabled: Scalars['Boolean']['input'];
   isActivatedForOwner: Scalars['Boolean']['input'];
-  packOverrides?: InputMaybe<Array<PackOverrideInput>>;
+  packOverrides?: InputMaybe<PackOverrideInput[]>;
   parameters?: InputMaybe<Scalars['JSON']['input']>;
   triggerName: Scalars['String']['input'];
-};
+}
 
-export type CrateUnpackingArgument = {
+export interface CrateUnpackingArgument {
   __typename?: 'CrateUnpackingArgument';
   crateToken: CrateToken;
   crateUnpackingArgumentSet: CrateUnpackingArgumentSet;
   id: Scalars['ID']['output'];
   value: Scalars['String']['output'];
-};
+}
 
-export type CrateUnpackingArgumentInput = {
+export interface CrateUnpackingArgumentInput {
   crateTokenId: Scalars['ID']['input'];
   value: Scalars['String']['input'];
-};
+}
 
-export type CrateUnpackingArgumentSet = {
+export interface CrateUnpackingArgumentSet {
   __typename?: 'CrateUnpackingArgumentSet';
-  arguments: Array<CrateUnpackingArgument>;
+  arguments: CrateUnpackingArgument[];
   crate: Crate;
   crateId: Scalars['ID']['output'];
-  crateTriggerUnpackings: Array<CrateTriggerUnpacking>;
+  crateTriggerUnpackings: CrateTriggerUnpacking[];
   createdAt: Scalars['String']['output'];
   createdBy: User;
   createdById: Scalars['ID']['output'];
@@ -1029,16 +1029,16 @@ export type CrateUnpackingArgumentSet = {
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
   workflowName: Scalars['String']['output'];
-};
+}
 
-export type CrateUnpackingArgumentSetWhereInput = {
+export interface CrateUnpackingArgumentSetWhereInput {
   crateId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type CrateUpdateInput = {
-  associatedPacks?: InputMaybe<Array<Scalars['ID']['input']>>;
+export interface CrateUpdateInput {
+  associatedPacks?: InputMaybe<Scalars['ID']['input'][]>;
   category?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   gid?: InputMaybe<Scalars['ID']['input']>;
@@ -1050,19 +1050,19 @@ export type CrateUpdateInput = {
   orgId?: InputMaybe<Scalars['ID']['input']>;
   primaryPackId?: InputMaybe<Scalars['ID']['input']>;
   providedValue?: InputMaybe<Scalars['String']['input']>;
-  replicationRegions?: InputMaybe<Array<CrateReplicationRegion>>;
-  requiredOrgVariables?: InputMaybe<Array<Scalars['String']['input']>>;
+  replicationRegions?: InputMaybe<CrateReplicationRegion[]>;
+  requiredOrgVariables?: InputMaybe<Scalars['String']['input'][]>;
   setupAssistance?: InputMaybe<Scalars['Boolean']['input']>;
   setupTime?: InputMaybe<Scalars['Int']['input']>;
   sourceEnvironment?: InputMaybe<Scalars['String']['input']>;
   status?: InputMaybe<CrateStatus>;
-  tagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
-  tokens?: InputMaybe<Array<CrateTokenInput>>;
-  triggers?: InputMaybe<Array<CrateTriggerInput>>;
+  tagIds?: InputMaybe<Scalars['ID']['input'][]>;
+  tokens?: InputMaybe<CrateTokenInput[]>;
+  triggers?: InputMaybe<CrateTriggerInput[]>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type CrateUseCase = {
+export interface CrateUseCase {
   __typename?: 'CrateUseCase';
   crate: Crate;
   crateId: Scalars['ID']['output'];
@@ -1074,29 +1074,29 @@ export type CrateUseCase = {
   name: Scalars['String']['output'];
   updatedAt: Scalars['String']['output'];
   updatedBy?: Maybe<User>;
-};
+}
 
-export type CrateUseCaseInput = {
+export interface CrateUseCaseInput {
   crateId: Scalars['ID']['input'];
   description?: InputMaybe<Scalars['String']['input']>;
   isActive?: InputMaybe<Scalars['Boolean']['input']>;
   name: Scalars['String']['input'];
-};
+}
 
-export type CrateUseCaseSearchInput = {
+export interface CrateUseCaseSearchInput {
   description?: InputMaybe<Scalars['String']['input']>;
   isActive?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type CrateUseCaseWhereInput = {
+export interface CrateUseCaseWhereInput {
   crateId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   isActive?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type CrateWhereInput = {
+export interface CrateWhereInput {
   description?: InputMaybe<Scalars['String']['input']>;
   gid?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -1109,30 +1109,30 @@ export type CrateWhereInput = {
   tokens?: InputMaybe<Scalars['JSON']['input']>;
   workflow?: InputMaybe<WorkflowWhereInput>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type CreateApiClientInput = {
+export interface CreateApiClientInput {
   description?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
-export type CreateComponentInput = {
+export interface CreateComponentInput {
   description?: InputMaybe<Scalars['String']['input']>;
   isSynced?: InputMaybe<Scalars['Boolean']['input']>;
   name: Scalars['String']['input'];
   nodeTree: Scalars['JSON']['input'];
   orgId: Scalars['ID']['input'];
-  workflows?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
-};
+  workflows?: InputMaybe<InputMaybe<Scalars['ID']['input']>[]>;
+}
 
-export type CreateFeaturePreviewSettingInput = {
+export interface CreateFeaturePreviewSettingInput {
   description: Scalars['String']['input'];
   isStaffOnly: Scalars['Boolean']['input'];
   label: Scalars['String']['input'];
-};
+}
 
-export type CreateForeignObjectReferenceInput = {
+export interface CreateForeignObjectReferenceInput {
   actionId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   identifier?: InputMaybe<Scalars['ID']['input']>;
@@ -1140,79 +1140,79 @@ export type CreateForeignObjectReferenceInput = {
   packConfigId?: InputMaybe<Scalars['ID']['input']>;
   referenceId: Scalars['ID']['input'];
   workflowExecutionId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type CreateUserInput = {
+export interface CreateUserInput {
   isTestUser?: InputMaybe<Scalars['Boolean']['input']>;
   orgId: Scalars['ID']['input'];
-  roleIds: Array<Scalars['String']['input']>;
+  roleIds: Scalars['String']['input'][];
   username: Scalars['String']['input'];
-};
+}
 
-export type DnsValidationResponse = {
+export interface DnsValidationResponse {
   __typename?: 'DNSValidationResponse';
   isValid?: Maybe<Scalars['Boolean']['output']>;
   message?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type DatabaseNotificationError = {
+export interface DatabaseNotificationError {
   __typename?: 'DatabaseNotificationError';
   detail: Scalars['String']['output'];
   raised_at: Scalars['String']['output'];
   type: Scalars['String']['output'];
-};
+}
 
-export type DeleteOrgInterpreterResponse = {
+export interface DeleteOrgInterpreterResponse {
   __typename?: 'DeleteOrgInterpreterResponse';
   id: Scalars['ID']['output'];
-};
+}
 
-export type DiffExplanationResponse = {
+export interface DiffExplanationResponse {
   __typename?: 'DiffExplanationResponse';
   markdown: Scalars['String']['output'];
   title: Scalars['String']['output'];
-};
+}
 
-export type DocumentationGenerationResponse = {
+export interface DocumentationGenerationResponse {
   __typename?: 'DocumentationGenerationResponse';
   markdown: Scalars['String']['output'];
   title: Scalars['String']['output'];
-};
+}
 
-export type DropdownOption = {
+export interface DropdownOption {
   __typename?: 'DropdownOption';
   label?: Maybe<Scalars['String']['output']>;
   value?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type EncodedPageNodes = {
+export interface EncodedPageNodes {
   __typename?: 'EncodedPageNodes';
   encoded: Scalars['String']['output'];
   faviconUrl?: Maybe<Scalars['String']['output']>;
   page?: Maybe<Page>;
-};
+}
 
-export type ErrorMessage = {
+export interface ErrorMessage {
   __typename?: 'ErrorMessage';
   error: Scalars['String']['output'];
-};
+}
 
-export type EvaluatedFormWhereInput = {
+export interface EvaluatedFormWhereInput {
   orgId: Scalars['ID']['input'];
   triggerId: Scalars['ID']['input'];
-};
+}
 
 export enum ExecuteContextType {
   AppBuilder = 'APP_BUILDER'
 }
 
-export type ExportBundle = {
+export interface ExportBundle {
   __typename?: 'ExportBundle';
   exportedAt: Scalars['String']['output'];
   objects: Scalars['JSON']['output'];
   signing: Scalars['JSON']['output'];
   version: Scalars['Int']['output'];
-};
+}
 
 export type ExportDownloadPhaseStreamFailureResponse = BaseCloningResponse & BaseStreamEvent & PhasedCloneEvent & {
   __typename?: 'ExportDownloadPhaseStreamFailureResponse';
@@ -1230,22 +1230,22 @@ export type ExportDownloadPhaseStreamMessage = BaseStreamEvent & PhasedCloneEven
   phase: ClonePhase;
 };
 
-export type ExportErrorObject = {
+export interface ExportErrorObject {
   __typename?: 'ExportErrorObject';
-  dependents: Array<ExportObjectIdentifier>;
-  errors: Array<Scalars['String']['output']>;
+  dependents: ExportObjectIdentifier[];
+  errors: Scalars['String']['output'][];
   id: Scalars['ID']['output'];
-  paths: Array<Array<ExportObjectIdentifier>>;
+  paths: ExportObjectIdentifier[][];
   type: Scalars['String']['output'];
-};
+}
 
-export type ExportObjectIdentifier = {
+export interface ExportObjectIdentifier {
   __typename?: 'ExportObjectIdentifier';
   displayName?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
   isSignificant: Scalars['Boolean']['output'];
   type: Scalars['String']['output'];
-};
+}
 
 export enum ExportObjectType {
   Crate = 'crate',
@@ -1256,26 +1256,26 @@ export enum ExportObjectType {
   Workflow = 'workflow'
 }
 
-export type ExportObjectsProgressMessage = {
-  errors?: Maybe<Array<Scalars['String']['output']>>;
+export interface ExportObjectsProgressMessage {
+  errors?: Maybe<Scalars['String']['output'][]>;
   failed: Scalars['Boolean']['output'];
   identity: ExportObjectIdentifier;
   object?: Maybe<IntermediateExportObject>;
   progress: ExportProgressInfo;
-};
+}
 
 export type ExportObjectsStreamEvent = ExportObjectsStreamFailureResponse | ExportObjectsStreamMessage | ExportObjectsStreamSuccessResponse;
 
 export type ExportObjectsStreamFailureResponse = BaseStreamEvent & BaseStreamResponse & {
   __typename?: 'ExportObjectsStreamFailureResponse';
   didSucceed: Scalars['Boolean']['output'];
-  failures: Array<ExportErrorObject>;
+  failures: ExportErrorObject[];
   isFinished: Scalars['Boolean']['output'];
 };
 
 export type ExportObjectsStreamMessage = BaseStreamEvent & ExportObjectsProgressMessage & {
   __typename?: 'ExportObjectsStreamMessage';
-  errors?: Maybe<Array<Scalars['String']['output']>>;
+  errors?: Maybe<Scalars['String']['output'][]>;
   failed: Scalars['Boolean']['output'];
   identity: ExportObjectIdentifier;
   isFinished: Scalars['Boolean']['output'];
@@ -1291,40 +1291,40 @@ export type ExportObjectsStreamSuccessResponse = BaseStreamEvent & BaseStreamRes
   recommendedFilename: Scalars['String']['output'];
 };
 
-export type ExportProgressInfo = {
+export interface ExportProgressInfo {
   __typename?: 'ExportProgressInfo';
   hasEncounteredErrors: Scalars['Boolean']['output'];
   processedCount: Scalars['Int']['output'];
   queuedCount: Scalars['Int']['output'];
   totalCount: Scalars['Int']['output'];
-};
+}
 
-export type ExportRequestObject = {
+export interface ExportRequestObject {
   id: Scalars['ID']['input'];
   type: ExportObjectType;
-};
+}
 
-export type ExportResponse = {
+export interface ExportResponse {
   __typename?: 'ExportResponse';
   bundle?: Maybe<ExportBundle>;
-  failures?: Maybe<Array<Maybe<ExportErrorObject>>>;
+  failures?: Maybe<Maybe<ExportErrorObject>[]>;
   recommendedFilename?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type FeaturePreviewSetting = {
+export interface FeaturePreviewSetting {
   __typename?: 'FeaturePreviewSetting';
   description: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   isStaffOnly: Scalars['Boolean']['output'];
   label: Scalars['String']['output'];
-};
+}
 
-export type FeaturePreviewSettingWhereInput = {
+export interface FeaturePreviewSettingWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type FieldCondition = {
+export interface FieldCondition {
   __typename?: 'FieldCondition';
   action: FormConditionAction;
   actionValue?: Maybe<Scalars['String']['output']>;
@@ -1335,17 +1335,17 @@ export type FieldCondition = {
   requiredValue?: Maybe<Scalars['JSON']['output']>;
   sourceField?: Maybe<FormField>;
   sourceFieldId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type File = {
+export interface File {
   __typename?: 'File';
   filename: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   mimetype: Scalars['String']['output'];
   path: Scalars['String']['output'];
-};
+}
 
-export type ForeignObjectReference = {
+export interface ForeignObjectReference {
   __typename?: 'ForeignObjectReference';
   action?: Maybe<Action>;
   actionId?: Maybe<Scalars['ID']['output']>;
@@ -1358,9 +1358,9 @@ export type ForeignObjectReference = {
   referenceId: Scalars['ID']['output'];
   workflowExecution?: Maybe<WorkflowExecution>;
   workflowExecutionId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type ForeignObjectReferenceInput = {
+export interface ForeignObjectReferenceInput {
   action?: InputMaybe<ActionInput>;
   actionId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -1370,9 +1370,9 @@ export type ForeignObjectReferenceInput = {
   referenceId?: InputMaybe<Scalars['ID']['input']>;
   workflowExecution?: InputMaybe<WorkflowExecutionWhereInput>;
   workflowExecutionId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type ForeignObjectReferenceWhereInput = {
+export interface ForeignObjectReferenceWhereInput {
   action?: InputMaybe<ActionInput>;
   actionId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -1382,44 +1382,44 @@ export type ForeignObjectReferenceWhereInput = {
   packConfigId?: InputMaybe<Scalars['ID']['input']>;
   referenceId?: InputMaybe<Scalars['ID']['input']>;
   workflowExecution?: InputMaybe<WorkflowExecutionWhereInput>;
-};
+}
 
-export type Form = {
+export interface Form {
   __typename?: 'Form';
   cloneOverrides?: Maybe<Scalars['JSON']['output']>;
   clonedFrom?: Maybe<Form>;
   clonedFromId?: Maybe<Scalars['ID']['output']>;
-  clones?: Maybe<Array<Maybe<Form>>>;
+  clones?: Maybe<Maybe<Form>[]>;
   createdAt?: Maybe<Scalars['String']['output']>;
   createdBy?: Maybe<User>;
   createdById?: Maybe<Scalars['ID']['output']>;
   description?: Maybe<Scalars['String']['output']>;
-  fields?: Maybe<Array<Maybe<FormField>>>;
+  fields?: Maybe<Maybe<FormField>[]>;
   id: Scalars['ID']['output'];
   isSynchronized?: Maybe<Scalars['Boolean']['output']>;
   name: Scalars['String']['output'];
   orgId: Scalars['ID']['output'];
   organization: Organization;
-  tags: Array<Tag>;
-  triggers?: Maybe<Array<Trigger>>;
+  tags: Tag[];
+  triggers?: Maybe<Trigger[]>;
   unpackedFrom?: Maybe<Crate>;
   unpackedFromId?: Maybe<Scalars['ID']['output']>;
   updatedAt?: Maybe<Scalars['String']['output']>;
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
   warrant?: Maybe<Warrant>;
-};
+}
 
 
-export type FormFieldsArgs = {
+export interface FormFieldsArgs {
   orgContextId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type FormCloneOverridesInput = {
+export interface FormCloneOverridesInput {
   description?: InputMaybe<Scalars['String']['input']>;
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 export enum FormConditionAction {
   Hide = 'hide',
@@ -1428,32 +1428,32 @@ export enum FormConditionAction {
   Show = 'show'
 }
 
-export type FormCreateInput = {
+export interface FormCreateInput {
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
-  fields?: InputMaybe<Array<FormFieldInput>>;
+  fields?: InputMaybe<FormFieldInput[]>;
   id?: InputMaybe<Scalars['ID']['input']>;
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type FormField = {
+export interface FormField {
   __typename?: 'FormField';
-  conditions: Array<FieldCondition>;
+  conditions: FieldCondition[];
   createdAt?: Maybe<Scalars['String']['output']>;
   form?: Maybe<Form>;
   formId: Scalars['ID']['output'];
   id: Scalars['ID']['output'];
   index?: Maybe<Scalars['Int']['output']>;
   schema?: Maybe<Scalars['JSON']['output']>;
-  sourceFields: Array<SourceField>;
+  sourceFields: SourceField[];
   type?: Maybe<FormFieldType>;
-};
+}
 
-export type FormFieldConditionInput = {
+export interface FormFieldConditionInput {
   action: FormConditionAction;
   actionValue?: InputMaybe<Scalars['String']['input']>;
   conditionType?: InputMaybe<Scalars['String']['input']>;
@@ -1461,29 +1461,29 @@ export type FormFieldConditionInput = {
   index?: InputMaybe<Scalars['Int']['input']>;
   requiredValue?: InputMaybe<Scalars['JSON']['input']>;
   sourceFieldId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type FormFieldInput = {
-  conditions?: InputMaybe<Array<FormFieldConditionInput>>;
+export interface FormFieldInput {
+  conditions?: InputMaybe<FormFieldConditionInput[]>;
   formId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   index?: InputMaybe<Scalars['Int']['input']>;
   schema?: InputMaybe<Scalars['JSON']['input']>;
   type?: InputMaybe<FormFieldType>;
-};
+}
 
-export type FormFieldInstanceInput = {
+export interface FormFieldInstanceInput {
   formFieldId: Scalars['ID']['input'];
   schema?: InputMaybe<Scalars['JSON']['input']>;
-};
+}
 
-export type FormFieldSearchInput = {
+export interface FormFieldSearchInput {
   formId?: InputMaybe<Id_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   index?: InputMaybe<Int_Comparison_Exp>;
   schema?: InputMaybe<Json_Comparison_Exp>;
   type?: InputMaybe<FormFieldTypeSearchInput>;
-};
+}
 
 export enum FormFieldType {
   Checkbox = 'CHECKBOX',
@@ -1498,23 +1498,23 @@ export enum FormFieldType {
   TextInput = 'TEXT_INPUT'
 }
 
-export type FormFieldTypeSearchInput = {
+export interface FormFieldTypeSearchInput {
   _eq?: InputMaybe<FormFieldType>;
-  _in?: InputMaybe<Array<FormFieldType>>;
+  _in?: InputMaybe<FormFieldType[]>;
   _neq?: InputMaybe<FormFieldType>;
-  _nin?: InputMaybe<Array<FormFieldType>>;
+  _nin?: InputMaybe<FormFieldType[]>;
   _substr?: InputMaybe<FormFieldType>;
-};
+}
 
-export type FormFieldWhereInput = {
+export interface FormFieldWhereInput {
   formId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   index?: InputMaybe<Scalars['Int']['input']>;
   schema?: InputMaybe<Scalars['JSON']['input']>;
   type?: InputMaybe<FormFieldType>;
-};
+}
 
-export type FormSearchInput = {
+export interface FormSearchInput {
   clonedFromId?: InputMaybe<Id_Comparison_Exp>;
   createdBy?: InputMaybe<UserSearchInput>;
   id?: InputMaybe<Id_Comparison_Exp>;
@@ -1525,32 +1525,32 @@ export type FormSearchInput = {
   triggerId?: InputMaybe<Id_Comparison_Exp>;
   unpackedFromId?: InputMaybe<Id_Comparison_Exp>;
   updatedBy?: InputMaybe<UserSearchInput>;
-};
+}
 
-export type FormUpdateInput = {
+export interface FormUpdateInput {
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
-  fields?: InputMaybe<Array<FormFieldInput>>;
+  fields?: InputMaybe<FormFieldInput[]>;
   id: Scalars['ID']['input'];
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type FormWhereInput = {
+export interface FormWhereInput {
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-  triggerId?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
+  triggerId?: InputMaybe<InputMaybe<Scalars['ID']['input']>[]>;
   triggers?: InputMaybe<TriggerWhereInput>;
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type GetUserWhereInput = {
+export interface GetUserWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   isApiUser?: InputMaybe<Scalars['Boolean']['input']>;
   isSuperuser?: InputMaybe<Scalars['Boolean']['input']>;
@@ -1558,17 +1558,17 @@ export type GetUserWhereInput = {
   managedOrgs?: InputMaybe<OrganizationWhereInput>;
   orgId: Scalars['ID']['input'];
   organization?: InputMaybe<OrganizationWhereInput>;
-  roleIds?: InputMaybe<Array<Scalars['String']['input']>>;
+  roleIds?: InputMaybe<Scalars['String']['input'][]>;
   sub?: InputMaybe<Scalars['String']['input']>;
   username?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type GrantDelegatedAccessInput = {
+export interface GrantDelegatedAccessInput {
   expiresAt?: InputMaybe<Scalars['String']['input']>;
   organizationId: Scalars['ID']['input'];
   reason?: InputMaybe<Scalars['String']['input']>;
   userId: Scalars['ID']['input'];
-};
+}
 
 /** Enumeration for HTTP Methods. */
 export enum HttpMethod {
@@ -1579,12 +1579,12 @@ export enum HttpMethod {
   Put = 'PUT'
 }
 
-export type ImportBundle = {
+export interface ImportBundle {
   exportedAt: Scalars['String']['input'];
   objects: Scalars['JSON']['input'];
   signing: Scalars['JSON']['input'];
   version: Scalars['Int']['input'];
-};
+}
 
 export type ImportBundleStreamEvent = ImportBundleStreamMessage | ImportBundleStreamResponse | ImportBundleStreamResponseError;
 
@@ -1598,7 +1598,7 @@ export type ImportBundleStreamMessage = BaseStreamEvent & ImportProgressMessage 
 export type ImportBundleStreamResponse = BaseStreamEvent & {
   __typename?: 'ImportBundleStreamResponse';
   isFinished: Scalars['Boolean']['output'];
-  objects: Array<ImportObject>;
+  objects: ImportObject[];
 };
 
 export type ImportBundleStreamResponseError = BaseStreamEvent & {
@@ -1607,7 +1607,7 @@ export type ImportBundleStreamResponseError = BaseStreamEvent & {
   isFinished: Scalars['Boolean']['output'];
 };
 
-export type ImportObject = {
+export interface ImportObject {
   __typename?: 'ImportObject';
   contentHash: Scalars['String']['output'];
   displayName?: Maybe<Scalars['String']['output']>;
@@ -1617,23 +1617,23 @@ export type ImportObject = {
   serializableKey: Scalars['String']['output'];
   type: Scalars['String']['output'];
   wasCreated: Scalars['Boolean']['output'];
-};
+}
 
-export type ImportProgressInfo = {
+export interface ImportProgressInfo {
   __typename?: 'ImportProgressInfo';
   importedCount: Scalars['Int']['output'];
   requestId?: Maybe<Scalars['String']['output']>;
   totalCount: Scalars['Int']['output'];
   weightedImportedCount: Scalars['Int']['output'];
   weightedTotalCount: Scalars['Int']['output'];
-};
+}
 
-export type ImportProgressMessage = {
+export interface ImportProgressMessage {
   object: ImportObject;
   progress: ImportProgressInfo;
-};
+}
 
-export type Integration = {
+export interface Integration {
   __typename?: 'Integration';
   /** Description of the integration */
   description?: Maybe<Scalars['String']['output']>;
@@ -1648,23 +1648,23 @@ export type Integration = {
   /** Number of integration installations made by organizations */
   numInstalled?: Maybe<Scalars['Int']['output']>;
   /** Reference tag */
-  tags?: Maybe<Array<IntegrationTag>>;
-};
+  tags?: Maybe<IntegrationTag[]>;
+}
 
-export type IntegrationTag = {
+export interface IntegrationTag {
   __typename?: 'IntegrationTag';
   name?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type IntegrationWorkflowOutput = {
+export interface IntegrationWorkflowOutput {
   __typename?: 'IntegrationWorkflowOutput';
   description?: Maybe<Scalars['String']['output']>;
   error?: Maybe<Scalars['String']['output']>;
   id?: Maybe<Scalars['ID']['output']>;
   name?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type IntermediateExportObject = {
+export interface IntermediateExportObject {
   __typename?: 'IntermediateExportObject';
   contentHash: Scalars['String']['output'];
   fields: Scalars['JSON']['output'];
@@ -1673,17 +1673,17 @@ export type IntermediateExportObject = {
   nonfunctionalFields?: Maybe<Scalars['JSON']['output']>;
   serializableKey?: Maybe<Scalars['String']['output']>;
   type: Scalars['String']['output'];
-};
+}
 
-export type InterpreterVersion = {
+export interface InterpreterVersion {
   __typename?: 'InterpreterVersion';
   id: Scalars['ID']['output'];
   language: Scalars['String']['output'];
   notes?: Maybe<Scalars['String']['output']>;
   version: Scalars['String']['output'];
-};
+}
 
-export type JParserConversionResult = {
+export interface JParserConversionResult {
   __typename?: 'JParserConversionResult';
   actions?: Maybe<Scalars['JSON']['output']>;
   auth_config?: Maybe<Scalars['JSON']['output']>;
@@ -1695,26 +1695,26 @@ export type JParserConversionResult = {
   pack_config?: Maybe<Scalars['JSON']['output']>;
   ref?: Maybe<Scalars['String']['output']>;
   version?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type Jinja2Documentation = {
+export interface Jinja2Documentation {
   __typename?: 'Jinja2Documentation';
   description?: Maybe<Scalars['String']['output']>;
   name?: Maybe<Scalars['String']['output']>;
-  parameters?: Maybe<Array<Jinja2ParameterDocumentation>>;
+  parameters?: Maybe<Jinja2ParameterDocumentation[]>;
   signature?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type Jinja2ParameterDocumentation = {
+export interface Jinja2ParameterDocumentation {
   __typename?: 'Jinja2ParameterDocumentation';
   default?: Maybe<Scalars['JSON']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   name?: Maybe<Scalars['String']['output']>;
   required?: Maybe<Scalars['Boolean']['output']>;
   type?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type JinjaRenderSession = {
+export interface JinjaRenderSession {
   __typename?: 'JinjaRenderSession';
   context?: Maybe<Scalars['JSON']['output']>;
   createdAt: Scalars['String']['output'];
@@ -1722,17 +1722,17 @@ export type JinjaRenderSession = {
   metadata?: Maybe<Scalars['JSON']['output']>;
   result?: Maybe<Scalars['JSON']['output']>;
   template?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type JinjaTemplateMapInput = {
+export interface JinjaTemplateMapInput {
   id: Scalars['String']['input'];
   template: Scalars['String']['input'];
-};
+}
 
-export type JobRequestedResponse = {
+export interface JobRequestedResponse {
   __typename?: 'JobRequestedResponse';
   executionId: Scalars['ID']['output'];
-};
+}
 
 export enum Loader {
   Bar = 'Bar',
@@ -1767,7 +1767,7 @@ export enum LocalReferenceModel {
   Workflow = 'Workflow'
 }
 
-export type Login = {
+export interface Login {
   __typename?: 'Login';
   /** Custom Domain, if present */
   customDomain?: Maybe<Scalars['String']['output']>;
@@ -1785,14 +1785,14 @@ export type Login = {
   theme?: Maybe<Scalars['JSON']['output']>;
   /** Whether to use the custom domain */
   useCustomDomain?: Maybe<Scalars['Boolean']['output']>;
-};
+}
 
-export type MessageVoteStats = {
+export interface MessageVoteStats {
   __typename?: 'MessageVoteStats';
   downVotes: Scalars['Int']['output'];
-  reasonCounts: Array<ReasonCount>;
+  reasonCounts: ReasonCount[];
   upVotes: Scalars['Int']['output'];
-};
+}
 
 export type MicrosoftBundleAuthorizationRequestStreamEvent = MicrosoftBundleAuthorizationStreamFailureResponse | MicrosoftBundleAuthorizationStreamMessage | MicrosoftBundleAuthorizationStreamSuccessResponse;
 
@@ -1822,7 +1822,7 @@ export type MicrosoftCspConsentRequestStreamEvent = MicrosoftCspConsentStreamFai
 export type MicrosoftCspConsentStreamFailureResponse = BaseMicrosoftCspConsentResponse & BaseStreamEvent & {
   __typename?: 'MicrosoftCSPConsentStreamFailureResponse';
   didSucceed: Scalars['Boolean']['output'];
-  errors?: Maybe<Array<Scalars['String']['output']>>;
+  errors?: Maybe<Scalars['String']['output'][]>;
   event: Scalars['String']['output'];
   isFinished: Scalars['Boolean']['output'];
 };
@@ -1830,10 +1830,10 @@ export type MicrosoftCspConsentStreamFailureResponse = BaseMicrosoftCspConsentRe
 export type MicrosoftCspConsentStreamMessage = BaseMicrosoftCspConsentResponse & BaseStreamEvent & {
   __typename?: 'MicrosoftCSPConsentStreamMessage';
   action?: Maybe<CspConsentAction>;
-  errors?: Maybe<Array<Scalars['String']['output']>>;
+  errors?: Maybe<Scalars['String']['output'][]>;
   event: Scalars['String']['output'];
   isFinished: Scalars['Boolean']['output'];
-  updatedTenantIds?: Maybe<Array<Scalars['ID']['output']>>;
+  updatedTenantIds?: Maybe<Scalars['ID']['output'][]>;
 };
 
 export type MicrosoftCspConsentStreamSuccessResponse = BaseMicrosoftCspConsentResponse & BaseStreamEvent & {
@@ -1843,70 +1843,70 @@ export type MicrosoftCspConsentStreamSuccessResponse = BaseMicrosoftCspConsentRe
   isFinished: Scalars['Boolean']['output'];
 };
 
-export type MicrosoftCspCustomer = {
+export interface MicrosoftCspCustomer {
   __typename?: 'MicrosoftCSPCustomer';
   companyName: Scalars['String']['output'];
   createdAt: Scalars['String']['output'];
   cspTenantId: Scalars['String']['output'];
   hasConsent: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
-  linkedOrganizations?: Maybe<Array<Organization>>;
+  linkedOrganizations?: Maybe<Organization[]>;
   tenantId: Scalars['String']['output'];
   updatedAt: Scalars['String']['output'];
-};
+}
 
-export type MicrosoftCspCustomerSearchInput = {
+export interface MicrosoftCspCustomerSearchInput {
   companyName?: InputMaybe<String_Comparison_Exp>;
   cspTenantId?: InputMaybe<String_Comparison_Exp>;
   hasConsent?: InputMaybe<Bool_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   linkedOrganizations?: InputMaybe<OrganizationSearchInput>;
   tenantId?: InputMaybe<String_Comparison_Exp>;
-};
+}
 
-export type MicrosoftCspCustomerWhereInput = {
+export interface MicrosoftCspCustomerWhereInput {
   companyName?: InputMaybe<Scalars['String']['input']>;
   cspTenantId?: InputMaybe<Scalars['String']['input']>;
   hasConsent?: InputMaybe<Scalars['Boolean']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   linkedOrganizations?: InputMaybe<OrganizationWhereInput>;
   tenantId?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type MonacoCompletionItem = {
+export interface MonacoCompletionItem {
   __typename?: 'MonacoCompletionItem';
-  commitCharacters?: Maybe<Array<Scalars['String']['output']>>;
+  commitCharacters?: Maybe<Scalars['String']['output'][]>;
   detail?: Maybe<Scalars['String']['output']>;
   documentation?: Maybe<MonacoMarkdownString>;
   insertText: Scalars['String']['output'];
   kind: Scalars['Int']['output'];
   label: MonacoCompletionItemLabel;
-};
+}
 
-export type MonacoCompletionItemLabel = {
+export interface MonacoCompletionItemLabel {
   __typename?: 'MonacoCompletionItemLabel';
   description?: Maybe<Scalars['String']['output']>;
   detail?: Maybe<Scalars['String']['output']>;
   label: Scalars['String']['output'];
-};
+}
 
-export type MonacoMarkdownString = {
+export interface MonacoMarkdownString {
   __typename?: 'MonacoMarkdownString';
   value: Scalars['String']['output'];
-};
+}
 
-export type Mutation = {
+export interface Mutation {
   __typename?: 'Mutation';
   addFavoriteAction?: Maybe<Scalars['Void']['output']>;
   adminCreateIntegrationTestWorkflow?: Maybe<IntegrationWorkflowOutput>;
   adminCreateOrUpdatePack?: Maybe<Pack>;
   adminCreateOrUpdatePackBundle?: Maybe<PackBundle>;
-  bulkCreateOrganizations: Array<Organization>;
+  bulkCreateOrganizations: Organization[];
   bulkDeleteOrganizations?: Maybe<Scalars['Void']['output']>;
-  bulkSetWorkflowTags: Array<Workflow>;
-  bulkUpdateOrganizationFeaturePreviewSettingByLabel: Array<OrganizationFeaturePreviewSetting>;
+  bulkSetWorkflowTags: Workflow[];
+  bulkUpdateOrganizationFeaturePreviewSettingByLabel: OrganizationFeaturePreviewSetting[];
   clearWorkflowOutputs?: Maybe<Scalars['Void']['output']>;
-  createActionOptions?: Maybe<Array<Maybe<ActionOption>>>;
+  createActionOptions?: Maybe<Maybe<ActionOption>[]>;
   createAppPlatformReservedDomain?: Maybe<AppPlatformReservedDomain>;
   createComponent?: Maybe<Component>;
   createComponentInstance?: Maybe<ComponentInstanceResult>;
@@ -1922,13 +1922,13 @@ export type Mutation = {
   createMicrosoftCSPCustomer: MicrosoftCspCustomer;
   createOrUpdateForeignObjectReference?: Maybe<ForeignObjectReference>;
   createOrUpdateOnboardingQuestionnaireResponse?: Maybe<OnboardingQuestionnaireResponse>;
-  createOrUpdateOrgSupportAccess?: Maybe<Array<Maybe<OrgSupportAccess>>>;
+  createOrUpdateOrgSupportAccess?: Maybe<Maybe<OrgSupportAccess>[]>;
   createOrUpdateOrganizationOnboardingRequirement?: Maybe<OrganizationOnboardingRequirement>;
   createOrgForCSPCustomer: Organization;
   createOrgVariable?: Maybe<OrgVariable>;
   createOrganization?: Maybe<Organization>;
   createOrganizationApiClient: ApiClientWithSecret;
-  createOrganizations?: Maybe<Array<Maybe<Organization>>>;
+  createOrganizations?: Maybe<Maybe<Organization>[]>;
   createPack?: Maybe<Pack>;
   createPackConfig?: Maybe<PackConfig>;
   createPage?: Maybe<Page>;
@@ -1980,7 +1980,7 @@ export type Mutation = {
   deleteWorkflowCompletionListener?: Maybe<Scalars['Void']['output']>;
   deleteWorkflowExecution?: Maybe<Scalars['Boolean']['output']>;
   deleteWorkflowPatch?: Maybe<Scalars['Void']['output']>;
-  deleteWorkflows?: Maybe<Array<Maybe<Scalars['ID']['output']>>>;
+  deleteWorkflows?: Maybe<Maybe<Scalars['ID']['output']>[]>;
   duplicateComponent?: Maybe<Component>;
   findAndDeleteUserInvite?: Maybe<Scalars['Int']['output']>;
   generateComponent: ComponentGeneratorResponse;
@@ -2009,7 +2009,7 @@ export type Mutation = {
   rotateApiClientSecret: ApiClientSecretRotation;
   runTriggerWithMCP?: Maybe<JobRequestedResponse>;
   runWorkflowForOptions?: Maybe<WorkflowOptionsResponse>;
-  setFavoriteActions: Array<UserFavoriteAction>;
+  setFavoriteActions: UserFavoriteAction[];
   setFormTags?: Maybe<Form>;
   /** @deprecated Replaced with linkMicrosoftCSPCustomer and unlinkMicrosoftCSPCustomer mutations */
   setManagedOrgGraphTenantId?: Maybe<ForeignObjectReference>;
@@ -2029,7 +2029,7 @@ export type Mutation = {
   suggestCSPCustomerMatches?: Maybe<Scalars['JSON']['output']>;
   suggestOrgVarMatches?: Maybe<Scalars['JSON']['output']>;
   swaggerToOpenapiConversion: SwaggerToOpenapiConversionResult;
-  synchronizePackBundleConfigs: Array<SynchronizedPackConfig>;
+  synchronizePackBundleConfigs: SynchronizedPackConfig[];
   testPackConfig?: Maybe<JobRequestedResponse>;
   testWorkflow?: Maybe<JobRequestedResponse>;
   testWorkflowTrigger?: Maybe<JobRequestedResponse>;
@@ -2053,13 +2053,13 @@ export type Mutation = {
   updateManagedAndSubOrganizations?: Maybe<Scalars['Int']['output']>;
   updateMicrosoftCSPCustomer: MicrosoftCspCustomer;
   updateOrgTriggerInstance?: Maybe<OrgTriggerInstance>;
-  updateOrgVariables: Array<OrgVariable>;
+  updateOrgVariables: OrgVariable[];
   updateOrganization?: Maybe<Organization>;
   updateOrganizationApiClient: ApiClient;
   updateOrganizationFeaturePreviewSetting?: Maybe<OrganizationFeaturePreviewSetting>;
   updatePack?: Maybe<Pack>;
   updatePackConfig?: Maybe<PackConfig>;
-  updatePackConfigs: Array<PackConfig>;
+  updatePackConfigs: PackConfig[];
   updatePage?: Maybe<Page>;
   updatePageNode?: Maybe<PageNode>;
   updatePageNodeByCraftId?: Maybe<PageNode>;
@@ -2067,9 +2067,9 @@ export type Mutation = {
   updateReservedOrganizationName?: Maybe<ReservedOrganizationName>;
   updateRole: Role;
   updateSite?: Maybe<Site>;
-  updateSites: Array<Site>;
+  updateSites: Site[];
   updateTag: Tag;
-  updateTags: Array<Tag>;
+  updateTags: Tag[];
   updateTemplate?: Maybe<Template>;
   updateTrigger?: Maybe<Trigger>;
   updateUserInviteRoles?: Maybe<UserInvite>;
@@ -2077,1004 +2077,1004 @@ export type Mutation = {
   updateUserRoles?: Maybe<User>;
   updateWorkflow?: Maybe<Workflow>;
   updateWorkflowCompletionListener?: Maybe<Trigger>;
-  upsertOrgFormFieldInstances: Array<OrgFormFieldInstance>;
+  upsertOrgFormFieldInstances: OrgFormFieldInstance[];
   upsertOrgInterpreterSetting?: Maybe<OrgInterpreterSetting>;
   validateSiteCustomDomainDNS?: Maybe<DnsValidationResponse>;
-};
+}
 
 
-export type MutationAddFavoriteActionArgs = {
+export interface MutationAddFavoriteActionArgs {
   actionId: Scalars['ID']['input'];
   userId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationAdminCreateIntegrationTestWorkflowArgs = {
+export interface MutationAdminCreateIntegrationTestWorkflowArgs {
   includeFakeData?: InputMaybe<Scalars['Boolean']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   packId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 
-export type MutationAdminCreateOrUpdatePackArgs = {
-  actions?: InputMaybe<Array<Scalars['Upload']['input']>>;
+export interface MutationAdminCreateOrUpdatePackArgs {
+  actions?: InputMaybe<Scalars['Upload']['input'][]>;
   configSchema?: InputMaybe<Scalars['Upload']['input']>;
   isDryRun?: InputMaybe<Scalars['Boolean']['input']>;
-  migrations?: InputMaybe<Array<Scalars['Upload']['input']>>;
+  migrations?: InputMaybe<Scalars['Upload']['input'][]>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   pack?: InputMaybe<Scalars['Upload']['input']>;
-  sensorTypes?: InputMaybe<Array<Scalars['Upload']['input']>>;
-};
+  sensorTypes?: InputMaybe<Scalars['Upload']['input'][]>;
+}
 
 
-export type MutationAdminCreateOrUpdatePackBundleArgs = {
+export interface MutationAdminCreateOrUpdatePackBundleArgs {
   configSchema?: InputMaybe<Scalars['Upload']['input']>;
   isDryRun?: InputMaybe<Scalars['Boolean']['input']>;
   packBundle?: InputMaybe<Scalars['Upload']['input']>;
-};
+}
 
 
-export type MutationBulkCreateOrganizationsArgs = {
-  organizations: Array<OrganizationInput>;
-};
+export interface MutationBulkCreateOrganizationsArgs {
+  organizations: OrganizationInput[];
+}
 
 
-export type MutationBulkDeleteOrganizationsArgs = {
-  organizationIds: Array<Scalars['ID']['input']>;
-};
+export interface MutationBulkDeleteOrganizationsArgs {
+  organizationIds: Scalars['ID']['input'][];
+}
 
 
-export type MutationBulkSetWorkflowTagsArgs = {
-  tagIds: Array<Scalars['ID']['input']>;
-  workflowIds: Array<Scalars['ID']['input']>;
-};
+export interface MutationBulkSetWorkflowTagsArgs {
+  tagIds: Scalars['ID']['input'][];
+  workflowIds: Scalars['ID']['input'][];
+}
 
 
-export type MutationBulkUpdateOrganizationFeaturePreviewSettingByLabelArgs = {
+export interface MutationBulkUpdateOrganizationFeaturePreviewSettingByLabelArgs {
   isEnabled: Scalars['Boolean']['input'];
   label: Scalars['String']['input'];
-  orgIds: Array<Scalars['ID']['input']>;
-};
+  orgIds: Scalars['ID']['input'][];
+}
 
 
-export type MutationClearWorkflowOutputsArgs = {
+export interface MutationClearWorkflowOutputsArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationCreateActionOptionsArgs = {
-  actionOptions: Array<ActionOptionInput>;
+export interface MutationCreateActionOptionsArgs {
+  actionOptions: ActionOptionInput[];
   replace?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
 
-export type MutationCreateAppPlatformReservedDomainArgs = {
+export interface MutationCreateAppPlatformReservedDomainArgs {
   reservedDomain: AppPlatformReservedDomainCreateInput;
-};
+}
 
 
-export type MutationCreateComponentArgs = {
+export interface MutationCreateComponentArgs {
   component: CreateComponentInput;
-};
+}
 
 
-export type MutationCreateComponentInstanceArgs = {
+export interface MutationCreateComponentInstanceArgs {
   input: ComponentInstanceCreateInput;
-};
+}
 
 
-export type MutationCreateConversationArgs = {
+export interface MutationCreateConversationArgs {
   conversation: ConversationInput;
-};
+}
 
 
-export type MutationCreateConversationMessageArgs = {
+export interface MutationCreateConversationMessageArgs {
   message: ConversationMessageInput;
-};
+}
 
 
-export type MutationCreateConversationMessageVoteArgs = {
+export interface MutationCreateConversationMessageVoteArgs {
   vote: ConversationMessageVoteInput;
-};
+}
 
 
-export type MutationCreateCrateArgs = {
+export interface MutationCreateCrateArgs {
   crate: CrateCreateInput;
-};
+}
 
 
-export type MutationCreateCrateOverrideArgs = {
+export interface MutationCreateCrateOverrideArgs {
   crateOverride: CrateOverrideInput;
-};
+}
 
 
-export type MutationCreateCrateOverrideOptionArgs = {
+export interface MutationCreateCrateOverrideOptionArgs {
   option: CrateOverrideOptionInput;
-};
+}
 
 
-export type MutationCreateFeaturePreviewSettingArgs = {
+export interface MutationCreateFeaturePreviewSettingArgs {
   featurePreviewSetting?: InputMaybe<CreateFeaturePreviewSettingInput>;
-};
+}
 
 
-export type MutationCreateForeignObjectReferenceArgs = {
+export interface MutationCreateForeignObjectReferenceArgs {
   foreignObjectReference?: InputMaybe<CreateForeignObjectReferenceInput>;
-};
+}
 
 
-export type MutationCreateFormArgs = {
+export interface MutationCreateFormArgs {
   form: FormCreateInput;
-};
+}
 
 
-export type MutationCreateMicrosoftCspCustomerArgs = {
+export interface MutationCreateMicrosoftCspCustomerArgs {
   companyName: Scalars['String']['input'];
   cspPackConfigId: Scalars['ID']['input'];
   cspTenantId: Scalars['String']['input'];
   tenantId: Scalars['String']['input'];
-};
+}
 
 
-export type MutationCreateOrUpdateForeignObjectReferenceArgs = {
+export interface MutationCreateOrUpdateForeignObjectReferenceArgs {
   foreignObjectReference?: InputMaybe<CreateForeignObjectReferenceInput>;
-};
+}
 
 
-export type MutationCreateOrUpdateOnboardingQuestionnaireResponseArgs = {
+export interface MutationCreateOrUpdateOnboardingQuestionnaireResponseArgs {
   onboardingQuestionnaireResponse: OnboardingQuestionnaireResponseInput;
-};
+}
 
 
-export type MutationCreateOrUpdateOrgSupportAccessArgs = {
+export interface MutationCreateOrUpdateOrgSupportAccessArgs {
   orgSupportAccess: OrgSupportAccessInput;
-};
+}
 
 
-export type MutationCreateOrUpdateOrganizationOnboardingRequirementArgs = {
+export interface MutationCreateOrUpdateOrganizationOnboardingRequirementArgs {
   organizationOnboardingRequirement: OrganizationOnboardingRequirementInput;
-};
+}
 
 
-export type MutationCreateOrgForCspCustomerArgs = {
+export interface MutationCreateOrgForCspCustomerArgs {
   cspPackConfigId: Scalars['ID']['input'];
   organization: OrganizationInput;
   tenantId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationCreateOrgVariableArgs = {
+export interface MutationCreateOrgVariableArgs {
   orgVariable: OrgVariableCreateInput;
-};
+}
 
 
-export type MutationCreateOrganizationArgs = {
+export interface MutationCreateOrganizationArgs {
   organization?: InputMaybe<OrganizationInput>;
-};
+}
 
 
-export type MutationCreateOrganizationApiClientArgs = {
+export interface MutationCreateOrganizationApiClientArgs {
   input: CreateApiClientInput;
-};
+}
 
 
-export type MutationCreateOrganizationsArgs = {
-  organizations: Array<OrganizationInput>;
-};
+export interface MutationCreateOrganizationsArgs {
+  organizations: OrganizationInput[];
+}
 
 
-export type MutationCreatePackArgs = {
+export interface MutationCreatePackArgs {
   pack: PackCreateInput;
-};
+}
 
 
-export type MutationCreatePackConfigArgs = {
+export interface MutationCreatePackConfigArgs {
   packConfig: PackConfigCreateInput;
-};
+}
 
 
-export type MutationCreatePageArgs = {
-  nodes?: InputMaybe<Array<InputMaybe<PageNodeInput>>>;
+export interface MutationCreatePageArgs {
+  nodes?: InputMaybe<InputMaybe<PageNodeInput>[]>;
   page: PageCreateInput;
   preset?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 
-export type MutationCreatePermissionArgs = {
+export interface MutationCreatePermissionArgs {
   permission: PermissionCreateInput;
-};
+}
 
 
-export type MutationCreateReservedOrganizationNameArgs = {
+export interface MutationCreateReservedOrganizationNameArgs {
   name: Scalars['String']['input'];
-};
+}
 
 
-export type MutationCreateRoleArgs = {
+export interface MutationCreateRoleArgs {
   role: RoleCreateInput;
-};
+}
 
 
-export type MutationCreateSiteArgs = {
+export interface MutationCreateSiteArgs {
   site: SiteCreateInput;
-};
+}
 
 
-export type MutationCreateTagArgs = {
+export interface MutationCreateTagArgs {
   tag: TagCreateInput;
-};
+}
 
 
-export type MutationCreateTaskLogArgs = {
+export interface MutationCreateTaskLogArgs {
   taskLog: TaskLogInput;
-};
+}
 
 
-export type MutationCreateTemplateArgs = {
+export interface MutationCreateTemplateArgs {
   template: TemplateCreateInput;
-};
+}
 
 
-export type MutationCreateTriggerArgs = {
+export interface MutationCreateTriggerArgs {
   createPatch?: InputMaybe<Scalars['Boolean']['input']>;
   trigger: TriggerCreateInput;
-};
+}
 
 
-export type MutationCreateUserArgs = {
+export interface MutationCreateUserArgs {
   user: CreateUserInput;
-};
+}
 
 
-export type MutationCreateUserInviteArgs = {
+export interface MutationCreateUserInviteArgs {
   invite: UserInviteCreateInput;
-};
+}
 
 
-export type MutationCreateWorkflowArgs = {
+export interface MutationCreateWorkflowArgs {
   workflow: WorkflowInput;
-};
+}
 
 
-export type MutationCreateWorkflowCompletionListenerArgs = {
+export interface MutationCreateWorkflowCompletionListenerArgs {
   listener: CompletionListenerCreateInput;
-};
+}
 
 
-export type MutationCreateWorkflowPatchArgs = {
+export interface MutationCreateWorkflowPatchArgs {
   comment: Scalars['String']['input'];
   commentDescription?: InputMaybe<Scalars['String']['input']>;
   foreignId?: InputMaybe<Scalars['ID']['input']>;
   patch: Scalars['JSON']['input'];
   patchType: PatchType;
   workflowId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteAppPlatformReservedDomainArgs = {
+export interface MutationDeleteAppPlatformReservedDomainArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteComponentArgs = {
+export interface MutationDeleteComponentArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteComponentInstanceArgs = {
+export interface MutationDeleteComponentInstanceArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteConversationArgs = {
+export interface MutationDeleteConversationArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteConversationMessageVoteArgs = {
+export interface MutationDeleteConversationMessageVoteArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteCrateArgs = {
+export interface MutationDeleteCrateArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteCrateOverrideArgs = {
+export interface MutationDeleteCrateOverrideArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteCrateOverrideOptionArgs = {
+export interface MutationDeleteCrateOverrideOptionArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteFeaturePreviewSettingArgs = {
+export interface MutationDeleteFeaturePreviewSettingArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteFormArgs = {
+export interface MutationDeleteFormArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteMicrosoftCspCustomerArgs = {
+export interface MutationDeleteMicrosoftCspCustomerArgs {
   cspPackConfigId: Scalars['ID']['input'];
   customerId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteMicrosoftCspCustomerByIdArgs = {
+export interface MutationDeleteMicrosoftCspCustomerByIdArgs {
   customerId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteOrgFormFieldInstanceArgs = {
+export interface MutationDeleteOrgFormFieldInstanceArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteOrgInterpreterSettingArgs = {
+export interface MutationDeleteOrgInterpreterSettingArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteOrgSupportAccessArgs = {
+export interface MutationDeleteOrgSupportAccessArgs {
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteOrgVariableArgs = {
+export interface MutationDeleteOrgVariableArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteOrganizationArgs = {
+export interface MutationDeleteOrganizationArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteOrganizationApiClientArgs = {
+export interface MutationDeleteOrganizationApiClientArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeletePackArgs = {
+export interface MutationDeletePackArgs {
   packId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeletePackConfigArgs = {
+export interface MutationDeletePackConfigArgs {
   id: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeletePageArgs = {
+export interface MutationDeletePageArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeletePermissionArgs = {
+export interface MutationDeletePermissionArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteReservedOrganizationNameArgs = {
+export interface MutationDeleteReservedOrganizationNameArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteRoleArgs = {
+export interface MutationDeleteRoleArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteSiteArgs = {
+export interface MutationDeleteSiteArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteTagArgs = {
+export interface MutationDeleteTagArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteTemplateArgs = {
+export interface MutationDeleteTemplateArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteTriggerArgs = {
+export interface MutationDeleteTriggerArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteUserArgs = {
+export interface MutationDeleteUserArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteUserInviteArgs = {
+export interface MutationDeleteUserInviteArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteWorkflowArgs = {
+export interface MutationDeleteWorkflowArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteWorkflowCompletionListenerArgs = {
+export interface MutationDeleteWorkflowCompletionListenerArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteWorkflowExecutionArgs = {
+export interface MutationDeleteWorkflowExecutionArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteWorkflowPatchArgs = {
+export interface MutationDeleteWorkflowPatchArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationDeleteWorkflowsArgs = {
-  ids: Array<Scalars['ID']['input']>;
-};
+export interface MutationDeleteWorkflowsArgs {
+  ids: Scalars['ID']['input'][];
+}
 
 
-export type MutationDuplicateComponentArgs = {
+export interface MutationDuplicateComponentArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationFindAndDeleteUserInviteArgs = {
+export interface MutationFindAndDeleteUserInviteArgs {
   email: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationGenerateComponentArgs = {
+export interface MutationGenerateComponentArgs {
   code?: InputMaybe<Scalars['String']['input']>;
   configName: ConfigName;
   prompt: Scalars['String']['input'];
-};
+}
 
 
-export type MutationGenerateDiffExplanationArgs = {
+export interface MutationGenerateDiffExplanationArgs {
   modified: Scalars['JSON']['input'];
   original: Scalars['JSON']['input'];
-};
+}
 
 
-export type MutationGenerateDocumentationArgs = {
-  tasks: Array<InputMaybe<Scalars['JSON']['input']>>;
-};
+export interface MutationGenerateDocumentationArgs {
+  tasks: InputMaybe<Scalars['JSON']['input']>[];
+}
 
 
-export type MutationGeneratePackOrBundleAuthUrlArgs = {
+export interface MutationGeneratePackOrBundleAuthUrlArgs {
   extra?: InputMaybe<Scalars['JSON']['input']>;
   orgId: Scalars['ID']['input'];
   packBundleId?: InputMaybe<Scalars['ID']['input']>;
   packConfigId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 
-export type MutationGenerateThemeConfigArgs = {
+export interface MutationGenerateThemeConfigArgs {
   code?: InputMaybe<Scalars['String']['input']>;
   configName: ConfigName;
   prompt: Scalars['String']['input'];
-};
+}
 
 
-export type MutationGetPackInstallationsArgs = {
+export interface MutationGetPackInstallationsArgs {
   packId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationGetPackPageUrlArgs = {
+export interface MutationGetPackPageUrlArgs {
   integrationRef: Scalars['String']['input'];
   pagePath: Scalars['String']['input'];
-};
+}
 
 
-export type MutationGrantDelegatedAccessArgs = {
+export interface MutationGrantDelegatedAccessArgs {
   input: GrantDelegatedAccessInput;
-};
+}
 
 
-export type MutationInstallPackArgs = {
+export interface MutationInstallPackArgs {
   name?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
   packId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationKillConversationArgs = {
+export interface MutationKillConversationArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationKillWorkflowExecutionArgs = {
+export interface MutationKillWorkflowExecutionArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationLinkMicrosoftCspCustomerArgs = {
+export interface MutationLinkMicrosoftCspCustomerArgs {
   cspPackConfigId: Scalars['ID']['input'];
   customerId: Scalars['ID']['input'];
-  orgIds: Array<Scalars['ID']['input']>;
-};
+  orgIds: Scalars['ID']['input'][];
+}
 
 
-export type MutationModifyCspConsentArgs = {
+export interface MutationModifyCspConsentArgs {
   action?: InputMaybe<CspConsentAction>;
-  applicationGrants?: InputMaybe<Array<CspApplicationGrant>>;
+  applicationGrants?: InputMaybe<CspApplicationGrant[]>;
   packConfigId: Scalars['ID']['input'];
-  tenantIds: Array<Scalars['ID']['input']>;
-};
+  tenantIds: Scalars['ID']['input'][];
+}
 
 
-export type MutationOpenaiCompletionItemsArgs = {
+export interface MutationOpenaiCompletionItemsArgs {
   autocompleteOptions: Scalars['JSON']['input'];
   textUntilPosition: Scalars['String']['input'];
-};
+}
 
 
-export type MutationReassignCspCustomerArgs = {
+export interface MutationReassignCspCustomerArgs {
   cspTenantId: Scalars['ID']['input'];
   customerId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationRefetchPackConfigRefOptionsArgs = {
+export interface MutationRefetchPackConfigRefOptionsArgs {
   packConfigId: Scalars['ID']['input'];
   reference?: InputMaybe<Scalars['JSON']['input']>;
-};
+}
 
 
-export type MutationRemoveFavoriteActionArgs = {
+export interface MutationRemoveFavoriteActionArgs {
   actionId: Scalars['ID']['input'];
   userId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationRenderJinjaArgs = {
+export interface MutationRenderJinjaArgs {
   orgId: Scalars['ID']['input'];
   principalOrgId?: InputMaybe<Scalars['ID']['input']>;
   template: Scalars['String']['input'];
   triggerId?: InputMaybe<Scalars['ID']['input']>;
   vars?: InputMaybe<Scalars['JSON']['input']>;
-};
+}
 
 
-export type MutationRestoreOrganizationArgs = {
+export interface MutationRestoreOrganizationArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationRevertTriggerPatchArgs = {
+export interface MutationRevertTriggerPatchArgs {
   foreignId: Scalars['ID']['input'];
   patchId: Scalars['ID']['input'];
   workflowId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationRevertWorkflowPatchArgs = {
+export interface MutationRevertWorkflowPatchArgs {
   foreignId?: InputMaybe<Scalars['ID']['input']>;
   patchId: Scalars['ID']['input'];
   workflowId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationRevokeDelegatedAccessArgs = {
+export interface MutationRevokeDelegatedAccessArgs {
   organizationId: Scalars['ID']['input'];
   userId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationRotateApiClientSecretArgs = {
+export interface MutationRotateApiClientSecretArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationRunTriggerWithMcpArgs = {
+export interface MutationRunTriggerWithMcpArgs {
   input?: InputMaybe<Scalars['JSON']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   workflowId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationRunWorkflowForOptionsArgs = {
+export interface MutationRunWorkflowForOptionsArgs {
   input: Scalars['JSON']['input'];
   inputContext: Scalars['JSON']['input'];
   orgId: Scalars['ID']['input'];
   skipCache?: InputMaybe<Scalars['Boolean']['input']>;
   triggerId?: InputMaybe<Scalars['ID']['input']>;
   workflowId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationSetFavoriteActionsArgs = {
-  favoriteActions: Array<UserFavoriteActionInput>;
+export interface MutationSetFavoriteActionsArgs {
+  favoriteActions: UserFavoriteActionInput[];
   userId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationSetFormTagsArgs = {
+export interface MutationSetFormTagsArgs {
   form: SetFormTagsInput;
-};
+}
 
 
-export type MutationSetManagedOrgGraphTenantIdArgs = {
+export interface MutationSetManagedOrgGraphTenantIdArgs {
   orgId: Scalars['ID']['input'];
   tenantId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 
-export type MutationSetOrgFormFieldInstanceStatusesArgs = {
+export interface MutationSetOrgFormFieldInstanceStatusesArgs {
   formId: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
   status: Scalars['Boolean']['input'];
-};
+}
 
 
-export type MutationSetOrganizationTagsArgs = {
+export interface MutationSetOrganizationTagsArgs {
   orgId: Scalars['ID']['input'];
-  tagIds: Array<Scalars['ID']['input']>;
-};
+  tagIds: Scalars['ID']['input'][];
+}
 
 
-export type MutationSetTestUserSessionArgs = {
+export interface MutationSetTestUserSessionArgs {
   userId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationShallowCloneFormArgs = {
+export interface MutationShallowCloneFormArgs {
   id: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
   overrides?: InputMaybe<ShallowCloneOverridesInput>;
-};
+}
 
 
-export type MutationShallowCloneSiteArgs = {
+export interface MutationShallowCloneSiteArgs {
   id: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
   overrides?: InputMaybe<ShallowCloneOverridesInput>;
-};
+}
 
 
-export type MutationShallowCloneTemplateArgs = {
+export interface MutationShallowCloneTemplateArgs {
   id: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
   overrides?: InputMaybe<ShallowCloneOverridesInput>;
-};
+}
 
 
-export type MutationShallowCloneWorkflowArgs = {
+export interface MutationShallowCloneWorkflowArgs {
   id: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
   overrides?: InputMaybe<ShallowCloneOverridesInput>;
-};
+}
 
 
-export type MutationSkipOrganizationOnboardingCrateRequirementArgs = {
+export interface MutationSkipOrganizationOnboardingCrateRequirementArgs {
   id: Scalars['ID']['input'];
   skip: Scalars['Boolean']['input'];
-};
+}
 
 
-export type MutationSkipOrganizationOnboardingPackRequirementArgs = {
+export interface MutationSkipOrganizationOnboardingPackRequirementArgs {
   id: Scalars['ID']['input'];
   skip: Scalars['Boolean']['input'];
-};
+}
 
 
-export type MutationSubmitFormArgs = {
+export interface MutationSubmitFormArgs {
   id: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
   triggerId: Scalars['ID']['input'];
   values: Scalars['JSON']['input'];
-};
+}
 
 
-export type MutationSubmitPendingTaskResponseArgs = {
+export interface MutationSubmitPendingTaskResponseArgs {
   orgId?: InputMaybe<Scalars['ID']['input']>;
   pendingTaskId: Scalars['ID']['input'];
   values: Scalars['JSON']['input'];
-};
+}
 
 
-export type MutationSubmitPendingTaskResponsesArgs = {
+export interface MutationSubmitPendingTaskResponsesArgs {
   pendingTaskId: Scalars['ID']['input'];
   values: Scalars['JSON']['input'];
-};
+}
 
 
-export type MutationSuggestCspCustomerMatchesArgs = {
+export interface MutationSuggestCspCustomerMatchesArgs {
   packConfigId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationSuggestOrgVarMatchesArgs = {
+export interface MutationSuggestOrgVarMatchesArgs {
   packConfigId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationSwaggerToOpenapiConversionArgs = {
+export interface MutationSwaggerToOpenapiConversionArgs {
   swaggerDoc: Scalars['JSON']['input'];
-};
+}
 
 
-export type MutationSynchronizePackBundleConfigsArgs = {
+export interface MutationSynchronizePackBundleConfigsArgs {
   orgId: Scalars['ID']['input'];
   packBundleId: Scalars['ID']['input'];
   primaryPackConfigId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationTestPackConfigArgs = {
+export interface MutationTestPackConfigArgs {
   packConfig: PackConfigTestInput;
-};
+}
 
 
-export type MutationTestWorkflowArgs = {
+export interface MutationTestWorkflowArgs {
   context?: InputMaybe<ExecuteContextType>;
   id: Scalars['ID']['input'];
   input?: InputMaybe<Scalars['JSON']['input']>;
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationTestWorkflowTriggerArgs = {
+export interface MutationTestWorkflowTriggerArgs {
   input?: InputMaybe<Scalars['JSON']['input']>;
   triggerInstance: OrgTriggerInstanceInput;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 
-export type MutationTrackWorkflowEventArgs = {
+export interface MutationTrackWorkflowEventArgs {
   data?: InputMaybe<Scalars['JSON']['input']>;
   type: WorkflowEventType;
   workflowId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationUninstallPackArgs = {
+export interface MutationUninstallPackArgs {
   name?: InputMaybe<Scalars['String']['input']>;
-  orgIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  orgIds?: InputMaybe<Scalars['ID']['input'][]>;
   packId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationUninstallPackBundleArgs = {
-  orgIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+export interface MutationUninstallPackBundleArgs {
+  orgIds?: InputMaybe<Scalars['ID']['input'][]>;
   packBundleId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationUnlinkCloneArgs = {
+export interface MutationUnlinkCloneArgs {
   id: Scalars['ID']['input'];
   objectType: CloneableObjectType;
-};
+}
 
 
-export type MutationUnlinkMicrosoftCspCustomerArgs = {
+export interface MutationUnlinkMicrosoftCspCustomerArgs {
   cspPackConfigId: Scalars['ID']['input'];
   customerId: Scalars['ID']['input'];
-  orgIds: Array<Scalars['ID']['input']>;
-};
+  orgIds: Scalars['ID']['input'][];
+}
 
 
-export type MutationUnsyncCloneArgs = {
+export interface MutationUnsyncCloneArgs {
   id: Scalars['ID']['input'];
   objectType: CloneableObjectType;
-};
+}
 
 
-export type MutationUpdateAppPlatformReservedDomainArgs = {
+export interface MutationUpdateAppPlatformReservedDomainArgs {
   id: Scalars['ID']['input'];
   reservedDomain: AppPlatformReservedDomainUpdateInput;
-};
+}
 
 
-export type MutationUpdateComponentArgs = {
+export interface MutationUpdateComponentArgs {
   component: UpdateComponentInput;
-};
+}
 
 
-export type MutationUpdateComponentInstanceArgs = {
+export interface MutationUpdateComponentInstanceArgs {
   id: Scalars['ID']['input'];
   input: ComponentInstanceUpdateInput;
-};
+}
 
 
-export type MutationUpdateConversationArgs = {
+export interface MutationUpdateConversationArgs {
   conversation: ConversationInput;
-};
+}
 
 
-export type MutationUpdateConversationMessageVoteArgs = {
+export interface MutationUpdateConversationMessageVoteArgs {
   vote: ConversationMessageVoteInput;
-};
+}
 
 
-export type MutationUpdateCrateArgs = {
+export interface MutationUpdateCrateArgs {
   crate: CrateUpdateInput;
-};
+}
 
 
-export type MutationUpdateCrateOverrideArgs = {
+export interface MutationUpdateCrateOverrideArgs {
   crateOverride: CrateOverrideInput;
-};
+}
 
 
-export type MutationUpdateCrateOverrideOptionArgs = {
+export interface MutationUpdateCrateOverrideOptionArgs {
   option: CrateOverrideOptionInput;
-};
+}
 
 
-export type MutationUpdateFeaturePreviewSettingArgs = {
+export interface MutationUpdateFeaturePreviewSettingArgs {
   featurePreviewSetting?: InputMaybe<UpdateFeaturePreviewSettingInput>;
-};
+}
 
 
-export type MutationUpdateFormArgs = {
+export interface MutationUpdateFormArgs {
   form: FormUpdateInput;
-};
+}
 
 
-export type MutationUpdateFormOverridesArgs = {
+export interface MutationUpdateFormOverridesArgs {
   id: Scalars['ID']['input'];
   overrides: Scalars['JSON']['input'];
-};
+}
 
 
-export type MutationUpdateManagedAndSubOrganizationsArgs = {
+export interface MutationUpdateManagedAndSubOrganizationsArgs {
   organization: OrganizationUpdateInput;
-};
+}
 
 
-export type MutationUpdateMicrosoftCspCustomerArgs = {
+export interface MutationUpdateMicrosoftCspCustomerArgs {
   cspPackConfigId: Scalars['ID']['input'];
   customerId: Scalars['ID']['input'];
   hasConsent: Scalars['Boolean']['input'];
-};
+}
 
 
-export type MutationUpdateOrgTriggerInstanceArgs = {
+export interface MutationUpdateOrgTriggerInstanceArgs {
   orgTriggerInstance: OrgTriggerInstanceInput;
-};
+}
 
 
-export type MutationUpdateOrgVariablesArgs = {
-  orgVariables: Array<OrgVariableUpdateInput>;
-};
+export interface MutationUpdateOrgVariablesArgs {
+  orgVariables: OrgVariableUpdateInput[];
+}
 
 
-export type MutationUpdateOrganizationArgs = {
+export interface MutationUpdateOrganizationArgs {
   organization?: InputMaybe<OrganizationUpdateInput>;
-};
+}
 
 
-export type MutationUpdateOrganizationApiClientArgs = {
+export interface MutationUpdateOrganizationApiClientArgs {
   input: UpdateApiClientInput;
-};
+}
 
 
-export type MutationUpdateOrganizationFeaturePreviewSettingArgs = {
+export interface MutationUpdateOrganizationFeaturePreviewSettingArgs {
   featurePreviewSettingId: Scalars['ID']['input'];
   isEnabled: Scalars['Boolean']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationUpdatePackArgs = {
+export interface MutationUpdatePackArgs {
   pack: PackUpdateInput;
-};
+}
 
 
-export type MutationUpdatePackConfigArgs = {
+export interface MutationUpdatePackConfigArgs {
   packConfig: PackConfigUpdateInput;
-};
+}
 
 
-export type MutationUpdatePackConfigsArgs = {
-  packConfigs: Array<PackConfigUpdateInput>;
-};
+export interface MutationUpdatePackConfigsArgs {
+  packConfigs: PackConfigUpdateInput[];
+}
 
 
-export type MutationUpdatePageArgs = {
-  nodes?: InputMaybe<Array<InputMaybe<PageNodeInput>>>;
+export interface MutationUpdatePageArgs {
+  nodes?: InputMaybe<InputMaybe<PageNodeInput>[]>;
   page: PageUpdateInput;
-};
+}
 
 
-export type MutationUpdatePageNodeArgs = {
+export interface MutationUpdatePageNodeArgs {
   id: Scalars['ID']['input'];
   props: Scalars['JSON']['input'];
-};
+}
 
 
-export type MutationUpdatePageNodeByCraftIdArgs = {
+export interface MutationUpdatePageNodeByCraftIdArgs {
   craftId: Scalars['String']['input'];
   pageId: Scalars['ID']['input'];
   props: Scalars['JSON']['input'];
-};
+}
 
 
-export type MutationUpdatePermissionArgs = {
+export interface MutationUpdatePermissionArgs {
   permission: PermissionUpdateInput;
-};
+}
 
 
-export type MutationUpdateReservedOrganizationNameArgs = {
+export interface MutationUpdateReservedOrganizationNameArgs {
   id: Scalars['ID']['input'];
   name: Scalars['String']['input'];
-};
+}
 
 
-export type MutationUpdateRoleArgs = {
+export interface MutationUpdateRoleArgs {
   role: RoleUpdateInput;
-};
+}
 
 
-export type MutationUpdateSiteArgs = {
+export interface MutationUpdateSiteArgs {
   site: SiteUpdateInput;
-};
+}
 
 
-export type MutationUpdateSitesArgs = {
-  sites: Array<SiteUpdateInput>;
-};
+export interface MutationUpdateSitesArgs {
+  sites: SiteUpdateInput[];
+}
 
 
-export type MutationUpdateTagArgs = {
+export interface MutationUpdateTagArgs {
   tag: TagUpdateInput;
-};
+}
 
 
-export type MutationUpdateTagsArgs = {
-  tags: Array<TagUpdateInput>;
-};
+export interface MutationUpdateTagsArgs {
+  tags: TagUpdateInput[];
+}
 
 
-export type MutationUpdateTemplateArgs = {
+export interface MutationUpdateTemplateArgs {
   template: TemplateUpdateInput;
-};
+}
 
 
-export type MutationUpdateTriggerArgs = {
+export interface MutationUpdateTriggerArgs {
   comment?: InputMaybe<Scalars['String']['input']>;
   commentDescription?: InputMaybe<Scalars['String']['input']>;
   createPatch?: InputMaybe<Scalars['Boolean']['input']>;
   trigger: TriggerUpdateInput;
-};
+}
 
 
-export type MutationUpdateUserInviteRolesArgs = {
+export interface MutationUpdateUserInviteRolesArgs {
   id: Scalars['ID']['input'];
-  roleIds: Array<Scalars['String']['input']>;
-};
+  roleIds: Scalars['String']['input'][];
+}
 
 
-export type MutationUpdateUserPreferencesArgs = {
+export interface MutationUpdateUserPreferencesArgs {
   preferences: UserPreferencesInput;
   userId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationUpdateUserRolesArgs = {
+export interface MutationUpdateUserRolesArgs {
   user?: InputMaybe<UserRolesInput>;
-};
+}
 
 
-export type MutationUpdateWorkflowArgs = {
+export interface MutationUpdateWorkflowArgs {
   comment?: InputMaybe<Scalars['String']['input']>;
   commentDescription?: InputMaybe<Scalars['String']['input']>;
   createPatch?: InputMaybe<Scalars['Boolean']['input']>;
@@ -3082,38 +3082,38 @@ export type MutationUpdateWorkflowArgs = {
   overwritePatchId?: InputMaybe<Scalars['ID']['input']>;
   trigger?: InputMaybe<TriggerCreateInput>;
   workflow: WorkflowInput;
-};
+}
 
 
-export type MutationUpdateWorkflowCompletionListenerArgs = {
+export interface MutationUpdateWorkflowCompletionListenerArgs {
   listener: CompletionListenerUpdateInput;
-};
+}
 
 
-export type MutationUpsertOrgFormFieldInstancesArgs = {
+export interface MutationUpsertOrgFormFieldInstancesArgs {
   input: UpsertOrgFormFieldInstancesInput;
-};
+}
 
 
-export type MutationUpsertOrgInterpreterSettingArgs = {
+export interface MutationUpsertOrgInterpreterSettingArgs {
   config: Scalars['JSON']['input'];
   language: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type MutationValidateSiteCustomDomainDnsArgs = {
+export interface MutationValidateSiteCustomDomainDnsArgs {
   id: Scalars['ID']['input'];
-};
+}
 
-export type NewWorkflowExecutionEvent = {
+export interface NewWorkflowExecutionEvent {
   __typename?: 'NewWorkflowExecutionEvent';
   eventId: Scalars['ID']['output'];
   isFinished?: Maybe<Scalars['Boolean']['output']>;
   payload?: Maybe<NewWorkflowExecutionLog>;
-};
+}
 
-export type NewWorkflowExecutionLog = {
+export interface NewWorkflowExecutionLog {
   __typename?: 'NewWorkflowExecutionLog';
   createdAt: Scalars['String']['output'];
   executionId: Scalars['ID']['output'];
@@ -3121,9 +3121,9 @@ export type NewWorkflowExecutionLog = {
   originatingExecutionId: Scalars['ID']['output'];
   workflowId: Scalars['ID']['output'];
   workflowType: WorkflowType;
-};
+}
 
-export type OnboardingQuestionnaireResponse = {
+export interface OnboardingQuestionnaireResponse {
   __typename?: 'OnboardingQuestionnaireResponse';
   createdAt: Scalars['String']['output'];
   createdBy?: Maybe<User>;
@@ -3134,20 +3134,20 @@ export type OnboardingQuestionnaireResponse = {
   responseValue?: Maybe<Scalars['JSON']['output']>;
   updatedAt: Scalars['String']['output'];
   updatedBy?: Maybe<User>;
-};
+}
 
-export type OnboardingQuestionnaireResponseInput = {
+export interface OnboardingQuestionnaireResponseInput {
   onboardingRequirementId: Scalars['ID']['input'];
   questionField: Scalars['String']['input'];
   questionText?: InputMaybe<Scalars['String']['input']>;
   responseValue?: InputMaybe<Scalars['JSON']['input']>;
-};
+}
 
-export type OnboardingQuestionnaireResponseWhereInput = {
+export interface OnboardingQuestionnaireResponseWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   onboardingRequirementId?: InputMaybe<Scalars['ID']['input']>;
   questionField?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 export enum OnboardingStatus {
   Completed = 'COMPLETED',
@@ -3156,35 +3156,35 @@ export enum OnboardingStatus {
   RequirementsPopulated = 'REQUIREMENTS_POPULATED'
 }
 
-export type OpenAiChoice = {
+export interface OpenAiChoice {
   __typename?: 'OpenAIChoice';
   message: OpenAiMessage;
-};
+}
 
-export type OpenAiFunctionCall = {
+export interface OpenAiFunctionCall {
   __typename?: 'OpenAIFunctionCall';
   arguments?: Maybe<Scalars['JSON']['output']>;
   name: Scalars['String']['output'];
-};
+}
 
-export type OpenAiMessage = {
+export interface OpenAiMessage {
   __typename?: 'OpenAIMessage';
   content?: Maybe<Scalars['String']['output']>;
   function_call: OpenAiFunctionCall;
-};
+}
 
-export type OpenAiResponse = {
+export interface OpenAiResponse {
   __typename?: 'OpenAIResponse';
-  choices?: Maybe<Array<OpenAiChoice>>;
-};
+  choices?: Maybe<OpenAiChoice[]>;
+}
 
-export type OrgBreadcrumb = {
+export interface OrgBreadcrumb {
   __typename?: 'OrgBreadcrumb';
   id?: Maybe<Scalars['ID']['output']>;
   name: Scalars['String']['output'];
-};
+}
 
-export type OrgFormFieldInstance = {
+export interface OrgFormFieldInstance {
   __typename?: 'OrgFormFieldInstance';
   createdAt?: Maybe<Scalars['String']['output']>;
   formFieldId: Scalars['ID']['output'];
@@ -3194,40 +3194,40 @@ export type OrgFormFieldInstance = {
   organization?: Maybe<Organization>;
   schema?: Maybe<Scalars['JSON']['output']>;
   updatedAt?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type OrgInterpreterSetting = {
+export interface OrgInterpreterSetting {
   __typename?: 'OrgInterpreterSetting';
   config?: Maybe<Scalars['JSON']['output']>;
   id: Scalars['ID']['output'];
   language: Scalars['String']['output'];
   orgId: Scalars['ID']['output'];
-};
+}
 
-export type OrgInterpreterSettingSearchInput = {
+export interface OrgInterpreterSettingSearchInput {
   config?: InputMaybe<Json_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   orgId?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type OrgInterpreterSettingWhereInput = {
+export interface OrgInterpreterSettingWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   language?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type OrgSearchResult = {
+export interface OrgSearchResult {
   __typename?: 'OrgSearchResult';
-  breadcrumbs?: Maybe<Array<Maybe<OrgBreadcrumb>>>;
+  breadcrumbs?: Maybe<Maybe<OrgBreadcrumb>[]>;
   hasChildren: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
   isInternal?: Maybe<Scalars['Boolean']['output']>;
   managingOrgId?: Maybe<Scalars['ID']['output']>;
   name: Scalars['String']['output'];
   supportAccessStatus?: Maybe<SupportAccessStatus>;
-};
+}
 
-export type OrgSupportAccess = {
+export interface OrgSupportAccess {
   __typename?: 'OrgSupportAccess';
   createdAt: Scalars['String']['output'];
   expiresAt?: Maybe<Scalars['String']['output']>;
@@ -3237,14 +3237,14 @@ export type OrgSupportAccess = {
   supportOrgId: Scalars['ID']['output'];
   supportOrganization: Organization;
   updatedAt: Scalars['String']['output'];
-};
+}
 
-export type OrgSupportAccessInput = {
+export interface OrgSupportAccessInput {
   expiresAt?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
-};
+}
 
-export type OrgTriggerInstance = {
+export interface OrgTriggerInstance {
   __typename?: 'OrgTriggerInstance';
   createdAt: Scalars['String']['output'];
   id: Scalars['ID']['output'];
@@ -3256,9 +3256,9 @@ export type OrgTriggerInstance = {
   trigger?: Maybe<Trigger>;
   triggerId?: Maybe<Scalars['ID']['output']>;
   updatedAt: Scalars['String']['output'];
-};
+}
 
-export type OrgTriggerInstanceInput = {
+export interface OrgTriggerInstanceInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   isManualActivation?: InputMaybe<Scalars['Boolean']['input']>;
   lastSearchedAt?: InputMaybe<Scalars['String']['input']>;
@@ -3267,25 +3267,25 @@ export type OrgTriggerInstanceInput = {
   state?: InputMaybe<Scalars['JSON']['input']>;
   trigger?: InputMaybe<TriggerUpdateInput>;
   triggerId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type OrgTriggerInstanceSearchInput = {
+export interface OrgTriggerInstanceSearchInput {
   id?: InputMaybe<Id_Comparison_Exp>;
   orgId?: InputMaybe<Id_Comparison_Exp>;
   organization?: InputMaybe<OrganizationInput>;
   trigger?: InputMaybe<TriggerSearchInput>;
   triggerId?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type OrgTriggerInstanceWhereInput = {
+export interface OrgTriggerInstanceWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   organization?: InputMaybe<OrganizationInput>;
   trigger?: InputMaybe<TriggerWhereInput>;
   triggerId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type OrgVariable = {
+export interface OrgVariable {
   __typename?: 'OrgVariable';
   cascade: Scalars['Boolean']['output'];
   category: OrgVariableCategory;
@@ -3298,7 +3298,7 @@ export type OrgVariable = {
   packConfigId?: Maybe<Scalars['ID']['output']>;
   updatedAt?: Maybe<Scalars['String']['output']>;
   value?: Maybe<Scalars['String']['output']>;
-};
+}
 
 export enum OrgVariableCategory {
   Contact = 'contact',
@@ -3307,23 +3307,23 @@ export enum OrgVariableCategory {
   System = 'system'
 }
 
-export type OrgVariableCategorySearchInput = {
+export interface OrgVariableCategorySearchInput {
   _eq?: InputMaybe<OrgVariableCategory>;
   _gt?: InputMaybe<OrgVariableCategory>;
   _gte?: InputMaybe<OrgVariableCategory>;
   _ilike?: InputMaybe<OrgVariableCategory>;
-  _in?: InputMaybe<Array<OrgVariableCategory>>;
+  _in?: InputMaybe<OrgVariableCategory[]>;
   _like?: InputMaybe<OrgVariableCategory>;
   _lt?: InputMaybe<OrgVariableCategory>;
   _lte?: InputMaybe<OrgVariableCategory>;
   _ne?: InputMaybe<OrgVariableCategory>;
   _nilike?: InputMaybe<OrgVariableCategory>;
-  _nin?: InputMaybe<Array<OrgVariableCategory>>;
+  _nin?: InputMaybe<OrgVariableCategory[]>;
   _nlike?: InputMaybe<OrgVariableCategory>;
   _substr?: InputMaybe<OrgVariableCategory>;
-};
+}
 
-export type OrgVariableCreateInput = {
+export interface OrgVariableCreateInput {
   cascade: Scalars['Boolean']['input'];
   category?: InputMaybe<OrgVariableCategory>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -3331,9 +3331,9 @@ export type OrgVariableCreateInput = {
   orgId: Scalars['ID']['input'];
   packConfigId?: InputMaybe<Scalars['ID']['input']>;
   value: Scalars['String']['input'];
-};
+}
 
-export type OrgVariableSearchInput = {
+export interface OrgVariableSearchInput {
   category?: InputMaybe<OrgVariableCategorySearchInput>;
   id?: InputMaybe<Id_Comparison_Exp>;
   name?: InputMaybe<String_Comparison_Exp>;
@@ -3342,9 +3342,9 @@ export type OrgVariableSearchInput = {
   packConfig?: InputMaybe<PackConfigSearch>;
   packConfigId?: InputMaybe<Id_Comparison_Exp>;
   value?: InputMaybe<String_Comparison_Exp>;
-};
+}
 
-export type OrgVariableUpdateInput = {
+export interface OrgVariableUpdateInput {
   cascade?: InputMaybe<Scalars['Boolean']['input']>;
   category?: InputMaybe<OrgVariableCategory>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -3352,9 +3352,9 @@ export type OrgVariableUpdateInput = {
   orgId?: InputMaybe<Scalars['ID']['input']>;
   packConfigId?: InputMaybe<Scalars['ID']['input']>;
   value?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type OrgVariableWhereInput = {
+export interface OrgVariableWhereInput {
   category?: InputMaybe<OrgVariableCategory>;
   id?: InputMaybe<Scalars['ID']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
@@ -3363,72 +3363,72 @@ export type OrgVariableWhereInput = {
   packConfig?: InputMaybe<PackConfigWhereInput>;
   packConfigId?: InputMaybe<Scalars['ID']['input']>;
   value?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type Organization = {
+export interface Organization {
   __typename?: 'Organization';
-  actions: Array<Action>;
-  activatedTriggers: Array<Trigger>;
+  actions: Action[];
+  activatedTriggers: Trigger[];
   createdAt?: Maybe<Scalars['String']['output']>;
-  createdTags: Array<Tag>;
+  createdTags: Tag[];
   deletedAt?: Maybe<Scalars['String']['output']>;
   domain?: Maybe<Scalars['String']['output']>;
-  featurePreviewSettings?: Maybe<Array<Maybe<OrganizationFeaturePreviewSetting>>>;
-  forms: Array<Form>;
+  featurePreviewSettings?: Maybe<Maybe<OrganizationFeaturePreviewSetting>[]>;
+  forms: Form[];
   id?: Maybe<Scalars['ID']['output']>;
-  installedPacks: Array<Pack>;
+  installedPacks: Pack[];
   isDeleted?: Maybe<Scalars['Boolean']['output']>;
   isEnabled?: Maybe<Scalars['Boolean']['output']>;
   isInternal?: Maybe<Scalars['Boolean']['output']>;
   isMsp?: Maybe<Scalars['Boolean']['output']>;
   isOnboarding?: Maybe<Scalars['Boolean']['output']>;
   isStaff?: Maybe<Scalars['Boolean']['output']>;
-  managedAndSubOrgs: Array<Organization>;
-  managedOrgAutoInstallingWorkflows: Array<Workflow>;
-  managedOrgs: Array<Organization>;
+  managedAndSubOrgs: Organization[];
+  managedOrgAutoInstallingWorkflows: Workflow[];
+  managedOrgs: Organization[];
   managingOrg?: Maybe<Organization>;
   managingOrgId?: Maybe<Scalars['ID']['output']>;
   name: Scalars['String']['output'];
   orgSlug?: Maybe<Scalars['String']['output']>;
-  packConfigs: Array<PackConfig>;
+  packConfigs: PackConfig[];
   resultsRetentionDays?: Maybe<Scalars['Int']['output']>;
   rocSiteId?: Maybe<Scalars['String']['output']>;
   supportAccessStatus?: Maybe<SupportAccessStatus>;
-  tags: Array<Tag>;
-  templates: Array<Template>;
+  tags: Tag[];
+  templates: Template[];
   tid?: Maybe<Scalars['ID']['output']>;
-  triggerInstances: Array<OrgTriggerInstance>;
-  triggers: Array<Trigger>;
-  users: Array<User>;
-  variables: Array<OrgVariable>;
-  visibleActions: Array<Action>;
-  visiblePackConfigs: Array<PackConfig>;
-  visibleWorkflows: Array<Workflow>;
-  workflowExecutions: Array<WorkflowExecution>;
-  workflows: Array<Workflow>;
-};
+  triggerInstances: OrgTriggerInstance[];
+  triggers: Trigger[];
+  users: User[];
+  variables: OrgVariable[];
+  visibleActions: Action[];
+  visiblePackConfigs: PackConfig[];
+  visibleWorkflows: Workflow[];
+  workflowExecutions: WorkflowExecution[];
+  workflows: Workflow[];
+}
 
 
-export type OrganizationInstalledPacksArgs = {
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+export interface OrganizationInstalledPacksArgs {
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<PackSearchInput>;
   where?: InputMaybe<PackInput>;
-};
+}
 
 
-export type OrganizationManagedAndSubOrgsArgs = {
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
-};
+export interface OrganizationManagedAndSubOrgsArgs {
+  order?: InputMaybe<Scalars['String']['input'][][]>;
+}
 
-export type OrganizationFeaturePreviewSetting = {
+export interface OrganizationFeaturePreviewSetting {
   __typename?: 'OrganizationFeaturePreviewSetting';
   featurePreviewSetting?: Maybe<FeaturePreviewSetting>;
   featurePreviewSettingId?: Maybe<Scalars['ID']['output']>;
   isEnabled?: Maybe<Scalars['Boolean']['output']>;
   orgId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type OrganizationInput = {
+export interface OrganizationInput {
   domain?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   isEnabled?: InputMaybe<Scalars['Boolean']['input']>;
@@ -3437,11 +3437,11 @@ export type OrganizationInput = {
   name: Scalars['String']['input'];
   orgSlug?: InputMaybe<Scalars['String']['input']>;
   rocSiteId?: InputMaybe<Scalars['String']['input']>;
-  tagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  tagIds?: InputMaybe<Scalars['ID']['input'][]>;
   tid?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type OrganizationOnboardingCrateRequirement = {
+export interface OrganizationOnboardingCrateRequirement {
   __typename?: 'OrganizationOnboardingCrateRequirement';
   crate: Crate;
   crateId: Scalars['ID']['output'];
@@ -3465,9 +3465,9 @@ export type OrganizationOnboardingCrateRequirement = {
   updatedBy?: Maybe<User>;
   workflow?: Maybe<Workflow>;
   workflowId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type OrganizationOnboardingCrateRequirementInput = {
+export interface OrganizationOnboardingCrateRequirementInput {
   crateId: Scalars['ID']['input'];
   crateName: Scalars['String']['input'];
   installedAt?: InputMaybe<Scalars['String']['input']>;
@@ -3476,14 +3476,14 @@ export type OrganizationOnboardingCrateRequirementInput = {
   onboardingRequirementId: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type OrganizationOnboardingCrateRequirementSearchInput = {
+export interface OrganizationOnboardingCrateRequirementSearchInput {
   crateName?: InputMaybe<Scalars['String']['input']>;
   isInstalled?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type OrganizationOnboardingCrateRequirementWhereInput = {
+export interface OrganizationOnboardingCrateRequirementWhereInput {
   crateId?: InputMaybe<Scalars['ID']['input']>;
   crateName?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -3491,9 +3491,9 @@ export type OrganizationOnboardingCrateRequirementWhereInput = {
   onboardingRequirementId?: InputMaybe<Scalars['ID']['input']>;
   orgId: Scalars['ID']['input'];
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type OrganizationOnboardingPackRequirement = {
+export interface OrganizationOnboardingPackRequirement {
   __typename?: 'OrganizationOnboardingPackRequirement';
   configuredAt?: Maybe<Scalars['String']['output']>;
   configuredBy?: Maybe<User>;
@@ -3519,9 +3519,9 @@ export type OrganizationOnboardingPackRequirement = {
   skippedById?: Maybe<Scalars['ID']['output']>;
   updatedAt: Scalars['String']['output'];
   updatedBy?: Maybe<User>;
-};
+}
 
-export type OrganizationOnboardingPackRequirementInput = {
+export interface OrganizationOnboardingPackRequirementInput {
   configuredAt?: InputMaybe<Scalars['String']['input']>;
   configuredById?: InputMaybe<Scalars['ID']['input']>;
   installedAt?: InputMaybe<Scalars['String']['input']>;
@@ -3532,15 +3532,15 @@ export type OrganizationOnboardingPackRequirementInput = {
   orgId: Scalars['ID']['input'];
   packType: PackType;
   selectedPackId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type OrganizationOnboardingPackRequirementSearchInput = {
+export interface OrganizationOnboardingPackRequirementSearchInput {
   isConfigured?: InputMaybe<Scalars['Boolean']['input']>;
   isInstalled?: InputMaybe<Scalars['Boolean']['input']>;
   packType?: InputMaybe<PackType>;
-};
+}
 
-export type OrganizationOnboardingPackRequirementWhereInput = {
+export interface OrganizationOnboardingPackRequirementWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   isConfigured?: InputMaybe<Scalars['Boolean']['input']>;
   isInstalled?: InputMaybe<Scalars['Boolean']['input']>;
@@ -3548,11 +3548,11 @@ export type OrganizationOnboardingPackRequirementWhereInput = {
   orgId: Scalars['ID']['input'];
   packType?: InputMaybe<PackType>;
   selectedPackId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type OrganizationOnboardingRequirement = {
+export interface OrganizationOnboardingRequirement {
   __typename?: 'OrganizationOnboardingRequirement';
-  crateRequirements?: Maybe<Array<OrganizationOnboardingCrateRequirement>>;
+  crateRequirements?: Maybe<OrganizationOnboardingCrateRequirement[]>;
   createdAt: Scalars['String']['output'];
   createdBy?: Maybe<User>;
   currentCustomerCount?: Maybe<Scalars['Int']['output']>;
@@ -3562,17 +3562,17 @@ export type OrganizationOnboardingRequirement = {
   orgId: Scalars['ID']['output'];
   organization: Organization;
   organizationType?: Maybe<OrganizationType>;
-  packRequirements?: Maybe<Array<OrganizationOnboardingPackRequirement>>;
-  questionnaireResponses?: Maybe<Array<OnboardingQuestionnaireResponse>>;
+  packRequirements?: Maybe<OrganizationOnboardingPackRequirement[]>;
+  questionnaireResponses?: Maybe<OnboardingQuestionnaireResponse[]>;
   requirementsCompleted?: Maybe<Scalars['Boolean']['output']>;
   requirementsPopulated?: Maybe<Scalars['Boolean']['output']>;
   status?: Maybe<OnboardingStatus>;
   targetCustomerCount?: Maybe<Scalars['Int']['output']>;
   updatedAt: Scalars['String']['output'];
   updatedBy?: Maybe<User>;
-};
+}
 
-export type OrganizationOnboardingRequirementInput = {
+export interface OrganizationOnboardingRequirementInput {
   onboardingCompletedAt?: InputMaybe<Scalars['String']['input']>;
   onboardingStartedAt?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
@@ -3581,24 +3581,24 @@ export type OrganizationOnboardingRequirementInput = {
   requirementsPopulated?: InputMaybe<Scalars['Boolean']['input']>;
   status?: InputMaybe<OnboardingStatus>;
   targetCustomerCount?: InputMaybe<Scalars['Int']['input']>;
-};
+}
 
-export type OrganizationOnboardingRequirementSearchInput = {
+export interface OrganizationOnboardingRequirementSearchInput {
   organizationType?: InputMaybe<OrganizationType>;
   status?: InputMaybe<OnboardingStatus>;
   targetCustomerCount?: InputMaybe<Scalars['Int']['input']>;
-};
+}
 
-export type OrganizationOnboardingRequirementWhereInput = {
+export interface OrganizationOnboardingRequirementWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   orgId: Scalars['ID']['input'];
   organizationType?: InputMaybe<OrganizationType>;
   requirementsCompleted?: InputMaybe<Scalars['Boolean']['input']>;
   requirementsPopulated?: InputMaybe<Scalars['Boolean']['input']>;
   status?: InputMaybe<OnboardingStatus>;
-};
+}
 
-export type OrganizationSearchInput = {
+export interface OrganizationSearchInput {
   createdAt?: InputMaybe<String_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   installedPacks?: InputMaybe<PackSearchInput>;
@@ -3616,11 +3616,11 @@ export type OrganizationSearchInput = {
   rocSiteId?: InputMaybe<String_Comparison_Exp>;
   tags?: InputMaybe<TagSearchInput>;
   users?: InputMaybe<UserSearchInput>;
-};
+}
 
-export type OrganizationTagsWhereInput = {
-  id?: InputMaybe<Array<Scalars['ID']['input']>>;
-};
+export interface OrganizationTagsWhereInput {
+  id?: InputMaybe<Scalars['ID']['input'][]>;
+}
 
 export enum OrganizationType {
   Direct = 'DIRECT',
@@ -3629,7 +3629,7 @@ export enum OrganizationType {
   Other = 'OTHER'
 }
 
-export type OrganizationUpdateInput = {
+export interface OrganizationUpdateInput {
   deletedAt?: InputMaybe<Scalars['String']['input']>;
   domain?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
@@ -3641,11 +3641,11 @@ export type OrganizationUpdateInput = {
   orgSlug?: InputMaybe<Scalars['String']['input']>;
   resultsRetentionDays?: InputMaybe<Scalars['Int']['input']>;
   rocSiteId?: InputMaybe<Scalars['String']['input']>;
-  tagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  tagIds?: InputMaybe<Scalars['ID']['input'][]>;
   tid?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type OrganizationWhereInput = {
+export interface OrganizationWhereInput {
   domain?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   isStaff?: InputMaybe<Scalars['Boolean']['input']>;
@@ -3657,17 +3657,17 @@ export type OrganizationWhereInput = {
   rocSiteId?: InputMaybe<Scalars['String']['input']>;
   tags?: InputMaybe<OrganizationTagsWhereInput>;
   users?: InputMaybe<UserWhereInput>;
-};
+}
 
-export type Pack = {
+export interface Pack {
   __typename?: 'Pack';
-  actions: Array<Action>;
+  actions: Action[];
   configFormSchema?: Maybe<Scalars['JSON']['output']>;
   configSchema?: Maybe<Scalars['JSON']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   icon?: Maybe<Scalars['String']['output']>;
   id?: Maybe<Scalars['String']['output']>;
-  installedBy?: Maybe<Array<Maybe<Organization>>>;
+  installedBy?: Maybe<Maybe<Organization>[]>;
   isDefault?: Maybe<Scalars['Boolean']['output']>;
   isMultitenancyEnabled?: Maybe<Scalars['Boolean']['output']>;
   isOauthConfiguration?: Maybe<Scalars['Boolean']['output']>;
@@ -3677,46 +3677,46 @@ export type Pack = {
   orgVariables?: Maybe<Scalars['JSON']['output']>;
   packBundle?: Maybe<PackBundle>;
   packBundleId?: Maybe<Scalars['ID']['output']>;
-  packConfigs: Array<PackConfig>;
-  packOverrides?: Maybe<Array<Maybe<PackOverride>>>;
+  packConfigs: PackConfig[];
+  packOverrides?: Maybe<Maybe<PackOverride>[]>;
   packTestAction?: Maybe<Action>;
   packType?: Maybe<PackType>;
   ref?: Maybe<Scalars['String']['output']>;
-  sensorTypes: Array<SensorType>;
+  sensorTypes: SensorType[];
   setupInstructions?: Maybe<Scalars['String']['output']>;
   status: PackStatus;
-  tags: Array<Tag>;
-  triggerTypes: Array<TriggerType>;
+  tags: Tag[];
+  triggerTypes: TriggerType[];
   uid?: Maybe<Scalars['String']['output']>;
   version?: Maybe<Scalars['String']['output']>;
-};
+}
 
 
-export type PackActionsArgs = {
+export interface PackActionsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   search?: InputMaybe<ActionSearch>;
   where?: InputMaybe<ActionInput>;
-};
+}
 
 
-export type PackInstalledByArgs = {
+export interface PackInstalledByArgs {
   filter?: InputMaybe<OrganizationInput>;
   where?: InputMaybe<OrganizationInput>;
-};
+}
 
 
-export type PackPackConfigsArgs = {
+export interface PackPackConfigsArgs {
   where?: InputMaybe<PackConfigWhereInput>;
-};
+}
 
 
-export type PackTriggerTypesArgs = {
+export interface PackTriggerTypesArgs {
   search?: InputMaybe<TriggerTypesSearchInput>;
   where?: InputMaybe<TriggerTypeWhereInput>;
-};
+}
 
 /** Defines the structure for making an API request configuration. */
-export type PackActionOption = {
+export interface PackActionOption {
   __typename?: 'PackActionOption';
   headers?: Maybe<Scalars['JSON']['output']>;
   id: Scalars['ID']['output'];
@@ -3731,15 +3731,15 @@ export type PackActionOption = {
   path: Scalars['String']['output'];
   pathParams?: Maybe<Scalars['JSON']['output']>;
   queryParams?: Maybe<Scalars['JSON']['output']>;
-  requiredHeaderVars?: Maybe<Array<Scalars['String']['output']>>;
-  requiredPathVars?: Maybe<Array<Scalars['String']['output']>>;
-  requiredQueryVars?: Maybe<Array<Scalars['String']['output']>>;
+  requiredHeaderVars?: Maybe<Scalars['String']['output'][]>;
+  requiredPathVars?: Maybe<Scalars['String']['output'][]>;
+  requiredQueryVars?: Maybe<Scalars['String']['output'][]>;
   resultsKey?: Maybe<Scalars['String']['output']>;
   valueField: Scalars['String']['output'];
   valueFieldIsPath?: Maybe<Scalars['Boolean']['output']>;
-};
+}
 
-export type PackActionOptionInput = {
+export interface PackActionOptionInput {
   headers?: InputMaybe<Scalars['JSON']['input']>;
   label?: Scalars['String']['input'];
   labelIsTemplate?: InputMaybe<Scalars['Boolean']['input']>;
@@ -3752,15 +3752,15 @@ export type PackActionOptionInput = {
   path: Scalars['String']['input'];
   pathParams?: InputMaybe<Scalars['JSON']['input']>;
   queryParams?: InputMaybe<Scalars['JSON']['input']>;
-  requiredHeaderVars?: InputMaybe<Array<Scalars['String']['input']>>;
-  requiredPathVars?: InputMaybe<Array<Scalars['String']['input']>>;
-  requiredQueryVars?: InputMaybe<Array<Scalars['String']['input']>>;
+  requiredHeaderVars?: InputMaybe<Scalars['String']['input'][]>;
+  requiredPathVars?: InputMaybe<Scalars['String']['input'][]>;
+  requiredQueryVars?: InputMaybe<Scalars['String']['input'][]>;
   resultsKey?: InputMaybe<Scalars['String']['input']>;
   valueField?: Scalars['String']['input'];
   valueFieldIsPath?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type PackActionOptionWhereInput = {
+export interface PackActionOptionWhereInput {
   headers?: InputMaybe<Scalars['JSON']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
@@ -3772,25 +3772,25 @@ export type PackActionOptionWhereInput = {
   path?: InputMaybe<Scalars['String']['input']>;
   pathParams?: InputMaybe<Scalars['JSON']['input']>;
   queryParams?: InputMaybe<Scalars['JSON']['input']>;
-  requiredHeaderVars?: InputMaybe<Array<Scalars['String']['input']>>;
-  requiredPathVars?: InputMaybe<Array<Scalars['String']['input']>>;
-  requiredQueryVars?: InputMaybe<Array<Scalars['String']['input']>>;
+  requiredHeaderVars?: InputMaybe<Scalars['String']['input'][]>;
+  requiredPathVars?: InputMaybe<Scalars['String']['input'][]>;
+  requiredQueryVars?: InputMaybe<Scalars['String']['input'][]>;
   resultsKey?: InputMaybe<Scalars['String']['input']>;
   valueField?: InputMaybe<Scalars['String']['input']>;
   valueFieldIsPath?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type PackBundle = {
+export interface PackBundle {
   __typename?: 'PackBundle';
   configSchema?: Maybe<Scalars['JSON']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
   name: Scalars['String']['output'];
-  packs: Array<Pack>;
+  packs: Pack[];
   ref: Scalars['String']['output'];
-};
+}
 
-export type PackBundleIncludedPack = {
+export interface PackBundleIncludedPack {
   __typename?: 'PackBundleIncludedPack';
   description?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
@@ -3799,55 +3799,55 @@ export type PackBundleIncludedPack = {
   name: Scalars['String']['output'];
   ref: Scalars['String']['output'];
   updatedAt?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type PackBundleSearchInput = {
+export interface PackBundleSearchInput {
   description?: InputMaybe<String_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   name?: InputMaybe<String_Comparison_Exp>;
   packs?: InputMaybe<PackSearchInput>;
   ref?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type PackBundleWhereInput = {
+export interface PackBundleWhereInput {
   description?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   packs?: InputMaybe<PackWhereInput>;
   ref?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type PackConfig = {
+export interface PackConfig {
   __typename?: 'PackConfig';
-  actionOptions: Array<ActionOption>;
-  appliedToTriggers: Array<Trigger>;
+  actionOptions: ActionOption[];
+  appliedToTriggers: Trigger[];
   config?: Maybe<Scalars['JSON']['output']>;
   createdAt?: Maybe<Scalars['String']['output']>;
   default?: Maybe<Scalars['Boolean']['output']>;
   description?: Maybe<Scalars['String']['output']>;
-  foreignObjectReferences: Array<ForeignObjectReference>;
+  foreignObjectReferences: ForeignObjectReference[];
   id?: Maybe<Scalars['ID']['output']>;
   metadata?: Maybe<Scalars['JSON']['output']>;
   name: Scalars['String']['output'];
   orgId?: Maybe<Scalars['ID']['output']>;
-  orgVariables: Array<OrgVariable>;
+  orgVariables: OrgVariable[];
   organization?: Maybe<Organization>;
   pack?: Maybe<Pack>;
   packId?: Maybe<Scalars['ID']['output']>;
   updatedAt?: Maybe<Scalars['String']['output']>;
-  visibleForOrganizations: Array<Organization>;
-};
+  visibleForOrganizations: Organization[];
+}
 
 
-export type PackConfigActionOptionsArgs = {
+export interface PackConfigActionOptionsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<ActionOptionSearchInput>;
   where?: InputMaybe<ActionOptionWhereInput>;
-};
+}
 
-export type PackConfigApplyInput = {
+export interface PackConfigApplyInput {
   config?: InputMaybe<Scalars['JSON']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
@@ -3855,9 +3855,9 @@ export type PackConfigApplyInput = {
   name?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
   packId: Scalars['ID']['input'];
-};
+}
 
-export type PackConfigCreateInput = {
+export interface PackConfigCreateInput {
   config?: InputMaybe<Scalars['JSON']['input']>;
   default?: InputMaybe<Scalars['Boolean']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
@@ -3866,14 +3866,14 @@ export type PackConfigCreateInput = {
   name: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
   packId: Scalars['ID']['input'];
-};
+}
 
-export type PackConfigDeleteInput = {
+export interface PackConfigDeleteInput {
   id: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
-export type PackConfigSearch = {
+export interface PackConfigSearch {
   config?: InputMaybe<Json_Comparison_Exp>;
   default?: InputMaybe<Bool_Comparison_Exp>;
   description?: InputMaybe<String_Comparison_Exp>;
@@ -3883,9 +3883,9 @@ export type PackConfigSearch = {
   orgId?: InputMaybe<Id_Comparison_Exp>;
   pack?: InputMaybe<PackSearchInput>;
   packId?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type PackConfigTestInput = {
+export interface PackConfigTestInput {
   config?: InputMaybe<Scalars['JSON']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
@@ -3893,9 +3893,9 @@ export type PackConfigTestInput = {
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   packId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type PackConfigUpdateInput = {
+export interface PackConfigUpdateInput {
   config?: InputMaybe<Scalars['JSON']['input']>;
   default?: InputMaybe<Scalars['Boolean']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
@@ -3904,9 +3904,9 @@ export type PackConfigUpdateInput = {
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   packId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type PackConfigWhereInput = {
+export interface PackConfigWhereInput {
   actionOptions?: InputMaybe<ActionOptionWhereInput>;
   config?: InputMaybe<Scalars['JSON']['input']>;
   default?: InputMaybe<Scalars['Boolean']['input']>;
@@ -3918,10 +3918,10 @@ export type PackConfigWhereInput = {
   pack?: InputMaybe<PackWhereInput>;
   packId?: InputMaybe<Scalars['ID']['input']>;
   ref?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type PackCreateInput = {
-  actions?: InputMaybe<Array<ActionInput>>;
+export interface PackCreateInput {
+  actions?: InputMaybe<ActionInput[]>;
   configSchema: Scalars['JSON']['input'];
   description?: InputMaybe<Scalars['String']['input']>;
   icon?: InputMaybe<Scalars['String']['input']>;
@@ -3936,20 +3936,20 @@ export type PackCreateInput = {
   packType?: InputMaybe<PackType>;
   ref: Scalars['String']['input'];
   status?: InputMaybe<PackStatus>;
-  tags?: InputMaybe<Array<Scalars['String']['input']>>;
+  tags?: InputMaybe<Scalars['String']['input'][]>;
   uid?: InputMaybe<Scalars['String']['input']>;
   version?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type PackDeleteResponse = {
+export interface PackDeleteResponse {
   __typename?: 'PackDeleteResponse';
-  installedBy?: Maybe<Array<Scalars['ID']['output']>>;
+  installedBy?: Maybe<Scalars['ID']['output'][]>;
   message?: Maybe<Scalars['String']['output']>;
   success: Scalars['Boolean']['output'];
-};
+}
 
-export type PackInput = {
-  actions?: InputMaybe<Array<ActionInput>>;
+export interface PackInput {
+  actions?: InputMaybe<ActionInput[]>;
   description?: InputMaybe<Scalars['String']['input']>;
   icon?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -3960,26 +3960,26 @@ export type PackInput = {
   packType?: InputMaybe<PackType>;
   ref?: InputMaybe<Scalars['String']['input']>;
   status?: InputMaybe<PackStatus>;
-  tags?: InputMaybe<Array<Scalars['String']['input']>>;
+  tags?: InputMaybe<Scalars['String']['input'][]>;
   uid?: InputMaybe<Scalars['String']['input']>;
   version?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type PackInstalledByResponse = {
+export interface PackInstalledByResponse {
   __typename?: 'PackInstalledByResponse';
-  installedBy?: Maybe<Array<Scalars['ID']['output']>>;
+  installedBy?: Maybe<Scalars['ID']['output'][]>;
   message?: Maybe<Scalars['String']['output']>;
   success: Scalars['Boolean']['output'];
-};
+}
 
 export type PackOrError = ErrorMessage | Pack;
 
-export type PackOrPackBundle = {
+export interface PackOrPackBundle {
   __typename?: 'PackOrPackBundle';
   description?: Maybe<Scalars['String']['output']>;
   icon?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
-  includedPacks?: Maybe<Array<PackBundleIncludedPack>>;
+  includedPacks?: Maybe<PackBundleIncludedPack[]>;
   isBundle: Scalars['Boolean']['output'];
   isDefault?: Maybe<Scalars['Boolean']['output']>;
   name: Scalars['String']['output'];
@@ -3987,11 +3987,11 @@ export type PackOrPackBundle = {
   packType?: Maybe<PackType>;
   ref: Scalars['String']['output'];
   status?: Maybe<PackStatus>;
-  tags?: Maybe<Array<Tag>>;
+  tags?: Maybe<Tag[]>;
   updatedAt?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type PackOverride = {
+export interface PackOverride {
   __typename?: 'PackOverride';
   configFallbackMode?: Maybe<ConfigFallbackModes>;
   configSelectionMode?: Maybe<ConfigSelectionModes>;
@@ -4009,17 +4009,17 @@ export type PackOverride = {
   triggerId?: Maybe<Scalars['ID']['output']>;
   workflowTask?: Maybe<WorkflowTask>;
   workflowTaskId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type PackOverrideInput = {
+export interface PackOverrideInput {
   configFallbackMode?: InputMaybe<ConfigFallbackModes>;
   configSelectionMode?: InputMaybe<ConfigSelectionModes>;
   packConfigId?: InputMaybe<Scalars['ID']['input']>;
   packId: Scalars['ID']['input'];
   searchInput?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type PackOverrideSearchInput = {
+export interface PackOverrideSearchInput {
   pack?: InputMaybe<PackSearchInput>;
   packConfig?: InputMaybe<PackConfigSearch>;
   packConfigId?: InputMaybe<Id_Comparison_Exp>;
@@ -4028,16 +4028,16 @@ export type PackOverrideSearchInput = {
   triggerId?: InputMaybe<Id_Comparison_Exp>;
   workflowTask?: InputMaybe<WorkflowTaskSearchInput>;
   workflowTaskId?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type PackResourceTypesContainer = {
+export interface PackResourceTypesContainer {
   __typename?: 'PackResourceTypesContainer';
   id: Scalars['ID']['output'];
   packName: Scalars['String']['output'];
-  resourceTypes: Array<Scalars['String']['output']>;
-};
+  resourceTypes: Scalars['String']['output'][];
+}
 
-export type PackSearchInput = {
+export interface PackSearchInput {
   actions?: InputMaybe<ActionSearch>;
   description?: InputMaybe<String_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
@@ -4053,7 +4053,7 @@ export type PackSearchInput = {
   tags?: InputMaybe<String_Comparison_Exp>;
   uid?: InputMaybe<String_Comparison_Exp>;
   version?: InputMaybe<String_Comparison_Exp>;
-};
+}
 
 export enum PackStatus {
   Deprecated = 'deprecated',
@@ -4062,12 +4062,12 @@ export enum PackStatus {
   Published = 'published'
 }
 
-export type PackStatusSearch = {
+export interface PackStatusSearch {
   _eq?: InputMaybe<PackStatus>;
-  _in?: InputMaybe<Array<PackStatus>>;
+  _in?: InputMaybe<PackStatus[]>;
   _ne?: InputMaybe<PackStatus>;
-  _nin?: InputMaybe<Array<PackStatus>>;
-};
+  _nin?: InputMaybe<PackStatus[]>;
+}
 
 export enum PackType {
   Backup = 'BACKUP',
@@ -4084,15 +4084,15 @@ export enum PackType {
   Openapi = 'openapi'
 }
 
-export type PackTypeSearch = {
+export interface PackTypeSearch {
   _eq?: InputMaybe<PackType>;
-  _in?: InputMaybe<Array<PackType>>;
+  _in?: InputMaybe<PackType[]>;
   _ne?: InputMaybe<PackType>;
-  _nin?: InputMaybe<Array<PackType>>;
-};
+  _nin?: InputMaybe<PackType[]>;
+}
 
-export type PackUpdateInput = {
-  actions?: InputMaybe<Array<ActionUpdateInput>>;
+export interface PackUpdateInput {
+  actions?: InputMaybe<ActionUpdateInput[]>;
   configSchema?: InputMaybe<Scalars['JSON']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   icon?: InputMaybe<Scalars['String']['input']>;
@@ -4108,12 +4108,12 @@ export type PackUpdateInput = {
   ref?: InputMaybe<Scalars['String']['input']>;
   setupInstructions?: InputMaybe<Scalars['String']['input']>;
   status?: InputMaybe<PackStatus>;
-  tags?: InputMaybe<Array<Scalars['String']['input']>>;
+  tags?: InputMaybe<Scalars['String']['input'][]>;
   uid?: InputMaybe<Scalars['String']['input']>;
   version?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type PackWhereInput = {
+export interface PackWhereInput {
   actions?: InputMaybe<ActionInput>;
   description?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -4125,20 +4125,20 @@ export type PackWhereInput = {
   packType?: InputMaybe<PackType>;
   ref?: InputMaybe<Scalars['String']['input']>;
   status?: InputMaybe<PackStatus>;
-};
+}
 
-export type PacksAndBundlesByInstalledState = {
+export interface PacksAndBundlesByInstalledState {
   __typename?: 'PacksAndBundlesByInstalledState';
-  installedPacksAndBundles?: Maybe<Array<PackOrPackBundle>>;
-  marketplacePacksAndBundles?: Maybe<Array<PackOrPackBundle>>;
-};
+  installedPacksAndBundles?: Maybe<PackOrPackBundle[]>;
+  marketplacePacksAndBundles?: Maybe<PackOrPackBundle[]>;
+}
 
-export type Page = {
+export interface Page {
   __typename?: 'Page';
   cloneOverrides?: Maybe<Scalars['JSON']['output']>;
   clonedFrom?: Maybe<Site>;
   clonedFromId?: Maybe<Scalars['ID']['output']>;
-  clones?: Maybe<Array<Maybe<Page>>>;
+  clones?: Maybe<Maybe<Page>[]>;
   createdAt?: Maybe<Scalars['String']['output']>;
   createdBy?: Maybe<User>;
   createdById?: Maybe<Scalars['ID']['output']>;
@@ -4146,7 +4146,7 @@ export type Page = {
   isSynchronized?: Maybe<Scalars['Boolean']['output']>;
   loader?: Maybe<Loader>;
   name: Scalars['String']['output'];
-  nodes?: Maybe<Array<Maybe<PageNode>>>;
+  nodes?: Maybe<Maybe<PageNode>[]>;
   orgId?: Maybe<Scalars['ID']['output']>;
   organization?: Maybe<Organization>;
   path: Scalars['String']['output'];
@@ -4157,11 +4157,11 @@ export type Page = {
   updatedAt?: Maybe<Scalars['String']['output']>;
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
-  variables?: Maybe<Array<Maybe<Scalars['JSON']['output']>>>;
-  workflows: Array<Workflow>;
-};
+  variables?: Maybe<Maybe<Scalars['JSON']['output']>[]>;
+  workflows: Workflow[];
+}
 
-export type PageCreateInput = {
+export interface PageCreateInput {
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -4171,11 +4171,11 @@ export type PageCreateInput = {
   orgId: Scalars['ID']['input'];
   path: Scalars['String']['input'];
   siteId?: InputMaybe<Scalars['ID']['input']>;
-  variables?: InputMaybe<Array<InputMaybe<Scalars['JSON']['input']>>>;
-  workflows?: InputMaybe<Array<InputMaybe<WorkflowInput>>>;
-};
+  variables?: InputMaybe<InputMaybe<Scalars['JSON']['input']>[]>;
+  workflows?: InputMaybe<InputMaybe<WorkflowInput>[]>;
+}
 
-export type PageNode = {
+export interface PageNode {
   __typename?: 'PageNode';
   componentId?: Maybe<Scalars['ID']['output']>;
   craftId: Scalars['String']['output'];
@@ -4186,18 +4186,18 @@ export type PageNode = {
   id: Scalars['ID']['output'];
   isCanvas: Scalars['Boolean']['output'];
   linkedNodes: Scalars['JSON']['output'];
-  linkedPages?: Maybe<Array<Page>>;
-  nodes: Array<Maybe<Scalars['String']['output']>>;
+  linkedPages?: Maybe<Page[]>;
+  nodes: Maybe<Scalars['String']['output']>[];
   pageId: Scalars['ID']['output'];
   parentId?: Maybe<Scalars['ID']['output']>;
   props: Scalars['JSON']['output'];
-  templates?: Maybe<Array<Template>>;
-  triggers?: Maybe<Array<Trigger>>;
+  templates?: Maybe<Template[]>;
+  triggers?: Maybe<Trigger[]>;
   type: Scalars['JSON']['output'];
-  workflows?: Maybe<Array<Workflow>>;
-};
+  workflows?: Maybe<Workflow[]>;
+}
 
-export type PageNodeInput = {
+export interface PageNodeInput {
   componentId?: InputMaybe<Scalars['ID']['input']>;
   craftId: Scalars['String']['input'];
   custom?: InputMaybe<Scalars['JSON']['input']>;
@@ -4207,24 +4207,24 @@ export type PageNodeInput = {
   id: Scalars['ID']['input'];
   isCanvas: Scalars['Boolean']['input'];
   linkedNodes: Scalars['JSON']['input'];
-  linkedPages?: InputMaybe<Array<PageCreateInput>>;
-  nodes: Array<InputMaybe<Scalars['String']['input']>>;
+  linkedPages?: InputMaybe<PageCreateInput[]>;
+  nodes: InputMaybe<Scalars['String']['input']>[];
   pageId?: InputMaybe<Scalars['ID']['input']>;
   parentId?: InputMaybe<Scalars['ID']['input']>;
   props: Scalars['JSON']['input'];
-  templates?: InputMaybe<Array<TemplateInput>>;
-  triggers?: InputMaybe<Array<TriggerCreateInput>>;
+  templates?: InputMaybe<TemplateInput[]>;
+  triggers?: InputMaybe<TriggerCreateInput[]>;
   type: Scalars['JSON']['input'];
-  workflows: Array<WorkflowInput>;
-};
+  workflows: WorkflowInput[];
+}
 
-export type PageSearchInput = {
+export interface PageSearchInput {
   name?: InputMaybe<Scalars['String']['input']>;
   siteId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type PageUpdateInput = {
-  componentInstances?: InputMaybe<Array<InputMaybe<ComponentInstanceInput>>>;
+export interface PageUpdateInput {
+  componentInstances?: InputMaybe<InputMaybe<ComponentInstanceInput>[]>;
   id: Scalars['ID']['input'];
   loader?: InputMaybe<Loader>;
   name?: InputMaybe<Scalars['String']['input']>;
@@ -4233,11 +4233,11 @@ export type PageUpdateInput = {
   path?: InputMaybe<Scalars['String']['input']>;
   siteId: Scalars['ID']['input'];
   title?: InputMaybe<Scalars['String']['input']>;
-  variables?: InputMaybe<Array<InputMaybe<Scalars['JSON']['input']>>>;
-  workflows?: InputMaybe<Array<InputMaybe<WorkflowInput>>>;
-};
+  variables?: InputMaybe<InputMaybe<Scalars['JSON']['input']>[]>;
+  workflows?: InputMaybe<InputMaybe<WorkflowInput>[]>;
+}
 
-export type PageWhereInput = {
+export interface PageWhereInput {
   _?: InputMaybe<Scalars['String']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   domain?: InputMaybe<Scalars['String']['input']>;
@@ -4247,13 +4247,13 @@ export type PageWhereInput = {
   path?: InputMaybe<Scalars['String']['input']>;
   site?: InputMaybe<SitePropertiesInput>;
   siteId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type PagesImportInput = {
+export interface PagesImportInput {
   id: Scalars['ID']['input'];
   name: Scalars['String']['input'];
   path: Scalars['String']['input'];
-};
+}
 
 export enum PatchType {
   Form = 'form',
@@ -4262,28 +4262,28 @@ export enum PatchType {
   Workflow = 'workflow'
 }
 
-export type PendingTask = {
+export interface PendingTask {
   __typename?: 'PendingTask';
   expiresAt: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   status: PendingTaskStatus;
   workflowExecution: WorkflowExecution;
   workflowTask: PendingTaskWorkflowTask;
-};
+}
 
-export type PendingTaskInput = {
+export interface PendingTaskInput {
   expiresAt?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   status?: InputMaybe<PendingTaskStatus>;
   workflowExecutionId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type PendingTaskSearchInput = {
+export interface PendingTaskSearchInput {
   id?: InputMaybe<Id_Comparison_Exp>;
   status?: InputMaybe<PendingTaskStatusSearchInput>;
   workflowExecution?: InputMaybe<WorkflowExecutionSearchInput>;
   workflowExecutionId?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
 export enum PendingTaskStatus {
   Canceled = 'canceled',
@@ -4293,30 +4293,30 @@ export enum PendingTaskStatus {
   Success = 'success'
 }
 
-export type PendingTaskStatusSearchInput = {
+export interface PendingTaskStatusSearchInput {
   _eq?: InputMaybe<PendingTaskStatus>;
   _gt?: InputMaybe<PendingTaskStatus>;
   _gte?: InputMaybe<PendingTaskStatus>;
   _ilike?: InputMaybe<PendingTaskStatus>;
-  _in?: InputMaybe<Array<PendingTaskStatus>>;
+  _in?: InputMaybe<PendingTaskStatus[]>;
   _like?: InputMaybe<PendingTaskStatus>;
   _lt?: InputMaybe<PendingTaskStatus>;
   _lte?: InputMaybe<PendingTaskStatus>;
   _neq?: InputMaybe<PendingTaskStatus>;
   _nilike?: InputMaybe<PendingTaskStatus>;
-  _nin?: InputMaybe<Array<PendingTaskStatus>>;
+  _nin?: InputMaybe<PendingTaskStatus[]>;
   _nlike?: InputMaybe<PendingTaskStatus>;
   _substr?: InputMaybe<PendingTaskStatus>;
-};
+}
 
-export type PendingTaskWhereInput = {
+export interface PendingTaskWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   status?: InputMaybe<PendingTaskStatus>;
   workflowExecution?: InputMaybe<WorkflowExecutionWhereInput>;
   workflowExecutionId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type PendingTaskWorkflowTask = {
+export interface PendingTaskWorkflowTask {
   __typename?: 'PendingTaskWorkflowTask';
   action_item?: Maybe<Scalars['JSON']['output']>;
   action_metadata?: Maybe<Scalars['JSON']['output']>;
@@ -4328,23 +4328,23 @@ export type PendingTaskWorkflowTask = {
   spec?: Maybe<Scalars['JSON']['output']>;
   started_at?: Maybe<Scalars['String']['output']>;
   task?: Maybe<Scalars['JSON']['output']>;
-};
+}
 
-export type PendingTasksAggregate = {
+export interface PendingTasksAggregate {
   __typename?: 'PendingTasksAggregate';
   count: Scalars['Int']['output'];
-};
+}
 
-export type PendingTasksAggregateInput = {
+export interface PendingTasksAggregateInput {
   status?: InputMaybe<PendingTaskStatus>;
   workflowExecution?: InputMaybe<WorkflowExecutionWhereInput>;
-};
+}
 
-export type Permission = {
+export interface Permission {
   __typename?: 'Permission';
-  authorizedForOrganizations?: Maybe<Array<Maybe<Organization>>>;
-  authorizedForSubOrganizations?: Maybe<Array<Maybe<Organization>>>;
-  excludeOrganizations?: Maybe<Array<Maybe<Organization>>>;
+  authorizedForOrganizations?: Maybe<Maybe<Organization>[]>;
+  authorizedForSubOrganizations?: Maybe<Maybe<Organization>[]>;
+  excludeOrganizations?: Maybe<Maybe<Organization>[]>;
   id?: Maybe<Scalars['ID']['output']>;
   objectId?: Maybe<Scalars['String']['output']>;
   objectType?: Maybe<Scalars['String']['output']>;
@@ -4352,49 +4352,49 @@ export type Permission = {
   override?: Maybe<Scalars['String']['output']>;
   permissionType?: Maybe<Scalars['String']['output']>;
   relation?: Maybe<Scalars['String']['output']>;
-  roleIds?: Maybe<Array<Maybe<Scalars['String']['output']>>>;
+  roleIds?: Maybe<Maybe<Scalars['String']['output']>[]>;
   subjectId?: Maybe<Scalars['String']['output']>;
   subjectType?: Maybe<Scalars['String']['output']>;
   templateId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type PermissionCreateInput = {
+export interface PermissionCreateInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   objectId?: InputMaybe<Scalars['String']['input']>;
   objectType?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-  orgIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  orgIds?: InputMaybe<Scalars['ID']['input'][]>;
   override?: InputMaybe<Scalars['String']['input']>;
   relation?: InputMaybe<Scalars['String']['input']>;
-  roleIds?: InputMaybe<Array<Scalars['String']['input']>>;
+  roleIds?: InputMaybe<Scalars['String']['input'][]>;
   templateId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type PermissionUpdateInput = {
-  excludeOrgIds?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
+export interface PermissionUpdateInput {
+  excludeOrgIds?: InputMaybe<InputMaybe<Scalars['ID']['input']>[]>;
   objectId: Scalars['String']['input'];
-  orgIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  orgIds?: InputMaybe<Scalars['ID']['input'][]>;
   override?: InputMaybe<Scalars['String']['input']>;
   relation?: InputMaybe<Scalars['String']['input']>;
-  roleIds?: InputMaybe<Array<Scalars['String']['input']>>;
-  subOrgIds?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
-};
+  roleIds?: InputMaybe<Scalars['String']['input'][]>;
+  subOrgIds?: InputMaybe<InputMaybe<Scalars['ID']['input']>[]>;
+}
 
-export type PermissionWhereInput = {
+export interface PermissionWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   objectId?: InputMaybe<Scalars['String']['input']>;
   objectType?: InputMaybe<Scalars['String']['input']>;
   permissionType?: InputMaybe<Scalars['String']['input']>;
   templateId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type PhasedCloneEvent = {
+export interface PhasedCloneEvent {
   phase: ClonePhase;
-};
+}
 
-export type PublicCrate = {
+export interface PublicCrate {
   __typename?: 'PublicCrate';
-  associatedPacks?: Maybe<Array<Maybe<AssociatedPack>>>;
+  associatedPacks?: Maybe<Maybe<AssociatedPack>[]>;
   category?: Maybe<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   gid?: Maybe<Scalars['ID']['output']>;
@@ -4404,7 +4404,7 @@ export type PublicCrate = {
   providedValue?: Maybe<Scalars['String']['output']>;
   setupAssistance?: Maybe<Scalars['String']['output']>;
   setupTime?: Maybe<Scalars['String']['output']>;
-};
+}
 
 export type PublishCrateStreamEvent = PublishCrateStreamFailureResponse | PublishCrateStreamSuccessResponse;
 
@@ -4423,1248 +4423,1248 @@ export type PublishCrateStreamSuccessResponse = BaseStreamEvent & {
   isFinished: Scalars['Boolean']['output'];
 };
 
-export type Query = {
+export interface Query {
   __typename?: 'Query';
   action?: Maybe<Action>;
   actionOption?: Maybe<ActionOption>;
-  actionOptions: Array<ActionOption>;
-  actions: Array<Action>;
-  actionsForOrg: Array<Action>;
+  actionOptions: ActionOption[];
+  actions: Action[];
+  actionsForOrg: Action[];
   apiClient?: Maybe<ApiClient>;
   apiClients: ApiClientList;
   appPlatformReservedDomain?: Maybe<AppPlatformReservedDomain>;
-  appPlatformReservedDomains: Array<AppPlatformReservedDomain>;
+  appPlatformReservedDomains: AppPlatformReservedDomain[];
   check?: Maybe<Scalars['JSON']['output']>;
   checkAuthorization?: Maybe<Scalars['JSON']['output']>;
-  commonlyUsedIntegrationActions: Array<CommonlyUsedAction>;
+  commonlyUsedIntegrationActions: CommonlyUsedAction[];
   component?: Maybe<Component>;
   componentInstance?: Maybe<ComponentInstance>;
-  componentInstances?: Maybe<Array<Maybe<ComponentInstance>>>;
-  componentInstancesByComponentVersion?: Maybe<Array<Maybe<ComponentInstance>>>;
-  componentInstancesByPage?: Maybe<Array<Maybe<ComponentInstance>>>;
+  componentInstances?: Maybe<Maybe<ComponentInstance>[]>;
+  componentInstancesByComponentVersion?: Maybe<Maybe<ComponentInstance>[]>;
+  componentInstancesByPage?: Maybe<Maybe<ComponentInstance>[]>;
   componentTree?: Maybe<ComponentTree>;
-  components?: Maybe<Array<Maybe<Component>>>;
-  componentsByRoots?: Maybe<Array<Maybe<Component>>>;
+  components?: Maybe<Maybe<Component>[]>;
+  componentsByRoots?: Maybe<Maybe<Component>[]>;
   conversation?: Maybe<Conversation>;
-  conversationMessageVotes: Array<ConversationMessageVote>;
-  conversations: Array<Conversation>;
+  conversationMessageVotes: ConversationMessageVote[];
+  conversations: Conversation[];
   crate?: Maybe<Crate>;
   crateCategories?: Maybe<Scalars['JSON']['output']>;
   crateExportInfo?: Maybe<Scalars['JSON']['output']>;
-  crateTags: Array<Tag>;
-  crateTokenTypes: Array<Scalars['String']['output']>;
+  crateTags: Tag[];
+  crateTokenTypes: Scalars['String']['output'][];
   crateUnpackingArgumentSet?: Maybe<CrateUnpackingArgumentSet>;
   crateUseCase?: Maybe<CrateUseCase>;
-  crateUseCases: Array<CrateUseCase>;
+  crateUseCases: CrateUseCase[];
   /** This public query returns all available crates within the Rewst platform. */
-  crates: Array<Crate>;
-  cratesForForm?: Maybe<Array<Maybe<Crate>>>;
-  cratesForTemplate?: Maybe<Array<Maybe<Crate>>>;
-  dailyTaskCountsByDateRange: Array<TaskCountByDate>;
-  dailyTimeSavedByDateRange: Array<TimeSavedByDate>;
+  crates: Crate[];
+  cratesForForm?: Maybe<Maybe<Crate>[]>;
+  cratesForTemplate?: Maybe<Maybe<Crate>[]>;
+  dailyTaskCountsByDateRange: TaskCountByDate[];
+  dailyTimeSavedByDateRange: TimeSavedByDate[];
   debug?: Maybe<Scalars['Boolean']['output']>;
   evaluatedForm?: Maybe<Form>;
   extractJinjaValues?: Maybe<Scalars['JSON']['output']>;
   featurePreviewSetting?: Maybe<FeaturePreviewSetting>;
-  featurePreviewSettings?: Maybe<Array<Maybe<FeaturePreviewSetting>>>;
+  featurePreviewSettings?: Maybe<Maybe<FeaturePreviewSetting>[]>;
   foreignObjectReference?: Maybe<ForeignObjectReference>;
-  foreignObjectReferences: Array<ForeignObjectReference>;
+  foreignObjectReferences: ForeignObjectReference[];
   form?: Maybe<Form>;
-  forms: Array<Form>;
-  getAppPermissions: Array<Site>;
+  forms: Form[];
+  getAppPermissions: Site[];
   getCannyToken?: Maybe<Scalars['String']['output']>;
   getHaloLiveChatToken?: Maybe<Scalars['String']['output']>;
   getSiteTheme?: Maybe<Scalars['JSON']['output']>;
   getSkilljarLoginToken?: Maybe<Scalars['String']['output']>;
   getTestUserSession?: Maybe<User>;
-  getTestUsers: Array<User>;
+  getTestUsers: User[];
   getTriggerErrorStatus: Scalars['JSON']['output'];
   home: Scalars['String']['output'];
-  hourlyTaskCountByDate: Array<TaskCountByHour>;
-  hourlyTimeSavedByDate: Array<TimeSavedByHour>;
+  hourlyTaskCountByDate: TaskCountByHour[];
+  hourlyTimeSavedByDate: TimeSavedByHour[];
   /** This public query returns all available integrations within the Rewst platform. */
-  integrations: Array<Integration>;
+  integrations: Integration[];
   isOrgManagedBy?: Maybe<Scalars['Boolean']['output']>;
   jinjaFilterDocumentation?: Maybe<Jinja2Documentation>;
-  jinjaFiltersDocumentation: Array<Jinja2Documentation>;
+  jinjaFiltersDocumentation: Jinja2Documentation[];
   jinjaRenderSession?: Maybe<JinjaRenderSession>;
   jinjaTemplate?: Maybe<Template>;
-  latestInterpreterVersions?: Maybe<Array<InterpreterVersion>>;
-  listDelegatedAccess: Array<UserDelegatedAccess>;
+  latestInterpreterVersions?: Maybe<InterpreterVersion[]>;
+  listDelegatedAccess: UserDelegatedAccess[];
   livePage?: Maybe<EncodedPageNodes>;
-  localReferenceOptions: Array<DropdownOption>;
+  localReferenceOptions: DropdownOption[];
   login: Login;
-  managedAndSubOrganizations: Array<Organization>;
+  managedAndSubOrganizations: Organization[];
   /** @deprecated Replaced with microsoftCSPCustomer query */
-  managedOrgMsGraphTenantIdReferences: Array<ForeignObjectReference>;
+  managedOrgMsGraphTenantIdReferences: ForeignObjectReference[];
   me?: Maybe<User>;
   messageVoteStats: MessageVoteStats;
-  microsoftAllCSPCustomers: Array<MicrosoftCspCustomer>;
+  microsoftAllCSPCustomers: MicrosoftCspCustomer[];
   microsoftCSPCustomer?: Maybe<MicrosoftCspCustomer>;
-  microsoftCSPCustomers: Array<MicrosoftCspCustomer>;
-  monacoFilterCompletionItems: Array<MonacoCompletionItem>;
-  myAccessibleOrganizations: Array<Organization>;
+  microsoftCSPCustomers: MicrosoftCspCustomer[];
+  monacoFilterCompletionItems: MonacoCompletionItem[];
+  myAccessibleOrganizations: Organization[];
   onboardingQuestionnaireResponse?: Maybe<OnboardingQuestionnaireResponse>;
-  onboardingQuestionnaireResponses: Array<OnboardingQuestionnaireResponse>;
+  onboardingQuestionnaireResponses: OnboardingQuestionnaireResponse[];
   orgFormFieldInstance?: Maybe<OrgFormFieldInstance>;
   orgFormFieldInstanceStatus?: Maybe<Scalars['Boolean']['output']>;
-  orgFormFieldInstances?: Maybe<Array<OrgFormFieldInstance>>;
+  orgFormFieldInstances?: Maybe<OrgFormFieldInstance[]>;
   orgInterpreterSetting?: Maybe<OrgInterpreterSetting>;
-  orgInterpreterSettings: Array<OrgInterpreterSetting>;
-  orgSearch: Array<OrgSearchResult>;
+  orgInterpreterSettings: OrgInterpreterSetting[];
+  orgSearch: OrgSearchResult[];
   orgTriggerInstance?: Maybe<OrgTriggerInstance>;
-  orgTriggerInstances: Array<OrgTriggerInstance>;
+  orgTriggerInstances: OrgTriggerInstance[];
   orgVariable?: Maybe<OrgVariable>;
-  orgVariables: Array<OrgVariable>;
+  orgVariables: OrgVariable[];
   organization?: Maybe<Organization>;
   organizationApiClients: ApiClientList;
   organizationOnboardingCrateRequirement?: Maybe<OrganizationOnboardingCrateRequirement>;
-  organizationOnboardingCrateRequirements: Array<OrganizationOnboardingCrateRequirement>;
+  organizationOnboardingCrateRequirements: OrganizationOnboardingCrateRequirement[];
   organizationOnboardingPackRequirement?: Maybe<OrganizationOnboardingPackRequirement>;
-  organizationOnboardingPackRequirements: Array<OrganizationOnboardingPackRequirement>;
+  organizationOnboardingPackRequirements: OrganizationOnboardingPackRequirement[];
   organizationOnboardingRequirement?: Maybe<OrganizationOnboardingRequirement>;
-  organizations: Array<Organization>;
-  organizationsWithFeaturePreviewSettingEnabled: Array<Organization>;
+  organizations: Organization[];
+  organizationsWithFeaturePreviewSettingEnabled: Organization[];
   pack?: Maybe<Pack>;
   packActionOption?: Maybe<PackActionOption>;
-  packActionOptions: Array<PackActionOption>;
+  packActionOptions: PackActionOption[];
   packAuthUrl?: Maybe<Scalars['String']['output']>;
   packBundle?: Maybe<PackBundle>;
-  packBundles: Array<Maybe<PackBundle>>;
+  packBundles: Maybe<PackBundle>[];
   packConfig?: Maybe<PackConfig>;
-  packConfigs: Array<PackConfig>;
-  packConfigsForForm: Array<PackConfig>;
-  packConfigsForOrg: Array<PackConfig>;
-  packs: Array<Pack>;
+  packConfigs: PackConfig[];
+  packConfigsForForm: PackConfig[];
+  packConfigsForOrg: PackConfig[];
+  packs: Pack[];
   packsAndBundlesByInstalledState: PacksAndBundlesByInstalledState;
-  packsByTag: Array<Pack>;
-  packsForOrg: Array<Pack>;
+  packsByTag: Pack[];
+  packsForOrg: Pack[];
   page?: Maybe<Page>;
-  pageElements: Array<PageNode>;
+  pageElements: PageNode[];
   pageNode?: Maybe<PageNode>;
   pageNodes?: Maybe<EncodedPageNodes>;
   pageVars?: Maybe<Scalars['JSON']['output']>;
-  pages: Array<Page>;
+  pages: Page[];
   pendingTasksAggregate: PendingTasksAggregate;
   permission?: Maybe<Permission>;
-  permissions: Array<Permission>;
-  publicCrates: Array<PublicCrate>;
-  recentComponentVersions: Array<ComponentTree>;
+  permissions: Permission[];
+  publicCrates: PublicCrate[];
+  recentComponentVersions: ComponentTree[];
   reservedOrganizationName?: Maybe<ReservedOrganizationName>;
-  reservedOrganizationNames?: Maybe<Array<Maybe<ReservedOrganizationName>>>;
-  resourceTypesByPack: Array<PackResourceTypesContainer>;
+  reservedOrganizationNames?: Maybe<Maybe<ReservedOrganizationName>[]>;
+  resourceTypesByPack: PackResourceTypesContainer[];
   roboRewstyConfigOption: RoboRewstyConfigValue;
-  roboRewstyConfigOptions: Array<RoboRewstyConfigValue>;
-  roles: Array<Role>;
+  roboRewstyConfigOptions: RoboRewstyConfigValue[];
+  roles: Role[];
   runner?: Maybe<Runner>;
-  runners: Array<Runner>;
-  searchInstalledPackActions: Array<Pack>;
+  runners: Runner[];
+  searchInstalledPackActions: Pack[];
   sensorType?: Maybe<SensorType>;
-  sensorTypes: Array<SensorType>;
+  sensorTypes: SensorType[];
   site?: Maybe<Site>;
-  sites: Array<Site>;
-  softDeletedOrgs: Array<Organization>;
+  sites: Site[];
+  softDeletedOrgs: Organization[];
   tag?: Maybe<Tag>;
-  tags: Array<Tag>;
+  tags: Tag[];
   taskExecutionStats: Scalars['Int']['output'];
   taskLog?: Maybe<TaskLog>;
-  taskLogs: Array<TaskLog>;
+  taskLogs: TaskLog[];
   /**
    * Query daily tasks executed and time saved statistics from Redshift data lake.
    * Returns aggregated task counts and time saved by date for an organization and its sub-orgs.
    */
   tasksExecutedAndTimeSavedStats?: Maybe<TasksExecutedAndTimeSavedStats>;
   template?: Maybe<Template>;
-  templates: Array<Template>;
-  timeSavedGroupBySubOrg: Array<TimeSavedGroupByOrg>;
-  timeSavedGroupByWorkflow: Array<TimeSavedGroupByWorkflow>;
+  templates: Template[];
+  timeSavedGroupBySubOrg: TimeSavedGroupByOrg[];
+  timeSavedGroupByWorkflow: TimeSavedGroupByWorkflow[];
   trigger?: Maybe<Trigger>;
-  triggerDbNotificationErrors: Array<DatabaseNotificationError>;
+  triggerDbNotificationErrors: DatabaseNotificationError[];
   triggerType?: Maybe<TriggerType>;
-  triggerTypes: Array<TriggerType>;
-  triggers: Array<Trigger>;
+  triggerTypes: TriggerType[];
+  triggers: Trigger[];
   user?: Maybe<User>;
   userInvite?: Maybe<UserInvite>;
-  userInvites?: Maybe<Array<Maybe<UserInvite>>>;
+  userInvites?: Maybe<Maybe<UserInvite>[]>;
   userOrganization?: Maybe<Organization>;
-  users: Array<User>;
+  users: User[];
   validateSiteDomain?: Maybe<SiteDomainValid>;
-  visibleOrgVariables: Array<OrgVariable>;
+  visibleOrgVariables: OrgVariable[];
   visibleOrgVariablesCount: Scalars['Int']['output'];
-  visibleWorkflows: Array<Workflow>;
+  visibleWorkflows: Workflow[];
   warrants?: Maybe<Scalars['JSON']['output']>;
   workflow?: Maybe<Workflow>;
-  workflowCompletionListeners: Array<Trigger>;
+  workflowCompletionListeners: Trigger[];
   workflowExecution?: Maybe<WorkflowExecution>;
   workflowExecutionContexts?: Maybe<Scalars['JSON']['output']>;
   workflowExecutionStats?: Maybe<WorkflowExecutionStats>;
-  workflowExecutions?: Maybe<Array<Maybe<WorkflowExecution>>>;
-  workflowIOConfigurations: Array<Workflow>;
+  workflowExecutions?: Maybe<Maybe<WorkflowExecution>[]>;
+  workflowIOConfigurations: Workflow[];
   workflowNote?: Maybe<WorkflowNote>;
-  workflowNotes: Array<WorkflowNote>;
+  workflowNotes: WorkflowNote[];
   workflowPatch: WorkflowPatch;
-  workflowPatches: Array<WorkflowPatch>;
-  workflowStatsByOrg: Array<WorkflowStatsByOrg>;
+  workflowPatches: WorkflowPatch[];
+  workflowStatsByOrg: WorkflowStatsByOrg[];
   workflowTask?: Maybe<WorkflowTask>;
-  workflowTasks: Array<WorkflowTask>;
-  workflows: Array<Workflow>;
-};
+  workflowTasks: WorkflowTask[];
+  workflows: Workflow[];
+}
 
 
-export type QueryActionArgs = {
+export interface QueryActionArgs {
   search?: InputMaybe<ActionSearch>;
   where?: InputMaybe<ActionInput>;
-};
+}
 
 
-export type QueryActionOptionArgs = {
+export interface QueryActionOptionArgs {
   where?: InputMaybe<ActionOptionWhereInput>;
-};
+}
 
 
-export type QueryActionOptionsArgs = {
+export interface QueryActionOptionsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   where?: InputMaybe<ActionOptionWhereInput>;
-};
+}
 
 
-export type QueryActionsArgs = {
+export interface QueryActionsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<ActionSearch>;
   where?: InputMaybe<ActionInput>;
-};
+}
 
 
-export type QueryActionsForOrgArgs = {
+export interface QueryActionsForOrgArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   search?: InputMaybe<ActionSearch>;
   where?: InputMaybe<ActionInput>;
-};
+}
 
 
-export type QueryApiClientArgs = {
+export interface QueryApiClientArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryApiClientsArgs = {
+export interface QueryApiClientsArgs {
   pagination?: InputMaybe<ApiClientListInput>;
   where?: InputMaybe<ApiClientWhereInput>;
-};
+}
 
 
-export type QueryAppPlatformReservedDomainArgs = {
+export interface QueryAppPlatformReservedDomainArgs {
   search?: InputMaybe<AppPlatformReservedDomainSearchInput>;
   where?: InputMaybe<AppPlatformReservedDomainWhereInput>;
-};
+}
 
 
-export type QueryAppPlatformReservedDomainsArgs = {
+export interface QueryAppPlatformReservedDomainsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
   search?: InputMaybe<AppPlatformReservedDomainSearchInput>;
   where?: InputMaybe<AppPlatformReservedDomainWhereInput>;
-};
+}
 
 
-export type QueryCheckArgs = {
-  where: Array<CheckInput>;
-};
+export interface QueryCheckArgs {
+  where: CheckInput[];
+}
 
 
-export type QueryCheckAuthorizationArgs = {
+export interface QueryCheckAuthorizationArgs {
   where: CheckAuthorizationInput;
-};
+}
 
 
-export type QueryCommonlyUsedIntegrationActionsArgs = {
+export interface QueryCommonlyUsedIntegrationActionsArgs {
   integrationId: Scalars['ID']['input'];
   limit?: InputMaybe<Scalars['Int']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 
-export type QueryComponentArgs = {
+export interface QueryComponentArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryComponentInstanceArgs = {
+export interface QueryComponentInstanceArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryComponentInstancesArgs = {
+export interface QueryComponentInstancesArgs {
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryComponentInstancesByComponentVersionArgs = {
+export interface QueryComponentInstancesByComponentVersionArgs {
   componentVersionId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryComponentInstancesByPageArgs = {
+export interface QueryComponentInstancesByPageArgs {
   pageId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryComponentTreeArgs = {
+export interface QueryComponentTreeArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryComponentsArgs = {
+export interface QueryComponentsArgs {
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryComponentsByRootsArgs = {
-  rootIds: Array<InputMaybe<Scalars['ID']['input']>>;
-};
+export interface QueryComponentsByRootsArgs {
+  rootIds: InputMaybe<Scalars['ID']['input']>[];
+}
 
 
-export type QueryConversationArgs = {
+export interface QueryConversationArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryConversationMessageVotesArgs = {
+export interface QueryConversationMessageVotesArgs {
   where?: InputMaybe<ConversationMessageVoteWhereInput>;
-};
+}
 
 
-export type QueryConversationsArgs = {
+export interface QueryConversationsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<InputMaybe<Array<Scalars['String']['input']>>>>;
+  order?: InputMaybe<InputMaybe<Scalars['String']['input'][]>[]>;
   where?: InputMaybe<ConversationWhereInput>;
-};
+}
 
 
-export type QueryCrateArgs = {
+export interface QueryCrateArgs {
   search?: InputMaybe<CrateSearchInput>;
   selectedOrgId?: InputMaybe<Scalars['ID']['input']>;
   where?: InputMaybe<CrateWhereInput>;
-};
+}
 
 
-export type QueryCrateCategoriesArgs = {
+export interface QueryCrateCategoriesArgs {
   selectedOrgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryCrateExportInfoArgs = {
+export interface QueryCrateExportInfoArgs {
   workflowId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryCrateTagsArgs = {
+export interface QueryCrateTagsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<TagSearchInput>;
   where?: InputMaybe<TagWhereInput>;
-};
+}
 
 
-export type QueryCrateUnpackingArgumentSetArgs = {
+export interface QueryCrateUnpackingArgumentSetArgs {
   where?: InputMaybe<CrateUnpackingArgumentSetWhereInput>;
-};
+}
 
 
-export type QueryCrateUseCaseArgs = {
+export interface QueryCrateUseCaseArgs {
   where?: InputMaybe<CrateUseCaseWhereInput>;
-};
+}
 
 
-export type QueryCrateUseCasesArgs = {
+export interface QueryCrateUseCasesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<CrateUseCaseSearchInput>;
   where?: InputMaybe<CrateUseCaseWhereInput>;
-};
+}
 
 
-export type QueryCratesArgs = {
+export interface QueryCratesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<CrateSearchInput>;
   selectedOrgId?: InputMaybe<Scalars['ID']['input']>;
   where?: InputMaybe<CrateWhereInput>;
-};
+}
 
 
-export type QueryCratesForFormArgs = {
+export interface QueryCratesForFormArgs {
   formId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryCratesForTemplateArgs = {
+export interface QueryCratesForTemplateArgs {
   templateId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryDailyTaskCountsByDateRangeArgs = {
+export interface QueryDailyTaskCountsByDateRangeArgs {
   endDate: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
   startDate: Scalars['String']['input'];
-};
+}
 
 
-export type QueryDailyTimeSavedByDateRangeArgs = {
+export interface QueryDailyTimeSavedByDateRangeArgs {
   endDate: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
   startDate: Scalars['String']['input'];
-};
+}
 
 
-export type QueryEvaluatedFormArgs = {
+export interface QueryEvaluatedFormArgs {
   orgContextId?: InputMaybe<Scalars['ID']['input']>;
   where?: InputMaybe<EvaluatedFormWhereInput>;
-};
+}
 
 
-export type QueryExtractJinjaValuesArgs = {
+export interface QueryExtractJinjaValuesArgs {
   fields: Scalars['JSON']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryFeaturePreviewSettingArgs = {
+export interface QueryFeaturePreviewSettingArgs {
   where?: InputMaybe<FeaturePreviewSettingWhereInput>;
-};
+}
 
 
-export type QueryFeaturePreviewSettingsArgs = {
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+export interface QueryFeaturePreviewSettingsArgs {
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   where?: InputMaybe<FeaturePreviewSettingWhereInput>;
-};
+}
 
 
-export type QueryForeignObjectReferenceArgs = {
+export interface QueryForeignObjectReferenceArgs {
   where?: InputMaybe<ForeignObjectReferenceWhereInput>;
-};
+}
 
 
-export type QueryForeignObjectReferencesArgs = {
+export interface QueryForeignObjectReferencesArgs {
   where?: InputMaybe<ForeignObjectReferenceWhereInput>;
-};
+}
 
 
-export type QueryFormArgs = {
+export interface QueryFormArgs {
   orgContextId?: InputMaybe<Scalars['ID']['input']>;
   search?: InputMaybe<FormSearchInput>;
   where?: InputMaybe<FormWhereInput>;
-};
+}
 
 
-export type QueryFormsArgs = {
-  hasTagIds?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
+export interface QueryFormsArgs {
+  hasTagIds?: InputMaybe<InputMaybe<Scalars['ID']['input']>[]>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<FormSearchInput>;
   where?: InputMaybe<FormWhereInput>;
-};
+}
 
 
-export type QueryGetAppPermissionsArgs = {
+export interface QueryGetAppPermissionsArgs {
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryGetSiteThemeArgs = {
+export interface QueryGetSiteThemeArgs {
   domain?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 
-export type QueryGetTestUsersArgs = {
+export interface QueryGetTestUsersArgs {
   where?: InputMaybe<GetUserWhereInput>;
-};
+}
 
 
-export type QueryGetTriggerErrorStatusArgs = {
-  triggerIds?: InputMaybe<Array<Scalars['ID']['input']>>;
-};
+export interface QueryGetTriggerErrorStatusArgs {
+  triggerIds?: InputMaybe<Scalars['ID']['input'][]>;
+}
 
 
-export type QueryHomeArgs = {
+export interface QueryHomeArgs {
   domain: Scalars['String']['input'];
-};
+}
 
 
-export type QueryHourlyTaskCountByDateArgs = {
+export interface QueryHourlyTaskCountByDateArgs {
   date: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryHourlyTimeSavedByDateArgs = {
+export interface QueryHourlyTimeSavedByDateArgs {
   date: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryIntegrationsArgs = {
+export interface QueryIntegrationsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-};
+}
 
 
-export type QueryIsOrgManagedByArgs = {
+export interface QueryIsOrgManagedByArgs {
   orgId: Scalars['ID']['input'];
   parentOrgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryJinjaFilterDocumentationArgs = {
+export interface QueryJinjaFilterDocumentationArgs {
   filterName: Scalars['String']['input'];
-};
+}
 
 
-export type QueryJinjaRenderSessionArgs = {
+export interface QueryJinjaRenderSessionArgs {
   conversationId?: InputMaybe<Scalars['ID']['input']>;
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryJinjaTemplateArgs = {
+export interface QueryJinjaTemplateArgs {
   where?: InputMaybe<TemplateInput>;
-};
+}
 
 
-export type QueryLatestInterpreterVersionsArgs = {
+export interface QueryLatestInterpreterVersionsArgs {
   language?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 
-export type QueryListDelegatedAccessArgs = {
+export interface QueryListDelegatedAccessArgs {
   organizationId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryLivePageArgs = {
+export interface QueryLivePageArgs {
   domain?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   path: Scalars['String']['input'];
   query?: InputMaybe<Scalars['JSON']['input']>;
-};
+}
 
 
-export type QueryLocalReferenceOptionsArgs = {
+export interface QueryLocalReferenceOptionsArgs {
   filterArg?: InputMaybe<Scalars['JSON']['input']>;
   modelName: LocalReferenceModel;
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryLoginArgs = {
+export interface QueryLoginArgs {
   domain: Scalars['String']['input'];
-};
+}
 
 
-export type QueryManagedAndSubOrganizationsArgs = {
-  hasTagIds?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
+export interface QueryManagedAndSubOrganizationsArgs {
+  hasTagIds?: InputMaybe<InputMaybe<Scalars['ID']['input']>[]>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   parentOrgId: Scalars['ID']['input'];
   search?: InputMaybe<OrganizationSearchInput>;
-};
+}
 
 
-export type QueryManagedOrgMsGraphTenantIdReferencesArgs = {
+export interface QueryManagedOrgMsGraphTenantIdReferencesArgs {
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryMessageVoteStatsArgs = {
+export interface QueryMessageVoteStatsArgs {
   conversationMessageId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryMicrosoftAllCspCustomersArgs = {
+export interface QueryMicrosoftAllCspCustomersArgs {
   search?: InputMaybe<MicrosoftCspCustomerSearchInput>;
   where?: InputMaybe<MicrosoftCspCustomerWhereInput>;
-};
+}
 
 
-export type QueryMicrosoftCspCustomerArgs = {
+export interface QueryMicrosoftCspCustomerArgs {
   cspPackConfigId: Scalars['ID']['input'];
   where?: InputMaybe<MicrosoftCspCustomerWhereInput>;
-};
+}
 
 
-export type QueryMicrosoftCspCustomersArgs = {
+export interface QueryMicrosoftCspCustomersArgs {
   cspPackConfigId: Scalars['ID']['input'];
   search?: InputMaybe<MicrosoftCspCustomerSearchInput>;
   where?: InputMaybe<MicrosoftCspCustomerWhereInput>;
-};
+}
 
 
-export type QueryOnboardingQuestionnaireResponseArgs = {
+export interface QueryOnboardingQuestionnaireResponseArgs {
   where?: InputMaybe<OnboardingQuestionnaireResponseWhereInput>;
-};
+}
 
 
-export type QueryOnboardingQuestionnaireResponsesArgs = {
+export interface QueryOnboardingQuestionnaireResponsesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   where?: InputMaybe<OnboardingQuestionnaireResponseWhereInput>;
-};
+}
 
 
-export type QueryOrgFormFieldInstanceArgs = {
+export interface QueryOrgFormFieldInstanceArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryOrgFormFieldInstanceStatusArgs = {
+export interface QueryOrgFormFieldInstanceStatusArgs {
   formId: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryOrgFormFieldInstancesArgs = {
+export interface QueryOrgFormFieldInstancesArgs {
   formFieldId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryOrgInterpreterSettingArgs = {
+export interface QueryOrgInterpreterSettingArgs {
   id?: InputMaybe<Scalars['ID']['input']>;
   language?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 
-export type QueryOrgInterpreterSettingsArgs = {
+export interface QueryOrgInterpreterSettingsArgs {
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryOrgSearchArgs = {
+export interface QueryOrgSearchArgs {
   breadcrumbRootOrgId: Scalars['ID']['input'];
   rootOrgId: Scalars['ID']['input'];
   search?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 
-export type QueryOrgTriggerInstanceArgs = {
+export interface QueryOrgTriggerInstanceArgs {
   search?: InputMaybe<OrgTriggerInstanceSearchInput>;
   where?: InputMaybe<OrgTriggerInstanceWhereInput>;
-};
+}
 
 
-export type QueryOrgTriggerInstancesArgs = {
+export interface QueryOrgTriggerInstancesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<OrgTriggerInstanceSearchInput>;
   where?: InputMaybe<OrgTriggerInstanceWhereInput>;
-};
+}
 
 
-export type QueryOrgVariableArgs = {
+export interface QueryOrgVariableArgs {
   maskSecrets?: InputMaybe<Scalars['Boolean']['input']>;
   search?: InputMaybe<OrgVariableSearchInput>;
   where?: InputMaybe<OrgVariableWhereInput>;
-};
+}
 
 
-export type QueryOrgVariablesArgs = {
+export interface QueryOrgVariablesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   maskSecrets?: InputMaybe<Scalars['Boolean']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<OrgVariableSearchInput>;
   where?: InputMaybe<OrgVariableWhereInput>;
-};
+}
 
 
-export type QueryOrganizationArgs = {
+export interface QueryOrganizationArgs {
   search?: InputMaybe<OrganizationSearchInput>;
   where?: InputMaybe<OrganizationWhereInput>;
-};
+}
 
 
-export type QueryOrganizationApiClientsArgs = {
+export interface QueryOrganizationApiClientsArgs {
   orgId: Scalars['ID']['input'];
   pagination?: InputMaybe<ApiClientListInput>;
-};
+}
 
 
-export type QueryOrganizationOnboardingCrateRequirementArgs = {
+export interface QueryOrganizationOnboardingCrateRequirementArgs {
   where?: InputMaybe<OrganizationOnboardingCrateRequirementWhereInput>;
-};
+}
 
 
-export type QueryOrganizationOnboardingCrateRequirementsArgs = {
+export interface QueryOrganizationOnboardingCrateRequirementsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<OrganizationOnboardingCrateRequirementSearchInput>;
   where?: InputMaybe<OrganizationOnboardingCrateRequirementWhereInput>;
-};
+}
 
 
-export type QueryOrganizationOnboardingPackRequirementArgs = {
+export interface QueryOrganizationOnboardingPackRequirementArgs {
   where?: InputMaybe<OrganizationOnboardingPackRequirementWhereInput>;
-};
+}
 
 
-export type QueryOrganizationOnboardingPackRequirementsArgs = {
+export interface QueryOrganizationOnboardingPackRequirementsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<OrganizationOnboardingPackRequirementSearchInput>;
   where?: InputMaybe<OrganizationOnboardingPackRequirementWhereInput>;
-};
+}
 
 
-export type QueryOrganizationOnboardingRequirementArgs = {
+export interface QueryOrganizationOnboardingRequirementArgs {
   where?: InputMaybe<OrganizationOnboardingRequirementWhereInput>;
-};
+}
 
 
-export type QueryOrganizationsArgs = {
+export interface QueryOrganizationsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<OrganizationSearchInput>;
   where?: InputMaybe<OrganizationWhereInput>;
-};
+}
 
 
-export type QueryOrganizationsWithFeaturePreviewSettingEnabledArgs = {
+export interface QueryOrganizationsWithFeaturePreviewSettingEnabledArgs {
   label: Scalars['String']['input'];
-};
+}
 
 
-export type QueryPackArgs = {
+export interface QueryPackArgs {
   where?: InputMaybe<PackWhereInput>;
-};
+}
 
 
-export type QueryPackActionOptionArgs = {
+export interface QueryPackActionOptionArgs {
   where?: InputMaybe<PackActionOptionWhereInput>;
-};
+}
 
 
-export type QueryPackActionOptionsArgs = {
+export interface QueryPackActionOptionsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   where?: InputMaybe<PackActionOptionWhereInput>;
-};
+}
 
 
-export type QueryPackAuthUrlArgs = {
+export interface QueryPackAuthUrlArgs {
   orgId: Scalars['ID']['input'];
   packName: Scalars['String']['input'];
-};
+}
 
 
-export type QueryPackBundleArgs = {
+export interface QueryPackBundleArgs {
   where: PackBundleWhereInput;
-};
+}
 
 
-export type QueryPackBundlesArgs = {
+export interface QueryPackBundlesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<PackBundleSearchInput>;
   where?: InputMaybe<PackBundleWhereInput>;
-};
+}
 
 
-export type QueryPackConfigArgs = {
+export interface QueryPackConfigArgs {
   includeSpec?: InputMaybe<Scalars['Boolean']['input']>;
   search?: InputMaybe<PackConfigSearch>;
   where?: InputMaybe<PackConfigWhereInput>;
-};
+}
 
 
-export type QueryPackConfigsArgs = {
+export interface QueryPackConfigsArgs {
   includeSpec?: InputMaybe<Scalars['Boolean']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   resourceNames?: InputMaybe<Scalars['String']['input']>;
   search?: InputMaybe<PackConfigSearch>;
   where?: InputMaybe<PackConfigWhereInput>;
-};
+}
 
 
-export type QueryPackConfigsForFormArgs = {
+export interface QueryPackConfigsForFormArgs {
   formId: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
   triggerId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 
-export type QueryPackConfigsForOrgArgs = {
+export interface QueryPackConfigsForOrgArgs {
   includeSpec?: InputMaybe<Scalars['Boolean']['input']>;
   orgId: Scalars['ID']['input'];
-  packIds: Array<Scalars['ID']['input']>;
-};
+  packIds: Scalars['ID']['input'][];
+}
 
 
-export type QueryPacksArgs = {
+export interface QueryPacksArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<PackSearchInput>;
   where?: InputMaybe<PackWhereInput>;
-};
+}
 
 
-export type QueryPacksAndBundlesByInstalledStateArgs = {
+export interface QueryPacksAndBundlesByInstalledStateArgs {
   includeCustomPack?: InputMaybe<Scalars['Boolean']['input']>;
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryPacksByTagArgs = {
+export interface QueryPacksByTagArgs {
   tagName: Scalars['String']['input'];
-};
+}
 
 
-export type QueryPacksForOrgArgs = {
+export interface QueryPacksForOrgArgs {
   includeSpec?: InputMaybe<Scalars['Boolean']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   search?: InputMaybe<PackSearchInput>;
   where?: InputMaybe<PackWhereInput>;
-};
+}
 
 
-export type QueryPageArgs = {
+export interface QueryPageArgs {
   where: PageWhereInput;
-};
+}
 
 
-export type QueryPageElementsArgs = {
+export interface QueryPageElementsArgs {
   pageId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryPageNodeArgs = {
+export interface QueryPageNodeArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryPageNodesArgs = {
+export interface QueryPageNodesArgs {
   where: PageWhereInput;
-};
+}
 
 
-export type QueryPageVarsArgs = {
+export interface QueryPageVarsArgs {
   id: Scalars['ID']['input'];
   query?: InputMaybe<Scalars['JSON']['input']>;
-};
+}
 
 
-export type QueryPagesArgs = {
+export interface QueryPagesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<PageSearchInput>;
   where?: InputMaybe<PageWhereInput>;
-};
+}
 
 
-export type QueryPendingTasksAggregateArgs = {
+export interface QueryPendingTasksAggregateArgs {
   where?: InputMaybe<PendingTasksAggregateInput>;
-};
+}
 
 
-export type QueryPermissionArgs = {
+export interface QueryPermissionArgs {
   where?: InputMaybe<PermissionWhereInput>;
-};
+}
 
 
-export type QueryPermissionsArgs = {
+export interface QueryPermissionsArgs {
   where?: InputMaybe<PermissionWhereInput>;
-};
+}
 
 
-export type QueryPublicCratesArgs = {
+export interface QueryPublicCratesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-};
+}
 
 
-export type QueryRecentComponentVersionsArgs = {
+export interface QueryRecentComponentVersionsArgs {
   componentId: Scalars['ID']['input'];
   limit?: InputMaybe<Scalars['Int']['input']>;
-};
+}
 
 
-export type QueryReservedOrganizationNameArgs = {
+export interface QueryReservedOrganizationNameArgs {
   where: ReservedOrganizationNameWhereInput;
-};
+}
 
 
-export type QueryReservedOrganizationNamesArgs = {
+export interface QueryReservedOrganizationNamesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: Array<InputMaybe<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][]>[];
   where?: InputMaybe<ReservedOrganizationNameWhereInput>;
-};
+}
 
 
-export type QueryRoboRewstyConfigOptionArgs = {
+export interface QueryRoboRewstyConfigOptionArgs {
   where?: InputMaybe<RoboRewstyConfigWhere>;
-};
+}
 
 
-export type QueryRoboRewstyConfigOptionsArgs = {
+export interface QueryRoboRewstyConfigOptionsArgs {
   where?: InputMaybe<RoboRewstyConfigWhere>;
-};
+}
 
 
-export type QueryRolesArgs = {
+export interface QueryRolesArgs {
   where?: InputMaybe<RoleWhereInput>;
-};
+}
 
 
-export type QueryRunnerArgs = {
+export interface QueryRunnerArgs {
   where?: InputMaybe<RunnerInput>;
-};
+}
 
 
-export type QueryRunnersArgs = {
+export interface QueryRunnersArgs {
   where?: InputMaybe<RunnerInput>;
-};
+}
 
 
-export type QuerySearchInstalledPackActionsArgs = {
+export interface QuerySearchInstalledPackActionsArgs {
   actionFilter?: InputMaybe<Scalars['String']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QuerySensorTypeArgs = {
+export interface QuerySensorTypeArgs {
   search?: InputMaybe<SensorTypeSearchInput>;
   where?: InputMaybe<SensorTypeInput>;
-};
+}
 
 
-export type QuerySensorTypesArgs = {
+export interface QuerySensorTypesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<SensorTypeSearchInput>;
   where?: InputMaybe<SensorTypeInput>;
-};
+}
 
 
-export type QuerySiteArgs = {
+export interface QuerySiteArgs {
   search?: InputMaybe<SiteSearchInput>;
   where?: InputMaybe<SiteWhereInput>;
-};
+}
 
 
-export type QuerySitesArgs = {
+export interface QuerySitesArgs {
   search?: InputMaybe<SiteSearchInput>;
   where?: InputMaybe<SiteWhereInput>;
-};
+}
 
 
-export type QuerySoftDeletedOrgsArgs = {
+export interface QuerySoftDeletedOrgsArgs {
   managingOrgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryTagArgs = {
+export interface QueryTagArgs {
   search?: InputMaybe<TagSearchInput>;
   where?: InputMaybe<TagWhereInput>;
-};
+}
 
 
-export type QueryTagsArgs = {
+export interface QueryTagsArgs {
   includeTagsWithNoOwner?: InputMaybe<Scalars['Boolean']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<TagSearchInput>;
   where?: InputMaybe<TagWhereInput>;
-};
+}
 
 
-export type QueryTaskExecutionStatsArgs = {
+export interface QueryTaskExecutionStatsArgs {
   createdSince?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryTaskLogArgs = {
+export interface QueryTaskLogArgs {
   search?: InputMaybe<TaskLogSearchInput>;
   where?: InputMaybe<TaskLogWhereInput>;
-};
+}
 
 
-export type QueryTaskLogsArgs = {
+export interface QueryTaskLogsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<TaskLogSearchInput>;
   where?: InputMaybe<TaskLogWhereInput>;
-};
+}
 
 
-export type QueryTasksExecutedAndTimeSavedStatsArgs = {
+export interface QueryTasksExecutedAndTimeSavedStatsArgs {
   endDate: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
   startDate: Scalars['String']['input'];
-};
+}
 
 
-export type QueryTemplateArgs = {
+export interface QueryTemplateArgs {
   where?: InputMaybe<TemplateInput>;
-};
+}
 
 
-export type QueryTemplatesArgs = {
+export interface QueryTemplatesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<TemplateSearch>;
   where?: InputMaybe<TemplateInput>;
-};
+}
 
 
-export type QueryTimeSavedGroupBySubOrgArgs = {
+export interface QueryTimeSavedGroupBySubOrgArgs {
   orgId: Scalars['ID']['input'];
   updatedAt: Scalars['String']['input'];
   useStatsTable?: Scalars['Boolean']['input'];
   workflowStatus?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 
-export type QueryTimeSavedGroupByWorkflowArgs = {
+export interface QueryTimeSavedGroupByWorkflowArgs {
   orgId: Scalars['ID']['input'];
   updatedAt: Scalars['String']['input'];
   useStatsTable?: Scalars['Boolean']['input'];
   workflowStatus?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 
-export type QueryTriggerArgs = {
+export interface QueryTriggerArgs {
   search?: InputMaybe<TriggerSearchInput>;
   where?: InputMaybe<TriggerWhereInput>;
-};
+}
 
 
-export type QueryTriggerDbNotificationErrorsArgs = {
+export interface QueryTriggerDbNotificationErrorsArgs {
   triggerId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryTriggerTypeArgs = {
+export interface QueryTriggerTypeArgs {
   where?: InputMaybe<TriggerTypeWhereInput>;
-};
+}
 
 
-export type QueryTriggerTypesArgs = {
+export interface QueryTriggerTypesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<TriggerTypesSearchInput>;
   where?: InputMaybe<TriggerTypeWhereInput>;
-};
+}
 
 
-export type QueryTriggersArgs = {
+export interface QueryTriggersArgs {
   includeUnlisted?: InputMaybe<Scalars['Boolean']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<TriggerSearchInput>;
   where?: InputMaybe<TriggerWhereInput>;
-};
+}
 
 
-export type QueryUserArgs = {
+export interface QueryUserArgs {
   search?: InputMaybe<UserSearchInput>;
   where?: InputMaybe<GetUserWhereInput>;
-};
+}
 
 
-export type QueryUserInviteArgs = {
+export interface QueryUserInviteArgs {
   search?: InputMaybe<UserInviteSearchInput>;
   where?: InputMaybe<UserInviteWhereInput>;
-};
+}
 
 
-export type QueryUserInvitesArgs = {
+export interface QueryUserInvitesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<UserInviteSearchInput>;
   where?: InputMaybe<UserInviteWhereInput>;
-};
+}
 
 
-export type QueryUsersArgs = {
+export interface QueryUsersArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<UserSearchInput>;
   where?: InputMaybe<GetUserWhereInput>;
-};
+}
 
 
-export type QueryValidateSiteDomainArgs = {
+export interface QueryValidateSiteDomainArgs {
   domain: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryVisibleOrgVariablesArgs = {
+export interface QueryVisibleOrgVariablesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<OrgVariableSearchInput>;
   visibleForOrgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryVisibleOrgVariablesCountArgs = {
+export interface QueryVisibleOrgVariablesCountArgs {
   search?: InputMaybe<OrgVariableSearchInput>;
   visibleForOrgId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryVisibleWorkflowsArgs = {
+export interface QueryVisibleWorkflowsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   search?: InputMaybe<WorkflowSearch>;
   where?: InputMaybe<WorkflowWhereInput>;
-};
+}
 
 
-export type QueryWarrantsArgs = {
+export interface QueryWarrantsArgs {
   where: QueryInput;
-};
+}
 
 
-export type QueryWorkflowArgs = {
+export interface QueryWorkflowArgs {
   search?: InputMaybe<WorkflowSearch>;
   where?: InputMaybe<WorkflowWhereInput>;
-};
+}
 
 
-export type QueryWorkflowCompletionListenersArgs = {
+export interface QueryWorkflowCompletionListenersArgs {
   search?: InputMaybe<TriggerSearchInput>;
   where?: InputMaybe<TriggerWhereInput>;
-};
+}
 
 
-export type QueryWorkflowExecutionArgs = {
+export interface QueryWorkflowExecutionArgs {
   search?: InputMaybe<WorkflowExecutionSearchInput>;
   where?: InputMaybe<WorkflowExecutionWhereInput>;
-};
+}
 
 
-export type QueryWorkflowExecutionContextsArgs = {
+export interface QueryWorkflowExecutionContextsArgs {
   workflowExecutionId: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryWorkflowExecutionStatsArgs = {
+export interface QueryWorkflowExecutionStatsArgs {
   createdSince: Scalars['String']['input'];
   includeSubWorkflows?: InputMaybe<Scalars['Boolean']['input']>;
   orgId: Scalars['ID']['input'];
   rollUpTimeSaved?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
 
-export type QueryWorkflowExecutionsArgs = {
+export interface QueryWorkflowExecutionsArgs {
   includeSubOrgs?: InputMaybe<Scalars['Boolean']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<WorkflowExecutionSearchInput>;
   where?: InputMaybe<WorkflowExecutionWhereInput>;
-};
+}
 
 
-export type QueryWorkflowIoConfigurationsArgs = {
-  ids: Array<Scalars['ID']['input']>;
-};
+export interface QueryWorkflowIoConfigurationsArgs {
+  ids: Scalars['ID']['input'][];
+}
 
 
-export type QueryWorkflowNoteArgs = {
+export interface QueryWorkflowNoteArgs {
   where?: InputMaybe<WorkflowNoteWhereInput>;
-};
+}
 
 
-export type QueryWorkflowNotesArgs = {
+export interface QueryWorkflowNotesArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<WorkflowNoteSearchInput>;
   where?: InputMaybe<WorkflowNoteWhereInput>;
-};
+}
 
 
-export type QueryWorkflowPatchArgs = {
+export interface QueryWorkflowPatchArgs {
   id: Scalars['ID']['input'];
-};
+}
 
 
-export type QueryWorkflowPatchesArgs = {
+export interface QueryWorkflowPatchesArgs {
   createdSince?: InputMaybe<Scalars['String']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
   orderBy?: InputMaybe<WorkflowPatchOrderByInput>;
   where?: InputMaybe<WorkflowPatchWhereInput>;
-};
+}
 
 
-export type QueryWorkflowStatsByOrgArgs = {
+export interface QueryWorkflowStatsByOrgArgs {
   endDate: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
   startDate: Scalars['String']['input'];
-};
+}
 
 
-export type QueryWorkflowTaskArgs = {
+export interface QueryWorkflowTaskArgs {
   where?: InputMaybe<WorkflowTaskWhereInput>;
-};
+}
 
 
-export type QueryWorkflowTasksArgs = {
+export interface QueryWorkflowTasksArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   where?: InputMaybe<WorkflowTaskWhereInput>;
-};
+}
 
 
-export type QueryWorkflowsArgs = {
-  excludeTagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+export interface QueryWorkflowsArgs {
+  excludeTagIds?: InputMaybe<Scalars['ID']['input'][]>;
   hasClones?: InputMaybe<Scalars['Boolean']['input']>;
   hasListeners?: InputMaybe<Scalars['Boolean']['input']>;
   hasParentWorkflows?: InputMaybe<Scalars['Boolean']['input']>;
-  hasTagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  hasTagIds?: InputMaybe<Scalars['ID']['input'][]>;
   hasTokens?: InputMaybe<Scalars['Boolean']['input']>;
   hasTriggerOfType?: InputMaybe<TriggerOfType>;
   hasTriggers?: InputMaybe<Scalars['Boolean']['input']>;
@@ -5675,32 +5675,32 @@ export type QueryWorkflowsArgs = {
   isSyncClone?: InputMaybe<Scalars['Boolean']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   requireMatchingTasks?: InputMaybe<Scalars['Boolean']['input']>;
   search?: InputMaybe<WorkflowSearch>;
   where?: InputMaybe<WorkflowWhereInput>;
-};
+}
 
-export type QueryInput = {
+export interface QueryInput {
   objectId?: InputMaybe<Scalars['String']['input']>;
   objectType?: InputMaybe<Scalars['String']['input']>;
   query?: InputMaybe<Scalars['String']['input']>;
   relation?: InputMaybe<Scalars['String']['input']>;
   subjectId?: InputMaybe<Scalars['String']['input']>;
   subjectType?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type RateLimitingStatusEvent = {
+export interface RateLimitingStatusEvent {
   __typename?: 'RateLimitingStatusEvent';
   eventId?: Maybe<Scalars['String']['output']>;
   payload?: Maybe<Scalars['JSON']['output']>;
-};
+}
 
-export type ReasonCount = {
+export interface ReasonCount {
   __typename?: 'ReasonCount';
   count: Scalars['Int']['output'];
   reason: VoteReason;
-};
+}
 
 export enum Relation {
   Editor = 'editor',
@@ -5708,13 +5708,13 @@ export enum Relation {
   Owner = 'owner'
 }
 
-export type RenderedJinja = {
+export interface RenderedJinja {
   __typename?: 'RenderedJinja';
   content: Scalars['String']['output'];
   id: Scalars['String']['output'];
-};
+}
 
-export type RenderedPage = {
+export interface RenderedPage {
   __typename?: 'RenderedPage';
   executionId?: Maybe<Scalars['ID']['output']>;
   id: Scalars['ID']['output'];
@@ -5724,7 +5724,7 @@ export type RenderedPage = {
   renderedJinja?: Maybe<RenderedJinja>;
   site: Site;
   useEditor?: Maybe<Scalars['Boolean']['output']>;
-};
+}
 
 export type ResendUserInviteEmailStreamEvent = ResendUserInviteEmailStreamFailureResponse | ResendUserInviteEmailStreamSuccessResponse;
 
@@ -5742,7 +5742,7 @@ export type ResendUserInviteEmailStreamSuccessResponse = BaseStreamEvent & {
   recipient: Scalars['String']['output'];
 };
 
-export type ReservedOrganizationName = {
+export interface ReservedOrganizationName {
   __typename?: 'ReservedOrganizationName';
   createdAt?: Maybe<Scalars['String']['output']>;
   createdBy?: Maybe<User>;
@@ -5750,82 +5750,82 @@ export type ReservedOrganizationName = {
   name: Scalars['String']['output'];
   updatedAt?: Maybe<Scalars['String']['output']>;
   updatedBy?: Maybe<User>;
-};
+}
 
-export type ReservedOrganizationNameWhereInput = {
+export interface ReservedOrganizationNameWhereInput {
   createdAt?: InputMaybe<Scalars['String']['input']>;
   createdBy?: InputMaybe<UserWhereInput>;
   id?: InputMaybe<Scalars['ID']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   updatedAt?: InputMaybe<Scalars['String']['input']>;
   updatedBy?: InputMaybe<UserWhereInput>;
-};
+}
 
-export type RoboRewstyConfigValue = {
+export interface RoboRewstyConfigValue {
   __typename?: 'RoboRewstyConfigValue';
   configKey?: Maybe<Scalars['String']['output']>;
   configName?: Maybe<Scalars['String']['output']>;
   configValue?: Maybe<Scalars['JSON']['output']>;
   id?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type RoboRewstyConfigWhere = {
+export interface RoboRewstyConfigWhere {
   configKey?: InputMaybe<Scalars['String']['input']>;
   configName?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type Role = {
+export interface Role {
   __typename?: 'Role';
-  authorizedPermissions?: Maybe<Array<Maybe<Scalars['String']['output']>>>;
+  authorizedPermissions?: Maybe<Maybe<Scalars['String']['output']>[]>;
   description?: Maybe<Scalars['String']['output']>;
   id?: Maybe<Scalars['ID']['output']>;
   name?: Maybe<Scalars['String']['output']>;
   orgId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type RoleCreateInput = {
-  authorizedPermissions?: InputMaybe<Array<Scalars['String']['input']>>;
+export interface RoleCreateInput {
+  authorizedPermissions?: InputMaybe<Scalars['String']['input'][]>;
   description?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   name: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-  rolePermissions?: InputMaybe<Array<Scalars['String']['input']>>;
-};
+  rolePermissions?: InputMaybe<Scalars['String']['input'][]>;
+}
 
-export type RoleUpdateInput = {
-  authorizedPermissions?: InputMaybe<Array<Scalars['String']['input']>>;
+export interface RoleUpdateInput {
+  authorizedPermissions?: InputMaybe<Scalars['String']['input'][]>;
   id: Scalars['ID']['input'];
-  rolePermissions?: InputMaybe<Array<Scalars['String']['input']>>;
-};
+  rolePermissions?: InputMaybe<Scalars['String']['input'][]>;
+}
 
-export type RoleWhereInput = {
+export interface RoleWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type Runner = {
+export interface Runner {
   __typename?: 'Runner';
-  actions: Array<Action>;
+  actions: Action[];
   enabled?: Maybe<Scalars['Boolean']['output']>;
   id?: Maybe<Scalars['ID']['output']>;
   name?: Maybe<Scalars['String']['output']>;
   outputKey?: Maybe<Scalars['String']['output']>;
   outputSchema?: Maybe<Scalars['JSON']['output']>;
   runnerParameters?: Maybe<Scalars['JSON']['output']>;
-};
+}
 
-export type RunnerInput = {
+export interface RunnerInput {
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   outputKey?: InputMaybe<Scalars['String']['input']>;
   outputSchema?: InputMaybe<Scalars['JSON']['input']>;
   runnerParameters?: InputMaybe<Scalars['JSON']['input']>;
-};
+}
 
-export type SensorType = {
+export interface SensorType {
   __typename?: 'SensorType';
   description?: Maybe<Scalars['String']['output']>;
   enabled?: Maybe<Scalars['Boolean']['output']>;
@@ -5835,10 +5835,10 @@ export type SensorType = {
   notifyOnTriggerChanges?: Maybe<Scalars['Boolean']['output']>;
   pack?: Maybe<Pack>;
   ref?: Maybe<Scalars['String']['output']>;
-  triggerTypes: Array<TriggerType>;
-};
+  triggerTypes: TriggerType[];
+}
 
-export type SensorTypeInput = {
+export interface SensorTypeInput {
   description?: InputMaybe<Scalars['String']['input']>;
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   entryPoint?: InputMaybe<Scalars['String']['input']>;
@@ -5847,9 +5847,9 @@ export type SensorTypeInput = {
   notifyOnTriggerChanges?: InputMaybe<Scalars['Boolean']['input']>;
   packId?: InputMaybe<Scalars['ID']['input']>;
   ref?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type SensorTypeSearchInput = {
+export interface SensorTypeSearchInput {
   description?: InputMaybe<String_Comparison_Exp>;
   enabled?: InputMaybe<Bool_Comparison_Exp>;
   entryPoint?: InputMaybe<String_Comparison_Exp>;
@@ -5858,27 +5858,27 @@ export type SensorTypeSearchInput = {
   notifyOnTriggerChanges?: InputMaybe<Scalars['Boolean']['input']>;
   packId?: InputMaybe<Id_Comparison_Exp>;
   ref?: InputMaybe<String_Comparison_Exp>;
-};
+}
 
-export type SetFormTagsInput = {
+export interface SetFormTagsInput {
   id: Scalars['ID']['input'];
-  tagIds: Array<Scalars['ID']['input']>;
-};
+  tagIds: Scalars['ID']['input'][];
+}
 
-export type ShallowCloneOverridesInput = {
+export interface ShallowCloneOverridesInput {
   name?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type ShallowWorkflowCloneOverridesInput = {
+export interface ShallowWorkflowCloneOverridesInput {
   name?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type Site = {
+export interface Site {
   __typename?: 'Site';
   cloneOverrides?: Maybe<Scalars['JSON']['output']>;
   clonedFrom?: Maybe<Site>;
   clonedFromId?: Maybe<Scalars['ID']['output']>;
-  clones?: Maybe<Array<Maybe<Site>>>;
+  clones?: Maybe<Maybe<Site>[]>;
   createdAt?: Maybe<Scalars['String']['output']>;
   createdBy?: Maybe<User>;
   createdById?: Maybe<Scalars['ID']['output']>;
@@ -5892,7 +5892,7 @@ export type Site = {
   name: Scalars['String']['output'];
   orgId: Scalars['ID']['output'];
   organization?: Maybe<Organization>;
-  pages?: Maybe<Array<Maybe<Page>>>;
+  pages?: Maybe<Maybe<Page>[]>;
   permission?: Maybe<Permission>;
   shared?: Maybe<Scalars['Boolean']['output']>;
   statusCode?: Maybe<Scalars['Int']['output']>;
@@ -5904,38 +5904,38 @@ export type Site = {
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
   useCustomDomain?: Maybe<Scalars['Boolean']['output']>;
-};
+}
 
-export type SiteCreateInput = {
+export interface SiteCreateInput {
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   domain?: InputMaybe<Scalars['String']['input']>;
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
-  pages?: InputMaybe<Array<InputMaybe<PagesImportInput>>>;
+  pages?: InputMaybe<InputMaybe<PagesImportInput>[]>;
   template?: InputMaybe<Scalars['String']['input']>;
   theme?: InputMaybe<Scalars['JSON']['input']>;
-};
+}
 
-export type SiteDomainValid = {
+export interface SiteDomainValid {
   __typename?: 'SiteDomainValid';
   isValid: Scalars['Boolean']['output'];
   message: Scalars['String']['output'];
-};
+}
 
-export type SiteOverridesInput = {
+export interface SiteOverridesInput {
   domain?: InputMaybe<Scalars['String']['input']>;
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type SitePropertiesInput = {
+export interface SitePropertiesInput {
   domain?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type SiteSearchInput = {
+export interface SiteSearchInput {
   clonedFromId?: InputMaybe<Id_Comparison_Exp>;
   customDomain?: InputMaybe<String_Comparison_Exp>;
   domain?: InputMaybe<String_Comparison_Exp>;
@@ -5946,9 +5946,9 @@ export type SiteSearchInput = {
   organization?: InputMaybe<OrganizationSearchInput>;
   organizationId?: InputMaybe<Id_Comparison_Exp>;
   useCustomDomain?: InputMaybe<Bool_Comparison_Exp>;
-};
+}
 
-export type SiteUpdateInput = {
+export interface SiteUpdateInput {
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   customDomain?: InputMaybe<Scalars['String']['input']>;
@@ -5961,15 +5961,15 @@ export type SiteUpdateInput = {
   layout?: InputMaybe<Scalars['String']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-  pages?: InputMaybe<Array<InputMaybe<PagesImportInput>>>;
+  pages?: InputMaybe<InputMaybe<PagesImportInput>[]>;
   statusCode?: InputMaybe<Scalars['Int']['input']>;
   statusMessage?: InputMaybe<Scalars['String']['input']>;
   theme?: InputMaybe<Scalars['JSON']['input']>;
   themeReferenceOrgVariable?: InputMaybe<Scalars['String']['input']>;
   useCustomDomain?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type SiteWhereInput = {
+export interface SiteWhereInput {
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   customDomain?: InputMaybe<Scalars['String']['input']>;
   domain?: InputMaybe<Scalars['String']['input']>;
@@ -5980,17 +5980,17 @@ export type SiteWhereInput = {
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   useCustomDomain?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type SourceField = {
+export interface SourceField {
   __typename?: 'SourceField';
   fieldCondition?: Maybe<FieldCondition>;
   id: Scalars['ID']['output'];
   index?: Maybe<Scalars['Int']['output']>;
   schema?: Maybe<Scalars['JSON']['output']>;
-};
+}
 
-export type Subscription = {
+export interface Subscription {
   __typename?: 'Subscription';
   actionResults?: Maybe<Scalars['JSON']['output']>;
   adminExportPackDocs?: Maybe<Scalars['JSON']['output']>;
@@ -6026,242 +6026,242 @@ export type Subscription = {
   workflowOutputs?: Maybe<Scalars['JSON']['output']>;
   workflowResults?: Maybe<Scalars['JSON']['output']>;
   workflowStatus?: Maybe<Scalars['JSON']['output']>;
-};
+}
 
 
-export type SubscriptionActionResultsArgs = {
+export interface SubscriptionActionResultsArgs {
   executionId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionAdminExportPackDocsArgs = {
+export interface SubscriptionAdminExportPackDocsArgs {
   packId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionAdminExportPackYamlArgs = {
+export interface SubscriptionAdminExportPackYamlArgs {
   packId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionAppLogsArgs = {
+export interface SubscriptionAppLogsArgs {
   domain: Scalars['String']['input'];
-};
+}
 
 
-export type SubscriptionAzureFunctionAppInterpreterDeploymentArgs = {
+export interface SubscriptionAzureFunctionAppInterpreterDeploymentArgs {
   config?: InputMaybe<Scalars['JSON']['input']>;
   language: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionAzureFunctionAppInterpreterRollbackArgs = {
+export interface SubscriptionAzureFunctionAppInterpreterRollbackArgs {
   language: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionAzureFunctionAppInterpreterUpdateArgs = {
+export interface SubscriptionAzureFunctionAppInterpreterUpdateArgs {
   config?: InputMaybe<Scalars['JSON']['input']>;
   language: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionCloneFormArgs = {
+export interface SubscriptionCloneFormArgs {
   id: Scalars['ID']['input'];
   includeInsignificantProgress?: InputMaybe<Scalars['Boolean']['input']>;
   orgId: Scalars['ID']['input'];
   overrides?: InputMaybe<FormCloneOverridesInput>;
-};
+}
 
 
-export type SubscriptionCloneSiteArgs = {
+export interface SubscriptionCloneSiteArgs {
   id: Scalars['ID']['input'];
   includeInsignificantProgress?: InputMaybe<Scalars['Boolean']['input']>;
   orgId: Scalars['ID']['input'];
   overrides?: InputMaybe<SiteOverridesInput>;
-};
+}
 
 
-export type SubscriptionCloneTemplateArgs = {
+export interface SubscriptionCloneTemplateArgs {
   id: Scalars['ID']['input'];
   includeInsignificantProgress?: InputMaybe<Scalars['Boolean']['input']>;
   orgId: Scalars['ID']['input'];
   overrides?: InputMaybe<TemplateInput>;
-};
+}
 
 
-export type SubscriptionCloneWorkflowArgs = {
+export interface SubscriptionCloneWorkflowArgs {
   id: Scalars['ID']['input'];
   includeInsignificantProgress?: InputMaybe<Scalars['Boolean']['input']>;
   orgId: Scalars['ID']['input'];
   overrides?: InputMaybe<WorkflowInput>;
-};
+}
 
 
-export type SubscriptionComponentTriggeredArgs = {
+export interface SubscriptionComponentTriggeredArgs {
   context?: InputMaybe<Scalars['JSON']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   inputs?: InputMaybe<Scalars['JSON']['input']>;
-  jinjaList: Array<InputMaybe<JinjaTemplateMapInput>>;
+  jinjaList: InputMaybe<JinjaTemplateMapInput>[];
   pageId: Scalars['ID']['input'];
   payload?: InputMaybe<Scalars['JSON']['input']>;
   query?: InputMaybe<Scalars['JSON']['input']>;
   runAsOrgId?: InputMaybe<Scalars['ID']['input']>;
-  workflows?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
-};
+  workflows?: InputMaybe<InputMaybe<Scalars['ID']['input']>[]>;
+}
 
 
-export type SubscriptionConversationMessageArgs = {
+export interface SubscriptionConversationMessageArgs {
   conversationId?: InputMaybe<Scalars['ID']['input']>;
   conversationType?: InputMaybe<Scalars['String']['input']>;
   message: Scalars['String']['input'];
   metadata?: InputMaybe<Scalars['JSON']['input']>;
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionExportObjectsArgs = {
-  objects: Array<ExportRequestObject>;
-};
+export interface SubscriptionExportObjectsArgs {
+  objects: ExportRequestObject[];
+}
 
 
-export type SubscriptionImportBundleArgs = {
+export interface SubscriptionImportBundleArgs {
   bundle: ImportBundle;
   includeInsignificantProgress?: InputMaybe<Scalars['Boolean']['input']>;
   orgId: Scalars['ID']['input'];
   siteId?: InputMaybe<Scalars['ID']['input']>;
-  triggerOverrides: Array<TriggerOverride>;
-};
+  triggerOverrides: TriggerOverride[];
+}
 
 
-export type SubscriptionMicrosoftBundleAuthorizationRequestArgs = {
+export interface SubscriptionMicrosoftBundleAuthorizationRequestArgs {
   orgId: Scalars['ID']['input'];
   packBundleId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionMicrosoftBundleRevocationRequestArgs = {
+export interface SubscriptionMicrosoftBundleRevocationRequestArgs {
   orgId: Scalars['ID']['input'];
   packBundleId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionMicrosoftCspConsentRequestArgs = {
+export interface SubscriptionMicrosoftCspConsentRequestArgs {
   action?: InputMaybe<CspConsentAction>;
-  applicationGrants?: InputMaybe<Array<CspApplicationGrant>>;
+  applicationGrants?: InputMaybe<CspApplicationGrant[]>;
   packConfigId: Scalars['ID']['input'];
-  tenantIds: Array<Scalars['ID']['input']>;
-};
+  tenantIds: Scalars['ID']['input'][];
+}
 
 
-export type SubscriptionMicrosoftPermissionsSyncRequestArgs = {
+export interface SubscriptionMicrosoftPermissionsSyncRequestArgs {
   orgId: Scalars['ID']['input'];
   packConfigId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionNewWorkflowExecutionsArgs = {
+export interface SubscriptionNewWorkflowExecutionsArgs {
   eventId?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 
-export type SubscriptionOpenapiConversionArgs = {
+export interface SubscriptionOpenapiConversionArgs {
   openapiDoc: Scalars['JSON']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionPublishCrateArgs = {
+export interface SubscriptionPublishCrateArgs {
   crateId: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
   workflowId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionRateLimitingStatusArgs = {
+export interface SubscriptionRateLimitingStatusArgs {
   eventId?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionRenderPageArgs = {
-  additionalWorkflows?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
-  jinjaList?: InputMaybe<Array<InputMaybe<JinjaTemplateMapInput>>>;
+export interface SubscriptionRenderPageArgs {
+  additionalWorkflows?: InputMaybe<InputMaybe<Scalars['ID']['input']>[]>;
+  jinjaList?: InputMaybe<InputMaybe<JinjaTemplateMapInput>[]>;
   query?: InputMaybe<Scalars['JSON']['input']>;
   runAsOrgId?: InputMaybe<Scalars['ID']['input']>;
   where: PageWhereInput;
-};
+}
 
 
-export type SubscriptionResendUserInviteEmailArgs = {
+export interface SubscriptionResendUserInviteEmailArgs {
   inviteId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionSynchronizeClonesArgs = {
-  cloneIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+export interface SubscriptionSynchronizeClonesArgs {
+  cloneIds?: InputMaybe<Scalars['ID']['input'][]>;
   id: Scalars['ID']['input'];
   includeInsignificantProgress?: InputMaybe<Scalars['Boolean']['input']>;
   objectType: CloneableObjectType;
   shouldPublishCrates?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
 
-export type SubscriptionTaskLogsArgs = {
+export interface SubscriptionTaskLogsArgs {
   eventId?: InputMaybe<Scalars['String']['input']>;
   executionId: Scalars['ID']['input'];
-  includeStatuses?: InputMaybe<Array<Scalars['String']['input']>>;
-};
+  includeStatuses?: InputMaybe<Scalars['String']['input'][]>;
+}
 
 
-export type SubscriptionTriggerCriteriaArgs = {
+export interface SubscriptionTriggerCriteriaArgs {
   triggerId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionUnpackCrateArgs = {
+export interface SubscriptionUnpackCrateArgs {
   includeInsignificantProgress?: InputMaybe<Scalars['Boolean']['input']>;
   unpackingArguments: UnpackCrateInput;
-};
+}
 
 
-export type SubscriptionWorkflowEventsArgs = {
+export interface SubscriptionWorkflowEventsArgs {
   eventId?: InputMaybe<Scalars['String']['input']>;
   workflowId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionWorkflowOutputsArgs = {
+export interface SubscriptionWorkflowOutputsArgs {
   eventId?: InputMaybe<Scalars['String']['input']>;
   workflowId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionWorkflowResultsArgs = {
+export interface SubscriptionWorkflowResultsArgs {
   executionId: Scalars['ID']['input'];
-};
+}
 
 
-export type SubscriptionWorkflowStatusArgs = {
+export interface SubscriptionWorkflowStatusArgs {
   executionId: Scalars['ID']['input'];
-};
+}
 
-export type SupportAccessStatus = {
+export interface SupportAccessStatus {
   __typename?: 'SupportAccessStatus';
   expiresAt?: Maybe<Scalars['String']['output']>;
   isEnabled: Scalars['Boolean']['output'];
-};
+}
 
-export type SwaggerToOpenapiConversionResult = {
+export interface SwaggerToOpenapiConversionResult {
   __typename?: 'SwaggerToOpenapiConversionResult';
   errors?: Maybe<Scalars['JSON']['output']>;
   openapiDoc?: Maybe<Scalars['JSON']['output']>;
-};
+}
 
 export type SynchronizeClonesImportPhaseStreamFailureMessage = BaseStreamEvent & PhasedCloneEvent & {
   __typename?: 'SynchronizeClonesImportPhaseStreamFailureMessage';
@@ -6276,13 +6276,13 @@ export type SynchronizeClonesStreamEvent = CloningExportPhaseStreamFailureRespon
 
 export type SynchronizeClonesStreamResponse = BaseCloningResponse & BaseStreamEvent & {
   __typename?: 'SynchronizeClonesStreamResponse';
-  cloneIds: Array<Scalars['ID']['output']>;
+  cloneIds: Scalars['ID']['output'][];
   didSucceed: Scalars['Boolean']['output'];
-  failedCloneIds: Array<Scalars['ID']['output']>;
+  failedCloneIds: Scalars['ID']['output'][];
   isFinished: Scalars['Boolean']['output'];
 };
 
-export type SynchronizedPackConfig = {
+export interface SynchronizedPackConfig {
   __typename?: 'SynchronizedPackConfig';
   config?: Maybe<Scalars['JSON']['output']>;
   description?: Maybe<Scalars['String']['output']>;
@@ -6291,79 +6291,79 @@ export type SynchronizedPackConfig = {
   name: Scalars['String']['output'];
   orgId: Scalars['ID']['output'];
   packId: Scalars['ID']['output'];
-};
+}
 
-export type Tag = {
+export interface Tag {
   __typename?: 'Tag';
   color?: Maybe<Scalars['String']['output']>;
-  crates?: Maybe<Array<Crate>>;
+  crates?: Maybe<Crate[]>;
   createdAt?: Maybe<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   id?: Maybe<Scalars['ID']['output']>;
   name?: Maybe<Scalars['String']['output']>;
   orgId?: Maybe<Scalars['ID']['output']>;
   organization?: Maybe<Organization>;
-  organizations: Array<Organization>;
-  packs: Array<Pack>;
-  triggers: Array<Trigger>;
+  organizations: Organization[];
+  packs: Pack[];
+  triggers: Trigger[];
   updatedAt?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type TagCreateInput = {
+export interface TagCreateInput {
   color?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
-};
+}
 
-export type TagInput = {
+export interface TagInput {
   color?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type TagOrganizationsWhereInput = {
-  id?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
-};
+export interface TagOrganizationsWhereInput {
+  id?: InputMaybe<InputMaybe<Scalars['ID']['input']>[]>;
+}
 
-export type TagSearchInput = {
+export interface TagSearchInput {
   id?: InputMaybe<Id_Comparison_Exp>;
   name?: InputMaybe<String_Comparison_Exp>;
   orgId?: InputMaybe<Id_Comparison_Exp>;
   organizations?: InputMaybe<OrganizationSearchInput>;
-};
+}
 
-export type TagUpdateInput = {
+export interface TagUpdateInput {
   color?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
   name: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-};
+}
 
-export type TagWhereInput = {
+export interface TagWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   organizations?: InputMaybe<TagOrganizationsWhereInput>;
-};
+}
 
-export type TaskCountByDate = {
+export interface TaskCountByDate {
   __typename?: 'TaskCountByDate';
   count: Scalars['Int']['output'];
   date: Scalars['String']['output'];
-};
+}
 
-export type TaskCountByHour = {
+export interface TaskCountByHour {
   __typename?: 'TaskCountByHour';
   count: Scalars['Int']['output'];
   hour: Scalars['String']['output'];
-};
+}
 
-export type TaskLog = {
+export interface TaskLog {
   __typename?: 'TaskLog';
   createdAt?: Maybe<Scalars['String']['output']>;
   executionId?: Maybe<Scalars['String']['output']>;
@@ -6394,7 +6394,7 @@ export type TaskLog = {
   workflowExecutionId?: Maybe<Scalars['String']['output']>;
   workflowTask?: Maybe<WorkflowTask>;
   workflowTaskId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
 export type TaskLogEvent = BaseStreamEvent & {
   __typename?: 'TaskLogEvent';
@@ -6404,7 +6404,7 @@ export type TaskLogEvent = BaseStreamEvent & {
   workflowStatus?: Maybe<Scalars['String']['output']>;
 };
 
-export type TaskLogInput = {
+export interface TaskLogInput {
   executionTime?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   input?: InputMaybe<Scalars['JSON']['input']>;
@@ -6415,9 +6415,9 @@ export type TaskLogInput = {
   result?: InputMaybe<Scalars['JSON']['input']>;
   status: Scalars['String']['input'];
   taskExecutionId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type TaskLogSearchInput = {
+export interface TaskLogSearchInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   originalPrincipalOrgId?: InputMaybe<String_Comparison_Exp>;
   originalPrincipalOrgName?: InputMaybe<String_Comparison_Exp>;
@@ -6427,9 +6427,9 @@ export type TaskLogSearchInput = {
   runAsOrgId?: InputMaybe<Id_Comparison_Exp>;
   status?: InputMaybe<String_Comparison_Exp>;
   workflowExecutionId?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type TaskLogWhereInput = {
+export interface TaskLogWhereInput {
   executionTime?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   input?: InputMaybe<Scalars['JSON']['input']>;
@@ -6449,21 +6449,21 @@ export type TaskLogWhereInput = {
   taskExecutionId?: InputMaybe<Scalars['ID']['input']>;
   workflowExecutionId?: InputMaybe<Scalars['ID']['input']>;
   workflowTaskId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type TasksExecutedAndTimeSavedStats = {
+export interface TasksExecutedAndTimeSavedStats {
   __typename?: 'TasksExecutedAndTimeSavedStats';
-  taskCounts: Array<TaskCountByDate>;
-  timeSaved: Array<TimeSavedByDate>;
-};
+  taskCounts: TaskCountByDate[];
+  timeSaved: TimeSavedByDate[];
+}
 
-export type Template = {
+export interface Template {
   __typename?: 'Template';
   body: Scalars['String']['output'];
   cloneOverrides?: Maybe<Scalars['JSON']['output']>;
   clonedFrom?: Maybe<Template>;
   clonedFromId?: Maybe<Scalars['ID']['output']>;
-  clones?: Maybe<Array<Maybe<Template>>>;
+  clones?: Maybe<Maybe<Template>[]>;
   contentType: Scalars['String']['output'];
   context?: Maybe<Scalars['JSON']['output']>;
   createdAt: Scalars['String']['output'];
@@ -6476,15 +6476,15 @@ export type Template = {
   orgId: Scalars['ID']['output'];
   organization: Organization;
   permission?: Maybe<Permission>;
-  tags: Array<Tag>;
+  tags: Tag[];
   unpackedFrom?: Maybe<Crate>;
   unpackedFromId?: Maybe<Scalars['ID']['output']>;
   updatedAt: Scalars['String']['output'];
   updatedBy?: Maybe<User>;
   updatedById?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type TemplateCreateInput = {
+export interface TemplateCreateInput {
   body: Scalars['String']['input'];
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
@@ -6497,11 +6497,11 @@ export type TemplateCreateInput = {
   language?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-  tags?: InputMaybe<Array<TagInput>>;
+  tags?: InputMaybe<TagInput[]>;
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type TemplateInput = {
+export interface TemplateInput {
   body?: InputMaybe<Scalars['String']['input']>;
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
@@ -6512,11 +6512,11 @@ export type TemplateInput = {
   language?: InputMaybe<Scalars['String']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-  tagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  tagIds?: InputMaybe<Scalars['ID']['input'][]>;
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type TemplateSearch = {
+export interface TemplateSearch {
   clonedFromId?: InputMaybe<Id_Comparison_Exp>;
   contentType?: InputMaybe<String_Comparison_Exp>;
   description?: InputMaybe<String_Comparison_Exp>;
@@ -6525,9 +6525,9 @@ export type TemplateSearch = {
   name?: InputMaybe<String_Comparison_Exp>;
   organization?: InputMaybe<OrganizationSearchInput>;
   unpackedFromId?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type TemplateUpdateInput = {
+export interface TemplateUpdateInput {
   body?: InputMaybe<Scalars['String']['input']>;
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
@@ -6540,37 +6540,37 @@ export type TemplateUpdateInput = {
   language?: InputMaybe<Scalars['String']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-  tags?: InputMaybe<Array<TagInput>>;
+  tags?: InputMaybe<TagInput[]>;
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type ThemeConfigGeneratorResponse = {
+export interface ThemeConfigGeneratorResponse {
   __typename?: 'ThemeConfigGeneratorResponse';
   config: Scalars['JSON']['output'];
-};
+}
 
-export type TimeSavedByDate = {
+export interface TimeSavedByDate {
   __typename?: 'TimeSavedByDate';
   date: Scalars['String']['output'];
   seconds: Scalars['Int']['output'];
-};
+}
 
-export type TimeSavedByHour = {
+export interface TimeSavedByHour {
   __typename?: 'TimeSavedByHour';
   hour: Scalars['String']['output'];
   seconds?: Maybe<Scalars['Int']['output']>;
-};
+}
 
-export type TimeSavedGroupByOrg = {
+export interface TimeSavedGroupByOrg {
   __typename?: 'TimeSavedGroupByOrg';
   ranForOrg?: Maybe<Scalars['String']['output']>;
   secondsSaved?: Maybe<Scalars['Int']['output']>;
   totalExecutions?: Maybe<Scalars['Int']['output']>;
   workflowId: Scalars['ID']['output'];
   workflowName?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type TimeSavedGroupByWorkflow = {
+export interface TimeSavedGroupByWorkflow {
   __typename?: 'TimeSavedGroupByWorkflow';
   failedExecutions?: Maybe<Scalars['Int']['output']>;
   secondsSaved?: Maybe<Scalars['Int']['output']>;
@@ -6578,21 +6578,21 @@ export type TimeSavedGroupByWorkflow = {
   totalExecutions?: Maybe<Scalars['Int']['output']>;
   workflowId: Scalars['ID']['output'];
   workflowName?: Maybe<Scalars['String']['output']>;
-};
+}
 
 export enum TransitionModes {
   FollowAll = 'FOLLOW_ALL',
   FollowFirst = 'FOLLOW_FIRST'
 }
 
-export type Trigger = {
+export interface Trigger {
   __typename?: 'Trigger';
-  activatedForOrgs: Array<Organization>;
+  activatedForOrgs: Organization[];
   autoActivateManagedOrgs: Scalars['Boolean']['output'];
   cloneOverrides?: Maybe<Scalars['JSON']['output']>;
   clonedFrom?: Maybe<Trigger>;
   clonedFromId?: Maybe<Scalars['ID']['output']>;
-  clones: Array<Maybe<Trigger>>;
+  clones: Maybe<Trigger>[];
   criteria?: Maybe<Scalars['JSON']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   enabled?: Maybe<Scalars['Boolean']['output']>;
@@ -6602,34 +6602,34 @@ export type Trigger = {
   isSynchronized?: Maybe<Scalars['Boolean']['output']>;
   name?: Maybe<Scalars['String']['output']>;
   orgId?: Maybe<Scalars['ID']['output']>;
-  orgInstances?: Maybe<Array<Maybe<OrgTriggerInstance>>>;
+  orgInstances?: Maybe<Maybe<OrgTriggerInstance>[]>;
   organization: Organization;
-  packOverrides?: Maybe<Array<PackOverride>>;
+  packOverrides?: Maybe<PackOverride[]>;
   parameters?: Maybe<Scalars['JSON']['output']>;
   state?: Maybe<Scalars['JSON']['output']>;
-  tags: Array<Tag>;
+  tags: Tag[];
   triggerType?: Maybe<TriggerType>;
   triggerTypeId: Scalars['ID']['output'];
   unpackedFrom?: Maybe<Crate>;
   unpackedFromId?: Maybe<Scalars['ID']['output']>;
-  vars?: Maybe<Array<Maybe<Scalars['JSON']['output']>>>;
+  vars?: Maybe<Maybe<Scalars['JSON']['output']>[]>;
   workflow: Workflow;
   workflowId: Scalars['ID']['output'];
-};
+}
 
 
-export type TriggerOrgInstancesArgs = {
+export interface TriggerOrgInstancesArgs {
   where?: InputMaybe<OrgTriggerInstanceWhereInput>;
-};
+}
 
 
-export type TriggerTriggerTypeArgs = {
+export interface TriggerTriggerTypeArgs {
   where?: InputMaybe<TriggerTypeWhereInput>;
-};
+}
 
-export type TriggerCreateInput = {
-  activatedForOrgIds?: InputMaybe<Array<Scalars['ID']['input']>>;
-  activatedForTagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+export interface TriggerCreateInput {
+  activatedForOrgIds?: InputMaybe<Scalars['ID']['input'][]>;
+  activatedForTagIds?: InputMaybe<Scalars['ID']['input'][]>;
   autoActivateManagedOrgs?: InputMaybe<Scalars['Boolean']['input']>;
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
@@ -6642,16 +6642,16 @@ export type TriggerCreateInput = {
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-  packOverrides?: InputMaybe<Array<InputMaybe<PackOverrideInput>>>;
+  packOverrides?: InputMaybe<InputMaybe<PackOverrideInput>[]>;
   parameters?: InputMaybe<Scalars['JSON']['input']>;
   state?: InputMaybe<Scalars['JSON']['input']>;
   triggerTypeId?: InputMaybe<Scalars['ID']['input']>;
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
-  vars?: InputMaybe<Array<Scalars['JSON']['input']>>;
+  vars?: InputMaybe<Scalars['JSON']['input'][]>;
   workflow?: InputMaybe<WorkflowInput>;
   workflowBuilderInfo?: InputMaybe<Scalars['JSON']['input']>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 export type TriggerCriteriaEvent = BaseStreamEvent & {
   __typename?: 'TriggerCriteriaEvent';
@@ -6660,17 +6660,17 @@ export type TriggerCriteriaEvent = BaseStreamEvent & {
   payload?: Maybe<Scalars['JSON']['output']>;
 };
 
-export type TriggerOfType = {
+export interface TriggerOfType {
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type TriggerOverride = {
+export interface TriggerOverride {
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type TriggerSearchInput = {
+export interface TriggerSearchInput {
   clonedFromId?: InputMaybe<Id_Comparison_Exp>;
   criteria?: InputMaybe<Json_Comparison_Exp>;
   description?: InputMaybe<String_Comparison_Exp>;
@@ -6689,9 +6689,9 @@ export type TriggerSearchInput = {
   unpackedFromId?: InputMaybe<Id_Comparison_Exp>;
   workflow?: InputMaybe<WorkflowSearch>;
   workflowId?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type TriggerType = {
+export interface TriggerType {
   __typename?: 'TriggerType';
   canRunForManagedOrgs?: Maybe<Scalars['Boolean']['output']>;
   description?: Maybe<Scalars['String']['output']>;
@@ -6705,23 +6705,23 @@ export type TriggerType = {
   parametersSchema?: Maybe<Scalars['JSON']['output']>;
   ref?: Maybe<Scalars['String']['output']>;
   sensorType?: Maybe<SensorType>;
-  triggers: Array<Trigger>;
+  triggers: Trigger[];
   webhookUrlTemplate?: Maybe<Scalars['String']['output']>;
-};
+}
 
 
-export type TriggerTypeParametersSchemaArgs = {
+export interface TriggerTypeParametersSchemaArgs {
   filterArg?: InputMaybe<Scalars['JSON']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
 
-export type TriggerTypeTriggersArgs = {
+export interface TriggerTypeTriggersArgs {
   search?: InputMaybe<TriggerSearchInput>;
   where?: InputMaybe<TriggerWhereInput>;
-};
+}
 
-export type TriggerTypeInput = {
+export interface TriggerTypeInput {
   description?: InputMaybe<Scalars['String']['input']>;
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -6733,9 +6733,9 @@ export type TriggerTypeInput = {
   packId?: InputMaybe<Scalars['ID']['input']>;
   parametersSchema?: InputMaybe<Scalars['JSON']['input']>;
   ref?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type TriggerTypeWhereInput = {
+export interface TriggerTypeWhereInput {
   description?: InputMaybe<Scalars['String']['input']>;
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -6747,9 +6747,9 @@ export type TriggerTypeWhereInput = {
   parametersSchema?: InputMaybe<Scalars['JSON']['input']>;
   ref?: InputMaybe<Scalars['String']['input']>;
   triggers?: InputMaybe<TriggerWhereInput>;
-};
+}
 
-export type TriggerTypesSearchInput = {
+export interface TriggerTypesSearchInput {
   description?: InputMaybe<String_Comparison_Exp>;
   enabled?: InputMaybe<Bool_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
@@ -6760,11 +6760,11 @@ export type TriggerTypesSearchInput = {
   parametersSchema?: InputMaybe<Json_Comparison_Exp>;
   ref?: InputMaybe<String_Comparison_Exp>;
   triggers?: InputMaybe<TriggerSearchInput>;
-};
+}
 
-export type TriggerUpdateInput = {
-  activatedForOrgIds?: InputMaybe<Array<Scalars['ID']['input']>>;
-  activatedForTagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+export interface TriggerUpdateInput {
+  activatedForOrgIds?: InputMaybe<Scalars['ID']['input'][]>;
+  activatedForTagIds?: InputMaybe<Scalars['ID']['input'][]>;
   autoActivateManagedOrgs?: InputMaybe<Scalars['Boolean']['input']>;
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
@@ -6777,17 +6777,17 @@ export type TriggerUpdateInput = {
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-  packOverrides?: InputMaybe<Array<InputMaybe<PackOverrideInput>>>;
+  packOverrides?: InputMaybe<InputMaybe<PackOverrideInput>[]>;
   parameters?: InputMaybe<Scalars['JSON']['input']>;
   state?: InputMaybe<Scalars['JSON']['input']>;
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
-  vars?: InputMaybe<Array<Scalars['JSON']['input']>>;
+  vars?: InputMaybe<Scalars['JSON']['input'][]>;
   workflow?: InputMaybe<WorkflowInput>;
   workflowBuilderInfo?: InputMaybe<Scalars['JSON']['input']>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type TriggerWhereInput = {
+export interface TriggerWhereInput {
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   criteria?: InputMaybe<Scalars['JSON']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
@@ -6804,15 +6804,15 @@ export type TriggerWhereInput = {
   triggerTypeId?: InputMaybe<Scalars['ID']['input']>;
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type UnpackCrateInput = {
+export interface UnpackCrateInput {
   crateId: Scalars['ID']['input'];
   orgId: Scalars['ID']['input'];
-  tokenArguments?: InputMaybe<Array<CrateUnpackingArgumentInput>>;
-  triggers?: InputMaybe<Array<CrateTriggerUnpackingInput>>;
+  tokenArguments?: InputMaybe<CrateUnpackingArgumentInput[]>;
+  triggers?: InputMaybe<CrateTriggerUnpackingInput[]>;
   workflow: WorkflowInput;
-};
+}
 
 export type UnpackCrateStreamEvent = CloningImportPhaseStreamFailureResponse | CloningImportPhaseStreamMessage | ExportDownloadPhaseStreamFailureResponse | ExportDownloadPhaseStreamMessage | UnpackCrateStreamSuccessResponse;
 
@@ -6825,13 +6825,13 @@ export type UnpackCrateStreamSuccessResponse = BaseCloneObjectSuccessResponse & 
   type: CloneableObjectType;
 };
 
-export type UpdateApiClientInput = {
+export interface UpdateApiClientInput {
   description?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
   name?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type UpdateComponentInput = {
+export interface UpdateComponentInput {
   description?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
   isChild?: InputMaybe<Scalars['Boolean']['input']>;
@@ -6839,44 +6839,44 @@ export type UpdateComponentInput = {
   name: Scalars['String']['input'];
   nodeTree?: InputMaybe<Scalars['JSON']['input']>;
   orgId: Scalars['ID']['input'];
-  workflows?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
-};
+  workflows?: InputMaybe<InputMaybe<Scalars['ID']['input']>[]>;
+}
 
-export type UpdateFeaturePreviewSettingInput = {
+export interface UpdateFeaturePreviewSettingInput {
   description?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
   isStaffOnly?: InputMaybe<Scalars['Boolean']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type UpsertOrgFormFieldInstancesInput = {
-  formFieldInstances: Array<FormFieldInstanceInput>;
+export interface UpsertOrgFormFieldInstancesInput {
+  formFieldInstances: FormFieldInstanceInput[];
   orgId: Scalars['ID']['input'];
-};
+}
 
-export type User = {
+export interface User {
   __typename?: 'User';
   createdAt?: Maybe<Scalars['String']['output']>;
-  favoriteActions: Array<UserFavoriteAction>;
+  favoriteActions: UserFavoriteAction[];
   id?: Maybe<Scalars['ID']['output']>;
   isApiUser?: Maybe<Scalars['Boolean']['output']>;
   isSuperuser?: Maybe<Scalars['Boolean']['output']>;
   isTestUser?: Maybe<Scalars['Boolean']['output']>;
   isTokenUser?: Maybe<Scalars['Boolean']['output']>;
-  managedOrgs: Array<Organization>;
+  managedOrgs: Organization[];
   orgId?: Maybe<Scalars['ID']['output']>;
   organization?: Maybe<Organization>;
   parentUserId?: Maybe<Scalars['ID']['output']>;
   parentUsername?: Maybe<Scalars['String']['output']>;
   preferences: UserPreferences;
-  roleIds: Array<Scalars['String']['output']>;
-  roles?: Maybe<Array<Maybe<Scalars['JSON']['output']>>>;
+  roleIds: Scalars['String']['output'][];
+  roles?: Maybe<Maybe<Scalars['JSON']['output']>[]>;
   sub?: Maybe<Scalars['String']['output']>;
   tokenApiClient?: Maybe<ApiClient>;
   username?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type UserDelegatedAccess = {
+export interface UserDelegatedAccess {
   __typename?: 'UserDelegatedAccess';
   expiresAt?: Maybe<Scalars['String']['output']>;
   grantedAt: Scalars['String']['output'];
@@ -6887,23 +6887,23 @@ export type UserDelegatedAccess = {
   reason?: Maybe<Scalars['String']['output']>;
   revokedAt?: Maybe<Scalars['String']['output']>;
   user: User;
-};
+}
 
-export type UserFavoriteAction = {
+export interface UserFavoriteAction {
   __typename?: 'UserFavoriteAction';
   action: Action;
   actionId: Scalars['ID']['output'];
   index: Scalars['Int']['output'];
   user: User;
   userId: Scalars['ID']['output'];
-};
+}
 
-export type UserFavoriteActionInput = {
+export interface UserFavoriteActionInput {
   actionId: Scalars['ID']['input'];
   index: Scalars['Int']['input'];
-};
+}
 
-export type UserInvite = {
+export interface UserInvite {
   __typename?: 'UserInvite';
   acceptedAt?: Maybe<Scalars['String']['output']>;
   createdAt?: Maybe<Scalars['String']['output']>;
@@ -6914,27 +6914,27 @@ export type UserInvite = {
   isAccepted?: Maybe<Scalars['Boolean']['output']>;
   orgId: Scalars['ID']['output'];
   organization: Organization;
-  roleIds?: Maybe<Array<Maybe<Scalars['String']['output']>>>;
-  roles?: Maybe<Array<Maybe<Scalars['JSON']['output']>>>;
+  roleIds?: Maybe<Maybe<Scalars['String']['output']>[]>;
+  roles?: Maybe<Maybe<Scalars['JSON']['output']>[]>;
   sendEmail?: Maybe<Scalars['Boolean']['output']>;
-};
+}
 
-export type UserInviteCreateInput = {
+export interface UserInviteCreateInput {
   email: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
-  roleIds: Array<Scalars['String']['input']>;
+  roleIds: Scalars['String']['input'][];
   sendEmail?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type UserInviteSearchInput = {
+export interface UserInviteSearchInput {
   email?: InputMaybe<String_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   orgId?: InputMaybe<Id_Comparison_Exp>;
   organization?: InputMaybe<OrganizationSearchInput>;
   sendEmail?: InputMaybe<Bool_Comparison_Exp>;
-};
+}
 
-export type UserInviteWhereInput = {
+export interface UserInviteWhereInput {
   acceptedAt?: InputMaybe<Scalars['String']['input']>;
   email?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -6942,27 +6942,27 @@ export type UserInviteWhereInput = {
   orgId?: InputMaybe<Scalars['ID']['input']>;
   organization?: InputMaybe<OrganizationWhereInput>;
   sendEmail?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type UserPreferences = {
+export interface UserPreferences {
   __typename?: 'UserPreferences';
   dateFormat: Scalars['String']['output'];
   datetimeFormat: Scalars['String']['output'];
   isDarkModePreferred?: Maybe<Scalars['Boolean']['output']>;
-};
+}
 
-export type UserPreferencesInput = {
+export interface UserPreferencesInput {
   dateFormat?: InputMaybe<Scalars['String']['input']>;
   datetimeFormat?: InputMaybe<Scalars['String']['input']>;
   isDarkModePreferred?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type UserRolesInput = {
+export interface UserRolesInput {
   id: Scalars['ID']['input'];
-  roleIds: Array<Scalars['String']['input']>;
-};
+  roleIds: Scalars['String']['input'][];
+}
 
-export type UserSearchInput = {
+export interface UserSearchInput {
   createdAt?: InputMaybe<String_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   isApiUser?: InputMaybe<Bool_Comparison_Exp>;
@@ -6974,9 +6974,9 @@ export type UserSearchInput = {
   roleIds?: InputMaybe<String_Comparison_Exp>;
   sub?: InputMaybe<String_Comparison_Exp>;
   username?: InputMaybe<String_Comparison_Exp>;
-};
+}
 
-export type UserWhereInput = {
+export interface UserWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   isApiUser?: InputMaybe<Scalars['Boolean']['input']>;
   isSuperuser?: InputMaybe<Scalars['Boolean']['input']>;
@@ -6984,10 +6984,10 @@ export type UserWhereInput = {
   managedOrgs?: InputMaybe<OrganizationWhereInput>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
   organization?: InputMaybe<OrganizationWhereInput>;
-  roleIds?: InputMaybe<Array<Scalars['String']['input']>>;
+  roleIds?: InputMaybe<Scalars['String']['input'][]>;
   sub?: InputMaybe<Scalars['String']['input']>;
   username?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 export enum VoteReason {
   Correct = 'CORRECT',
@@ -7004,7 +7004,7 @@ export enum VoteType {
   Up = 'UP'
 }
 
-export type Warrant = {
+export interface Warrant {
   __typename?: 'Warrant';
   authorized: Scalars['Boolean']['output'];
   objectId?: Maybe<Scalars['String']['output']>;
@@ -7012,44 +7012,44 @@ export type Warrant = {
   relation?: Maybe<Scalars['String']['output']>;
   subjectId?: Maybe<Scalars['String']['output']>;
   subjectType?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type Workflow = {
+export interface Workflow {
   __typename?: 'Workflow';
   action?: Maybe<Action>;
-  autoInstallingForManagedOrgs: Array<Organization>;
+  autoInstallingForManagedOrgs: Organization[];
   cloneOverrides?: Maybe<Scalars['JSON']['output']>;
   clonedFrom?: Maybe<Workflow>;
   clonedFromId?: Maybe<Scalars['ID']['output']>;
-  clones: Array<Maybe<Workflow>>;
-  completionListeners: Array<Trigger>;
-  crates?: Maybe<Array<Crate>>;
+  clones: Maybe<Workflow>[];
+  completionListeners: Trigger[];
+  crates?: Maybe<Crate[]>;
   createdAt?: Maybe<Scalars['String']['output']>;
   createdBy?: Maybe<User>;
   createdById?: Maybe<Scalars['ID']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   humanSecondsSaved: Scalars['Int']['output'];
   id?: Maybe<Scalars['ID']['output']>;
-  input: Array<Scalars['String']['output']>;
+  input: Scalars['String']['output'][];
   inputSchema?: Maybe<Scalars['JSON']['output']>;
   isSynchronized?: Maybe<Scalars['Boolean']['output']>;
   name?: Maybe<Scalars['String']['output']>;
-  notes?: Maybe<Array<WorkflowNote>>;
+  notes?: Maybe<WorkflowNote[]>;
   orgId: Scalars['ID']['output'];
   organization: Organization;
-  output: Array<Maybe<Scalars['JSON']['output']>>;
+  output: Maybe<Scalars['JSON']['output']>[];
   outputSchema?: Maybe<Scalars['JSON']['output']>;
-  packsUsed: Array<Pack>;
-  parentWorkflows?: Maybe<Array<Maybe<WorkflowTask>>>;
+  packsUsed: Pack[];
+  parentWorkflows?: Maybe<Maybe<WorkflowTask>[]>;
   permission?: Maybe<Permission>;
   schemaVersion?: Maybe<Scalars['String']['output']>;
-  tags: Array<Tag>;
-  taskActions: Array<Action>;
-  tasks: Array<WorkflowTask>;
+  tags: Tag[];
+  taskActions: Action[];
+  tasks: WorkflowTask[];
   tasksObject?: Maybe<Scalars['JSON']['output']>;
   timeout?: Maybe<Scalars['Int']['output']>;
-  tokens?: Maybe<Array<Scalars['JSON']['output']>>;
-  triggers?: Maybe<Array<Maybe<Trigger>>>;
+  tokens?: Maybe<Scalars['JSON']['output'][]>;
+  triggers?: Maybe<Maybe<Trigger>[]>;
   type: WorkflowType;
   unpackedFrom?: Maybe<Crate>;
   unpackedFromId?: Maybe<Scalars['ID']['output']>;
@@ -7058,26 +7058,26 @@ export type Workflow = {
   updatedById?: Maybe<Scalars['ID']['output']>;
   varsSchema?: Maybe<Scalars['JSON']['output']>;
   version?: Maybe<Scalars['String']['output']>;
-  visibleForOrganizations: Array<Organization>;
-};
+  visibleForOrganizations: Organization[];
+}
 
 
-export type WorkflowTasksArgs = {
+export interface WorkflowTasksArgs {
   search?: InputMaybe<WorkflowTaskSearchInput>;
   where?: InputMaybe<WorkflowTaskWhereInput>;
-};
+}
 
 
-export type WorkflowTriggersArgs = {
+export interface WorkflowTriggersArgs {
   includeCompletionListeners?: InputMaybe<Scalars['Boolean']['input']>;
   search?: InputMaybe<TriggerSearchInput>;
   where?: InputMaybe<TriggerWhereInput>;
-};
+}
 
 
-export type WorkflowVisibleForOrganizationsArgs = {
+export interface WorkflowVisibleForOrganizationsArgs {
   where?: InputMaybe<OrganizationInput>;
-};
+}
 
 export enum WorkflowEventType {
   ActionEditing = 'ACTION_EDITING',
@@ -7086,11 +7086,11 @@ export enum WorkflowEventType {
   MouseMove = 'MOUSE_MOVE'
 }
 
-export type WorkflowExecution = {
+export interface WorkflowExecution {
   __typename?: 'WorkflowExecution';
-  childExecutions: Array<WorkflowExecution>;
+  childExecutions: WorkflowExecution[];
   completionHandledExecution?: Maybe<WorkflowExecution>;
-  completionHandlerExecutions: Array<WorkflowExecution>;
+  completionHandlerExecutions: WorkflowExecution[];
   conductor?: Maybe<WorkflowExecutionConductor>;
   createdAt?: Maybe<Scalars['String']['output']>;
   id?: Maybe<Scalars['ID']['output']>;
@@ -7102,40 +7102,40 @@ export type WorkflowExecution = {
   parentExecution?: Maybe<WorkflowExecution>;
   parentExecutionId?: Maybe<Scalars['ID']['output']>;
   parentTaskExecutionId?: Maybe<Scalars['ID']['output']>;
-  pendingTasks?: Maybe<Array<Maybe<PendingTask>>>;
+  pendingTasks?: Maybe<Maybe<PendingTask>[]>;
   processedCompletionAt?: Maybe<Scalars['String']['output']>;
   status?: Maybe<Scalars['String']['output']>;
-  subExecutions: Array<WorkflowExecution>;
-  taskLogs: Array<TaskLog>;
+  subExecutions: WorkflowExecution[];
+  taskLogs: TaskLog[];
   updatedAt?: Maybe<Scalars['String']['output']>;
   workflow: Workflow;
-};
+}
 
 
-export type WorkflowExecutionPendingTasksArgs = {
+export interface WorkflowExecutionPendingTasksArgs {
   where?: InputMaybe<PendingTaskWhereInput>;
-};
+}
 
 
-export type WorkflowExecutionTaskLogsArgs = {
+export interface WorkflowExecutionTaskLogsArgs {
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
-  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  order?: InputMaybe<Scalars['String']['input'][][]>;
   search?: InputMaybe<TaskLogSearchInput>;
   where?: InputMaybe<TaskLogInput>;
-};
+}
 
-export type WorkflowExecutionConductor = {
+export interface WorkflowExecutionConductor {
   __typename?: 'WorkflowExecutionConductor';
-  errors?: Maybe<Array<Maybe<Scalars['JSON']['output']>>>;
+  errors?: Maybe<Maybe<Scalars['JSON']['output']>[]>;
   graph?: Maybe<Scalars['JSON']['output']>;
   input?: Maybe<Scalars['JSON']['output']>;
   output?: Maybe<Scalars['JSON']['output']>;
   spec?: Maybe<Scalars['JSON']['output']>;
   state?: Maybe<WorkflowExecutionConductorState>;
-};
+}
 
-export type WorkflowExecutionConductorState = {
+export interface WorkflowExecutionConductorState {
   __typename?: 'WorkflowExecutionConductorState';
   contexts?: Maybe<Scalars['JSON']['output']>;
   routes?: Maybe<Scalars['JSON']['output']>;
@@ -7143,9 +7143,9 @@ export type WorkflowExecutionConductorState = {
   staged?: Maybe<Scalars['JSON']['output']>;
   status?: Maybe<Scalars['String']['output']>;
   tasks?: Maybe<Scalars['JSON']['output']>;
-};
+}
 
-export type WorkflowExecutionSearchInput = {
+export interface WorkflowExecutionSearchInput {
   createdAt?: InputMaybe<String_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   numAwaitingResponseTasks?: InputMaybe<Int_Comparison_Exp>;
@@ -7155,9 +7155,9 @@ export type WorkflowExecutionSearchInput = {
   processedCompletionAt?: InputMaybe<String_Comparison_Exp>;
   status?: InputMaybe<String_Comparison_Exp>;
   workflow?: InputMaybe<WorkflowSearch>;
-};
+}
 
-export type WorkflowExecutionStats = {
+export interface WorkflowExecutionStats {
   __typename?: 'WorkflowExecutionStats';
   delayed: Scalars['Int']['output'];
   failed: Scalars['Int']['output'];
@@ -7166,9 +7166,9 @@ export type WorkflowExecutionStats = {
   pending: Scalars['Int']['output'];
   running: Scalars['Int']['output'];
   succeeded: Scalars['Int']['output'];
-};
+}
 
-export type WorkflowExecutionWhereInput = {
+export interface WorkflowExecutionWhereInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   numAwaitingResponseTasks?: InputMaybe<Scalars['Int']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
@@ -7176,38 +7176,38 @@ export type WorkflowExecutionWhereInput = {
   status?: InputMaybe<Scalars['String']['input']>;
   workflow?: InputMaybe<WorkflowWhereInput>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type WorkflowInput = {
+export interface WorkflowInput {
   actionId?: InputMaybe<Scalars['ID']['input']>;
   cloneOverrides?: InputMaybe<Scalars['JSON']['input']>;
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   humanSecondsSaved?: InputMaybe<Scalars['Int']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
-  input?: InputMaybe<Array<Scalars['String']['input']>>;
+  input?: InputMaybe<Scalars['String']['input'][]>;
   inputSchema?: InputMaybe<Scalars['JSON']['input']>;
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-  notes?: InputMaybe<Array<WorkflowNoteInput>>;
+  notes?: InputMaybe<WorkflowNoteInput[]>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-  output?: InputMaybe<Array<Scalars['JSON']['input']>>;
+  output?: InputMaybe<Scalars['JSON']['input'][]>;
   outputSchema?: InputMaybe<Scalars['JSON']['input']>;
   parameters?: InputMaybe<Scalars['JSON']['input']>;
   schemaVersion?: InputMaybe<Scalars['String']['input']>;
-  tagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
-  tasks?: InputMaybe<Array<WorkflowTaskInput>>;
+  tagIds?: InputMaybe<Scalars['ID']['input'][]>;
+  tasks?: InputMaybe<WorkflowTaskInput[]>;
   timeout?: InputMaybe<Scalars['Int']['input']>;
-  tokens?: InputMaybe<Array<Scalars['JSON']['input']>>;
-  transitions?: InputMaybe<Array<WorkflowTransitionInput>>;
-  triggers?: InputMaybe<Array<TriggerCreateInput>>;
+  tokens?: InputMaybe<Scalars['JSON']['input'][]>;
+  transitions?: InputMaybe<WorkflowTransitionInput[]>;
+  triggers?: InputMaybe<TriggerCreateInput[]>;
   type?: InputMaybe<WorkflowType>;
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
   varsSchema?: InputMaybe<Scalars['JSON']['input']>;
   version?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type WorkflowNote = {
+export interface WorkflowNote {
   __typename?: 'WorkflowNote';
   clonedFrom?: Maybe<WorkflowNote>;
   clonedFromId?: Maybe<Scalars['ID']['output']>;
@@ -7220,9 +7220,9 @@ export type WorkflowNote = {
   updatedAt?: Maybe<Scalars['String']['output']>;
   workflow?: Maybe<Workflow>;
   workflowId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type WorkflowNoteInput = {
+export interface WorkflowNoteInput {
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   content?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -7230,9 +7230,9 @@ export type WorkflowNoteInput = {
   metadata?: InputMaybe<Scalars['JSON']['input']>;
   title?: InputMaybe<Scalars['String']['input']>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type WorkflowNoteSearchInput = {
+export interface WorkflowNoteSearchInput {
   clonedFromId?: InputMaybe<Id_Comparison_Exp>;
   content?: InputMaybe<String_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
@@ -7240,9 +7240,9 @@ export type WorkflowNoteSearchInput = {
   metadata?: InputMaybe<Json_Comparison_Exp>;
   title?: InputMaybe<String_Comparison_Exp>;
   workflowId?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type WorkflowNoteWhereInput = {
+export interface WorkflowNoteWhereInput {
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   content?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
@@ -7250,15 +7250,15 @@ export type WorkflowNoteWhereInput = {
   metadata?: InputMaybe<Scalars['JSON']['input']>;
   title?: InputMaybe<Scalars['String']['input']>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type WorkflowOptionsResponse = {
+export interface WorkflowOptionsResponse {
   __typename?: 'WorkflowOptionsResponse';
-  cachedOptions?: Maybe<Array<Maybe<Scalars['JSON']['output']>>>;
+  cachedOptions?: Maybe<Maybe<Scalars['JSON']['output']>[]>;
   executionId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type WorkflowPatch = {
+export interface WorkflowPatch {
   __typename?: 'WorkflowPatch';
   comment: Scalars['String']['output'];
   commentDescription?: Maybe<Scalars['String']['output']>;
@@ -7270,7 +7270,7 @@ export type WorkflowPatch = {
   updatedAt: Scalars['String']['output'];
   user?: Maybe<User>;
   workflowId: Scalars['ID']['output'];
-};
+}
 
 export enum WorkflowPatchOrderByInput {
   CommentAsc = 'comment_ASC',
@@ -7289,7 +7289,7 @@ export enum WorkflowPatchOrderByInput {
   WorkflowIdDesc = 'workflowId_DESC'
 }
 
-export type WorkflowPatchWhereInput = {
+export interface WorkflowPatchWhereInput {
   comment?: InputMaybe<Scalars['String']['input']>;
   createdAt?: InputMaybe<Scalars['String']['input']>;
   foreignId?: InputMaybe<Scalars['ID']['input']>;
@@ -7297,9 +7297,9 @@ export type WorkflowPatchWhereInput = {
   updatedAt?: InputMaybe<Scalars['String']['input']>;
   user?: InputMaybe<UserWhereInput>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type WorkflowSearch = {
+export interface WorkflowSearch {
   clonedFromId?: InputMaybe<Id_Comparison_Exp>;
   createdAt?: InputMaybe<String_Comparison_Exp>;
   description?: InputMaybe<String_Comparison_Exp>;
@@ -7320,9 +7320,9 @@ export type WorkflowSearch = {
   updatedBy?: InputMaybe<UserSearchInput>;
   version?: InputMaybe<String_Comparison_Exp>;
   visibleForOrganizations?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type WorkflowStatsByOrg = {
+export interface WorkflowStatsByOrg {
   __typename?: 'WorkflowStatsByOrg';
   id: Scalars['ID']['output'];
   name: Scalars['String']['output'];
@@ -7332,9 +7332,9 @@ export type WorkflowStatsByOrg = {
   totalHumanSecondsSaved: Scalars['Int']['output'];
   totalTasks: Scalars['Int']['output'];
   updatedAt: Scalars['String']['output'];
-};
+}
 
-export type WorkflowTask = {
+export interface WorkflowTask {
   __typename?: 'WorkflowTask';
   action?: Maybe<Action>;
   actionId?: Maybe<Scalars['ID']['output']>;
@@ -7347,8 +7347,8 @@ export type WorkflowTask = {
   metadata?: Maybe<Scalars['JSON']['output']>;
   mockInput?: Maybe<Scalars['JSON']['output']>;
   name?: Maybe<Scalars['String']['output']>;
-  next: Array<WorkflowTransition>;
-  packOverrides?: Maybe<Array<PackOverride>>;
+  next: WorkflowTransition[];
+  packOverrides?: Maybe<PackOverride[]>;
   publishResultAs?: Maybe<Scalars['String']['output']>;
   retry?: Maybe<WorkflowTaskRetry>;
   runAsOrgId?: Maybe<Scalars['String']['output']>;
@@ -7358,9 +7358,9 @@ export type WorkflowTask = {
   with?: Maybe<WorkflowTaskWithItems>;
   workflow?: Maybe<Workflow>;
   workflowId?: Maybe<Scalars['ID']['output']>;
-};
+}
 
-export type WorkflowTaskInput = {
+export interface WorkflowTaskInput {
   action?: InputMaybe<ActionInput>;
   actionId?: InputMaybe<Scalars['ID']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
@@ -7372,8 +7372,8 @@ export type WorkflowTaskInput = {
   metadata?: InputMaybe<Scalars['JSON']['input']>;
   mockInput?: InputMaybe<Scalars['JSON']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-  next?: InputMaybe<Array<WorkflowTransitionInput>>;
-  packOverrides?: InputMaybe<Array<PackOverrideInput>>;
+  next?: InputMaybe<WorkflowTransitionInput[]>;
+  packOverrides?: InputMaybe<PackOverrideInput[]>;
   publishResultAs?: InputMaybe<Scalars['String']['input']>;
   retry?: InputMaybe<WorkflowTaskRetryInput>;
   runAsOrgId?: InputMaybe<Scalars['String']['input']>;
@@ -7382,22 +7382,22 @@ export type WorkflowTaskInput = {
   transitionMode?: InputMaybe<TransitionModes>;
   with?: InputMaybe<WorkflowTaskWithItemsInput>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type WorkflowTaskRetry = {
+export interface WorkflowTaskRetry {
   __typename?: 'WorkflowTaskRetry';
   count: Scalars['String']['output'];
   delay?: Maybe<Scalars['String']['output']>;
   when?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type WorkflowTaskRetryInput = {
+export interface WorkflowTaskRetryInput {
   count: Scalars['String']['input'];
   delay?: InputMaybe<Scalars['String']['input']>;
   when?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type WorkflowTaskSearchInput = {
+export interface WorkflowTaskSearchInput {
   action?: InputMaybe<ActionSearch>;
   actionId?: InputMaybe<Id_Comparison_Exp>;
   createdAt?: InputMaybe<String_Comparison_Exp>;
@@ -7410,9 +7410,9 @@ export type WorkflowTaskSearchInput = {
   packOverrides?: InputMaybe<PackOverrideSearchInput>;
   timeout?: InputMaybe<Int_Comparison_Exp>;
   workflowId?: InputMaybe<Id_Comparison_Exp>;
-};
+}
 
-export type WorkflowTaskWhereInput = {
+export interface WorkflowTaskWhereInput {
   action?: InputMaybe<ActionInput>;
   actionId?: InputMaybe<Scalars['ID']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
@@ -7424,48 +7424,48 @@ export type WorkflowTaskWhereInput = {
   metadata?: InputMaybe<Scalars['JSON']['input']>;
   mockInput?: InputMaybe<Scalars['JSON']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
-  next?: InputMaybe<Array<WorkflowTransitionInput>>;
+  next?: InputMaybe<WorkflowTransitionInput[]>;
   retry?: InputMaybe<WorkflowTaskRetryInput>;
   runAsOrgId?: InputMaybe<Scalars['String']['input']>;
   timeout?: InputMaybe<Scalars['Int']['input']>;
   with?: InputMaybe<WorkflowTaskWithItemsInput>;
   workflow?: InputMaybe<WorkflowWhereInput>;
   workflowId?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type WorkflowTaskWithItems = {
+export interface WorkflowTaskWithItems {
   __typename?: 'WorkflowTaskWithItems';
   concurrency?: Maybe<Scalars['String']['output']>;
   items?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type WorkflowTaskWithItemsInput = {
+export interface WorkflowTaskWithItemsInput {
   concurrency?: InputMaybe<Scalars['String']['input']>;
   items?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type WorkflowTransition = {
+export interface WorkflowTransition {
   __typename?: 'WorkflowTransition';
-  do: Array<Scalars['String']['output']>;
+  do: Scalars['String']['output'][];
   from?: Maybe<Scalars['String']['output']>;
   id?: Maybe<Scalars['ID']['output']>;
   label?: Maybe<Scalars['String']['output']>;
-  publish: Array<Scalars['JSON']['output']>;
+  publish: Scalars['JSON']['output'][];
   to?: Maybe<Scalars['String']['output']>;
   when?: Maybe<Scalars['String']['output']>;
-};
+}
 
-export type WorkflowTransitionInput = {
-  do?: InputMaybe<Array<InputMaybe<Scalars['String']['input']>>>;
+export interface WorkflowTransitionInput {
+  do?: InputMaybe<InputMaybe<Scalars['String']['input']>[]>;
   from?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
   left?: InputMaybe<Scalars['Float']['input']>;
-  publish?: InputMaybe<Array<InputMaybe<Scalars['JSON']['input']>>>;
+  publish?: InputMaybe<InputMaybe<Scalars['JSON']['input']>[]>;
   to?: InputMaybe<Scalars['String']['input']>;
   top?: InputMaybe<Scalars['Float']['input']>;
   when?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
 export enum WorkflowType {
   OptionGenerator = 'OPTION_GENERATOR',
@@ -7473,106 +7473,107 @@ export enum WorkflowType {
   StreamOutput = 'STREAM_OUTPUT'
 }
 
-export type WorkflowWhereInput = {
+export interface WorkflowWhereInput {
   clonedFromId?: InputMaybe<Scalars['ID']['input']>;
   crates?: InputMaybe<CrateWhereInput>;
   description?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
-  input?: InputMaybe<Array<InputMaybe<Scalars['String']['input']>>>;
+  input?: InputMaybe<InputMaybe<Scalars['String']['input']>[]>;
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
-  output?: InputMaybe<Array<InputMaybe<Scalars['JSON']['input']>>>;
+  output?: InputMaybe<InputMaybe<Scalars['JSON']['input']>[]>;
   schemaVersion?: InputMaybe<Scalars['String']['input']>;
   timeout?: InputMaybe<Scalars['Int']['input']>;
   type?: InputMaybe<WorkflowType>;
   unpackedFromId?: InputMaybe<Scalars['ID']['input']>;
   version?: InputMaybe<Scalars['String']['input']>;
   visibleForOrganizations?: InputMaybe<Scalars['ID']['input']>;
-};
+}
 
-export type Bool_Comparison_Exp = {
+export interface Bool_Comparison_Exp {
   _eq?: InputMaybe<Scalars['Boolean']['input']>;
   _ne?: InputMaybe<Scalars['Boolean']['input']>;
-};
+}
 
-export type Float_Comparison_Exp = {
+export interface Float_Comparison_Exp {
   _eq?: InputMaybe<Scalars['Int']['input']>;
   _gt?: InputMaybe<Scalars['Int']['input']>;
   _gte?: InputMaybe<Scalars['Int']['input']>;
-  _in?: InputMaybe<Array<Scalars['Int']['input']>>;
+  _in?: InputMaybe<Scalars['Int']['input'][]>;
   _lt?: InputMaybe<Scalars['Int']['input']>;
   _lte?: InputMaybe<Scalars['Int']['input']>;
   _neq?: InputMaybe<Scalars['Int']['input']>;
-  _nin?: InputMaybe<Array<Scalars['Int']['input']>>;
-};
+  _nin?: InputMaybe<Scalars['Int']['input'][]>;
+}
 
-export type Id_Comparison_Exp = {
+export interface Id_Comparison_Exp {
   _eq?: InputMaybe<Scalars['ID']['input']>;
-  _in?: InputMaybe<Array<Scalars['ID']['input']>>;
+  _in?: InputMaybe<Scalars['ID']['input'][]>;
   _ne?: InputMaybe<Scalars['ID']['input']>;
-  _nin?: InputMaybe<Array<Scalars['ID']['input']>>;
-};
+  _nin?: InputMaybe<Scalars['ID']['input'][]>;
+}
 
-export type Int_Comparison_Exp = {
+export interface Int_Comparison_Exp {
   _eq?: InputMaybe<Scalars['Int']['input']>;
   _gt?: InputMaybe<Scalars['Int']['input']>;
   _gte?: InputMaybe<Scalars['Int']['input']>;
-  _in?: InputMaybe<Array<Scalars['Int']['input']>>;
+  _in?: InputMaybe<Scalars['Int']['input'][]>;
   _lt?: InputMaybe<Scalars['Int']['input']>;
   _lte?: InputMaybe<Scalars['Int']['input']>;
   _neq?: InputMaybe<Scalars['Int']['input']>;
-  _nin?: InputMaybe<Array<Scalars['Int']['input']>>;
-};
+  _nin?: InputMaybe<Scalars['Int']['input'][]>;
+}
 
-export type Json_Comparison_Exp = {
+export interface Json_Comparison_Exp {
   _contains?: InputMaybe<Scalars['JSON']['input']>;
   _eq?: InputMaybe<Scalars['JSON']['input']>;
   _ne?: InputMaybe<Scalars['JSON']['input']>;
-};
+}
 
 /** expression to compare columns of type String. All fields are combined with logical 'AND'. */
-export type String_Comparison_Exp = {
+export interface String_Comparison_Exp {
   _eq?: InputMaybe<Scalars['String']['input']>;
   _gt?: InputMaybe<Scalars['String']['input']>;
   _gte?: InputMaybe<Scalars['String']['input']>;
   _ilike?: InputMaybe<Scalars['String']['input']>;
-  _in?: InputMaybe<Array<Scalars['String']['input']>>;
+  _in?: InputMaybe<Scalars['String']['input'][]>;
   _like?: InputMaybe<Scalars['String']['input']>;
   _lt?: InputMaybe<Scalars['String']['input']>;
   _lte?: InputMaybe<Scalars['String']['input']>;
   _neq?: InputMaybe<Scalars['String']['input']>;
   _nilike?: InputMaybe<Scalars['String']['input']>;
-  _nin?: InputMaybe<Array<Scalars['String']['input']>>;
+  _nin?: InputMaybe<Scalars['String']['input'][]>;
   _nlike?: InputMaybe<Scalars['String']['input']>;
   _substr?: InputMaybe<Scalars['String']['input']>;
-};
+}
 
-export type OrgFragment = { __typename?: 'Organization', id?: string | null, name: string };
+export interface OrgFragment { __typename?: 'Organization', id?: string | null, name: string }
 
-export type TemplateFragment = { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null };
+export interface TemplateFragment { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: { __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }[], clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null }
 
 export type ListTemplatesMinimalQueryVariables = Exact<{
   orgId: Scalars['ID']['input'];
 }>;
 
 
-export type ListTemplatesMinimalQuery = { __typename?: 'Query', templates: Array<{ __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null }> };
+export interface ListTemplatesMinimalQuery { __typename?: 'Query', templates: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: { __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }[], clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null }[] }
 
 export type CreateTemplateMinimalMutationVariables = Exact<{
   name: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
+  body: Scalars['String']['input'];
 }>;
 
 
-export type CreateTemplateMinimalMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
+export interface CreateTemplateMinimalMutation { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: { __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }[], clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null }
 
 export type UpdateTemplateMutationVariables = Exact<{
   template: TemplateUpdateInput;
 }>;
 
 
-export type UpdateTemplateMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
+export interface UpdateTemplateMutation { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: { __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }[], clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null }
 
 export type UpdateTemplateBodyMutationVariables = Exact<{
   body?: InputMaybe<Scalars['String']['input']>;
@@ -7580,7 +7581,7 @@ export type UpdateTemplateBodyMutationVariables = Exact<{
 }>;
 
 
-export type UpdateTemplateBodyMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
+export interface UpdateTemplateBodyMutation { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: { __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }[], clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null }
 
 export type UpdateTemplateNameMutationVariables = Exact<{
   name?: InputMaybe<Scalars['String']['input']>;
@@ -7588,28 +7589,28 @@ export type UpdateTemplateNameMutationVariables = Exact<{
 }>;
 
 
-export type UpdateTemplateNameMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
+export interface UpdateTemplateNameMutation { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: { __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }[], clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null }
 
 export type GetTemplateQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type GetTemplateQuery = { __typename?: 'Query', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
+export interface GetTemplateQuery { __typename?: 'Query', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: { __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }[], clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null }
 
 export type DeleteTemplateMutationVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type DeleteTemplateMutation = { __typename?: 'Mutation', deleteTemplate?: string | null };
+export interface DeleteTemplateMutation { __typename?: 'Mutation', deleteTemplate?: string | null }
 
-export type UserFragment = { __typename?: 'User', createdAt?: string | null, id?: string | null, isApiUser?: boolean | null, isTokenUser?: boolean | null, isSuperuser?: boolean | null, isTestUser?: boolean | null, orgId?: string | null, roleIds: Array<string>, roles?: Array<any | null> | null, sub?: string | null, username?: string | null, parentUserId?: string | null, parentUsername?: string | null };
+export interface UserFragment { __typename?: 'User', createdAt?: string | null, id?: string | null, isApiUser?: boolean | null, isTokenUser?: boolean | null, isSuperuser?: boolean | null, isTestUser?: boolean | null, orgId?: string | null, roleIds: string[], roles?: (any | null)[] | null, sub?: string | null, username?: string | null, parentUserId?: string | null, parentUsername?: string | null }
 
-export type UserQueryVariables = Exact<{ [key: string]: never; }>;
+export type UserQueryVariables = Exact<Record<string, never>>;
 
 
-export type UserQuery = { __typename?: 'Query', user?: { __typename?: 'User', createdAt?: string | null, id?: string | null, isApiUser?: boolean | null, isTokenUser?: boolean | null, isSuperuser?: boolean | null, isTestUser?: boolean | null, orgId?: string | null, roleIds: Array<string>, roles?: Array<any | null> | null, sub?: string | null, username?: string | null, parentUserId?: string | null, parentUsername?: string | null, organization?: { __typename?: 'Organization', id?: string | null, name: string } | null, allManagedOrgs: Array<{ __typename?: 'Organization', id?: string | null, name: string }> } | null };
+export interface UserQuery { __typename?: 'Query', user?: { __typename?: 'User', createdAt?: string | null, id?: string | null, isApiUser?: boolean | null, isTokenUser?: boolean | null, isSuperuser?: boolean | null, isTestUser?: boolean | null, orgId?: string | null, roleIds: string[], roles?: (any | null)[] | null, sub?: string | null, username?: string | null, parentUserId?: string | null, parentUsername?: string | null, organization?: { __typename?: 'Organization', id?: string | null, name: string } | null, allManagedOrgs: { __typename?: 'Organization', id?: string | null, name: string }[] } | null }
 
 export const OrgFragmentDoc = gql`
     fragment org on Organization {
@@ -7682,8 +7683,8 @@ export const ListTemplatesMinimalDocument = gql`
 }
     ${TemplateFragmentDoc}`;
 export const CreateTemplateMinimalDocument = gql`
-    mutation createTemplateMinimal($name: String!, $orgId: ID!) {
-  template: createTemplate(template: {name: $name, orgId: $orgId, body: ""}) {
+    mutation createTemplateMinimal($name: String!, $orgId: ID!, $body: String!) {
+  template: createTemplate(template: {name: $name, orgId: $orgId, body: $body}) {
     ...template
   }
 }

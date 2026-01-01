@@ -69,7 +69,7 @@ export default class RewstSession {
 			if (cookieString !== undefined) {
 				cookieStrings = cookieStrings
 					.concat(cookieString)
-					.concat(CookieString.fromToken(cookieString.value ?? '', config))
+					.concat(CookieString.fromToken(cookieString.value ?? '', config));
 			}
 
 			for (const cookieString of cookieStrings) {
@@ -165,5 +165,13 @@ export default class RewstSession {
 
 	async getCookies(): Promise<string> {
 		return await RewstSession.getCookies(this.profile.org.id);
+	}
+
+	async getTemplate(templateId: string) {
+		const response = await this.sdk?.getTemplate({ id: templateId });
+		if (!response?.template) {
+			throw log.error(`Could not find template with id '${templateId}'`);
+		}
+		return response.template;
 	}
 }

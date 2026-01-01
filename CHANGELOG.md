@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.22.0]
+
+### Added
+- **Create Template** - Create new Rewst templates directly from local files
+  - Right-click in editor → "Create Template"
+  - Prompts for organization and template name (suggests filename)
+  - Automatically links the file to the newly created template
+  - Available via Command Palette: `Rewst Buddy: Create Template`
+
+- **Delete Template** - Delete templates from Rewst with confirmation
+  - Right-click on linked file → "Delete Template"
+  - Shows confirmation modal before deletion
+  - Automatically unlinks the file after deletion
+  - Available via Command Palette: `Rewst Buddy: Delete Template`
+
+### Changed
+- Refactored link commands folder structure (`link-commands/` → `link/`)
+- Added utility functions for cleaner code:
+  - `ensureSavedDocument()` - ensures documents are saved before operations
+  - `requireUnlinked()` - validates files aren't already linked
+  - `getTemplate()` method added to RewstSession class
+- Simplified OpenTemplate and LinkTemplate command implementations
+- Updated createTemplate GraphQL mutation to accept body parameter
+- Removed explorer context menu, kept only editor context menu for better UX
+
+### Fixed
+- Args parsing for context menu commands (SyncTemplate, UnlinkTemplate, DeleteTemplate)
+- Error handling in TemplateSyncManager
+
 ## [0.21.0]
 
 ### Changed

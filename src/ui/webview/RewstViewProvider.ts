@@ -44,12 +44,8 @@ export class RewstViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private getHtmlForWebview(webview: vscode.Webview): string {
-		const styleUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this.extensionUri, 'media', 'webview', 'main.css'),
-		);
-		const scriptUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this.extensionUri, 'media', 'webview', 'main.js'),
-		);
+		const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'webview', 'main.css'));
+		const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', 'webview', 'main.js'));
 
 		const nonce = this.getNonce();
 

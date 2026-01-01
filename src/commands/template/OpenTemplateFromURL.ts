@@ -1,6 +1,6 @@
 import { SessionManager } from '@client';
 import { TemplateLinkManager } from '@models';
-import { getTemplateURLParams, log } from '@utils';
+import { getTemplateURLParams } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
 
@@ -14,21 +14,12 @@ export class OpenTemplateFromURL extends GenericCommand {
 		});
 
 		const params = await getTemplateURLParams(templateURL);
-
 		const session = await SessionManager.getOrgSession(params.orgId, params.baseURL);
 
-		const response = await session.sdk?.getTemplate({ id: params.templateId });
-		if (response?.template === undefined || response?.template === null) {
-			throw log.error(
-				`Could not find template with id '${params.templateId}' under organization '${params.orgId}'`,
-			);
-		}
+		const template = await session.getTemplate(params.templateId);
+		const content = template.body ?? '';
 
-		const content = response.template?.body ?? '';
-
-		const suggestedName = response.template?.name ?? params.templateId;
-		const untitledUri = vscode.Uri.parse(`untitled:${suggestedName}`);
-
+		const untitledUri = vscode.Uri.parse(`untitled:${template.name ?? params.templateId}`);
 		const doc = await vscode.workspace.openTextDocument(untitledUri);
 		const editor = await vscode.window.showTextDocument(doc);
 
@@ -37,7 +28,6 @@ export class OpenTemplateFromURL extends GenericCommand {
 		});
 
 		const resultUri = await vscode.workspace.saveAs(editor.document.uri);
-
 		if (!resultUri) {
 			await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
 			return;
@@ -45,7 +35,7 @@ export class OpenTemplateFromURL extends GenericCommand {
 
 		await TemplateLinkManager.addLink({
 			sessionProfile: session.profile,
-			template: response.template,
+			template: template,
 			uriString: resultUri.toString(),
 		}).save();
 	}

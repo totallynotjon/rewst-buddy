@@ -15,9 +15,7 @@ export const TemplateLinkManager = new (class TemplateLinkManager implements vsc
 	private disposables: vscode.Disposable[] = [];
 
 	constructor() {
-		this.disposables.push(
-			vscode.workspace.onDidRenameFiles(e => this.handleRename(e)),
-		);
+		this.disposables.push(vscode.workspace.onDidRenameFiles(e => this.handleRename(e)));
 	}
 
 	dispose(): void {

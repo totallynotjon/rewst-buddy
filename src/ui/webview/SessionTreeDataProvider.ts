@@ -54,9 +54,7 @@ export class SessionTreeDataProvider implements vscode.TreeDataProvider<SessionT
 		}
 
 		const sessions = Array.from(SessionManager.sessionMap.values());
-		const items = sessions.map(
-			session => new SessionTreeItem(session, vscode.TreeItemCollapsibleState.None),
-		);
+		const items = sessions.map(session => new SessionTreeItem(session, vscode.TreeItemCollapsibleState.None));
 
 		return Promise.resolve(items);
 	}

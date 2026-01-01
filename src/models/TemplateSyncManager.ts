@@ -1,7 +1,7 @@
 import { SessionManager } from '@client';
 import { extPrefix } from '@global';
-import { log } from '@utils';
 import { TemplateFragment } from '@sdk';
+import { log } from '@utils';
 import vscode from 'vscode';
 import { TemplateLinkManager } from './TemplateLinkManager';
 
@@ -10,9 +10,7 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 	private disposables: vscode.Disposable[] = [];
 
 	constructor() {
-		this.disposables.push(
-			vscode.workspace.onDidSaveTextDocument(doc => this.handleSave(doc)),
-		);
+		this.disposables.push(vscode.workspace.onDidSaveTextDocument(doc => this.handleSave(doc)));
 	}
 
 	dispose(): void {
@@ -74,6 +72,8 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 		this.syncingUris.add(uriKey);
 		try {
 			await this.syncTemplateInternal(doc);
+		} catch (e) {
+			throw log.error('', e);
 		} finally {
 			this.syncingUris.delete(uriKey);
 		}
@@ -85,7 +85,7 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 		}
 
 		if (doc.isDirty) {
-			const resultUri = await vscode.workspace.save(doc.uri);
+			const resultUri = await doc.save();
 			if (!resultUri) {
 				throw log.error('Failed to save the active editor before attempting sync');
 			}
@@ -95,7 +95,12 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 		log.debug('Syncing template:', link);
 
 		const session = await SessionManager.getProfileSession(link.sessionProfile);
-		const remoteTemplate = await this.fetchRemoteTemplate(session, link.template.id);
+		let remoteTemplate;
+		try {
+			remoteTemplate = await session.getTemplate(link.template.id);
+		} catch {
+			throw log.error(`Failed to get template from Rewst. If this continues, the template may have been deleted`);
+		}
 
 		log.debug(`Local: ${link.template.updatedAt}`);
 		log.debug(`Rewst: ${remoteTemplate.updatedAt}`);
@@ -106,23 +111,6 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 			await this.updateTemplateBody(doc);
 		} else {
 			await this.handleConflict(doc, session, remoteTemplate);
-		}
-	}
-
-	private async fetchRemoteTemplate(
-		session: Awaited<ReturnType<typeof SessionManager.getProfileSession>>,
-		templateId: string,
-	): Promise<TemplateFragment> {
-		try {
-			const response = await session.sdk?.getTemplate({ id: templateId });
-
-			if (response?.template?.updatedAt === undefined) {
-				throw new Error();
-			}
-
-			return response.template;
-		} catch {
-			throw log.error('Failure to validate template has not been modified. Cannot push template update to rewst');
 		}
 	}
 

@@ -1,4 +1,3 @@
-import { log } from '@utils';
 import { TemplateLinkManager } from '@models';
 import { pickTemplate } from '@ui';
 import vscode from 'vscode';
@@ -11,19 +10,10 @@ export class OpenTemplateInteractive extends GenericCommand {
 		const pick = await pickTemplate();
 		if (!pick) return;
 
-		const session = pick.session;
-		const template = pick.template;
+		const template = await pick.session.getTemplate(pick.template.id);
+		const content = template.body ?? '';
 
-		const response = await session.sdk?.getTemplate({ id: template.id });
-		if (response?.template === undefined || response?.template === null) {
-			throw log.error(`Could not find template with id '${template.id}' under organization '${pick.org.name}'`);
-		}
-
-		const content = response.template?.body ?? '';
-
-		const suggestedName = response.template?.name ?? template.name ?? template.id;
-		const untitledUri = vscode.Uri.parse(`untitled:${suggestedName}`);
-
+		const untitledUri = vscode.Uri.parse(`untitled:${template.name ?? pick.template.id}`);
 		const doc = await vscode.workspace.openTextDocument(untitledUri);
 		const editor = await vscode.window.showTextDocument(doc);
 
@@ -32,15 +22,14 @@ export class OpenTemplateInteractive extends GenericCommand {
 		});
 
 		const resultUri = await vscode.workspace.saveAs(editor.document.uri);
-
 		if (!resultUri) {
 			await vscode.commands.executeCommand('workbench.action.revertAndCloseActiveEditor');
 			return;
 		}
 
 		await TemplateLinkManager.addLink({
-			sessionProfile: session.profile,
-			template: response.template,
+			sessionProfile: pick.session.profile,
+			template: template,
 			uriString: resultUri.toString(),
 		}).save();
 	}

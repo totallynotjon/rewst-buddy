@@ -43,8 +43,8 @@ query listTemplatesMinimal($orgId: ID!) {
 	}
 }
 
-mutation createTemplateMinimal($name: String!, $orgId: ID!) {
-	template: createTemplate(template: { name: $name, orgId: $orgId, body: "" }) {
+mutation createTemplateMinimal($name: String!, $orgId: ID!, $body: String!) {
+	template: createTemplate(template: { name: $name, orgId: $orgId, body: $body }) {
 		...template
 	}
 }

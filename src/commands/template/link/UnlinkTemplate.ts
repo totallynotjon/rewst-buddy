@@ -1,12 +1,12 @@
-import { log } from '@utils';
 import { TemplateLinkManager } from '@models';
+import { log } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../../GenericCommand';
 
 export class UnlinkTemplate extends GenericCommand {
 	commandName = 'UnlinkTemplate';
 
-	async execute(...args: unknown[]): Promise<void> {
+	async execute(...args: any[]): Promise<void> {
 		const editor = vscode.window.activeTextEditor;
 		if (editor === undefined) {
 			throw log.error('No active editor to update');

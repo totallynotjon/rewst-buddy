@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.21.0",
+	"version": "0.22.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -164,6 +164,21 @@
 			{
 				"command": "rewst-buddy.prefix.StopServer",
 				"title": "Rewst Buddy: Stop Server"
+			},
+			{
+				"command": "rewst-buddy.prefix.DeleteTemplate",
+				"title": "Rewst Buddy: Delete Template",
+				"icon": "$(trash)"
+			},
+			{
+				"command": "rewst-buddy.DeleteTemplate",
+				"title": "Delete Template",
+				"icon": "$(trash)"
+			},
+			{
+				"command": "rewst-buddy.CreateTemplate",
+				"title": "Create Template",
+				"icon": "$(file-add)"
 			}
 		],
 		"viewsContainers": {
@@ -200,22 +215,9 @@
 				{
 					"command": "rewst-buddy.prefix.UnlinkTemplate",
 					"when": "resourcePath in rewst-buddy.linkedTemplates"
-				}
-			],
-			"explorer/context": [
-				{
-					"command": "rewst-buddy.SyncTemplate",
-					"group": "z_rewst",
-					"when": "resourcePath in rewst-buddy.linkedTemplates"
 				},
 				{
-					"command": "rewst-buddy.LinkTemplateInteractive",
-					"group": "z_rewst",
-					"when": "resourcePath not in rewst-buddy.linkedTemplates"
-				},
-				{
-					"command": "rewst-buddy.UnlinkTemplate",
-					"group": "z_rewst",
+					"command": "rewst-buddy.prefix.DeleteTemplate",
 					"when": "resourcePath in rewst-buddy.linkedTemplates"
 				}
 			],
@@ -231,7 +233,17 @@
 					"when": "resourcePath not in rewst-buddy.linkedTemplates"
 				},
 				{
+					"command": "rewst-buddy.CreateTemplate",
+					"group": "z_rewst",
+					"when": "resourcePath not in rewst-buddy.linkedTemplates"
+				},
+				{
 					"command": "rewst-buddy.UnlinkTemplate",
+					"group": "z_rewst",
+					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.DeleteTemplate",
 					"group": "z_rewst",
 					"when": "resourcePath in rewst-buddy.linkedTemplates"
 				}

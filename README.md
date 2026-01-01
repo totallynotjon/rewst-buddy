@@ -79,11 +79,6 @@ The server is enabled by default. Use `Start Server` / `Stop Server` commands fo
 
 ### Planned Features
 
-**Template Creation**
-
-- Create new templates directly from VS Code
-- Save local files as new Rewst templates with one button
-
 **Browser Extension**
 
 - Browser extension that automatically sends Rewst cookies to the session receiver
