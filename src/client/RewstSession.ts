@@ -1,6 +1,6 @@
 import { context } from '@global';
-import { log } from '@utils';
 import { getSdk, Sdk, SdkFunctionWrapper } from '@sdk';
+import { log } from '@utils';
 import { GraphQLClient } from 'graphql-request';
 import vscode from 'vscode';
 import CookieString from './CookieString';
@@ -59,14 +59,28 @@ export default class RewstSession {
 		const configs = getRegionConfigs();
 
 		for (const config of configs) {
-			const cookies = cookieString ?? CookieString.fromToken(token ?? '', config);
-			const sdk = RewstSession.newSdkAtRegion(cookies, config);
-			try {
-				if (await RewstSession.validateSdk(sdk)) {
-					return [sdk, config, cookies];
+			let cookieStrings: CookieString[] = [];
+			if (token !== undefined) {
+				cookieStrings = cookieStrings
+					.concat(CookieString.fromToken(token ?? '', config))
+					.concat(new CookieString(token));
+			}
+
+			if (cookieString !== undefined) {
+				cookieStrings = cookieStrings
+					.concat(cookieString)
+					.concat(CookieString.fromToken(cookieString.value ?? '', config))
+			}
+
+			for (const cookieString of cookieStrings) {
+				const sdk = RewstSession.newSdkAtRegion(cookieString, config);
+				try {
+					if (await RewstSession.validateSdk(sdk)) {
+						return [sdk, config, cookieString];
+					}
+				} catch {
+					log.trace(`Couldn't init for region ${config.name}`);
 				}
-			} catch {
-				log.trace(`Couldn't init for region ${config.name}`);
 			}
 		}
 		throw log.notifyError('Could not initialize session with any known region. Did you enter a valid cookie?');

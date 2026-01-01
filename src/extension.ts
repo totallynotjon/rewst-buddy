@@ -3,7 +3,7 @@ import { CommandInitiater } from '@commands';
 import { onEditorChange, onRename, onSave } from '@events';
 import { extPrefix, context as globalVSContext } from '@global';
 import { Server } from '@server';
-import { StatusBarIcon } from '@ui';
+import { StatusBarIcon, RewstViewProvider, SessionTreeDataProvider } from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
 
@@ -17,6 +17,18 @@ export async function activate(context: vscode.ExtensionContext) {
 	SessionManager.loadSessions();
 
 	CommandInitiater.registerCommands();
+
+	// Register TreeDataProvider (must be created first for RewstViewProvider to reference)
+	const sessionTreeProvider = new SessionTreeDataProvider();
+	context.subscriptions.push(
+		vscode.window.registerTreeDataProvider('rewst-buddy.sessionTree', sessionTreeProvider),
+	);
+
+	// Register WebviewViewProvider (receives sessionTreeProvider to call refresh internally)
+	const rewstViewProvider = new RewstViewProvider(context.extensionUri, sessionTreeProvider);
+	context.subscriptions.push(
+		vscode.window.registerWebviewViewProvider(RewstViewProvider.viewType, rewstViewProvider),
+	);
 
 	context.subscriptions.push(vscode.workspace.onDidSaveTextDocument(onSave));
 

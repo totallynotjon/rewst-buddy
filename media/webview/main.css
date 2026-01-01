@@ -1,0 +1,62 @@
+* {
+	box-sizing: border-box;
+}
+
+body {
+	padding: 8px;
+	margin: 0;
+	font-family: var(--vscode-font-family);
+	font-size: var(--vscode-font-size);
+	color: var(--vscode-foreground);
+	background-color: var(--vscode-sideBar-background);
+}
+
+.container {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.input-group {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+#tokenInput {
+	width: 100%;
+	padding: 6px 8px;
+	border: 1px solid var(--vscode-input-border);
+	background-color: var(--vscode-input-background);
+	color: var(--vscode-input-foreground);
+	border-radius: 2px;
+	font-size: inherit;
+}
+
+#tokenInput:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
+
+#tokenInput::placeholder {
+	color: var(--vscode-input-placeholderForeground);
+}
+
+#submitBtn {
+	padding: 6px 12px;
+	border: none;
+	background-color: var(--vscode-button-background);
+	color: var(--vscode-button-foreground);
+	border-radius: 2px;
+	cursor: pointer;
+	font-size: inherit;
+}
+
+#submitBtn:hover {
+	background-color: var(--vscode-button-hoverBackground);
+}
+
+#submitBtn:focus {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 2px;
+}

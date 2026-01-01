@@ -17,8 +17,10 @@ Since Rewst does not expose API keys for working with GraphQL directly, we do re
 **1. Set up a session (one-time):**
 
 1. Copy your `appSession` cookie from your browser while logged into Rewst
-2. Run command: `Rewst Buddy: New Rewst Session` (Cmd/Ctrl + Shift + P)
-3. Paste your session token
+2. Click the Rewst Buddy icon in the activity bar (sidebar)
+3. Paste your session token in the input field and click Connect
+
+Alternatively, use the command palette: `Rewst Buddy: New Rewst Session` (Cmd/Ctrl + Shift + P)
 
 **2. Link a file to a template:**
 
@@ -125,6 +127,13 @@ All commands are also available via Command Palette (Cmd/Ctrl + Shift + P):
 
 - `Start Server` - Start the session receiver server
 - `Stop Server` - Stop the session receiver server
+
+### Sidebar (v0.20)
+
+Click the Rewst Buddy icon in the activity bar to open the sidebar:
+
+- **Session Panel**: Enter your token/cookie to connect
+- **Active Sessions**: View all connected sessions with organization and region info
 
 ### Status Bar
 

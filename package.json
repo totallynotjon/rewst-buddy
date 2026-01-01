@@ -3,8 +3,8 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.19.1",
-	"icon": "rewst-buddy.png",
+	"version": "0.20.0",
+	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
 	},
@@ -166,7 +166,30 @@
 				"title": "Rewst Buddy: Stop Server"
 			}
 		],
-		"views": {},
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "rewst-buddy-sidebar",
+					"title": "Rewst Buddy",
+					"icon": "media/rewst-icon.svg"
+				}
+			]
+		},
+		"views": {
+			"rewst-buddy-sidebar": [
+				{
+					"type": "webview",
+					"id": "rewst-buddy.sessionInput",
+					"name": "Session",
+					"icon": ""
+				},
+				{
+					"id": "rewst-buddy.sessionTree",
+					"name": "Active Sessions",
+					"icon": ""
+				}
+			]
+		},
 		"submenus": [],
 		"menus": {
 			"commandPalette": [

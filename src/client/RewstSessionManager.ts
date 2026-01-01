@@ -1,6 +1,6 @@
 import { context } from '@global';
-import { log } from '@utils';
 import { Org } from '@models';
+import { log } from '@utils';
 import vscode from 'vscode';
 import CookieString from './CookieString';
 import RewstSession from './RewstSession';
@@ -29,7 +29,7 @@ class RewstSessionManager {
 			[sdk, regionConfig, cookieString] = await RewstSession.newSdk(token);
 			cookies = cookieString.value;
 		} else {
-			[sdk, regionConfig] = await RewstSession.newSdk(undefined, new CookieString(cookies));
+			[sdk, regionConfig] = await RewstSession.newSdk(cookies, new CookieString(cookies));
 		}
 
 		const response = await sdk.User();
@@ -69,15 +69,6 @@ class RewstSessionManager {
 
 		await context.secrets.store(org.id, cookies);
 		this.saveSession(session);
-
-		try {
-			await session.refreshToken();
-		} catch {
-			log.error(
-				`Failed to refresh token for new session. This is strange and probably shouldn't happen. Something might be going wrong in the refresh method.`,
-				session.profile.label,
-			);
-		}
 
 		return session;
 	}
