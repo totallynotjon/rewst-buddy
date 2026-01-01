@@ -185,6 +185,16 @@ class RewstSessionManager {
 			allSessions: [],
 		});
 	}
+
+	public async getSessionForOrg(orgId: string): Promise<RewstSession> {
+		const sessions = await this.loadSessions();
+		for (const session of sessions) {
+			if (session.profile.allManagedOrgs.map(org => org.id ?? '1').includes(orgId)) {
+				return session;
+			}
+		}
+		throw log.error(`No session found for org id ${orgId}`);
+	}
 }
 
 export const SessionManager = new RewstSessionManager();

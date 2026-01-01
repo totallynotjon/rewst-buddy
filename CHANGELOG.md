@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.22.2]
+
+### Added
+
+- **Session Validation in Status Bar** - StatusBar now checks if an active session exists for linked templates
+    - Shows warning state with red background if no session is found with access to the template's organization
+    - Provides quick access to focus sidebar when session is missing
+    - Subscribes to session changes for real-time status updates
+
+- **FocusSidebar Command** - New command to focus the sidebar panel
+    - Accessible from status bar warning state when no session is available
+    - Helps users quickly navigate to the session management interface
+
+### Changed
+
+- **Extracted parseCookieString Utility** - Moved cookie parsing logic from RewstSession to dedicated utility function for better code reusability
+
+- **StatusBar.update() Method** - Now async to support session lookup operations
+
+### Added (Technical)
+
+- **SessionManager Enhancement** - Added `getSessionForOrg()` method to SessionManager
+    - Enables lookups for sessions with access to a specific organization
+    - Throws error if no session found for the requested organization
+
 ## [0.22.1]
 
 ### Added

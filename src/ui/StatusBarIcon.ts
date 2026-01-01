@@ -1,5 +1,7 @@
-import { log } from '@utils';
+import RewstSession, { SessionManager } from '@client';
+import { extPrefix } from '@global';
 import { TemplateLink, TemplateLinkManager } from '@models';
+import { log } from '@utils';
 import vscode from 'vscode';
 
 export class StatusBar implements vscode.Disposable {
@@ -11,6 +13,7 @@ export class StatusBar implements vscode.Disposable {
 		this.item.show();
 
 		this.disposables.push(
+			SessionManager.onSessionChange(() => this.update()),
 			TemplateLinkManager.onLinksSaved(() => this.update()),
 			vscode.window.onDidChangeActiveTextEditor(() => this.update()),
 		);
@@ -24,7 +27,7 @@ export class StatusBar implements vscode.Disposable {
 		this.disposables.forEach(d => d.dispose());
 	}
 
-	update(editor?: vscode.TextEditor): void {
+	async update(editor?: vscode.TextEditor): Promise<void> {
 		const activeEditor = editor ?? vscode.window.activeTextEditor;
 		if (activeEditor === undefined) {
 			this.clear();
@@ -33,22 +36,34 @@ export class StatusBar implements vscode.Disposable {
 
 		const isLinked = TemplateLinkManager.isLinked(activeEditor.document.uri);
 
-		if (!isLinked) {
-			this.clear();
-			return;
-		}
-
-		this.item.text = 'Rewst Buddy: $(check) Linked';
-
 		let link;
 		try {
 			link = TemplateLinkManager.getLink(activeEditor.document.uri);
 		} catch {
+			this.clear();
 			log.error('We failed to get the link of the active document for some reason.');
 			return;
 		}
+		this.item.text = 'Rewst Buddy: Linked';
+		this.item.backgroundColor = undefined;
+
+		this.item.show();
+
+		let session: RewstSession;
+		try {
+			session = await SessionManager.getSessionForOrg(link.template.orgId);
+		} catch (e) {
+			log.error(`No session found with access to org ${link.template.organization.name}`);
+			this.privateWarnNoSession();
+		}
 
 		this.item.tooltip = this.buildTooltip(link);
+	}
+
+	private privateWarnNoSession() {
+		this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+		this.item.text = '$(warning) Rewst-Buddy: No Active Session'; // built-in warning icon
+		this.item.command = `${extPrefix}.FocusSidebar`;
 	}
 
 	private buildTooltip(link: TemplateLink): vscode.MarkdownString {
@@ -70,7 +85,8 @@ export class StatusBar implements vscode.Disposable {
 	}
 
 	private clear(): void {
-		this.item.text = 'Rewst Buddy: $(circle-large-outline) Unlinked';
+		this.item.hide();
+		this.item.text = '';
 		this.item.tooltip = '';
 	}
 }
