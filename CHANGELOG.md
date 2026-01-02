@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.24.3]
+
+### Changed
+
+- **Command Organization** - Renamed `commands/client/` directory to `commands/sessions/`
+    - Better reflects the purpose of session-related commands
+    - Aligns with the sessions naming convention established in v0.23.0
+
 ## [0.24.2]
 
 ### Changed

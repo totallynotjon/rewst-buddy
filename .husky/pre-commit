@@ -10,8 +10,8 @@ if [ -n "$GRAPHQL_FILES" ]; then
   npm run codegen
 
   # Stage the generated SDK file if it changed
-  if [ -f "src/client/graphql/sdk.ts" ]; then
-    git add src/client/graphql/sdk.ts
+  if [ -f "src/sessions/graphql/sdk.ts" ]; then
+    git add src/sessions/graphql/sdk.ts
     echo "Auto-staged generated SDK file"
   fi
 fi
