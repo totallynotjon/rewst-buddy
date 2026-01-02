@@ -1,6 +1,4 @@
-import RewstSession from './RewstSession';
-export default RewstSession;
-
-export { getSdk, Sdk, SdkFunctionWrapper, TemplateFragment } from './graphql/sdk';
-export { SessionManager } from './RewstSessionManager';
-export { default as RewstSessionProfile } from './RewstSessionProfile';
+export * from './graphql/sdk';
+export { default as Session } from './Session';
+export { SessionManager } from './SessionManager';
+export { default as SessionProfile } from './SessionProfile';

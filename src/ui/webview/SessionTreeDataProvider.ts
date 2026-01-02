@@ -1,10 +1,10 @@
 import { SessionChangeEvent } from '@events';
-import { RewstSessionProfile, SessionManager } from '@sessions';
+import { SessionManager, SessionProfile } from '@sessions';
 import vscode from 'vscode';
 
 export class SessionTreeItem extends vscode.TreeItem {
 	constructor(
-		public readonly profile: RewstSessionProfile,
+		public readonly profile: SessionProfile,
 		public readonly active: boolean,
 		public readonly collapsibleState: vscode.TreeItemCollapsibleState,
 	) {
@@ -38,7 +38,7 @@ export class SessionTreeDataProvider implements vscode.TreeDataProvider<SessionT
 	readonly onDidChangeTreeData = this.changeEmitter.event;
 	private disposables: vscode.Disposable[] = [];
 
-	private allKnownProfiles: RewstSessionProfile[] = [];
+	private allKnownProfiles: SessionProfile[] = [];
 	private activeProfileUserIDs: string[] = [];
 
 	constructor() {

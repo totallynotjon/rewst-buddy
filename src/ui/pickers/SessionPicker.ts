@@ -1,8 +1,8 @@
-import RewstSession, { SessionManager } from '@sessions';
+import { Session, SessionManager } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
 
-export async function pickSession(): Promise<RewstSession | undefined> {
+export async function pickSession(): Promise<Session | undefined> {
 	const sessions = await SessionManager.getActiveSessions();
 
 	if (sessions.length === 0) {

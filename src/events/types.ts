@@ -1,14 +1,14 @@
 import type { TemplateLink } from '@models';
-import type RewstSession from '@sessions';
-import { RewstSessionProfile } from '@sessions';
+import type { Session } from '@sessions';
+import { SessionProfile } from '@sessions';
 
 export type ChangeType = 'added' | 'removed' | 'cleared' | 'saved';
 
 export interface SessionChangeEvent {
 	type: ChangeType;
-	session?: RewstSession;
-	allProfiles: RewstSessionProfile[];
-	activeProfiles: RewstSessionProfile[];
+	session?: Session;
+	allProfiles: SessionProfile[];
+	activeProfiles: SessionProfile[];
 }
 
 export interface LinksSavedEvent {

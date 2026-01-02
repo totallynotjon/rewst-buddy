@@ -4,19 +4,19 @@ import { Org } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
 import CookieString from './CookieString';
-import RewstSession from './RewstSession';
-import RewstSessionProfile from './RewstSessionProfile';
+import Session from './Session';
+import SessionProfile from './SessionProfile';
 
-export const SessionManager = new (class RewstSessionManager {
-	sessionMap: Map<string, RewstSession> = new Map<string, RewstSession>();
+export const SessionManager = new (class SessionManager {
+	sessionMap: Map<string, Session> = new Map<string, Session>();
 
 	private readonly sessionChangeEmitter = new vscode.EventEmitter<SessionChangeEvent>();
 	private loaded = false;
 	private loading = false;
 	readonly onSessionChange = this.sessionChangeEmitter.event;
 
-	async createFromProfile(profile: RewstSessionProfile): Promise<RewstSession> {
-		let session = new RewstSession(undefined, profile);
+	async createFromProfile(profile: SessionProfile): Promise<Session> {
+		let session = new Session(undefined, profile);
 		try {
 			session = await this.createSession(await session.getCookies());
 		} catch {
@@ -25,17 +25,17 @@ export const SessionManager = new (class RewstSessionManager {
 		return session;
 	}
 
-	async createSession(cookies?: string): Promise<RewstSession> {
+	async createSession(cookies?: string): Promise<Session> {
 		let sdk;
 		let regionConfig;
 		let cookieString;
 
 		if (cookies === undefined) {
 			const token = await this.getTokenForCreation();
-			[sdk, regionConfig, cookieString] = await RewstSession.newSdk(token);
+			[sdk, regionConfig, cookieString] = await Session.newSdk(token);
 			cookies = cookieString.value;
 		} else {
-			[sdk, regionConfig, cookieString] = await RewstSession.newSdk(cookies, new CookieString(cookies));
+			[sdk, regionConfig, cookieString] = await Session.newSdk(cookies, new CookieString(cookies));
 		}
 
 		const response = await sdk.User();
@@ -64,14 +64,14 @@ export const SessionManager = new (class RewstSessionManager {
 			};
 		});
 
-		const profile: RewstSessionProfile = {
+		const profile: SessionProfile = {
 			region: regionConfig,
 			label: `${user.username} (${org.name})`,
 			org: org,
 			allManagedOrgs: allManagedOrgs,
 			user: user,
 		};
-		const session = new RewstSession(sdk, profile);
+		const session = new Session(sdk, profile);
 
 		await context.secrets.store(org.id, cookieString.value);
 		await this.saveSession(session);
@@ -93,11 +93,11 @@ export const SessionManager = new (class RewstSessionManager {
 		return token;
 	}
 
-	async getProfileSession(profile: RewstSessionProfile): Promise<RewstSession> {
+	async getProfileSession(profile: SessionProfile): Promise<Session> {
 		return this.getOrgSession(profile.org.id, new URL(profile.region.loginUrl));
 	}
 
-	async getOrgSession(orgId: string, baseURL: URL): Promise<RewstSession> {
+	async getOrgSession(orgId: string, baseURL: URL): Promise<Session> {
 		log.debug('getOrgSession');
 		for (const session of await this.getActiveSessions()) {
 			const regionURL = new URL(session.profile.region.loginUrl);
@@ -129,13 +129,13 @@ export const SessionManager = new (class RewstSessionManager {
 		return token ?? '';
 	}
 
-	private async newProfiles(): Promise<RewstSessionProfile[]> {
+	private async newProfiles(): Promise<SessionProfile[]> {
 		const profiles = this.getSavedProfiles();
 		const existing = this.getActiveSessions().map(s => s.profile.user.id ?? '');
 		return profiles.filter(f => !existing.includes(f.user.id ?? ''));
 	}
 
-	async loadSessions(): Promise<RewstSession[]> {
+	async loadSessions(): Promise<Session[]> {
 		if (this.loading) {
 			log.debug('Session loading already in progress, skipping');
 			return this.getActiveSessions();
@@ -151,7 +151,7 @@ export const SessionManager = new (class RewstSessionManager {
 
 			const resultsPromises = newProfiles.map(async profile => {
 				try {
-					return await this.createSession(await RewstSession.getCookies(profile.org.id));
+					return await this.createSession(await Session.getCookies(profile.org.id));
 				} catch (err) {
 					log.error(`Failed to create client for ${profile.org.id}: ${err}`);
 					return undefined;
@@ -175,21 +175,21 @@ export const SessionManager = new (class RewstSessionManager {
 
 	private async saveProfiles(): Promise<void> {
 		await context.globalState.update(
-			'RewstSessionProfiles',
+			'SessionProfiles',
 			this.getActiveSessions().map(s => s.profile),
 		);
 		await this.saveKnownProfiles();
 	}
 
-	public getAllKnownProfiles(): RewstSessionProfile[] {
-		return context.globalState.get<RewstSessionProfile[]>('RewstAllKnownProfiles', []);
+	public getAllKnownProfiles(): SessionProfile[] {
+		return context.globalState.get<SessionProfile[]>('RewstAllKnownProfiles', []);
 	}
 
 	private async saveKnownProfiles(): Promise<void> {
-		const profileMap = new Map<string, RewstSessionProfile>();
+		const profileMap = new Map<string, SessionProfile>();
 
 		context.globalState
-			.get<RewstSessionProfile[]>('RewstAllKnownProfiles', [])
+			.get<SessionProfile[]>('RewstAllKnownProfiles', [])
 			.concat(this.getSavedProfiles())
 			.forEach(profile => profileMap.set(profile.user.id ?? '', profile));
 
@@ -204,7 +204,7 @@ export const SessionManager = new (class RewstSessionManager {
 		});
 	}
 
-	private async saveSession(session: RewstSession): Promise<void> {
+	private async saveSession(session: Session): Promise<void> {
 		if (typeof session.profile.user.id !== 'string') {
 			throw log.error(`Session user doesn't have an id, this should always exist`);
 		}
@@ -213,12 +213,12 @@ export const SessionManager = new (class RewstSessionManager {
 		await this.saveProfiles();
 	}
 
-	private getSavedProfiles(): RewstSessionProfile[] {
-		return context.globalState.get<RewstSessionProfile[]>('RewstSessionProfiles') ?? [];
+	private getSavedProfiles(): SessionProfile[] {
+		return context.globalState.get<SessionProfile[]>('SessionProfiles') ?? [];
 	}
 
 	public clearProfiles() {
-		context.globalState.update('RewstSessionProfiles', []);
+		context.globalState.update('SessionProfiles', []);
 		this.sessionMap.clear();
 
 		this.sessionChangeEmitter.fire({
@@ -228,7 +228,7 @@ export const SessionManager = new (class RewstSessionManager {
 		});
 	}
 
-	public getSessionForOrg(orgId: string): RewstSession {
+	public getSessionForOrg(orgId: string): Session {
 		const sessions = this.getActiveSessions();
 		for (const session of sessions) {
 			if (session.profile.allManagedOrgs.map(org => org.id ?? '1').includes(orgId)) {

@@ -1,6 +1,6 @@
 import { extPrefix } from '@global';
 import { SyncOnSaveManager, TemplateLink, TemplateLinkManager } from '@models';
-import RewstSession, { SessionManager } from '@sessions';
+import { Session, SessionManager } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
 
@@ -49,7 +49,7 @@ export class StatusBar implements vscode.Disposable {
 		this.item.backgroundColor = undefined;
 		this.item.tooltip = this.buildTooltip(link);
 
-		let session: RewstSession;
+		let session: Session;
 		try {
 			session = SessionManager.getSessionForOrg(link.template.orgId);
 		} catch (e) {

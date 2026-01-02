@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.24.2]
+
+### Changed
+
+- **Session Naming Refactor** - Simplified session-related class and file names
+    - Renamed `RewstSession` → `Session` (src/sessions/Session.ts)
+    - Renamed `RewstSessionProfile` → `SessionProfile` (src/sessions/SessionProfile.ts)
+    - Renamed `RewstSessionManager` → `SessionManager` (src/sessions/SessionManager.ts)
+    - Updated storage key from `'RewstSessionProfiles'` → `'SessionProfiles'`
+    - Consolidated session exports using `export *` pattern in sessions/index.ts
+    - Updated all import paths across codebase to use new naming (23+ files)
+    - Fixed GraphQL SDK imports to use `@sessions` alias consistently
+
 ## [0.24.1]
 
 ### Fixed

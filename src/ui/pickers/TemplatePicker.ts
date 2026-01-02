@@ -1,17 +1,17 @@
 import { Org } from '@models';
-import RewstSession, { TemplateFragment } from '@sessions';
+import { Session, TemplateFragment } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
 import { pickOrganization } from './OrganizationPicker';
 import { pickSession } from './SessionPicker';
 
 export interface TemplatePick {
-	session: RewstSession;
+	session: Session;
 	org: Org;
 	template: TemplateFragment;
 }
 
-export async function pickTemplate(session?: RewstSession, org?: Org): Promise<TemplatePick | undefined> {
+export async function pickTemplate(session?: Session, org?: Org): Promise<TemplatePick | undefined> {
 	if (!session) session = await pickSession();
 	if (!session) return undefined;
 

@@ -5,16 +5,16 @@ import { GraphQLClient } from 'graphql-request';
 import vscode from 'vscode';
 import CookieString from './CookieString';
 import { getRegionConfigs, RegionConfig } from './RegionConfig';
-import RewstSessionProfile from './RewstSessionProfile';
+import SessionProfile from './SessionProfile';
 import { createRetryWrapper } from './retryWrapper';
 
-export default class RewstSession {
+export default class Session {
 	private secrets: vscode.SecretStorage;
 	private lastValidated = 0;
 
 	public constructor(
 		public sdk: Sdk | undefined,
-		public profile: RewstSessionProfile,
+		public profile: SessionProfile,
 	) {
 		this.secrets = context.secrets;
 	}
@@ -28,7 +28,7 @@ export default class RewstSession {
 			}),
 		});
 
-		const wrapper = RewstSession.getWrapper();
+		const wrapper = Session.getWrapper();
 		const sdk = getSdk(client, wrapper);
 		return sdk;
 	}
@@ -58,9 +58,9 @@ export default class RewstSession {
 			}
 
 			for (const cookieString of cookieStrings) {
-				const sdk = RewstSession.newSdkAtRegion(cookieString, config);
+				const sdk = Session.newSdkAtRegion(cookieString, config);
 				try {
-					if (await RewstSession.validateSdk(sdk)) {
+					if (await Session.validateSdk(sdk)) {
 						return [sdk, config, cookieString];
 					}
 				} catch {
@@ -97,7 +97,7 @@ export default class RewstSession {
 			return true;
 		}
 
-		const valid = await RewstSession.validateSdk(this.sdk);
+		const valid = await Session.validateSdk(this.sdk);
 		if (valid) this.lastValidated = Date.now();
 
 		return valid;
@@ -124,8 +124,8 @@ export default class RewstSession {
 				throw log.notifyError('Token refresh response missing set-cookie header');
 			}
 
-			const sdk = RewstSession.newSdkAtRegion(new CookieString(cookieString), config);
-			if (!(await RewstSession.validateSdk(sdk))) {
+			const sdk = Session.newSdkAtRegion(new CookieString(cookieString), config);
+			if (!(await Session.validateSdk(sdk))) {
 				throw log.notifyError('Refreshed token failed SDK validation');
 			}
 
@@ -149,7 +149,7 @@ export default class RewstSession {
 	}
 
 	async getCookies(): Promise<string> {
-		return await RewstSession.getCookies(this.profile.org.id);
+		return await Session.getCookies(this.profile.org.id);
 	}
 
 	async getTemplate(templateId: string) {

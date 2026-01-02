@@ -1,5 +1,5 @@
 import { Org } from '@models';
-import RewstSession from '@sessions';
+import { Session } from '@sessions';
 import { log } from '@utils';
 import vscode, { QuickPickItem } from 'vscode';
 import { pickSession } from './SessionPicker';
@@ -9,11 +9,11 @@ interface OrgItem extends QuickPickItem {
 }
 
 export interface OrgPick {
-	session: RewstSession;
+	session: Session;
 	org: Org;
 }
 
-export async function pickOrganization(session?: RewstSession): Promise<OrgPick | undefined> {
+export async function pickOrganization(session?: Session): Promise<OrgPick | undefined> {
 	if (!session) session = await pickSession();
 	if (!session) return undefined;
 
