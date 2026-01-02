@@ -1,6 +1,6 @@
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
-import { TemplateLinkManager, TemplateSyncManager } from '@models';
+import { SyncOnSaveManager, TemplateLinkManager, TemplateSyncManager } from '@models';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
 import { RewstViewProvider, SessionTreeDataProvider, StatusBar } from '@ui';
@@ -19,7 +19,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Register managers (self-register for their respective VS Code events)
 	context.subscriptions.push(TemplateLinkManager);
 	context.subscriptions.push(TemplateSyncManager);
+	context.subscriptions.push(SyncOnSaveManager);
 	context.subscriptions.push(Server);
+
+	// SyncOnSaveManager.init();
 
 	// Register TreeDataProvider (self-registers for session change events)
 	const sessionTreeProvider = new SessionTreeDataProvider();

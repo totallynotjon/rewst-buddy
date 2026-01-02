@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.24.0]
+
+### Added
+
+- **Sync on Save** - Automatically sync linked templates when files are saved
+    - Enable/disable globally via `rewst-buddy.enableSyncOnSave` setting (default: true)
+    - New `SyncOnSaveManager` handles sync state and exclusions
+
+- **Sync Exclusions** - Exclude specific files from automatic sync
+    - "Add Sync-On-Save Exclusion" command to exclude a linked file
+    - "Remove Sync-On-Save Exclusion" command to re-enable sync
+    - Exclusions are stored persistently and cleaned up when files are unlinked
+    - Context menu shows appropriate command based on exclusion state
+
+### Changed
+
+- **Refactored SyncTemplate command** - Moved to `commands/template/sync/` directory
+- **StatusBarIcon** - Updated to reflect sync exclusion state
+- **Event types** - Added `SyncOnSaveChangeEvent` type
+
 ## [0.23.0]
 
 ### Added
@@ -34,7 +54,7 @@
     - Enhanced tooltips show active/expired state
 
 - **Session Events** - Enhanced event data structure
-    - Added `'saved'` event type to `SessionChangeType`
+    - Added `'saved'` event type to `ChangeType`
     - Event payload now includes `allProfiles` (all known) and `activeProfiles` (currently active)
     - Removed `allSessions` field in favor of profile-based tracking
 

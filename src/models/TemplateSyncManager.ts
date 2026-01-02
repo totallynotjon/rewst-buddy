@@ -1,7 +1,7 @@
-import { extPrefix } from '@global';
 import { SessionManager, TemplateFragment } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
+import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { TemplateLinkManager } from './TemplateLinkManager';
 
 export const TemplateSyncManager = new (class TemplateSyncManager implements vscode.Disposable {
@@ -19,12 +19,9 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 	private async handleSave(document: vscode.TextDocument): Promise<void> {
 		log.trace('Handling save', document);
 
-		const config = vscode.workspace.getConfiguration(extPrefix);
-		const enabled = config.get<boolean>('enableSyncOnSave', false);
+		const enabled = SyncOnSaveManager.isUriSynced(document.uri);
 
 		if (!enabled) return;
-
-		if (!TemplateLinkManager.isLinked(document.uri)) return;
 
 		try {
 			await this.syncTemplate(document);

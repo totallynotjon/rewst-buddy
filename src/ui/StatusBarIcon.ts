@@ -1,5 +1,5 @@
 import { extPrefix } from '@global';
-import { TemplateLink, TemplateLinkManager } from '@models';
+import { SyncOnSaveManager, TemplateLink, TemplateLinkManager } from '@models';
 import RewstSession, { SessionManager } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
@@ -16,6 +16,7 @@ export class StatusBar implements vscode.Disposable {
 			SessionManager.onSessionChange(() => this.update()),
 			TemplateLinkManager.onLinksSaved(() => this.update()),
 			vscode.window.onDidChangeActiveTextEditor(() => this.update()),
+			SyncOnSaveManager.onSyncOnSave(() => this.update()),
 		);
 
 		// Initial update
@@ -57,12 +58,32 @@ export class StatusBar implements vscode.Disposable {
 			this.privateWarnNoSession();
 		}
 
+		const isSyncEnabled = SyncOnSaveManager.isUriSynced(activeEditor.document.uri);
+
+		if (!isSyncEnabled) {
+			this.privateWarnSyncOnSaveDisabled();
+		} else {
+			this.privateSyncOnSaveEnabled();
+		}
+
 		this.item.tooltip = this.buildTooltip(link);
+	}
+
+	private privateWarnSyncOnSaveDisabled() {
+		this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+		this.item.text = 'Rewst Sync-On-Save: OFF $(warning)'; // built-in warning icon
+		this.item.command = `${extPrefix}.prefix.RemoveSyncExclusion`;
+	}
+
+	private privateSyncOnSaveEnabled() {
+		this.item.backgroundColor = undefined;
+		this.item.text = 'Rewst Sync-On-Save: ON $(check)'; // built-in warning icon
+		this.item.command = `${extPrefix}.prefix.AddSyncExclusion`;
 	}
 
 	private privateWarnNoSession() {
 		this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
-		this.item.text = '$(warning) Rewst-Buddy: No Active Session'; // built-in warning icon
+		this.item.text = '$(error) Rewst-Buddy: No Active Session'; // built-in warning icon
 		this.item.command = `${extPrefix}.FocusSidebar`;
 	}
 

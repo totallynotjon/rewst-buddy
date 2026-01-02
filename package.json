@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.23.0",
+	"version": "0.24.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -162,10 +162,6 @@
 				"title": "Rewst Buddy: Start Server"
 			},
 			{
-				"command": "rewst-buddy.prefix.StopServer",
-				"title": "Rewst Buddy: Stop Server"
-			},
-			{
 				"command": "rewst-buddy.prefix.DeleteTemplate",
 				"title": "Rewst Buddy: Delete Template",
 				"icon": "$(trash)"
@@ -179,6 +175,16 @@
 				"command": "rewst-buddy.CreateTemplate",
 				"title": "Create Template",
 				"icon": "$(file-add)"
+			},
+			{
+				"command": "rewst-buddy.prefix.AddSyncExclusion",
+				"title": "Rewst Buddy: Add Sync-On-Save Exclusion",
+				"icon": "$(circle-slash)"
+			},
+			{
+				"command": "rewst-buddy.prefix.RemoveSyncExclusion",
+				"title": "Rewst Buddy: Remove Sync-On-Save Exclusion",
+				"icon": "$(sync-ignored)"
 			}
 		],
 		"viewsContainers": {
@@ -209,6 +215,22 @@
 		"menus": {
 			"commandPalette": [
 				{
+					"command": "rewst-buddy.SyncTemplate",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.CreateTemplate",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.UnlinkTemplate",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.DeleteTemplate",
+					"when": "false"
+				},
+				{
 					"command": "rewst-buddy.prefix.SyncTemplate",
 					"when": "resourcePath in rewst-buddy.linkedTemplates"
 				},
@@ -219,6 +241,14 @@
 				{
 					"command": "rewst-buddy.prefix.DeleteTemplate",
 					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.prefix.AddSyncExclusion",
+					"when": "resourcePath in rewst-buddy.linkedTemplates && resourcePath not in rewst-buddy.syncExclusions"
+				},
+				{
+					"command": "rewst-buddy.prefix.RemoveSyncExclusion",
+					"when": "resourcePath in rewst-buddy.linkedTemplates && resourcePath in rewst-buddy.syncExclusions"
 				}
 			],
 			"editor/context": [

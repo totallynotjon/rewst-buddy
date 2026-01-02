@@ -1,7 +1,7 @@
 import { TemplateSyncManager } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
-import GenericCommand from '../GenericCommand';
+import GenericCommand from '../../GenericCommand';
 
 export class SyncTemplate extends GenericCommand {
 	commandName = 'SyncTemplate';
