@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.25.0]
+
+### Added
+
+- **Copy Template ID** - Copy linked template ID to clipboard
+    - Right-click on linked file → "Copy Template ID"
+    - Available via Command Palette: `Rewst Buddy: Copy Template ID`
+    - Useful for referencing template IDs in workflows or documentation
+
 ## [0.24.3]
 
 ### Changed

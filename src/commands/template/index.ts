@@ -1,3 +1,4 @@
+export { CopyTemplateID } from './CopyTemplateID';
 export { CreateTemplate } from './CreateTemplate';
 export { DeleteTemplate } from './DeleteTemplate';
 export * from './link';

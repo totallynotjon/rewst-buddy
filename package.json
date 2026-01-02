@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.24.3",
+	"version": "0.25.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -119,6 +119,16 @@
 				"icon": "$(sync)"
 			},
 			{
+				"command": "rewst-buddy.prefix.CopyTemplateID",
+				"title": "Rewst Buddy: Copy Template ID",
+				"icon": "$(copy)"
+			},
+			{
+				"command": "rewst-buddy.CopyTemplateID",
+				"title": "Copy Template ID",
+				"icon": "$(copy)"
+			},
+			{
 				"command": "rewst-buddy.prefix.LinkTemplateFromURL",
 				"title": "Rewst Buddy: Link File to Template from URL",
 				"icon": "$(link-external)"
@@ -215,6 +225,14 @@
 		"menus": {
 			"commandPalette": [
 				{
+					"command": "rewst-buddy.prefix.CopyTemplateID",
+					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.CopyTemplateID",
+					"when": "false"
+				},
+				{
 					"command": "rewst-buddy.SyncTemplate",
 					"when": "false"
 				},
@@ -252,6 +270,11 @@
 				}
 			],
 			"editor/context": [
+				{
+					"command": "rewst-buddy.CopyTemplateID",
+					"group": "z_rewst",
+					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				},
 				{
 					"command": "rewst-buddy.SyncTemplate",
 					"group": "z_rewst",
