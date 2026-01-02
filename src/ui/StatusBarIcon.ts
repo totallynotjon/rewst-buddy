@@ -28,8 +28,8 @@ export class StatusBar implements vscode.Disposable {
 		this.disposables.forEach(d => d.dispose());
 	}
 
-	async update(editor?: vscode.TextEditor): Promise<void> {
-		const activeEditor = editor ?? vscode.window.activeTextEditor;
+	async update(): Promise<void> {
+		const activeEditor = vscode.window.activeTextEditor;
 		if (activeEditor === undefined) {
 			this.clear();
 			return;
@@ -47,8 +47,7 @@ export class StatusBar implements vscode.Disposable {
 		}
 		this.item.text = 'Rewst Buddy: Linked';
 		this.item.backgroundColor = undefined;
-
-		this.item.show();
+		this.item.tooltip = this.buildTooltip(link);
 
 		let session: RewstSession;
 		try {
@@ -56,6 +55,7 @@ export class StatusBar implements vscode.Disposable {
 		} catch (e) {
 			log.error(`No session found with access to org ${link.template.organization.name}`);
 			this.privateWarnNoSession();
+			return;
 		}
 
 		const isSyncEnabled = SyncOnSaveManager.isUriSynced(activeEditor.document.uri);
@@ -65,26 +65,27 @@ export class StatusBar implements vscode.Disposable {
 		} else {
 			this.privateSyncOnSaveEnabled();
 		}
-
-		this.item.tooltip = this.buildTooltip(link);
 	}
 
 	private privateWarnSyncOnSaveDisabled() {
 		this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
 		this.item.text = 'Rewst Sync-On-Save: OFF $(warning)'; // built-in warning icon
 		this.item.command = `${extPrefix}.prefix.RemoveSyncExclusion`;
+		this.item.show();
 	}
 
 	private privateSyncOnSaveEnabled() {
 		this.item.backgroundColor = undefined;
 		this.item.text = 'Rewst Sync-On-Save: ON $(check)'; // built-in warning icon
 		this.item.command = `${extPrefix}.prefix.AddSyncExclusion`;
+		this.item.show();
 	}
 
 	private privateWarnNoSession() {
 		this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
 		this.item.text = '$(error) Rewst-Buddy: No Active Session'; // built-in warning icon
 		this.item.command = `${extPrefix}.FocusSidebar`;
+		this.item.show();
 	}
 
 	private buildTooltip(link: TemplateLink): vscode.MarkdownString {

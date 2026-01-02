@@ -23,12 +23,12 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 				this.cleanupExclusions();
 			}),
 		);
-		this.init();
 	}
 
-	async init(): Promise<void> {
+	async init(): Promise<_> {
 		await this.handleConfigChange();
 		this.updateContextKey();
+		return this;
 	}
 
 	dispose(): void {

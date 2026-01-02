@@ -19,8 +19,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Register managers (self-register for their respective VS Code events)
 	context.subscriptions.push(TemplateLinkManager);
 	context.subscriptions.push(TemplateSyncManager);
-	context.subscriptions.push(SyncOnSaveManager);
 	context.subscriptions.push(Server);
+	context.subscriptions.push(await SyncOnSaveManager.init());
 
 	// SyncOnSaveManager.init();
 

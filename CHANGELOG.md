@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.24.1]
+
+### Fixed
+
+- **Session Validation** - Fixed status bar not showing warning when no active session exists for linked template
+    - Status bar now properly returns early when no session is found
+    - Warning state correctly displays error background with session prompt
+- **SyncOnSaveManager Initialization** - Fixed activation order issue
+    - Manager now properly initialized asynchronously before use
+    - Prevents potential race conditions during extension startup
+- **Status Bar Item Visibility** - Fixed status bar item not showing in certain states
+    - Item now explicitly shown after updating state (sync enabled/disabled/no session)
+
 ## [0.24.0]
 
 ### Added
