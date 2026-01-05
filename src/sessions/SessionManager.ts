@@ -7,13 +7,24 @@ import CookieString from './CookieString';
 import Session from './Session';
 import SessionProfile from './SessionProfile';
 
-export const SessionManager = new (class SessionManager {
+export const SessionManager = new (class _ implements vscode.Disposable {
+	interval = setInterval(this.refreshActiveSessions, 15 * 60 * 1000);
+	dispose(): void {
+		clearInterval(this.interval);
+	}
+
 	sessionMap: Map<string, Session> = new Map<string, Session>();
 
 	private readonly sessionChangeEmitter = new vscode.EventEmitter<SessionChangeEvent>();
 	private loaded = false;
 	private loading = false;
 	readonly onSessionChange = this.sessionChangeEmitter.event;
+
+	async init(): Promise<_> {
+		await SessionManager.loadSessions();
+
+		return this;
+	}
 
 	async createFromProfile(profile: SessionProfile): Promise<Session> {
 		let session = new Session(undefined, profile);

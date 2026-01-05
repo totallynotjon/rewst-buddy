@@ -5,7 +5,7 @@ import { getServerConfig } from './config';
 import { handleAddSession, validateRequest } from './handlers';
 import { AddSessionRequest, Response, ServerConfig } from './types';
 
-export const Server = new (class Server implements vscode.Disposable {
+export const Server = new (class _ implements vscode.Disposable {
 	private server: http.Server | null = null;
 	private isRunning = false;
 	private disposables: vscode.Disposable[] = [];
@@ -18,6 +18,11 @@ export const Server = new (class Server implements vscode.Disposable {
 				}
 			}),
 		);
+	}
+	async init(): Promise<_> {
+		// Start server if enabled
+		await this.startIfEnabled();
+		return this;
 	}
 
 	dispose(): void {

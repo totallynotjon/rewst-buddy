@@ -1,3 +1,4 @@
+import { context } from '@global';
 import vscode from 'vscode';
 
 /**
@@ -17,7 +18,7 @@ class Logger {
 	 * Initialize logger with extension context
 	 * Call this once during extension activation
 	 */
-	init(context: vscode.ExtensionContext): void {
+	init(): void {
 		// Create VSCode managed log channel
 		this.logChannel = vscode.window.createOutputChannel('rewst-buddy', { log: true });
 
