@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.26.1]
+
+### Fixed
+
+- **parseArgsUri Safety** - Added bounds checking to prevent infinite loops on malformed command arguments
+- **Rename Handler** - Silently ignores unlinked files instead of logging errors on every file rename
+- **Legacy Migration** - Link migrations (sessionProfile → org) now persist immediately instead of waiting for user action
+- **Code Cleanup** - Removed unused variable in StatusBarIcon tooltip builder
+
 ## [0.26.0]
 
 ### Added

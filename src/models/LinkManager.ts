@@ -42,19 +42,11 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 					for (const child of uris) {
 						if (isDescendant(file.oldUri, vscode.Uri.parse(child))) {
 							const newUri = newPrefix + child.slice(oldPrefix.length);
-							try {
-								await this.moveLink(child, newUri);
-							} catch (err) {
-								log.notifyError(`Failed to handle rename`, err);
-							}
+							await this.moveLink(child, newUri);
 						}
 					}
 				} else if (isFile) {
-					try {
-						await this.moveLink(file.oldUri.toString(), file.newUri.toString());
-					} catch (err) {
-						log.notifyError(`Failed to handle rename`, err);
-					}
+					await this.moveLink(file.oldUri.toString(), file.newUri.toString());
 				}
 			}
 
@@ -85,7 +77,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	async moveLink(oldUriString: string, newUriString: string): Promise<_> {
 		const link = this.linkMap.get(oldUriString);
-		if (link === undefined) throw log.error(`Tried to move a link that doesn't exist`, oldUriString, newUriString);
+		if (link === undefined) return this;
 
 		link.uriString = newUriString;
 
@@ -124,23 +116,30 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	loadLinks(): _ {
 		const links = context.globalState.get<Link[]>(this.stateKey) ?? [];
 		this.linkMap.clear();
+		let migrated = false;
 
 		for (const link of links) {
 			// Handle missing type (pre-folder era)
 			if (link.type === undefined) {
 				link.type = 'Template';
+				migrated = true;
 			}
 
 			// Handle legacy sessionProfile field
 			if ((link as any).sessionProfile) {
 				link.org = (link as any).sessionProfile.org;
 				delete (link as any).sessionProfile;
+				migrated = true;
 			}
 
 			this.addLink(link);
 		}
 		this.loaded = true;
 		this.updateLinksContext(links);
+
+		if (migrated) {
+			this.save();
+		}
 
 		return this;
 	}

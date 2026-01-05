@@ -89,7 +89,7 @@ export class StatusBar implements vscode.Disposable {
 	}
 
 	private buildTooltip(link: TemplateLink): vscode.MarkdownString {
-		const { template, org } = link;
+		const { template } = link;
 
 		const lines: string[] = [`## ${template.name}`];
 
