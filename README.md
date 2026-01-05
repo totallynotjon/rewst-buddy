@@ -4,15 +4,17 @@
 
 I work with Rewst templates a lot. I made this extension to make it easier to make small tweaks and changes to templates when developing scripts/html in Rewst. Instead of having tabs open in a browser, you can make edits directly to files in your filesystem. This means you can have all the power of vscode while managing your Rewst templates: folders, extensions, git, ai agents editing files, etc.
 
-This works by a 'Link & Sync' methodology. You first 'link' a template to a local file. After a file is linked you can then 'sync' it to Rewst.
+This works by a 'Link & Sync' methodology. You can link an entire folder to an organization and fetch all templates at once, or link individual templates to local files. After files are linked, edits automatically sync to Rewst on save.
 
-Our sync should be even safer than using tabs in your browser. As part of a sync operation, we pull the template and make sure it hasn't been edited since the lastest version we got from Rewst. (In your browser it would just override it).
+Our sync should be even safer than using tabs in your browser. As part of a sync operation, we pull the template and make sure it hasn't been edited since the latest version we got from Rewst. (In your browser it would just override it).
 
 The extension works by using your Rewst cookies and making the calls to Rewst as if from the browser. Your session is linked from the 'appSession' cookie (or a similar cookie if you are in another region, see [Multi-Region Setup](#multi-region-setup)). (I am planning to make a browser extension to automate this process to make it easier and allow less technical users to not get their cookie over and over).
 
 Since Rewst does not expose API keys for working with GraphQL directly, we do rely on using your cookie locally. This is not stored beyond VSCodes secret storage, and no external calls are made beyond to Rewst. If you have security concerns feel free to audit the codebase and raise any issues.
 
 ## Quick Start
+
+### Recommended: Bulk Download Workflow
 
 **1. Set up a session (one-time):**
 
@@ -21,6 +23,26 @@ Since Rewst does not expose API keys for working with GraphQL directly, we do re
 3. Paste your session token in the input field and click Connect
 
 Alternatively, use the command palette: `Rewst Buddy: New Rewst Session` (Cmd/Ctrl + Shift + P)
+
+**2. Link a folder and fetch all templates:**
+
+1. Create or choose a local folder for your templates
+2. Right-click the folder in the explorer → **Link Folder to Organization**
+3. Select your organization
+4. Right-click the linked folder → **Fetch Folder**
+5. All templates from that organization are downloaded and automatically linked
+
+**3. Edit and sync:**
+
+- Open any downloaded template file and edit
+- **Save** to auto-sync changes back to Rewst (enabled by default)
+- Status bar shows sync status and template details
+
+### Alternative: Individual Template Workflow
+
+If you prefer to work with specific templates rather than downloading everything:
+
+**1. Set up a session** (same as above)
 
 **2. Link a file to a template:**
 
@@ -36,8 +58,6 @@ Alternatively, use the command palette: `Rewst Buddy: New Rewst Session` (Cmd/Ct
 **4. Unlink when done:**
 
 - Right-click → **Unlink Template** to remove the association
-
-The status bar shows whether the current file is **Linked** or **Unlinked**. Hover for template details.
 
 ### Auto-Sync on Save
 
@@ -77,20 +97,6 @@ A local HTTP server that can receive session cookies from a browser extension, e
 
 The server is enabled by default. Use `Start Server` / `Stop Server` commands for manual control.
 
-### Planned Features
-
-**Browser Extension**
-
-- Browser extension that automatically sends Rewst cookies to the session receiver
-- One-click session setup from browser
-
-**Bulk Operations**
-
-- Pull all templates from organization to local folder
-- Automatic linking of downloaded templates
-- Folder sync: auto-create/link new templates from Rewst
-- Organize templates in VS Code as you prefer
-
 ## Configuration
 
 ### Available Commands
@@ -102,10 +108,17 @@ All commands are also available via Command Palette (Cmd/Ctrl + Shift + P):
 - `New Rewst Session` - Add a new session with token
 - `Clear Sessions` - Remove all saved sessions
 
+**Folder Operations (v0.26)**
+
+- `Link Folder` - Link folder to organization for bulk operations
+- `Unlink Folder` - Remove folder link
+- `Fetch Folder` - Download all templates from organization to linked folder
+
 **Template Operations (Interactive)**
 
 - `Open Template` - Browse and open templates via picker (v0.14)
 - `Link Template` - Link current file via template picker (v0.14)
+- `Copy Template ID` - Copy linked template ID to clipboard (v0.25)
 
 **Template Operations (URL-based)**
 
