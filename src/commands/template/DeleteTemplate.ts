@@ -1,4 +1,4 @@
-import { TemplateLink, TemplateLinkManager } from '@models';
+import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { ensureSavedDocument, log } from '@utils';
 import vscode from 'vscode';
@@ -12,12 +12,12 @@ export class DeleteTemplate extends GenericCommand {
 
 		let link: TemplateLink;
 		try {
-			link = TemplateLinkManager.getLink(document.uri);
+			link = LinkManager.getTemplateLink(document.uri);
 		} catch {
 			throw log.notifyError(`There is no template linked to the file to be deleted: ${document.uri.toString()}`);
 		}
 
-		const session = await SessionManager.getProfileSession(link.sessionProfile);
+		const session = SessionManager.getSessionForOrg(link.org.id);
 
 		const confirm = await vscode.window.showWarningMessage(
 			`Delete template "${link.template.name}" from Rewst? This cannot be undone.`,
@@ -34,7 +34,7 @@ export class DeleteTemplate extends GenericCommand {
 			throw log.notifyError(`Response from Rewst does not indicate success in deleting template`);
 		}
 
-		await TemplateLinkManager.removeLink(link.uriString).save();
+		await LinkManager.removeLink(link.uriString).save();
 
 		log.notifyInfo(`Deleted template ${link.template.organization.name}/${link.template.name} `);
 	}

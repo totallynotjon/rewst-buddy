@@ -1,5 +1,4 @@
-export { default as Org } from './Org';
+export { LinkManager } from './LinkManager';
 export { SyncOnSaveManager } from './SyncOnSaveManager';
-export { default as TemplateLink } from './TemplateLink';
-export { TemplateLinkManager } from './TemplateLinkManager';
 export { TemplateSyncManager } from './TemplateSyncManager';
+export * from './types';

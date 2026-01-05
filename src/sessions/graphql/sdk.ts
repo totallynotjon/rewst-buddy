@@ -144,6 +144,15 @@ export type ActionUpdateInput = {
   ref?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type ActiveConversationRequest = {
+  __typename?: 'ActiveConversationRequest';
+  conversationId?: Maybe<Scalars['ID']['output']>;
+  orgId: Scalars['ID']['output'];
+  requestId: Scalars['ID']['output'];
+  updatedAt?: Maybe<Scalars['String']['output']>;
+  userId?: Maybe<Scalars['ID']['output']>;
+};
+
 export type ApiClient = {
   __typename?: 'ApiClient';
   auth0ClientId: Scalars['String']['output'];
@@ -624,6 +633,7 @@ export type ConversationMessage = {
   conversation: Conversation;
   conversationId: Scalars['ID']['output'];
   createdAt: Scalars['String']['output'];
+  currentUserVote?: Maybe<ConversationMessageVote>;
   id: Scalars['ID']['output'];
   metadata?: Maybe<Scalars['JSON']['output']>;
   role: ConversationRole;
@@ -657,7 +667,7 @@ export type ConversationMessageItemResponse = {
 
 export type ConversationMessageResponse = {
   __typename?: 'ConversationMessageResponse';
-  conversation_id: Scalars['ID']['output'];
+  conversation_id?: Maybe<Scalars['ID']['output']>;
   error?: Maybe<Scalars['String']['output']>;
   message?: Maybe<ConversationMessage>;
   metadata?: Maybe<Scalars['JSON']['output']>;
@@ -4430,6 +4440,8 @@ export type Query = {
   actionOptions: Array<ActionOption>;
   actions: Array<Action>;
   actionsForOrg: Array<Action>;
+  activeConversationRequest?: Maybe<ActiveConversationRequest>;
+  activeConversationRequests: Array<ActiveConversationRequest>;
   apiClient?: Maybe<ApiClient>;
   apiClients: ApiClientList;
   appPlatformReservedDomain?: Maybe<AppPlatformReservedDomain>;
@@ -4646,6 +4658,18 @@ export type QueryActionsForOrgArgs = {
   orgId?: InputMaybe<Scalars['ID']['input']>;
   search?: InputMaybe<ActionSearch>;
   where?: InputMaybe<ActionInput>;
+};
+
+
+export type QueryActiveConversationRequestArgs = {
+  orgId: Scalars['ID']['input'];
+  requestId: Scalars['ID']['input'];
+};
+
+
+export type QueryActiveConversationRequestsArgs = {
+  orgId: Scalars['ID']['input'];
+  userId: Scalars['ID']['input'];
 };
 
 
@@ -6120,6 +6144,7 @@ export type SubscriptionConversationMessageArgs = {
   message: Scalars['String']['input'];
   metadata?: InputMaybe<Scalars['JSON']['input']>;
   orgId: Scalars['ID']['input'];
+  resumeRequestId?: InputMaybe<Scalars['ID']['input']>;
 };
 
 
@@ -7552,12 +7577,12 @@ export type OrgFragment = { __typename?: 'Organization', id?: string | null, nam
 
 export type TemplateFragment = { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null };
 
-export type ListTemplatesMinimalQueryVariables = Exact<{
+export type ListTemplatesQueryVariables = Exact<{
   orgId: Scalars['ID']['input'];
 }>;
 
 
-export type ListTemplatesMinimalQuery = { __typename?: 'Query', templates: Array<{ __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null }> };
+export type ListTemplatesQuery = { __typename?: 'Query', templates: Array<{ __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null }> };
 
 export type CreateTemplateMinimalMutationVariables = Exact<{
   name: Scalars['String']['input'];
@@ -7675,8 +7700,8 @@ export const UserFragmentDoc = gql`
   parentUsername
 }
     `;
-export const ListTemplatesMinimalDocument = gql`
-    query listTemplatesMinimal($orgId: ID!) {
+export const ListTemplatesDocument = gql`
+    query listTemplates($orgId: ID!) {
   templates(where: {orgId: $orgId}) {
     ...template
   }
@@ -7744,8 +7769,8 @@ const defaultWrapper: SdkFunctionWrapper = (action, _operationName, _operationTy
 
 export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = defaultWrapper) {
   return {
-    listTemplatesMinimal(variables: ListTemplatesMinimalQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<ListTemplatesMinimalQuery> {
-      return withWrapper((wrappedRequestHeaders) => client.request<ListTemplatesMinimalQuery>({ document: ListTemplatesMinimalDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'listTemplatesMinimal', 'query', variables);
+    listTemplates(variables: ListTemplatesQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<ListTemplatesQuery> {
+      return withWrapper((wrappedRequestHeaders) => client.request<ListTemplatesQuery>({ document: ListTemplatesDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'listTemplates', 'query', variables);
     },
     createTemplateMinimal(variables: CreateTemplateMinimalMutationVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<CreateTemplateMinimalMutation> {
       return withWrapper((wrappedRequestHeaders) => client.request<CreateTemplateMinimalMutation>({ document: CreateTemplateMinimalDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'createTemplateMinimal', 'mutation', variables);

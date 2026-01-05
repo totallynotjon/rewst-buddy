@@ -1,7 +1,7 @@
 import type { SyncOnSaveChangeEvent } from '@events';
 import { context, extPrefix } from '@global';
 import vscode from 'vscode';
-import { TemplateLinkManager } from './TemplateLinkManager';
+import { LinkManager } from './LinkManager';
 
 export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 	public globalEnabled = false;
@@ -12,20 +12,18 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 
 	private disposables: vscode.Disposable[] = [];
 
-	constructor() {
+	async init(): Promise<_> {
 		this.disposables.push(
 			vscode.workspace.onDidChangeConfiguration(e => {
 				if (e.affectsConfiguration('rewst-buddy.enableSyncOnSave')) {
 					this.handleConfigChange();
 				}
 			}),
-			TemplateLinkManager.onLinksSaved(() => {
+			LinkManager.onLinksSaved(() => {
 				this.cleanupExclusions();
 			}),
 		);
-	}
 
-	async init(): Promise<_> {
 		await this.handleConfigChange();
 		this.updateContextKey();
 		return this;
@@ -42,7 +40,7 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 	}
 
 	private _isUriSynced(uri: vscode.Uri): boolean {
-		if (!TemplateLinkManager.isLinked(uri)) return false;
+		if (!LinkManager.isLinked(uri)) return false;
 		return !this.getExclusions().includes(uri.toString());
 	}
 
@@ -66,7 +64,7 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 
 	private cleanupExclusions(): void {
 		const exclusions = this.getExclusions();
-		const linkedUris = new Set(TemplateLinkManager.getAllUriStrings());
+		const linkedUris = new Set(LinkManager.getAllUriStrings());
 		const validExclusions = exclusions.filter(uri => linkedUris.has(uri));
 
 		if (validExclusions.length !== exclusions.length) {
@@ -74,16 +72,17 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	public async addExclusion(uri: vscode.Uri): Promise<void> {
+	public async addExclusion(uri: vscode.Uri | string): Promise<void> {
 		const exclusions = new Set(this.getExclusions());
 		exclusions.add(uri.toString());
 		await this.save(Array.from(exclusions.values()));
 	}
 
-	public async removeExclusion(uri: vscode.Uri): Promise<void> {
+	public async removeExclusion(uri: vscode.Uri | string): Promise<boolean> {
 		const exclusions = new Set(this.getExclusions());
-		exclusions.delete(uri.toString());
+		const removed = exclusions.delete(uri.toString());
 		await this.save(Array.from(exclusions.values()));
+		return removed;
 	}
 
 	private async save(exclusions: string[]): Promise<void> {

@@ -42,5 +42,7 @@
 	"eslint.validate": ["javascript", "typescript"],
 	"prettier.configPath": ".prettierrc",
 	"prettier.requireConfig": true,
-	"git.allowNoVerifyCommit": true
+	"git.allowNoVerifyCommit": true,
+	"chat.extensionUnification.enabled": false,
+	"chat.disableAIFeatures": true
 }

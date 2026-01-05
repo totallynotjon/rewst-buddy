@@ -1,4 +1,4 @@
-import { TemplateLinkManager } from '@models';
+import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { getTemplateURLParams } from '@utils';
 import vscode from 'vscode';
@@ -33,10 +33,16 @@ export class OpenTemplateFromURL extends GenericCommand {
 			return;
 		}
 
-		await TemplateLinkManager.addLink({
-			sessionProfile: session.profile,
+		const templateLink: TemplateLink = {
+			type: 'Template',
 			template: template,
 			uriString: resultUri.toString(),
-		}).save();
+			org: {
+				id: template.orgId,
+				name: template.organization.name,
+			},
+		};
+
+		await LinkManager.addLink(templateLink).save();
 	}
 }

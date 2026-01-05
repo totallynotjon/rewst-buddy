@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.26.0]
+
+### Added
+
+- **Folder Linking** - Link entire folders to Rewst organizations
+    - Right-click folder → "Link Folder to Organization" to associate a local folder with an org
+    - Right-click linked folder → "Unlink Folder from Organization" to remove association
+    - Context menu commands only appear on appropriate folders (linked vs unlinked)
+
+- **Fetch Folder** - Bulk download all templates from an organization
+    - Right-click linked folder → "Fetch Folder" to download all templates
+    - Automatically creates files for each template in the organization
+    - Skips templates that already exist locally (by ID)
+    - Handles filename collisions by appending `(1)`, `(2)`, etc.
+    - Each downloaded template is automatically linked for future syncing
+
+- **New Utilities** - Reusable file operation utilities
+    - `uriExists()` - Check if file/folder exists at a URI
+    - `writeTextFile()` - Write text content to a file
+    - `makeUniqueUri()` - Generate unique filename with collision handling
+    - `isDescendant()` - Check if URI is descendant of another
+    - `parseArgsUri()` - Parse URI from command arguments
+
+### Changed
+
+- **LinkManager Refactor** - Unified link management for templates and folders
+    - Renamed `TemplateLinkManager` → `LinkManager`
+    - Now supports multiple link types: `Template` and `Folder`
+    - Added `getTemplateLink()`, `getFolderLink()`, `getOrgLinks()`, `getOrgTemplateLinks()`
+    - Links now store `org` directly instead of `sessionProfile`
+    - Backward compatible: migrates legacy `sessionProfile` field automatically
+
+- **Simplified Link Structure** - Links now reference org directly
+    - `TemplateLink` now contains `org: { id, name }` instead of `sessionProfile`
+    - Reduces coupling between links and session management
+    - All template commands updated to use new structure
+
+- **Initialization Order** - Improved extension startup
+    - Removed automatic session refresh on activation (prevents blocking)
+    - `LinkManager` now uses `init()` method instead of constructor for event subscriptions
+    - Prevents circular dependency issues during initialization
+
+- **Rename Handling** - Improved file/folder rename tracking
+    - Sync exclusions now properly follow renamed files
+    - Uses new `isDescendant()` utility for accurate parent-child detection
+
+### Fixed
+
+- **Filename Collision Bug** - Fixed unique filename generation
+    - Previously generated `file(1.txt)` instead of `file(1).txt`
+    - Now correctly places counter before file extension
+
 ## [0.25.0]
 
 ### Added

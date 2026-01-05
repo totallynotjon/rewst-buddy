@@ -1,6 +1,6 @@
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
-import { SyncOnSaveManager, TemplateLinkManager, TemplateSyncManager } from '@models';
+import { LinkManager, SyncOnSaveManager, TemplateSyncManager } from '@models';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
 import { RewstViewProvider, SessionTreeDataProvider, StatusBar } from '@ui';
@@ -17,7 +17,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	CommandInitiater.registerCommands();
 
 	// Register managers (self-register for their respective VS Code events)
-	context.subscriptions.push(TemplateLinkManager);
+	context.subscriptions.push(LinkManager.init());
 	context.subscriptions.push(TemplateSyncManager);
 	context.subscriptions.push(Server);
 	context.subscriptions.push(await SyncOnSaveManager.init());
@@ -49,8 +49,6 @@ export async function activate(context: vscode.ExtensionContext) {
 	const refresh = async () => {
 		await SessionManager.refreshActiveSessions();
 	};
-
-	await refresh();
 
 	const interval = setInterval(refresh, 15 * 60 * 1000); // Refresh all sessions every 15 minutes
 

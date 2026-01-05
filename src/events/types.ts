@@ -1,4 +1,4 @@
-import type { TemplateLink } from '@models';
+import { Link } from '@models';
 import type { Session } from '@sessions';
 import { SessionProfile } from '@sessions';
 
@@ -12,7 +12,7 @@ export interface SessionChangeEvent {
 }
 
 export interface LinksSavedEvent {
-	links: TemplateLink[];
+	links: Link[];
 }
 
 export interface SyncOnSaveChangeEvent {

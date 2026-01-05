@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.25.0",
+	"version": "0.26.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -144,6 +144,18 @@
 				"icon": "$(link-external)"
 			},
 			{
+				"command": "rewst-buddy.LinkFolder",
+				"title": "Link Folder to Organization"
+			},
+			{
+				"command": "rewst-buddy.FetchFolder",
+				"title": "Fetch Folder"
+			},
+			{
+				"command": "rewst-buddy.UnlinkFolder",
+				"title": "Unlink Folder from Organization"
+			},
+			{
 				"command": "rewst-buddy.prefix.ClearSessions",
 				"title": "Rewst Buddy: Clear Sessions"
 			},
@@ -223,7 +235,33 @@
 		},
 		"submenus": [],
 		"menus": {
+			"explorer/context": [
+				{
+					"command": "rewst-buddy.LinkFolder",
+					"when": "explorerResourceIsFolder && resourcePath not in rewst-buddy.linkedFolders"
+				},
+				{
+					"command": "rewst-buddy.UnlinkFolder",
+					"when": "explorerResourceIsFolder && resourcePath in rewst-buddy.linkedFolders"
+				},
+				{
+					"command": "rewst-buddy.FetchFolder",
+					"when": "explorerResourceIsFolder && resourcePath in rewst-buddy.linkedFolders"
+				}
+			],
 			"commandPalette": [
+				{
+					"command": "rewst-buddy.LinkFolder",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.FetchFolder",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.UnlinkFolder",
+					"when": "false"
+				},
 				{
 					"command": "rewst-buddy.prefix.CopyTemplateID",
 					"when": "resourcePath in rewst-buddy.linkedTemplates"

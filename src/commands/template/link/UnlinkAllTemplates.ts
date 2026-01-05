@@ -1,5 +1,5 @@
+import { LinkManager } from '@models';
 import { log } from '@utils';
-import { TemplateLinkManager } from '@models';
 import vscode from 'vscode';
 import GenericCommand from '../../GenericCommand';
 
@@ -15,7 +15,7 @@ export class UnlinkAllTemplates extends GenericCommand {
 
 		switch (choice) {
 			case 'Clear Links':
-				await TemplateLinkManager.clearTemplateLinks().save();
+				await LinkManager.clearTemplateLinks().save();
 				log.notifyInfo('Cleared Template Links');
 				break;
 		}

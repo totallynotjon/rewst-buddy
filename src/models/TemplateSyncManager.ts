@@ -1,15 +1,16 @@
+import { TemplateLink } from '@models';
 import { SessionManager, TemplateFragment } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
+import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
-import { TemplateLinkManager } from './TemplateLinkManager';
 
 export const TemplateSyncManager = new (class TemplateSyncManager implements vscode.Disposable {
 	private syncingUris = new Set<string>();
 	private disposables: vscode.Disposable[] = [];
 
 	constructor() {
-		this.disposables.push(vscode.workspace.onDidSaveTextDocument(doc => this.handleSave(doc)));
+		this.disposables.push(vscode.workspace.onDidSaveTextDocument(async doc => await this.handleSave(doc)));
 	}
 
 	dispose(): void {
@@ -32,9 +33,9 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 	}
 
 	async updateTemplateBody(doc: vscode.TextDocument) {
-		const link = TemplateLinkManager.getLink(doc.uri);
+		const link = LinkManager.getTemplateLink(doc.uri);
 
-		const session = await SessionManager.getProfileSession(link.sessionProfile);
+		const session = SessionManager.getSessionForOrg(link.org.id);
 
 		try {
 			const response = await session.sdk?.updateTemplateBody({
@@ -49,7 +50,7 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 
 			link.template = response.template;
 
-			TemplateLinkManager.addLink(link).save();
+			LinkManager.addLink(link).save();
 
 			log.info('Saved updated info to template');
 		} catch {
@@ -87,10 +88,11 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 			}
 		}
 
-		const link = TemplateLinkManager.getLink(doc.uri);
+		const link = LinkManager.getTemplateLink(doc.uri);
 		log.debug('Syncing template:', link);
 
-		const session = await SessionManager.getProfileSession(link.sessionProfile);
+		const session = SessionManager.getSessionForOrg(link.org.id);
+
 		let remoteTemplate;
 		try {
 			remoteTemplate = await session.getTemplate(link.template.id);
@@ -153,11 +155,14 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 		);
 		await vscode.workspace.applyEdit(edit);
 
-		await TemplateLinkManager.addLink({
-			sessionProfile: session.profile,
+		const templateLink: TemplateLink = {
+			type: 'Template',
 			template: remoteTemplate,
 			uriString: doc.uri.toString(),
-		}).save();
+			org: session.profile.org,
+		};
+
+		await LinkManager.addLink(templateLink).save();
 
 		if ((await vscode.workspace.save(doc.uri)) === undefined) {
 			throw log.error('Failed to save downloaded template to active editor');

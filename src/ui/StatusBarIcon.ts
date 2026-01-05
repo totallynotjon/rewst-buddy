@@ -1,5 +1,5 @@
 import { extPrefix } from '@global';
-import { SyncOnSaveManager, TemplateLink, TemplateLinkManager } from '@models';
+import { LinkManager, SyncOnSaveManager, TemplateLink } from '@models';
 import { Session, SessionManager } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
@@ -14,7 +14,7 @@ export class StatusBar implements vscode.Disposable {
 
 		this.disposables.push(
 			SessionManager.onSessionChange(() => this.update()),
-			TemplateLinkManager.onLinksSaved(() => this.update()),
+			LinkManager.onLinksSaved(() => this.update()),
 			vscode.window.onDidChangeActiveTextEditor(() => this.update()),
 			SyncOnSaveManager.onSyncOnSave(() => this.update()),
 		);
@@ -35,11 +35,11 @@ export class StatusBar implements vscode.Disposable {
 			return;
 		}
 
-		const isLinked = TemplateLinkManager.isLinked(activeEditor.document.uri);
+		const isLinked = LinkManager.isLinked(activeEditor.document.uri);
 
 		let link;
 		try {
-			link = TemplateLinkManager.getLink(activeEditor.document.uri);
+			link = LinkManager.getTemplateLink(activeEditor.document.uri);
 		} catch {
 			this.clear();
 			log.error('We failed to get the link of the active document for some reason.');
@@ -89,7 +89,7 @@ export class StatusBar implements vscode.Disposable {
 	}
 
 	private buildTooltip(link: TemplateLink): vscode.MarkdownString {
-		const { template, sessionProfile } = link;
+		const { template, org } = link;
 
 		const lines: string[] = [`## ${template.name}`];
 
@@ -98,8 +98,6 @@ export class StatusBar implements vscode.Disposable {
 		}
 
 		lines.push('', '---', '', `**Organization:** ${template.organization.name}`);
-
-		lines.push('', '---', '', `**Session:** ${sessionProfile.label}`, `**Region:** ${sessionProfile.region.name}`);
 
 		const md = new vscode.MarkdownString(lines.join('\n'));
 		md.isTrusted = true;

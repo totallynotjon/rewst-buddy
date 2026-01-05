@@ -18,7 +18,7 @@ export async function pickTemplate(session?: Session, org?: Org): Promise<Templa
 	if (!org) org = (await pickOrganization(session))?.org;
 	if (!org) return undefined;
 
-	const response = await session.sdk?.listTemplatesMinimal({ orgId: org.id });
+	const response = await session.sdk?.listTemplates({ orgId: org.id });
 	const templates = response?.templates ?? [];
 
 	if (templates.length === 0) {

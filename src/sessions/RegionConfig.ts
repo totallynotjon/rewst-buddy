@@ -1,3 +1,4 @@
+import { log } from '@utils';
 import vscode from 'vscode';
 
 export interface RegionConfig {
@@ -9,7 +10,7 @@ export interface RegionConfig {
 
 export function getRegionConfigs(): RegionConfig[] {
 	const config = vscode.workspace.getConfiguration('rewst-buddy');
-	return config.get<RegionConfig[]>('regions', [
+	const regions = config.get<RegionConfig[]>('regions', [
 		{
 			name: 'North America',
 			cookieName: 'appSession',
@@ -17,4 +18,10 @@ export function getRegionConfigs(): RegionConfig[] {
 			loginUrl: 'https://app.rewst.io',
 		},
 	]);
+
+	if (regions.length === 0)
+		throw log.notifyError(
+			`No regions were found in vscode config. Sessions cannot be created if there are no defined regions`,
+		);
+	return regions;
 }

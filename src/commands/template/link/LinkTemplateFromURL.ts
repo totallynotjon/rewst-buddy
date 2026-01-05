@@ -1,4 +1,4 @@
-import { TemplateLinkManager } from '@models';
+import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { ensureSavedDocument, getTemplateURLParams, log, requireUnlinked } from '@utils';
 import vscode from 'vscode';
@@ -23,11 +23,17 @@ export class LinkTemplateFromURL extends GenericCommand {
 		template.body = document.getText();
 		template.updatedAt = '0';
 
-		await TemplateLinkManager.addLink({
-			sessionProfile: session.profile,
+		const templateLink: TemplateLink = {
+			type: 'Template',
 			template: template,
 			uriString: document.uri.toString(),
-		}).save();
+			org: {
+				id: template.orgId,
+				name: template.organization.name,
+			},
+		};
+
+		await LinkManager.addLink(templateLink).save();
 
 		log.notifyInfo('SUCCESS: Linked template');
 	}

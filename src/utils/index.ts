@@ -1,5 +1,10 @@
 export { ensureSavedDocument, getDocumentFromArgs } from './ensureSavedDocument';
+export { isDescendant } from './isDescendant';
 export { log } from './log';
+export { makeUniqueUri } from './makeUniqueUri';
+export { parseArgsUri } from './parseArgsUri';
 export { parseCookieString } from './parseCookieString';
 export { requireUnlinked } from './requireUnlinked';
 export { getTemplateURLParams, TemplateURLParams } from './templateUrl';
+export { uriExists } from './uriExists';
+export { writeTextFile } from './writeTextFile';

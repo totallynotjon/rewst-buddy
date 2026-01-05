@@ -1,4 +1,4 @@
-import { TemplateLinkManager } from '@models';
+import { LinkManager, TemplateLink } from '@models';
 import { pickTemplate } from '@ui';
 import { ensureSavedDocument, log, requireUnlinked } from '@utils';
 import GenericCommand from '../../GenericCommand';
@@ -17,11 +17,17 @@ export class LinkTemplateInteractive extends GenericCommand {
 		template.body = document.getText();
 		template.updatedAt = '0';
 
-		await TemplateLinkManager.addLink({
-			sessionProfile: templatePick.session.profile,
+		const templateLink: TemplateLink = {
+			type: 'Template',
 			template: template,
 			uriString: document.uri.toString(),
-		}).save();
+			org: {
+				id: template.orgId,
+				name: template.organization.name,
+			},
+		};
+
+		await LinkManager.addLink(templateLink).save();
 
 		log.notifyInfo('SUCCESS: Linked template');
 	}

@@ -1,4 +1,4 @@
-import { TemplateLinkManager } from '@models';
+import { LinkManager, TemplateLink } from '@models';
 import { pickTemplate } from '@ui';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
@@ -27,10 +27,16 @@ export class OpenTemplateInteractive extends GenericCommand {
 			return;
 		}
 
-		await TemplateLinkManager.addLink({
-			sessionProfile: pick.session.profile,
+		const templateLink: TemplateLink = {
+			type: 'Template',
 			template: template,
 			uriString: resultUri.toString(),
-		}).save();
+			org: {
+				id: template.orgId,
+				name: template.organization.name,
+			},
+		};
+
+		await LinkManager.addLink(templateLink).save();
 	}
 }

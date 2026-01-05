@@ -1,4 +1,4 @@
-import { TemplateLinkManager } from '@models';
+import { LinkManager } from '@models';
 import { ensureSavedDocument, log } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
@@ -9,7 +9,7 @@ export class CopyTemplateID extends GenericCommand {
 	async execute(...args: unknown[]): Promise<void> {
 		const document = await ensureSavedDocument(args);
 		try {
-			const link = TemplateLinkManager.getLink(document.uri);
+			const link = LinkManager.getTemplateLink(document.uri);
 
 			const templateId = link.template.id;
 

@@ -1,4 +1,4 @@
-import { TemplateLinkManager } from '@models';
+import { LinkManager, TemplateLink } from '@models';
 import { pickOrganization } from '@ui';
 import { ensureSavedDocument, log, requireUnlinked } from '@utils';
 import path from 'path';
@@ -38,11 +38,14 @@ export class CreateTemplate extends GenericCommand {
 		}
 
 		// now we link the template now that it has been created
-		await TemplateLinkManager.addLink({
-			sessionProfile: session.profile,
+		const templateLink: TemplateLink = {
+			type: 'Template',
 			template: response.template,
 			uriString: document.uri.toString(),
-		}).save();
+			org: org,
+		};
+
+		await LinkManager.addLink(templateLink).save();
 
 		log.notifyInfo(`SUCCESS: Created template "${response.template.name}"`);
 	}

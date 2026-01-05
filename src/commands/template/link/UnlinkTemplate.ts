@@ -1,4 +1,4 @@
-import { TemplateLinkManager } from '@models';
+import { LinkManager } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../../GenericCommand';
@@ -14,11 +14,11 @@ export class UnlinkTemplate extends GenericCommand {
 
 		const uri = editor.document.uri;
 
-		if (!TemplateLinkManager.isLinked(uri)) {
+		if (!LinkManager.isLinked(uri)) {
 			throw log.error(`There is no template link to clear for uri ${uri.toString()}`);
 		}
 
-		await TemplateLinkManager.removeLink(uri.toString()).save();
+		await LinkManager.removeLink(uri.toString()).save();
 		log.notifyInfo(`SUCCESS: Unlinked template from uri ${uri.toString()}`);
 	}
 }

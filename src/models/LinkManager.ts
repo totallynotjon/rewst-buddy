@@ -1,12 +1,13 @@
 import type { LinksSavedEvent } from '@events';
 import { context, extPrefix } from '@global';
-import { log } from '@utils';
-import vscode from 'vscode';
-import TemplateLink from './TemplateLink';
+import { isDescendant, log } from '@utils';
+import vscode, { Uri } from 'vscode';
+import { SyncOnSaveManager } from './SyncOnSaveManager';
+import { FolderLink, Link, LinkType, Org, TemplateLink } from './types';
 
-export const TemplateLinkManager = new (class TemplateLinkManager implements vscode.Disposable {
+export const LinkManager = new (class _ implements vscode.Disposable {
 	readonly stateKey = 'RewstTemplateLinks';
-	linkMap = new Map<string, TemplateLink>();
+	linkMap = new Map<string, Link>();
 	loaded = false;
 
 	private readonly linksSavedEmitter = new vscode.EventEmitter<LinksSavedEvent>();
@@ -14,8 +15,9 @@ export const TemplateLinkManager = new (class TemplateLinkManager implements vsc
 
 	private disposables: vscode.Disposable[] = [];
 
-	constructor() {
+	init(): _ {
 		this.disposables.push(vscode.workspace.onDidRenameFiles(e => this.handleRename(e)));
+		return this;
 	}
 
 	dispose(): void {
@@ -38,10 +40,10 @@ export const TemplateLinkManager = new (class TemplateLinkManager implements vsc
 					const newPrefix = file.newUri.toString();
 
 					for (const child of uris) {
-						if (this.isDescendant(file.oldUri, vscode.Uri.parse(child))) {
+						if (isDescendant(file.oldUri, vscode.Uri.parse(child))) {
 							const newUri = newPrefix + child.slice(oldPrefix.length);
 							try {
-								this.moveLink(child, newUri);
+								await this.moveLink(child, newUri);
 							} catch (err) {
 								log.notifyError(`Failed to handle rename`, err);
 							}
@@ -49,7 +51,7 @@ export const TemplateLinkManager = new (class TemplateLinkManager implements vsc
 					}
 				} else if (isFile) {
 					try {
-						this.moveLink(file.oldUri.toString(), file.newUri.toString());
+						await this.moveLink(file.oldUri.toString(), file.newUri.toString());
 					} catch (err) {
 						log.notifyError(`Failed to handle rename`, err);
 					}
@@ -62,37 +64,33 @@ export const TemplateLinkManager = new (class TemplateLinkManager implements vsc
 		}
 	}
 
-	private isDescendant(parent: vscode.Uri, candidate: vscode.Uri): boolean {
-		if (parent.scheme !== candidate.scheme || parent.authority !== candidate.authority) {
-			return false;
+	clearTemplateLinks(): _ {
+		for (const link of this.linkMap.values()) {
+			if (link.type === 'Template') {
+				this.linkMap.delete(link.uriString);
+			}
 		}
-
-		const parentPath = parent.path.endsWith('/') ? parent.path : parent.path + '/';
-		const childPath = candidate.path;
-
-		return childPath === parent.path || childPath.startsWith(parentPath);
-	}
-
-	clearTemplateLinks(): TemplateLinkManager {
-		this.linkMap.clear();
 		return this;
 	}
 
-	removeLink(uriString: string): TemplateLinkManager {
+	removeLink(uriString: string): _ {
 		this.linkMap.delete(uriString);
 		return this;
 	}
 
-	addLink(link: TemplateLink): TemplateLinkManager {
+	addLink(link: Link): _ {
 		this.linkMap.set(link.uriString, link);
 		return this;
 	}
 
-	moveLink(oldUriString: string, newUriString: string): TemplateLinkManager {
+	async moveLink(oldUriString: string, newUriString: string): Promise<_> {
 		const link = this.linkMap.get(oldUriString);
 		if (link === undefined) throw log.error(`Tried to move a link that doesn't exist`, oldUriString, newUriString);
 
 		link.uriString = newUriString;
+
+		const excluded = await SyncOnSaveManager.removeExclusion(oldUriString);
+		if (excluded) await SyncOnSaveManager.addExclusion(newUriString);
 
 		this.removeLink(oldUriString).addLink(link);
 
@@ -101,36 +99,53 @@ export const TemplateLinkManager = new (class TemplateLinkManager implements vsc
 		return this;
 	}
 
-	async save(): Promise<TemplateLinkManager> {
-		const links: TemplateLink[] = Array.from(this.linkMap.values());
+	async save(): Promise<_> {
+		const links: Link[] = Array.from(this.linkMap.values());
 		await context.globalState.update(this.stateKey, links);
-		this.updateLinkedTemplatesContext(links);
-		this.linksSavedEmitter.fire({ links });
+		this.updateLinksContext(links);
+		this.linksSavedEmitter.fire({ links: links });
 		return this;
 	}
 
-	private updateLinkedTemplatesContext(links: TemplateLink[]) {
-		const pathObject: Record<string, boolean> = {};
+	private updateLinksContext(links: Link[]) {
+		const folders: Record<string, boolean> = {};
+		const templates: Record<string, boolean> = {};
 		for (const link of links) {
-			pathObject[vscode.Uri.parse(link.uriString).fsPath] = true;
+			if (link.type == 'Folder') {
+				folders[vscode.Uri.parse(link.uriString).fsPath] = true;
+			} else if (link.type == 'Template') {
+				templates[vscode.Uri.parse(link.uriString).fsPath] = true;
+			}
 		}
-		vscode.commands.executeCommand('setContext', `${extPrefix}.linkedTemplates`, pathObject);
+		vscode.commands.executeCommand('setContext', `${extPrefix}.linkedTemplates`, templates);
+		vscode.commands.executeCommand('setContext', `${extPrefix}.linkedFolders`, folders);
 	}
 
-	loadLinks(): TemplateLinkManager {
-		const links = context.globalState.get<TemplateLink[]>(this.stateKey) ?? [];
+	loadLinks(): _ {
+		const links = context.globalState.get<Link[]>(this.stateKey) ?? [];
 		this.linkMap.clear();
 
 		for (const link of links) {
+			// Handle missing type (pre-folder era)
+			if (link.type === undefined) {
+				link.type = 'Template';
+			}
+
+			// Handle legacy sessionProfile field
+			if ((link as any).sessionProfile) {
+				link.org = (link as any).sessionProfile.org;
+				delete (link as any).sessionProfile;
+			}
+
 			this.addLink(link);
 		}
 		this.loaded = true;
-		this.updateLinkedTemplatesContext(links);
+		this.updateLinksContext(links);
 
 		return this;
 	}
 
-	loadIfNotAlready(): TemplateLinkManager {
+	loadIfNotAlready(): _ {
 		if (!this.loaded) this.loadLinks();
 		return this;
 	}
@@ -140,13 +155,33 @@ export const TemplateLinkManager = new (class TemplateLinkManager implements vsc
 		return this.linkMap.has(uri.toString());
 	}
 
-	getLink(uri: vscode.Uri): TemplateLink {
+	getLink(uri: vscode.Uri, type: LinkType): Link {
 		this.loadIfNotAlready();
 		const link = this.linkMap.get(uri.toString());
 
 		if (link === undefined) throw log.error(`Could not find link for uri ${uri.toString()}`);
+		if (link.type !== type) throw log.error(`Incorrect type retrieved`, link.type, type);
 
 		return link;
+	}
+
+	getTemplateLink(uri: vscode.Uri): TemplateLink {
+		return this.getLink(uri, 'Template') as TemplateLink;
+	}
+
+	getFolderLink(uri: Uri): FolderLink {
+		return this.getLink(uri, 'Folder') as FolderLink;
+	}
+
+	getOrgLinks(org: Org): Link[] {
+		this.loadIfNotAlready();
+		const links = Array.from(this.linkMap.values());
+		return links.filter(link => link.org.id === org.id);
+	}
+
+	getOrgTemplateLinks(org: Org): TemplateLink[] {
+		const links = this.getOrgLinks(org);
+		return links.filter(l => l.type == 'Template') as TemplateLink[];
 	}
 
 	getAllUriStrings(): string[] {

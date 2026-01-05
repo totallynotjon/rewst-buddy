@@ -37,7 +37,7 @@ fragment template on Template {
 	}
 }
 
-query listTemplatesMinimal($orgId: ID!) {
+query listTemplates($orgId: ID!) {
 	templates(where: { orgId: $orgId }) {
 		...template
 	}
