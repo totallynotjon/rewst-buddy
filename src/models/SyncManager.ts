@@ -1,6 +1,6 @@
-import { Link, TemplateLink } from '@models';
+import { FolderLink, Link, TemplateLink } from '@models';
 import { Session, SessionManager, TemplateFragment } from '@sessions';
-import { log } from '@utils';
+import { log, makeUniqueUri, writeTextFile } from '@utils';
 import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
@@ -8,14 +8,17 @@ import { SyncOnSaveManager } from './SyncOnSaveManager';
 export const SyncManager = new (class _ implements vscode.Disposable {
 	private syncingUris = new Set<string>();
 	private disposables: vscode.Disposable[] = [];
+	private interval!: NodeJS.Timeout;
 
 	constructor() {
 		this.disposables.push(vscode.workspace.onDidSaveTextDocument(async doc => await this.handleSave(doc)));
 		this.disposables.push(vscode.workspace.onDidOpenTextDocument(async doc => await this.checkAutoFetch(doc)));
+		this.interval = setInterval(() => this.fetchAllFolders(), 15 * 60 * 1000);
 	}
 
 	dispose(): void {
 		this.disposables.forEach(d => d.dispose());
+		clearInterval(this.interval);
 	}
 
 	private async checkAutoFetch(doc: vscode.TextDocument) {
@@ -205,5 +208,59 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		const stat = await vscode.workspace.fs.stat(uri);
 		link.stat = stat;
 		await LinkManager.addLink(link).save();
+	}
+
+	async fetchAllFolders() {
+		log.debug('Fetching all folders');
+		const links = LinkManager.getFolderLinks();
+		for (const link of links) {
+			await this.fetchFolder(link);
+		}
+	}
+
+	async fetchFolder(folderLink: FolderLink) {
+		log.debug(`Fetching templates for folder ${folderLink.org.name}: ${folderLink.uriString}`);
+
+		const { org, uriString } = folderLink;
+
+		const ids = LinkManager.getOrgTemplateLinks(org).map(l => l.template.id);
+
+		const session = SessionManager.getSessionForOrg(org.id);
+
+		const response = await session.sdk?.listTemplates({ orgId: org.id });
+		if (!response?.templates) throw log.notifyError("Couldn't load templates for organization");
+
+		const templates = response.templates;
+
+		const missingTemplates = templates.filter(t => !ids.includes(t.id));
+		log.debug('Missing templates:', missingTemplates);
+
+		for (const template of missingTemplates) {
+			await this.makeTemplate(folderLink, template);
+		}
+
+		await LinkManager.save();
+		log.notifyInfo(`SUCCESS: Fetched ${missingTemplates.length} templates into the folder`);
+	}
+
+	private async makeTemplate(folderLink: FolderLink, template: TemplateFragment) {
+		const folderUri = vscode.Uri.parse(folderLink.uriString);
+		const templateUri = await makeUniqueUri(folderUri, template.name);
+
+		try {
+			await writeTextFile(templateUri, template.body);
+		} catch (err) {
+			log.warn(`Failed to create template file for "${template.name}": ${err}`);
+			return;
+		}
+
+		const templateLink: TemplateLink = {
+			type: 'Template',
+			template: template,
+			uriString: templateUri.toString(),
+			org: folderLink.org,
+		};
+
+		LinkManager.addLink(templateLink);
 	}
 })();

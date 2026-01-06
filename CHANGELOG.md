@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.28.0] - 2026-01-05
+
+### Added
+
+- **Automatic Folder Syncing** - Linked folders now automatically check for new templates every 15 minutes
+    - Runs in background to keep local template files in sync with Rewst
+    - Only fetches templates that don't already exist locally
+    - Handles errors gracefully without interrupting workflow
+
+- **Immediate Template Fetch on Link** - Linking a folder now automatically downloads all templates
+    - No need to manually run "Fetch Folder" after linking
+    - Templates are ready to edit immediately after folder link completes
+    - Shows success notification with count of fetched templates
+
+### Changed
+
+- **Refactored Folder Operations** - Moved folder fetching logic from command into SyncManager
+    - Better code organization and separation of concerns
+    - Enables reuse of fetch logic for both manual and automatic syncing
+    - Improved error handling and user notifications
+
+### Fixed
+
+- **Resource Leak** - Fixed setInterval starting before extension activation
+    - Interval now properly initialized in constructor after extension is ready
+    - Prevents premature fetching before sessions are loaded
+- **API Flooding** - Fixed parallel folder fetching overwhelming Rewst API
+    - Folders now process sequentially instead of all at once
+    - Prevents rate limiting and improves reliability
+- **Inconsistent State** - Fixed folder linking leaving inconsistent state on fetch failure
+    - Folder link succeeds even if initial template fetch fails
+    - User receives appropriate error notification but folder remains linked
+    - Automatic syncing will retry on next interval
+
 ## [0.27.0] - 2026-01-05
 
 ### Added

@@ -24,13 +24,13 @@ Since Rewst does not expose API keys for working with GraphQL directly, we do re
 
 Alternatively, use the command palette: `Rewst Buddy: New Rewst Session` (Cmd/Ctrl + Shift + P)
 
-**2. Link a folder and fetch all templates:**
+**2. Link a folder to download all templates:**
 
 1. Create or choose a local folder for your templates
 2. Right-click the folder in the explorer → **Link Folder to Organization**
 3. Select your organization
-4. Right-click the linked folder → **Fetch Folder**
-5. All templates from that organization are downloaded and automatically linked
+4. All templates are automatically downloaded and linked (no manual fetch needed)
+5. New templates are automatically discovered and fetched every 15 minutes
 
 **3. Edit and sync:**
 
@@ -119,9 +119,9 @@ All commands are also available via Command Palette (Cmd/Ctrl + Shift + P):
 
 **Folder Operations (v0.26)**
 
-- `Link Folder` - Link folder to organization for bulk operations
+- `Link Folder` - Link folder to organization (automatically downloads all templates)
 - `Unlink Folder` - Remove folder link
-- `Fetch Folder` - Download all templates from organization to linked folder
+- `Fetch Folder` - Manually check for and download new templates (runs automatically every 15 minutes)
 
 **Template Operations (Interactive)**
 

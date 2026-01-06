@@ -192,4 +192,12 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		this.loadIfNotAlready();
 		return Array.from(this.linkMap.keys()).map(uri => vscode.Uri.parse(uri));
 	}
+
+	getFolderLinks(): FolderLink[] {
+		this.loadIfNotAlready();
+
+		const links = Array.from(this.linkMap.values());
+
+		return links.filter(l => l.type === 'Folder') as FolderLink[];
+	}
 })();
