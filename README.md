@@ -61,13 +61,18 @@ If you prefer to work with specific templates rather than downloading everything
 
 ### Auto-Sync on Save
 
-By default, linked templates automatically sync to Rewst when you save. To disable:
+By default, linked templates automatically sync to Rewst when you save. Control this behavior with:
 
 ```json
 {
-	"rewst-buddy.enableSyncOnSave": false
+	"rewst-buddy.syncOnSaveByDefault": false
 }
 ```
+
+- When `true` (default): all linked files sync unless explicitly disabled
+- When `false`: files only sync when explicitly enabled
+
+Use `Enable Sync-On-Save` and `Disable Sync-On-Save` commands to control individual files.
 
 > Auto-sync performs the same safety checks as manual sync, preventing overwrites if the template was modified in Rewst since your last sync.
 
@@ -79,6 +84,14 @@ When you open a linked template file with sync-on-save enabled, the extension au
 - A newer version exists in Rewst
 
 This keeps your local files in sync with Rewst changes made by others, while protecting your local edits from being overwritten.
+
+### Smart Template Opening (v0.29)
+
+When opening templates via `Open Template` or `Open Template from URL`:
+
+- The extension checks if the template is already linked to a local file
+- Opens the existing linked file instead of creating a new untitled document
+- If linked to multiple files, displays a picker to select which file to open
 
 ### File Rename Support
 
@@ -137,6 +150,8 @@ All commands are also available via Command Palette (Cmd/Ctrl + Shift + P):
 **Sync & Maintenance**
 
 - `Sync Template` - Push changes with conflict detection
+- `Enable Sync-On-Save` - Enable automatic sync for current file
+- `Disable Sync-On-Save` - Disable automatic sync for current file
 - `Unlink Template` - Remove template link from current file
 - `Unlink All Templates` - Remove all file-to-template associations
 
@@ -161,7 +176,7 @@ Click the Rewst Buddy icon in the activity bar to open the sidebar:
 When a linked template is active:
 
 - Shows sync-on-save status: **ON** (with checkmark) or **OFF** (with warning icon)
-- Click to toggle sync-on-save exclusion for the current file
+- Click to toggle sync-on-save for the current file
 - Hover for detailed tooltip with template name, description, and organization
 - Displays error indicator if no active session exists for the template's organization
 
