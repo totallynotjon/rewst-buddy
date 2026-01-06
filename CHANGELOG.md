@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.30.2] - 2026-01-06
+
+### Fixed
+
+- **Autofetch** - Templates created from folder sync now properly track file stats for autofetch
+
 ## [0.30.1] - 2026-01-06
 
 ### Fixed

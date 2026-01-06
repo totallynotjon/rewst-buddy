@@ -261,6 +261,6 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			org: folderLink.org,
 		};
 
-		LinkManager.addLink(templateLink);
+		this.addLink(templateLink, templateUri);
 	}
 })();
