@@ -14,6 +14,9 @@ import { uriExists } from './uriExists';
  * const uri = await makeUniqueUri(folderUri, "report.txt");
  */
 export async function makeUniqueUri(folderUri: vscode.Uri, filename: string): Promise<vscode.Uri> {
+	// Sanitize filename: replace characters invalid on Windows/Linux filesystems
+	filename = filename.replace(/[<>:"/\\|?*]/g, '_');
+
 	const dotIndex = filename.lastIndexOf('.');
 	const base = dotIndex > 0 ? filename.slice(0, dotIndex) : filename;
 	const ext = dotIndex > 0 ? filename.slice(dotIndex) : '';

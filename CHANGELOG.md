@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.30.1] - 2026-01-06
+
+### Fixed
+
+- **Package Size** - Fixed `.vscodeignore` including 4,400+ `.d.ts` files from node_modules
+- **Filename Sanitization** - Template filenames now sanitize characters invalid on Windows/Linux (`<>:"/\|?*`)
+
 ## [0.30.0] - 2026-01-06
 
 ### Changed
