@@ -68,14 +68,14 @@ export class StatusBar implements vscode.Disposable {
 	private privateWarnSyncOnSaveDisabled() {
 		this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
 		this.item.text = 'Rewst Sync-On-Save: OFF $(warning)'; // built-in warning icon
-		this.item.command = `${extPrefix}.prefix.RemoveSyncExclusion`;
+		this.item.command = `${extPrefix}.prefix.EnableSyncOnSave`;
 		this.item.show();
 	}
 
 	private privateSyncOnSaveEnabled() {
 		this.item.backgroundColor = undefined;
 		this.item.text = 'Rewst Sync-On-Save: ON $(check)'; // built-in warning icon
-		this.item.command = `${extPrefix}.prefix.AddSyncExclusion`;
+		this.item.command = `${extPrefix}.prefix.DisableSyncOnSave`;
 		this.item.show();
 	}
 

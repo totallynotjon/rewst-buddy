@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.29.0",
+	"version": "0.30.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -73,10 +73,10 @@
 						]
 					}
 				},
-				"rewst-buddy.enableSyncOnSave": {
+				"rewst-buddy.syncOnSaveByDefault": {
 					"type": "boolean",
-					"default": true,
-					"description": "Enable Sync on Save."
+					"default": false,
+					"description": "When enabled, all linked files sync on save by default (use Disable Sync-On-Save to exclude specific files). When disabled, files only sync when explicitly enabled."
 				},
 				"rewst-buddy.server.enabled": {
 					"type": "boolean",
@@ -199,13 +199,13 @@
 				"icon": "$(file-add)"
 			},
 			{
-				"command": "rewst-buddy.prefix.AddSyncExclusion",
-				"title": "Rewst Buddy: Add Sync-On-Save Exclusion",
-				"icon": "$(circle-slash)"
+				"command": "rewst-buddy.prefix.EnableSyncOnSave",
+				"title": "Rewst Buddy: Enable Sync-On-Save",
+				"icon": "$(sync)"
 			},
 			{
-				"command": "rewst-buddy.prefix.RemoveSyncExclusion",
-				"title": "Rewst Buddy: Remove Sync-On-Save Exclusion",
+				"command": "rewst-buddy.prefix.DisableSyncOnSave",
+				"title": "Rewst Buddy: Disable Sync-On-Save",
 				"icon": "$(sync-ignored)"
 			}
 		],
@@ -299,12 +299,12 @@
 					"when": "resourcePath in rewst-buddy.linkedTemplates"
 				},
 				{
-					"command": "rewst-buddy.prefix.AddSyncExclusion",
-					"when": "resourcePath in rewst-buddy.linkedTemplates && resourcePath not in rewst-buddy.syncExclusions"
+					"command": "rewst-buddy.prefix.EnableSyncOnSave",
+					"when": "false"
 				},
 				{
-					"command": "rewst-buddy.prefix.RemoveSyncExclusion",
-					"when": "resourcePath in rewst-buddy.linkedTemplates && resourcePath in rewst-buddy.syncExclusions"
+					"command": "rewst-buddy.prefix.DisableSyncOnSave",
+					"when": "false"
 				}
 			],
 			"editor/context": [

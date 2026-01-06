@@ -81,8 +81,13 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 		link.uriString = newUriString;
 
-		const excluded = await SyncOnSaveManager.removeExclusion(oldUriString);
-		if (excluded) await SyncOnSaveManager.addExclusion(newUriString);
+		// Move inclusion status if present
+		const wasIncluded = await SyncOnSaveManager.removeInclusion(oldUriString);
+		if (wasIncluded) await SyncOnSaveManager.addInclusion(newUriString);
+
+		// Move exclusion status if present
+		const wasExcluded = await SyncOnSaveManager.removeExclusion(oldUriString);
+		if (wasExcluded) await SyncOnSaveManager.addExclusion(newUriString);
 
 		this.removeLink(oldUriString).addLink(link);
 

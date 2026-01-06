@@ -30,7 +30,6 @@ vsc-extension-quickstart.md
 
 # TypeScript source (keep only compiled)
 **/*.ts
-!**/*.d.ts
 
 # Misc
 *.code-workspace

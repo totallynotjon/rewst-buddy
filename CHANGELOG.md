@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.30.0] - 2026-01-06
+
+### Changed
+
+- **Flexible Sync-On-Save Control** - Refactored sync-on-save to support both opt-in and opt-out modes
+    - New `syncOnSaveByDefault` setting (replaces `enableSyncOnSave`) controls default behavior
+    - When enabled: all linked files sync unless explicitly disabled (exclusion mode)
+    - When disabled (default): files only sync when explicitly enabled (inclusion mode)
+    - Use `Enable Sync-On-Save` and `Disable Sync-On-Save` commands to control individual files
+    - Status bar click toggles sync state for current file
+
 ## [0.29.0] - 2026-01-05
 
 ### Added

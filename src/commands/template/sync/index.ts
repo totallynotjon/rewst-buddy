@@ -1,3 +1,3 @@
-export { AddSyncExclusion } from './AddSyncExclusion';
-export { RemoveSyncExclusion } from './RemoveSyncExclusion';
+export { DisableSyncOnSave } from './DisableSyncOnSave';
+export { EnableSyncOnSave } from './EnableSyncOnSave';
 export { SyncTemplate } from './SyncTemplate';
