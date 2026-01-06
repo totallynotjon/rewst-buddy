@@ -6,14 +6,18 @@ export class FetchFolder extends GenericCommand {
 	commandName = 'FetchFolder';
 
 	async execute(...args: any[]): Promise<void> {
+		log.trace('FetchFolder: starting');
+
 		const uri = parseArgsUri(args);
+		log.debug('FetchFolder: fetching', uri.fsPath);
 
 		const folderLink = LinkManager.getFolderLink(uri);
 
 		try {
 			await SyncManager.fetchFolder(folderLink);
+			log.trace('FetchFolder: completed');
 		} catch (e) {
-			log.notifyError('Failed to fetch folder', e);
+			log.notifyError('FetchFolder: failed', e);
 		}
 	}
 }

@@ -8,6 +8,8 @@ export class LinkTemplateFromURL extends GenericCommand {
 	commandName = 'LinkTemplateFromURL';
 
 	async execute(...args: unknown[]): Promise<void> {
+		log.trace('LinkTemplateFromURL: starting');
+
 		const document = await ensureSavedDocument(args);
 		requireUnlinked(document.uri);
 
@@ -17,8 +19,11 @@ export class LinkTemplateFromURL extends GenericCommand {
 		});
 
 		const params = await getTemplateURLParams(templateURL);
+		log.debug('LinkTemplateFromURL: parsed URL', { orgId: params.orgId, templateId: params.templateId });
+
 		const session = await SessionManager.getOrgSession(params.orgId, params.baseURL);
 
+		log.trace('LinkTemplateFromURL: fetching template');
 		const template = await session.getTemplate(params.templateId);
 		template.body = document.getText();
 		template.updatedAt = '0';
@@ -33,6 +38,7 @@ export class LinkTemplateFromURL extends GenericCommand {
 			},
 		};
 
+		log.trace('LinkTemplateFromURL: adding link and syncing');
 		await LinkManager.addLink(templateLink).save();
 		await SyncManager.syncTemplate(document);
 

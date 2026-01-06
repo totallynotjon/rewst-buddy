@@ -7,12 +7,18 @@ export class LinkTemplateInteractive extends GenericCommand {
 	commandName = 'LinkTemplateInteractive';
 
 	async execute(...args: unknown[]): Promise<void> {
+		log.trace('LinkTemplateInteractive: starting');
+
 		const document = await ensureSavedDocument(args);
 		requireUnlinked(document.uri);
 
 		const templatePick = await pickTemplate();
-		if (!templatePick) return;
+		if (!templatePick) {
+			log.trace('LinkTemplateInteractive: no template selected, cancelled');
+			return;
+		}
 
+		log.debug('LinkTemplateInteractive: fetching template', { templateId: templatePick.template.id });
 		const template = await templatePick.session.getTemplate(templatePick.template.id);
 		template.body = document.getText();
 		template.updatedAt = '0';
@@ -27,6 +33,7 @@ export class LinkTemplateInteractive extends GenericCommand {
 			},
 		};
 
+		log.trace('LinkTemplateInteractive: adding link and syncing');
 		await LinkManager.addLink(templateLink).save();
 		await SyncManager.syncTemplate(document);
 

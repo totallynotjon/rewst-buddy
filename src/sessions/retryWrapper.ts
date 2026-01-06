@@ -31,33 +31,51 @@ export function createRetryWrapper(
 		action: (requestHeaders?: Record<string, string>) => Promise<T>,
 		operationName: string,
 	): Promise<T> => {
+		log.trace('retryWrapper: starting operation', operationName);
 		let lastError: Error | null = null;
 
 		for (let attempt = 0; attempt <= options.maxRetries; attempt++) {
 			try {
-				return await action();
+				if (attempt > 0) {
+					log.trace('retryWrapper: retry attempt', { operation: operationName, attempt: attempt + 1 });
+				}
+				const result = await action();
+				if (attempt > 0) {
+					log.debug('retryWrapper: succeeded after retry', {
+						operation: operationName,
+						attempt: attempt + 1,
+					});
+				} else {
+					log.trace('retryWrapper: succeeded', operationName);
+				}
+				return result;
 			} catch (error) {
 				lastError = error as Error;
 
 				if (attempt === options.maxRetries) {
 					log.error(
-						`GraphQL operation '${operationName}' failed after ${options.maxRetries} retries: ${lastError.message}`,
+						`retryWrapper: '${operationName}' failed after ${options.maxRetries} retries: ${lastError.message}`,
 					);
 					break;
 				}
 
 				const shouldRetry = isRetryableError(lastError);
 				if (!shouldRetry) {
-					log.debug(
-						`GraphQL operation '${operationName}' failed with non-retryable error: ${lastError.message}`,
-					);
+					log.debug('retryWrapper: non-retryable error', {
+						operation: operationName,
+						error: lastError.message,
+					});
 					break;
 				}
 
 				const delay = Math.min(options.baseDelay * Math.pow(2, attempt), options.maxDelay);
-				log.debug(
-					`GraphQL operation '${operationName}' failed (attempt ${attempt + 1}/${options.maxRetries + 1}), retrying in ${delay}ms: ${lastError.message}`,
-				);
+				log.debug('retryWrapper: retrying', {
+					operation: operationName,
+					attempt: attempt + 1,
+					maxAttempts: options.maxRetries + 1,
+					delayMs: delay,
+					error: lastError.message,
+				});
 
 				await new Promise(resolve => setTimeout(resolve, delay));
 			}

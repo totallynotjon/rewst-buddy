@@ -47,12 +47,15 @@ export const Server = new (class _ implements vscode.Disposable {
 	}
 
 	async start(): Promise<boolean> {
+		log.trace('Server.start: starting');
+
 		if (this.isRunning) {
-			log.warn('Server is already running');
+			log.warn('Server.start: already running');
 			return true;
 		}
 
 		const config = getServerConfig();
+		log.debug('Server.start: config', { host: config.host, port: config.port });
 
 		try {
 			this.server = http.createServer(this.handleRequest.bind(this));
@@ -60,7 +63,7 @@ export const Server = new (class _ implements vscode.Disposable {
 			return new Promise(resolve => {
 				this.server!.listen(config.port, config.host, () => {
 					this.isRunning = true;
-					log.info(`Server listening on ${config.host}:${config.port}`);
+					log.info(`Server.start: listening on ${config.host}:${config.port}`);
 					resolve(true);
 				});
 
@@ -70,14 +73,16 @@ export const Server = new (class _ implements vscode.Disposable {
 				});
 			});
 		} catch (e) {
-			log.error('Failed to create Server', e instanceof Error ? e : undefined);
+			log.error('Server.start: failed to create', e instanceof Error ? e : undefined);
 			return false;
 		}
 	}
 
 	async stop(): Promise<void> {
+		log.trace('Server.stop: stopping');
+
 		if (!this.server || !this.isRunning) {
-			log.debug('Server is not running');
+			log.debug('Server.stop: not running');
 			return;
 		}
 
@@ -85,7 +90,7 @@ export const Server = new (class _ implements vscode.Disposable {
 			this.server!.close(() => {
 				this.isRunning = false;
 				this.server = null;
-				log.info('Server stopped');
+				log.info('Server.stop: stopped');
 				resolve();
 			});
 		});
@@ -96,18 +101,22 @@ export const Server = new (class _ implements vscode.Disposable {
 	}
 
 	private handleRequest(req: IncomingMessage, res: ServerResponse): void {
+		log.trace('Server.handleRequest: incoming', { method: req.method, url: req.url });
+
 		res.setHeader('Content-Type', 'application/json');
 		res.setHeader('Access-Control-Allow-Origin', '*');
 		res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
 		res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
 		if (req.method === 'OPTIONS') {
+			log.trace('Server.handleRequest: OPTIONS preflight');
 			res.writeHead(204);
 			res.end();
 			return;
 		}
 
 		if (req.method !== 'POST') {
+			log.debug('Server.handleRequest: method not allowed', req.method);
 			this.sendResponse(res, 405, { success: false, error: 'Method not allowed. Use POST.' });
 			return;
 		}
@@ -116,15 +125,16 @@ export const Server = new (class _ implements vscode.Disposable {
 		req.on('data', chunk => (rawBody += chunk));
 		req.on('end', () => this.processRequest(rawBody, res));
 		req.on('error', err => {
-			log.error('Request error', err);
+			log.error('Server.handleRequest: request error', err);
 			this.sendResponse(res, 500, { success: false, error: 'Request error' });
 		});
 	}
 
 	private async processRequest(rawBody: string, res: ServerResponse): Promise<void> {
-		log.debug('Server received request');
+		log.trace('Server.processRequest: processing', { bodyLength: rawBody.length });
 
 		if (!rawBody) {
+			log.debug('Server.processRequest: empty body');
 			this.sendResponse(res, 400, { success: false, error: 'Empty request body' });
 			return;
 		}
@@ -132,21 +142,25 @@ export const Server = new (class _ implements vscode.Disposable {
 		let request: AddSessionRequest;
 		try {
 			request = JSON.parse(rawBody);
+			log.trace('Server.processRequest: parsed JSON', { action: request.action });
 		} catch {
-			log.warn('Invalid JSON in request');
+			log.warn('Server.processRequest: invalid JSON');
 			this.sendResponse(res, 400, { success: false, error: 'Invalid JSON format' });
 			return;
 		}
 
 		const validationError = validateRequest(request);
 		if (validationError) {
+			log.debug('Server.processRequest: validation failed', validationError);
 			this.sendResponse(res, 400, { success: false, error: validationError });
 			return;
 		}
 
 		if (request.action === 'addSession') {
+			log.debug('Server.processRequest: handling addSession');
 			await handleAddSession(request, res, this.sendResponse.bind(this));
 		} else {
+			log.debug('Server.processRequest: unknown action', (request as { action: string }).action);
 			this.sendResponse(res, 400, {
 				success: false,
 				error: `Unknown action: ${(request as { action: string }).action}`,
@@ -155,11 +169,14 @@ export const Server = new (class _ implements vscode.Disposable {
 	}
 
 	private sendResponse(res: ServerResponse, statusCode: number, body: Response): void {
+		log.trace('Server.sendResponse', { statusCode, success: body.success });
 		res.writeHead(statusCode);
 		res.end(JSON.stringify(body));
 	}
 
 	private handleServerError(err: NodeJS.ErrnoException, config: ServerConfig): void {
+		log.debug('Server.handleServerError', { code: err.code, message: err.message });
+
 		if (err.code === 'EADDRINUSE') {
 			log.notifyError(
 				`Port ${config.port} is already in use. ` +

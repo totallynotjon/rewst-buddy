@@ -1,5 +1,4 @@
 import { TemplateFragment } from '@sessions';
-import vscode from 'vscode';
 
 export interface Org {
 	id: string;
@@ -12,7 +11,6 @@ export interface Link {
 	uriString: string;
 	org: Org;
 	type: LinkType;
-	stat?: vscode.FileStat;
 }
 
 export interface TemplateLink extends Link {

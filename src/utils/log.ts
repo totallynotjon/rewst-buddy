@@ -36,7 +36,6 @@ class Logger {
 	 * Use for detailed execution flow
 	 */
 	trace(message: string, ...args: any[]): void {
-		if (!this.isDevelopment) return;
 		this.logChannel.trace(message, ...args);
 		if (this.isDevelopment) {
 			console.log(`[TRACE] ${message}`, ...args);
@@ -48,7 +47,6 @@ class Logger {
 	 * Use for debugging information
 	 */
 	debug(message: string, ...args: any[]): void {
-		if (!this.isDevelopment) return;
 		this.logChannel.debug(message, ...args);
 		if (this.isDevelopment) {
 			console.log(`[DEBUG] ${message}`, ...args);

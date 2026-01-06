@@ -27,21 +27,26 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	async createFromProfile(profile: SessionProfile): Promise<Session> {
+		log.trace('createFromProfile: starting', { label: profile.label, orgId: profile.org.id });
 		let session = new Session(undefined, profile);
 		try {
 			session = await this.createSession(await session.getCookies());
+			log.debug('createFromProfile: session created successfully');
 		} catch {
-			log.info('Rewst session could not be loaded from profile');
+			log.info('createFromProfile: could not load session from profile');
 		}
 		return session;
 	}
 
 	async createSession(cookies?: string): Promise<Session> {
+		log.trace('createSession: starting', { hasCookies: !!cookies });
+
 		let sdk;
 		let regionConfig;
 		let cookieString;
 
 		if (cookies === undefined) {
+			log.trace('createSession: prompting for token');
 			const token = await this.getTokenForCreation();
 			[sdk, regionConfig, cookieString] = await Session.newSdk(token);
 			cookies = cookieString.value;
@@ -49,24 +54,33 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			[sdk, regionConfig, cookieString] = await Session.newSdk(cookies, new CookieString(cookies));
 		}
 
+		log.debug('createSession: SDK initialized', { region: regionConfig.name });
+
+		log.trace('createSession: fetching user info');
 		const response = await sdk.User();
 		const user = response.user;
 		if (user === undefined) {
-			throw log.notifyError('Failed to retrieve current user from Rewst');
+			throw log.notifyError('createSession: failed to retrieve user');
 		}
 
 		if (user?.organization === undefined) {
-			throw log.notifyError('Failed to retrieve org of current user from Rewst');
+			throw log.notifyError('createSession: user has no organization');
 		}
 
 		if (user?.allManagedOrgs === undefined) {
-			throw log.notifyError('Failed to retrieve managed orgs of current user from Rewst');
+			throw log.notifyError('createSession: user has no managed orgs');
 		}
 
 		const org: Org = {
 			id: user.organization?.id ?? '',
 			name: user.organization?.name ?? '',
 		};
+
+		log.debug('createSession: user info retrieved', {
+			username: user.username,
+			orgName: org.name,
+			managedOrgCount: user.allManagedOrgs.length,
+		});
 
 		const allManagedOrgs: Org[] = user.allManagedOrgs.map(o => {
 			return {
@@ -84,9 +98,11 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		};
 		const session = new Session(sdk, profile);
 
+		log.trace('createSession: storing cookie and saving session');
 		await context.secrets.store(org.id, cookieString.value);
 		await this.saveSession(session);
 
+		log.debug('createSession: completed', { label: profile.label });
 		return session;
 	}
 
@@ -109,25 +125,29 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	async getOrgSession(orgId: string, baseURL: URL): Promise<Session> {
-		log.debug('getOrgSession');
+		log.trace('getOrgSession: looking for session', { orgId, region: baseURL.host });
+
 		for (const session of await this.getActiveSessions()) {
 			const regionURL = new URL(session.profile.region.loginUrl);
 			if (regionURL.host !== baseURL.host) {
+				log.trace('getOrgSession: skipping session, wrong region', { sessionRegion: regionURL.host });
 				continue;
 			}
 
 			if (!session.validate()) {
+				log.trace('getOrgSession: skipping session, validation failed');
 				continue;
 			}
 
 			if (session.profile.org.id === orgId) {
+				log.debug('getOrgSession: found matching session', { label: session.profile.label });
 				return session;
 			}
 
 			// make a call to the org and check if this has access
 		}
 
-		throw log.error(`No active session found with access to org '${orgId}' in region '${baseURL.host}'`);
+		throw log.error(`getOrgSession: no session found for org '${orgId}' in region '${baseURL.host}'`);
 	}
 
 	private async promptToken(): Promise<string> {
@@ -147,24 +167,28 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	async loadSessions(): Promise<Session[]> {
+		log.trace('loadSessions: starting');
+
 		if (this.loading) {
-			log.debug('Session loading already in progress, skipping');
+			log.debug('loadSessions: already in progress, skipping');
 			return this.getActiveSessions();
 		}
 		if (this.loaded) {
-			log.debug('Sessions already loaded, skipping');
+			log.debug('loadSessions: already loaded, skipping');
 			return this.getActiveSessions();
 		}
 
 		this.loading = true;
 		try {
 			const newProfiles = await this.newProfiles();
+			log.debug('loadSessions: profiles to load', newProfiles.length);
 
 			const resultsPromises = newProfiles.map(async profile => {
+				log.trace('loadSessions: loading profile', { label: profile.label, orgId: profile.org.id });
 				try {
 					return await this.createSession(await Session.getCookies(profile.org.id));
 				} catch (err) {
-					log.error(`Failed to create client for ${profile.org.id}: ${err}`);
+					log.error(`loadSessions: failed to create session for ${profile.org.id}: ${err}`);
 					return undefined;
 				}
 			});
@@ -174,6 +198,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 			await this.saveProfiles();
 
+			log.debug('loadSessions: completed', { sessionCount: this.sessionMap.size });
 			return this.getActiveSessions();
 		} finally {
 			this.loading = false;
@@ -216,12 +241,15 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	private async saveSession(session: Session): Promise<void> {
+		log.trace('saveSession: saving', { label: session.profile.label });
+
 		if (typeof session.profile.user.id !== 'string') {
-			throw log.error(`Session user doesn't have an id, this should always exist`);
+			throw log.error('saveSession: user has no id');
 		}
 
 		this.sessionMap.set(session.profile.user.id, session);
 		await this.saveProfiles();
+		log.trace('saveSession: saved', { sessionMapSize: this.sessionMap.size });
 	}
 
 	private getSavedProfiles(): SessionProfile[] {
@@ -229,6 +257,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	public clearProfiles() {
+		log.debug('clearProfiles: clearing all sessions');
 		context.globalState.update('SessionProfiles', []);
 		this.sessionMap.clear();
 
@@ -237,30 +266,38 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			allProfiles: this.getAllKnownProfiles(),
 			activeProfiles: [],
 		});
+		log.trace('clearProfiles: cleared');
 	}
 
 	public getSessionForOrg(orgId: string): Session {
+		log.trace('getSessionForOrg: looking for', orgId);
 		const sessions = this.getActiveSessions();
 		for (const session of sessions) {
 			if (session.profile.allManagedOrgs.map(org => org.id ?? '1').includes(orgId)) {
+				log.trace('getSessionForOrg: found', { label: session.profile.label });
 				return session;
 			}
 		}
-		throw log.error(`No session found for org id ${orgId}`);
+		throw log.error(`getSessionForOrg: no session found for ${orgId}`);
 	}
 
 	public async refreshActiveSessions() {
-		log.info('Refreshing session cookies');
+		log.debug('refreshActiveSessions: starting');
 		const activeSessions = this.getActiveSessions();
+		log.trace('refreshActiveSessions: sessions to refresh', activeSessions.length);
+
 		const resultsPromises = activeSessions.map(async session => {
+			log.trace('refreshActiveSessions: refreshing', { label: session.profile.label });
 			try {
 				await session.refreshToken();
+				log.trace('refreshActiveSessions: success', { label: session.profile.label });
 			} catch (err) {
-				log.error(`Failed to refresh token for ${session.profile.label}: ${err}`);
+				log.error(`refreshActiveSessions: failed for ${session.profile.label}: ${err}`);
 				return undefined;
 			}
 		});
 
 		await Promise.all(resultsPromises);
+		log.debug('refreshActiveSessions: completed');
 	}
 })();

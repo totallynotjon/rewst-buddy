@@ -20,6 +20,8 @@ export default class Session {
 	}
 
 	private static newSdkAtRegion(cookieString: CookieString, config: RegionConfig): Sdk {
+		log.trace('newSdkAtRegion: creating SDK', { region: config.name, url: config.graphqlUrl });
+
 		const client = new GraphQLClient(config.graphqlUrl, {
 			errorPolicy: 'all',
 			method: 'POST',
@@ -37,13 +39,21 @@ export default class Session {
 		token?: string,
 		cookieString?: CookieString,
 	): Promise<[Sdk, RegionConfig, CookieString]> {
+		log.trace('newSdk: starting', { hasToken: !!token, hasCookieString: !!cookieString });
+
 		if (cookieString === undefined && token === undefined) {
-			throw log.error('Must provide a token or set of cookies to make a new sdk');
+			throw log.error('newSdk: no token or cookies provided');
 		}
 
 		const configs = getRegionConfigs();
+		log.debug(
+			'newSdk: trying regions',
+			configs.map(c => c.name),
+		);
 
 		for (const config of configs) {
+			log.trace('newSdk: attempting region', config.name);
+
 			let cookieStrings: CookieString[] = [];
 			if (token !== undefined) {
 				cookieStrings = cookieStrings
@@ -61,14 +71,15 @@ export default class Session {
 				const sdk = Session.newSdkAtRegion(cookieString, config);
 				try {
 					if (await Session.validateSdk(sdk)) {
+						log.debug('newSdk: succeeded with region', config.name);
 						return [sdk, config, cookieString];
 					}
 				} catch {
-					log.trace(`Couldn't init for region ${config.name}`);
+					log.trace('newSdk: failed for region', config.name);
 				}
 			}
 		}
-		throw log.notifyError('Could not initialize session with any known region. Did you enter a valid cookie?');
+		throw log.notifyError('newSdk: could not initialize with any region');
 	}
 
 	private static getWrapper(): SdkFunctionWrapper | undefined {
@@ -76,17 +87,23 @@ export default class Session {
 	}
 
 	private static async validateSdk(sdk: Sdk): Promise<boolean> {
+		log.trace('validateSdk: querying User()');
 		try {
 			const response = await sdk.User();
-			return typeof response.user?.id === 'string';
+			const valid = typeof response.user?.id === 'string';
+			log.trace('validateSdk: result', { valid, userId: response.user?.id });
+			return valid;
 		} catch (error) {
-			log.error(`SDK validation failed: ${error}`);
+			log.debug('validateSdk: failed', error);
 			return false;
 		}
 	}
 
 	public async validate(): Promise<boolean> {
+		log.trace('validate: checking session', this.profile.org.id);
+
 		if (this.sdk === undefined) {
+			log.debug('validate: no SDK present');
 			return false;
 		}
 
@@ -94,20 +111,26 @@ export default class Session {
 
 		const now = Date.now();
 		if (this.lastValidated >= now - ONE_DAY_MS) {
+			log.trace('validate: cache hit, skipping validation');
 			return true;
 		}
 
+		log.trace('validate: cache expired, validating SDK');
 		const valid = await Session.validateSdk(this.sdk);
 		if (valid) this.lastValidated = Date.now();
 
+		log.debug('validate: result', { valid, orgId: this.profile.org.id });
 		return valid;
 	}
 
 	public async refreshToken() {
+		log.trace('refreshToken: starting', { label: this.profile.label, orgId: this.profile.org.id });
+
 		const config = this.profile.region;
 		try {
 			const oldCookies = await this.getCookies();
 
+			log.trace('refreshToken: fetching new token from', config.loginUrl);
 			const response = await fetch(config.loginUrl, {
 				method: 'GET',
 				headers: {
@@ -115,36 +138,42 @@ export default class Session {
 				},
 			});
 
+			log.debug('refreshToken: response status', response.status);
+
 			if (!response.ok) {
-				throw log.notifyError(`Token refresh request failed with status: ${response.status}`);
+				throw log.notifyError(`refreshToken: failed with status ${response.status}`);
 			}
 
 			const cookieString = response.headers.get('set-cookie');
 			if (!cookieString) {
-				throw log.notifyError('Token refresh response missing set-cookie header');
+				throw log.notifyError('refreshToken: missing set-cookie header');
 			}
 
+			log.trace('refreshToken: validating new SDK');
 			const sdk = Session.newSdkAtRegion(new CookieString(cookieString), config);
 			if (!(await Session.validateSdk(sdk))) {
-				throw log.notifyError('Refreshed token failed SDK validation');
+				throw log.notifyError('refreshToken: new SDK validation failed');
 			}
 
+			log.trace('refreshToken: storing new cookie');
 			await this.secrets.store(this.profile.org.id, cookieString);
 			this.sdk = sdk;
-			log.info(`Successfully refreshed token for ${this.profile.label} ${this.profile.org.id}`);
+			log.info(`refreshToken: success for ${this.profile.label}`);
 		} catch (error) {
-			log.notifyError(`Token refresh failed for ${this.profile.label}: ${error}`);
+			log.notifyError(`refreshToken: failed for ${this.profile.label}: ${error}`);
 			throw error;
 		}
 	}
 
 	public static async getCookies(orgId: string): Promise<string> {
+		log.trace('getCookies: retrieving for org', orgId);
 		const token = await context.secrets.get(orgId);
 
 		if (typeof token !== 'string') {
-			throw log.notifyError(`Failed to retrieve token for orgId: ${orgId}`);
+			throw log.notifyError(`getCookies: no token found for ${orgId}`);
 		}
 
+		log.trace('getCookies: retrieved successfully');
 		return token;
 	}
 
@@ -153,10 +182,12 @@ export default class Session {
 	}
 
 	async getTemplate(templateId: string) {
+		log.trace('getTemplate: fetching', templateId);
 		const response = await this.sdk?.getTemplate({ id: templateId });
 		if (!response?.template) {
-			throw log.error(`Could not find template with id '${templateId}'`);
+			throw log.error(`getTemplate: not found '${templateId}'`);
 		}
+		log.trace('getTemplate: found', { id: response.template.id, name: response.template.name });
 		return response.template;
 	}
 }

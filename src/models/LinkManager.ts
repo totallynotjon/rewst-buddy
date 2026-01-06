@@ -26,6 +26,8 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	}
 
 	private async handleRename(e: vscode.FileRenameEvent): Promise<void> {
+		log.trace('LinkManager.handleRename: processing', { fileCount: e.files.length });
+
 		try {
 			for (const file of e.files) {
 				const stat = await vscode.workspace.fs.stat(file.newUri);
@@ -35,6 +37,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 				if (!isFile && !isDir) continue;
 
 				if (isDir) {
+					log.trace('LinkManager.handleRename: processing directory', file.newUri.fsPath);
 					const uris = this.getAllUriStrings();
 					const oldPrefix = file.oldUri.toString();
 					const newPrefix = file.newUri.toString();
@@ -46,38 +49,50 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 						}
 					}
 				} else if (isFile) {
+					log.trace('LinkManager.handleRename: processing file', file.newUri.fsPath);
 					await this.moveLink(file.oldUri.toString(), file.newUri.toString());
 				}
 			}
 
 			await this.save();
 		} catch (error) {
-			log.error('Failed to handle rename event', error);
+			log.error('LinkManager.handleRename: failed', error);
 		}
 	}
 
 	clearTemplateLinks(): _ {
+		log.debug('LinkManager.clearTemplateLinks: clearing all template links');
+		let cleared = 0;
 		for (const link of this.linkMap.values()) {
 			if (link.type === 'Template') {
 				this.linkMap.delete(link.uriString);
+				cleared++;
 			}
 		}
+		log.trace('LinkManager.clearTemplateLinks: cleared', cleared);
 		return this;
 	}
 
 	removeLink(uriString: string): _ {
+		log.trace('LinkManager.removeLink:', uriString);
 		this.linkMap.delete(uriString);
 		return this;
 	}
 
 	addLink(link: Link): _ {
+		log.trace('LinkManager.addLink:', link);
 		this.linkMap.set(link.uriString, link);
 		return this;
 	}
 
 	async moveLink(oldUriString: string, newUriString: string): Promise<_> {
+		log.trace('LinkManager.moveLink: starting', { from: oldUriString, to: newUriString });
+
 		const link = this.linkMap.get(oldUriString);
-		if (link === undefined) return this;
+		if (link === undefined) {
+			log.trace('LinkManager.moveLink: no link found at old location');
+			return this;
+		}
 
 		link.uriString = newUriString;
 
@@ -91,16 +106,18 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 		this.removeLink(oldUriString).addLink(link);
 
-		log.trace(`Move processed for  (${oldUriString} => (${newUriString}) `);
+		log.trace('LinkManager.moveLink: completed', { type: link.type });
 
 		return this;
 	}
 
 	async save(): Promise<_> {
 		const links: Link[] = Array.from(this.linkMap.values());
+		log.trace('LinkManager.save: saving', { linkCount: links.length });
 		await context.globalState.update(this.stateKey, links);
 		this.updateLinksContext(links);
 		this.linksSavedEmitter.fire({ links: links });
+		log.trace('LinkManager.save: completed');
 		return this;
 	}
 
@@ -119,7 +136,9 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	}
 
 	loadLinks(): _ {
+		log.trace('LinkManager.loadLinks: loading');
 		const links = context.globalState.get<Link[]>(this.stateKey) ?? [];
+		log.debug('LinkManager.loadLinks: found links', links.length);
 		this.linkMap.clear();
 		let migrated = false;
 
@@ -143,9 +162,11 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		this.updateLinksContext(links);
 
 		if (migrated) {
+			log.debug('LinkManager.loadLinks: migrated legacy links');
 			this.save();
 		}
 
+		log.trace('LinkManager.loadLinks: completed');
 		return this;
 	}
 
