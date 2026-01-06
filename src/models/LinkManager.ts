@@ -15,6 +15,10 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	private disposables: vscode.Disposable[] = [];
 
+	// Batch mode state for performance optimization
+	private batchMode = false;
+	private batchDirty = false;
+
 	init(): _ {
 		this.disposables.push(vscode.workspace.onDidRenameFiles(e => this.handleRename(e)));
 		return this;
@@ -111,7 +115,31 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		return this;
 	}
 
+	beginBatch(): _ {
+		log.trace('LinkManager.beginBatch: entering batch mode');
+		this.batchMode = true;
+		this.batchDirty = false;
+		return this;
+	}
+
+	async endBatch(): Promise<_> {
+		log.trace('LinkManager.endBatch: exiting batch mode', { dirty: this.batchDirty });
+		this.batchMode = false;
+		if (this.batchDirty) {
+			await this.save();
+			this.batchDirty = false;
+		}
+		return this;
+	}
+
 	async save(): Promise<_> {
+		// Defer save if in batch mode
+		if (this.batchMode) {
+			log.trace('LinkManager.save: deferring save (batch mode active)');
+			this.batchDirty = true;
+			return this;
+		}
+
 		const links: Link[] = Array.from(this.linkMap.values());
 		log.trace('LinkManager.save: saving', { linkCount: links.length });
 		await context.globalState.update(this.stateKey, links);

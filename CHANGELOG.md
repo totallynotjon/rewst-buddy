@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.32.0] - 2026-01-06
+
+### Changed
+
+- **Batch Mode for Folder Fetch** - Significantly improved performance when fetching folders with many templates
+    - Templates are now written in parallel chunks of 20 instead of sequentially
+    - Link saves are batched and deferred until all templates are processed
+    - Added `reservedUris` tracking to prevent filename collisions during parallel writes
+    - Single save + event emission at the end instead of per-template
+
+- **O(1) Sync-On-Save Lookups** - Optimized sync state checking from O(n) to O(1)
+    - Inclusions and exclusions now cached as in-memory Sets
+    - `enableSync()` and `disableSync()` now save in parallel instead of sequentially
+
 ## [0.30.2] - 2026-01-06
 
 ### Fixed

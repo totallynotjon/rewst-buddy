@@ -289,13 +289,61 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		const missingTemplates = templates.filter(t => !ids.includes(t.id));
 		log.debug('fetchFolder: missing templates to fetch', missingTemplates.length);
 
-		for (const template of missingTemplates) {
-			await this.makeTemplate(folderLink, template);
+		// BEGIN BATCH MODE - defer saves until all templates processed
+		LinkManager.beginBatch();
+		let successCount = 0;
+		try {
+			const folderUri = vscode.Uri.parse(uriString);
+
+			// Phase 1: Generate unique URIs (must be sequential for conflict detection)
+			const templateUris = new Map<TemplateFragment, Uri>();
+			const reservedUris = new Set<string>(); // Track allocated URIs for duplicates
+			for (const template of missingTemplates) {
+				const uri = await makeUniqueUri(folderUri, template.name, reservedUris);
+				templateUris.set(template, uri);
+				reservedUris.add(uri.toString());
+			}
+
+			// Phase 2: Write files in chunks to avoid overwhelming the file system
+			const entries = Array.from(templateUris.entries());
+			const CHUNK_SIZE = 20;
+
+			for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
+				const chunk = entries.slice(i, i + CHUNK_SIZE);
+				const results = await Promise.all(
+					chunk.map(async ([template, uri]) => {
+						try {
+							await writeTextFile(uri, template.body);
+							log.trace('fetchFolder: file written', uri.fsPath);
+
+							const templateLink: TemplateLink = {
+								type: 'Template',
+								template: template,
+								uriString: uri.toString(),
+								org: org,
+							};
+
+							await LinkManager.addLink(templateLink).save(); // Batched - no immediate save
+							return true;
+						} catch (err) {
+							log.warn(`fetchFolder: failed to create file for "${template.name}": ${err}`);
+							return false;
+						}
+					}),
+				);
+				successCount += results.filter(Boolean).length;
+			}
+		} finally {
+			// Single save + event emission
+			await LinkManager.endBatch();
 		}
 
-		await LinkManager.save();
 		log.trace('fetchFolder: completed');
-		log.notifyInfo(`SUCCESS: Fetched ${missingTemplates.length} templates into the folder`);
+		const message =
+			successCount === missingTemplates.length
+				? `SUCCESS: Fetched ${successCount} templates into the folder`
+				: `Fetched ${successCount}/${missingTemplates.length} templates into the folder`;
+		log.notifyInfo(message);
 	}
 
 	private async makeTemplate(folderLink: FolderLink, template: TemplateFragment) {
