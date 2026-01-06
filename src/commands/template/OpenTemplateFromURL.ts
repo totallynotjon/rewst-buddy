@@ -1,6 +1,6 @@
 import { LinkManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
-import { getTemplateURLParams } from '@utils';
+import { getTemplateURLParams, openTemplateById } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
 
@@ -14,6 +14,12 @@ export class OpenTemplateFromURL extends GenericCommand {
 		});
 
 		const params = await getTemplateURLParams(templateURL);
+
+		// if we open the template by the id no need to pick further
+		if (await openTemplateById(params.templateId)) {
+			return;
+		}
+
 		const session = await SessionManager.getOrgSession(params.orgId, params.baseURL);
 
 		const template = await session.getTemplate(params.templateId);

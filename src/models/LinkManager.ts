@@ -154,6 +154,17 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		return this.linkMap.has(uri.toString());
 	}
 
+	getTemplateLinkFromId(templateId: string): TemplateLink[] {
+		this.loadIfNotAlready();
+
+		return Array.from(this.linkMap.values()).filter(l => {
+			if (l.type === 'Folder') return false;
+			if ((l as TemplateLink).template.id.localeCompare(templateId) === 0) {
+				return true;
+			}
+		}) as TemplateLink[];
+	}
+
 	private getLink(uri: vscode.Uri, type: LinkType): Link {
 		this.loadIfNotAlready();
 		const link = this.linkMap.get(uri.toString());
@@ -165,10 +176,14 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	}
 
 	getTemplateLink(uri: vscode.Uri): TemplateLink {
+		this.loadIfNotAlready();
+
 		return this.getLink(uri, 'Template') as TemplateLink;
 	}
 
 	getFolderLink(uri: Uri): FolderLink {
+		this.loadIfNotAlready();
+
 		return this.getLink(uri, 'Folder') as FolderLink;
 	}
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.29.0] - 2026-01-05
+
+### Added
+
+- **Smart Template Opening** - Opening templates now checks for existing linked files first
+    - `Open Template` and `Open Template from URL` commands automatically detect if the template is already linked to a local file
+    - Opens existing linked file instead of creating a new untitled document
+    - Prevents duplicate downloads and improves workflow efficiency
+    - When a template is linked to multiple files, displays a picker to select which file to open
+
 ## [0.28.0] - 2026-01-05
 
 ### Added

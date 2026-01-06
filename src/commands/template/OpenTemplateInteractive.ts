@@ -1,5 +1,6 @@
 import { LinkManager, TemplateLink } from '@models';
 import { pickTemplate } from '@ui';
+import { openTemplateById } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
 
@@ -10,7 +11,13 @@ export class OpenTemplateInteractive extends GenericCommand {
 		const pick = await pickTemplate();
 		if (!pick) return;
 
+		// if we open the template by the id no need to pick further
+		if (await openTemplateById(pick.template.id)) {
+			return;
+		}
+
 		const template = await pick.session.getTemplate(pick.template.id);
+
 		const content = template.body ?? '';
 
 		const untitledUri = vscode.Uri.parse(`untitled:${template.name ?? pick.template.id}`);
