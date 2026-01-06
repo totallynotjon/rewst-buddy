@@ -154,7 +154,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		return this.linkMap.has(uri.toString());
 	}
 
-	getLink(uri: vscode.Uri, type: LinkType): Link {
+	private getLink(uri: vscode.Uri, type: LinkType): Link {
 		this.loadIfNotAlready();
 		const link = this.linkMap.get(uri.toString());
 

@@ -1,4 +1,4 @@
-import { LinkManager, TemplateLink } from '@models';
+import { LinkManager, SyncManager, TemplateLink } from '@models';
 import { pickTemplate } from '@ui';
 import { ensureSavedDocument, log, requireUnlinked } from '@utils';
 import GenericCommand from '../../GenericCommand';
@@ -28,6 +28,7 @@ export class LinkTemplateInteractive extends GenericCommand {
 		};
 
 		await LinkManager.addLink(templateLink).save();
+		await SyncManager.syncTemplate(document);
 
 		log.notifyInfo('SUCCESS: Linked template');
 	}

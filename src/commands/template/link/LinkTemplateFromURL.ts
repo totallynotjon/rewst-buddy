@@ -1,4 +1,4 @@
-import { LinkManager, TemplateLink } from '@models';
+import { LinkManager, SyncManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { ensureSavedDocument, getTemplateURLParams, log, requireUnlinked } from '@utils';
 import vscode from 'vscode';
@@ -34,6 +34,7 @@ export class LinkTemplateFromURL extends GenericCommand {
 		};
 
 		await LinkManager.addLink(templateLink).save();
+		await SyncManager.syncTemplate(document);
 
 		log.notifyInfo('SUCCESS: Linked template');
 	}

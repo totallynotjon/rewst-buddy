@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.27.0] - 2026-01-05
+
+### Added
+
+- **Auto-fetch on Open** - Templates automatically download latest changes from Rewst when opening files
+    - Only works when sync-on-save is enabled for the file
+    - Safely detects local modifications using file stat tracking
+    - Skips auto-fetch when local edits are detected to prevent data loss
+    - Gracefully handles legacy links without stat information
+
+- **StatusBar Integration** - New status bar item shows template link status
+    - Displays template name and organization in status bar
+    - Shows sync-on-save state with visual indicators (ON/OFF)
+    - Warns when no active session exists for the linked template's organization
+    - Click to toggle sync-on-save exclusion
+    - Tooltip shows full template details (name, description, organization)
+
+- **File Stat Tracking** - Links now track file modification time and size
+    - Enables intelligent auto-fetch behavior
+    - Prevents unnecessary downloads when files haven't changed
+    - Updated whenever templates are synced to Rewst
+
+### Changed
+
+- **Immediate Sync After Linking** - Link commands now sync template content immediately
+    - `LinkTemplateFromURL` auto-syncs after creating link
+    - `LinkTemplateInteractive` auto-syncs after creating link
+    - Ensures local file matches Rewst template right after linking
+
+- **Renamed SyncManager** - `TemplateSyncManager` renamed to `SyncManager` for clarity
+    - Updated all imports and references across codebase
+    - No functional changes to sync behavior
+
+### Fixed
+
+- **StatusBar Property Access** - Fixed incorrect property path causing runtime errors
+    - Changed `link.template.orgId` to `link.org.id` to match Link interface
+- **StatusBar Code Cleanup** - Removed unused `isLinked` variable that was computed but never used
+- **Legacy Link Handling** - Auto-fetch now gracefully skips links created before stat tracking was added
+
 ## [0.26.1]
 
 ### Fixed

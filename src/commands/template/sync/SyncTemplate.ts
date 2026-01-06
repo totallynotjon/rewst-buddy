@@ -1,4 +1,4 @@
-import { TemplateSyncManager } from '@models';
+import { SyncManager } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../../GenericCommand';
@@ -21,7 +21,7 @@ export class SyncTemplate extends GenericCommand {
 		}
 
 		try {
-			await TemplateSyncManager.syncTemplate(document);
+			await SyncManager.syncTemplate(document);
 			log.notifyInfo('SUCCESS: Synced template');
 		} catch (e) {
 			log.notifyError('Failed to sync template:', e);

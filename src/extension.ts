@@ -1,9 +1,9 @@
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
-import { LinkManager, SyncOnSaveManager, TemplateSyncManager } from '@models';
+import { LinkManager, SyncManager, SyncOnSaveManager } from '@models';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
-import { RewstViewProvider, SessionTreeDataProvider } from '@ui';
+import { RewstViewProvider, SessionTreeDataProvider, StatusBar } from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
 
@@ -28,10 +28,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Register managers (self-register for their respective VS Code events)
 	context.subscriptions.push(LinkManager.init());
-	context.subscriptions.push(TemplateSyncManager);
+	context.subscriptions.push(SyncManager);
 	context.subscriptions.push(await SyncOnSaveManager.init());
 	context.subscriptions.push(await SessionManager.init());
 	context.subscriptions.push(await Server.init());
+	context.subscriptions.push(new StatusBar());
 
 	CommandInitiater.registerCommands();
 

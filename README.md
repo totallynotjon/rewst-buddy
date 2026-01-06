@@ -71,6 +71,15 @@ By default, linked templates automatically sync to Rewst when you save. To disab
 
 > Auto-sync performs the same safety checks as manual sync, preventing overwrites if the template was modified in Rewst since your last sync.
 
+### Auto-Fetch on Open (v0.27)
+
+When you open a linked template file with sync-on-save enabled, the extension automatically checks if there are newer changes in Rewst and downloads them if:
+
+- The file hasn't been modified locally since the last sync
+- A newer version exists in Rewst
+
+This keeps your local files in sync with Rewst changes made by others, while protecting your local edits from being overwritten.
+
 ### File Rename Support
 
 Template links automatically update when you rename or move files - no broken links when reorganizing your workspace.
@@ -147,10 +156,16 @@ Click the Rewst Buddy icon in the activity bar to open the sidebar:
     - Sessions automatically refresh every 15 minutes to stay active
     - With automatic refresh, sessions can stay alive for about 1 week with daily extension use
 
-### Status Bar
+### Status Bar (v0.27)
 
-- Shows **Linked** or **Unlinked** status with icon
-- Hover for tooltip with template details (name, description, organization, session info)
+When a linked template is active:
+
+- Shows sync-on-save status: **ON** (with checkmark) or **OFF** (with warning icon)
+- Click to toggle sync-on-save exclusion for the current file
+- Hover for detailed tooltip with template name, description, and organization
+- Displays error indicator if no active session exists for the template's organization
+
+The status bar hides when viewing non-linked files.
 
 ### Multi-Region Setup
 

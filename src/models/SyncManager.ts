@@ -1,20 +1,54 @@
-import { TemplateLink } from '@models';
-import { SessionManager, TemplateFragment } from '@sessions';
+import { Link, TemplateLink } from '@models';
+import { Session, SessionManager, TemplateFragment } from '@sessions';
 import { log } from '@utils';
-import vscode from 'vscode';
+import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 
-export const TemplateSyncManager = new (class TemplateSyncManager implements vscode.Disposable {
+export const SyncManager = new (class _ implements vscode.Disposable {
 	private syncingUris = new Set<string>();
 	private disposables: vscode.Disposable[] = [];
 
 	constructor() {
 		this.disposables.push(vscode.workspace.onDidSaveTextDocument(async doc => await this.handleSave(doc)));
+		this.disposables.push(vscode.workspace.onDidOpenTextDocument(async doc => await this.checkAutoFetch(doc)));
 	}
 
 	dispose(): void {
 		this.disposables.forEach(d => d.dispose());
+	}
+
+	private async checkAutoFetch(doc: vscode.TextDocument) {
+		// only autofetch if sync on save enabled
+		if (!SyncOnSaveManager.isUriSynced(doc.uri)) return;
+
+		const link = LinkManager.getTemplateLink(doc.uri);
+
+		// Skip autofetch for legacy links without stat info
+		if (!link.stat) return;
+
+		const stat = await vscode.workspace.fs.stat(doc.uri);
+
+		// if the file has been modified locally then we can't act
+		if (stat.mtime !== link.stat.mtime) return;
+		if (stat.size !== link.stat.size) return;
+
+		const session = SessionManager.getSessionForOrg(link.org.id);
+
+		let remoteTemplate;
+		try {
+			remoteTemplate = await session.getTemplate(link.template.id);
+		} catch {
+			return;
+		}
+
+		// if the remote template is in sync then we have nothing to fetch
+		if (remoteTemplate.updatedAt.localeCompare(link.template.updatedAt) === 0) return;
+
+		// in this situation the files stats are the same since we last pushed to root,
+		// aka no local edits have happened
+		// we also have an update we can take down from rewst
+		await this.applyTemplatetoDocument(doc, session, remoteTemplate);
 	}
 
 	private async handleSave(document: vscode.TextDocument): Promise<void> {
@@ -49,8 +83,7 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 			}
 
 			link.template = response.template;
-
-			LinkManager.addLink(link).save();
+			await this.addLink(link, doc.uri);
 
 			log.info('Saved updated info to template');
 		} catch {
@@ -87,7 +120,6 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 				throw log.error('Failed to save the active editor before attempting sync');
 			}
 		}
-
 		const link = LinkManager.getTemplateLink(doc.uri);
 		log.debug('Syncing template:', link);
 
@@ -104,19 +136,19 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 		log.debug(`Rewst: ${remoteTemplate.updatedAt}`);
 
 		const isInSync = link.template.updatedAt.localeCompare(remoteTemplate.updatedAt) === 0;
+		const bodySame = remoteTemplate.body.localeCompare(doc.getText()) === 0;
+		const bodyEmpty = doc.getText() === '';
 
-		if (isInSync) {
+		if (bodySame || bodyEmpty) {
+			await this.applyTemplatetoDocument(doc, session, remoteTemplate);
+		} else if (isInSync) {
 			await this.updateTemplateBody(doc);
 		} else {
 			await this.handleConflict(doc, session, remoteTemplate);
 		}
 	}
 
-	private async handleConflict(
-		doc: vscode.TextDocument,
-		session: Awaited<ReturnType<typeof SessionManager.getProfileSession>>,
-		remoteTemplate: TemplateFragment,
-	) {
+	private async handleConflict(doc: vscode.TextDocument, session: Session, remoteTemplate: TemplateFragment) {
 		log.info('Rewst and last update of local template are out of sync, need to remediate before push');
 
 		const choice = await vscode.window.showInformationMessage(
@@ -132,7 +164,7 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 				break;
 
 			case 'Download Latest':
-				await this.downloadAndApplyRemote(doc, session, remoteTemplate);
+				await this.applyTemplatetoDocument(doc, session, remoteTemplate);
 				break;
 
 			case undefined:
@@ -142,9 +174,9 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 		log.debug('User choice:', choice);
 	}
 
-	private async downloadAndApplyRemote(
+	private async applyTemplatetoDocument(
 		doc: vscode.TextDocument,
-		session: Awaited<ReturnType<typeof SessionManager.getProfileSession>>,
+		session: Session,
 		remoteTemplate: TemplateFragment,
 	) {
 		const edit = new vscode.WorkspaceEdit();
@@ -162,10 +194,16 @@ export const TemplateSyncManager = new (class TemplateSyncManager implements vsc
 			org: session.profile.org,
 		};
 
-		await LinkManager.addLink(templateLink).save();
+		await this.addLink(templateLink, doc.uri);
 
 		if ((await vscode.workspace.save(doc.uri)) === undefined) {
 			throw log.error('Failed to save downloaded template to active editor');
 		}
+	}
+
+	private async addLink(link: Link, uri: Uri) {
+		const stat = await vscode.workspace.fs.stat(uri);
+		link.stat = stat;
+		await LinkManager.addLink(link).save();
 	}
 })();

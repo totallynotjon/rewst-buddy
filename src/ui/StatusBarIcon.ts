@@ -35,8 +35,6 @@ export class StatusBar implements vscode.Disposable {
 			return;
 		}
 
-		const isLinked = LinkManager.isLinked(activeEditor.document.uri);
-
 		let link;
 		try {
 			link = LinkManager.getTemplateLink(activeEditor.document.uri);
@@ -51,7 +49,7 @@ export class StatusBar implements vscode.Disposable {
 
 		let session: Session;
 		try {
-			session = SessionManager.getSessionForOrg(link.template.orgId);
+			session = SessionManager.getSessionForOrg(link.org.id);
 		} catch (e) {
 			log.error(`No session found with access to org ${link.template.organization.name}`);
 			this.privateWarnNoSession();
