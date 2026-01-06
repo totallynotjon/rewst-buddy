@@ -4,7 +4,7 @@
 
 I work with Rewst templates a lot. I made this extension to make it easier to make small tweaks and changes to templates when developing scripts/html in Rewst. Instead of having tabs open in a browser, you can make edits directly to files in your filesystem. This means you can have all the power of vscode while managing your Rewst templates: folders, extensions, git, ai agents editing files, etc.
 
-This works by a 'Link & Sync' methodology. You can link an entire folder to an organization and fetch all templates at once, or link individual templates to local files. After files are linked, edits automatically sync to Rewst on save.
+This works by a 'Link & Sync' methodology. You can link an entire folder to an organization and fetch all templates at once, or link individual templates to local files. After files are linked, edits can automatically sync to Rewst on save.
 
 Our sync should be even safer than using tabs in your browser. As part of a sync operation, we pull the template and make sure it hasn't been edited since the latest version we got from Rewst. (In your browser it would just override it).
 
@@ -16,7 +16,7 @@ Since Rewst does not expose API keys for working with GraphQL directly, we do re
 
 ### Recommended: Bulk Download Workflow
 
-**1. Set up a session (one-time):**
+**1. Set up a session (once a week):**
 
 1. Copy your `appSession` cookie from your browser while logged into Rewst
 2. Click the Rewst Buddy icon in the activity bar (sidebar)
@@ -35,8 +35,8 @@ Alternatively, use the command palette: `Rewst Buddy: New Rewst Session` (Cmd/Ct
 **3. Edit and sync:**
 
 - Open any downloaded template file and edit
-- **Save** to auto-sync changes back to Rewst (enabled by default)
-- Status bar shows sync status and template details
+- **Click the status bar item in the bottom-right** to enable sync-on-save for each file
+- Once enabled, **save** to auto-sync changes back to Rewst
 
 ### Alternative: Individual Template Workflow
 
@@ -52,7 +52,8 @@ If you prefer to work with specific templates rather than downloading everything
 
 **3. Edit and sync:**
 
-- Make your changes and **save** - templates auto-sync on save by default
+- Make your changes and **save** - templates auto-sync on save
+- **Click the status bar item in the bottom-right** to toggle sync-on-save per file
 - Or right-click → **Sync Template** to manually push changes
 
 **4. Unlink when done:**
@@ -61,18 +62,20 @@ If you prefer to work with specific templates rather than downloading everything
 
 ### Auto-Sync on Save
 
-By default, linked templates automatically sync to Rewst when you save. Control this behavior with:
+By default, sync-on-save is **disabled** - you must enable it per file by clicking the status bar item in the bottom-right corner.
+
+To enable sync-on-save globally for all linked files:
 
 ```json
 {
-	"rewst-buddy.syncOnSaveByDefault": false
+	"rewst-buddy.syncOnSaveByDefault": true
 }
 ```
 
-- When `true` (default): all linked files sync unless explicitly disabled
-- When `false`: files only sync when explicitly enabled
+- When `false` (default): files only sync when explicitly enabled per file
+- When `true`: all linked files sync unless explicitly disabled
 
-Use `Enable Sync-On-Save` and `Disable Sync-On-Save` commands to control individual files.
+You can also use `Enable Sync-On-Save` and `Disable Sync-On-Save` commands from the command palette.
 
 > Auto-sync performs the same safety checks as manual sync, preventing overwrites if the template was modified in Rewst since your last sync.
 
@@ -173,14 +176,14 @@ Click the Rewst Buddy icon in the activity bar to open the sidebar:
 
 ### Status Bar (v0.27)
 
-When a linked template is active:
+When editing a linked template, a status indicator appears in the **bottom-right corner** of VS Code:
 
 - Shows sync-on-save status: **ON** (with checkmark) or **OFF** (with warning icon)
-- Click to toggle sync-on-save for the current file
+- **Click the status bar item to toggle sync-on-save** for the current file
 - Hover for detailed tooltip with template name, description, and organization
 - Displays error indicator if no active session exists for the template's organization
 
-The status bar hides when viewing non-linked files.
+The status bar item hides when viewing non-linked files.
 
 ### Multi-Region Setup
 
