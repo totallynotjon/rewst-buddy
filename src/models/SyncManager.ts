@@ -257,7 +257,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 	private async addLink(link: Link, uri: Uri) {
 		log.trace('SyncManager.addLink: updating link with', uri.fsPath);
-		await LinkManager.addLink(link).save();
+		await LinkManager.addLink(link);
 		log.trace('addLink: saved');
 	}
 
@@ -323,7 +323,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 								org: org,
 							};
 
-							await LinkManager.addLink(templateLink).save(); // Batched - no immediate save
+							LinkManager.addLink(templateLink); // Batched - no immediate save
 							return true;
 						} catch (err) {
 							log.warn(`fetchFolder: failed to create file for "${template.name}": ${err}`);

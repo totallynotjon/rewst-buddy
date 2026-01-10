@@ -57,7 +57,7 @@ export class CreateTemplate extends GenericCommand {
 			org: org,
 		};
 
-		await LinkManager.addLink(templateLink).save();
+		await LinkManager.addLink(templateLink);
 
 		log.notifyInfo(`SUCCESS: Created template "${response.template.name}"`);
 	}

@@ -49,6 +49,6 @@ export class OpenTemplateFromURL extends GenericCommand {
 			},
 		};
 
-		await LinkManager.addLink(templateLink).save();
+		await LinkManager.addLink(templateLink);
 	}
 }

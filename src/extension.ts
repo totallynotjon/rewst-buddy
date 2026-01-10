@@ -29,7 +29,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Register managers (self-register for their respective VS Code events)
 	context.subscriptions.push(LinkManager.init());
 	context.subscriptions.push(SyncManager);
-	context.subscriptions.push(await SyncOnSaveManager.init());
+	context.subscriptions.push(SyncOnSaveManager.init());
 	context.subscriptions.push(await SessionManager.init());
 	context.subscriptions.push(await Server.init());
 	context.subscriptions.push(new StatusBar());

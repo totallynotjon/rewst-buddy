@@ -15,7 +15,7 @@ export class UnlinkAllTemplates extends GenericCommand {
 
 		switch (choice) {
 			case 'Clear Links':
-				await LinkManager.clearTemplateLinks().save();
+				await LinkManager.clearTemplateLinks();
 				log.notifyInfo('Cleared Template Links');
 				break;
 		}

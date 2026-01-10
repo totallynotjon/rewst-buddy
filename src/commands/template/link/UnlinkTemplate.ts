@@ -18,7 +18,7 @@ export class UnlinkTemplate extends GenericCommand {
 			throw log.error(`There is no template link to clear for uri ${uri.toString()}`);
 		}
 
-		await LinkManager.removeLink(uri.toString()).save();
+		await LinkManager.removeLink(uri.toString());
 		log.notifyInfo(`SUCCESS: Unlinked template from uri ${uri.toString()}`);
 	}
 }

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.32.1] - 2026-01-10
+
+### Changed
+
+- **Non-blocking Persistence** - LinkManager and SyncOnSaveManager now use fire-and-forget saves
+    - State changes persist without blocking the UI
+    - Simplified internal API with auto-save on mutations
+
+### Fixed
+
+- **Template URL Error Message** - Corrected path pattern in error message from `/(:orgId)/templates/` to `/organizations/(:orgId)/templates/`
+
 ## [0.32.0] - 2026-01-06
 
 ### Changed

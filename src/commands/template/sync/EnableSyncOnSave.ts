@@ -12,6 +12,6 @@ export class EnableSyncOnSave extends GenericCommand {
 			log.notifyError(`Sync-on-save is already enabled for this file.`);
 			return;
 		}
-		await SyncOnSaveManager.enableSync(document.uri);
+		SyncOnSaveManager.enableSync(document.uri);
 	}
 }

@@ -18,7 +18,7 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 	private inclusions = new Set<string>();
 	private exclusions = new Set<string>();
 
-	async init(): Promise<_> {
+	init(): _ {
 		// Load cached sets from globalState
 		this.inclusions = new Set(context.globalState.get<string[]>(this.inclusionsKey, []));
 		this.exclusions = new Set(context.globalState.get<string[]>(this.exclusionsKey, []));
@@ -35,13 +35,14 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 			}),
 		);
 
-		await this.handleConfigChange();
+		this.handleConfigChange();
 		return this;
 	}
 
 	dispose(): void {
 		this.disposables.forEach(d => d.dispose());
 		this.syncOnSaveChangedEmitter.dispose();
+		this.save();
 	}
 
 	public isUriSynced(uri: vscode.Uri): boolean {
@@ -54,10 +55,10 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 		let synced: boolean;
 		if (this.syncByDefault) {
 			// Exclusion mode: sync unless in exclusion list
-			synced = !this.exclusions.has(uriString); // O(1) lookup
+			synced = !this.exclusions.has(uriString);
 		} else {
 			// Inclusion mode: don't sync unless in inclusion list
-			synced = this.inclusions.has(uriString); // O(1) lookup
+			synced = this.inclusions.has(uriString);
 		}
 
 		log.trace('SyncOnSaveManager.isUriSynced:', {
@@ -68,27 +69,25 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 		return synced;
 	}
 
-	private async handleConfigChange(): Promise<void> {
+	private handleConfigChange(): void {
 		const config = vscode.workspace.getConfiguration(extPrefix);
 		const newValue = config.get<boolean>('syncOnSaveByDefault', false);
 		log.debug('SyncOnSaveManager.handleConfigChange: syncByDefault', { old: this.syncByDefault, new: newValue });
 		this.syncByDefault = newValue;
-		this.syncOnSaveChangedEmitter.fire({ type: 'saved' });
+		this.fire();
 	}
 
 	// Inclusion methods
-	public async addInclusion(uri: vscode.Uri | string, fire = false): Promise<void> {
+	public addInclusion(uri: vscode.Uri | string): void {
 		log.trace('SyncOnSaveManager.addInclusion:', uri.toString());
 		this.inclusions.add(uri.toString());
-		await this.saveInclusions(fire);
+		this.fire();
 	}
 
-	public async removeInclusion(uri: vscode.Uri | string, fire = false): Promise<boolean> {
+	public removeInclusion(uri: vscode.Uri | string): boolean {
 		log.trace('SyncOnSaveManager.removeInclusion:', uri.toString());
 		const removed = this.inclusions.delete(uri.toString());
-		if (removed) {
-			await this.saveInclusions(fire);
-		}
+		if (removed) this.fire();
 		return removed;
 	}
 
@@ -103,23 +102,21 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 		}
 
 		if (this.inclusions.size !== originalSize) {
-			this.saveInclusions(); // Fire-and-forget
+			this.fire();
 		}
 	}
 
 	// Exclusion methods
-	public async addExclusion(uri: vscode.Uri | string, fire = false): Promise<void> {
+	public addExclusion(uri: vscode.Uri | string): void {
 		log.trace('SyncOnSaveManager.addExclusion:', uri.toString());
 		this.exclusions.add(uri.toString());
-		await this.saveExclusions(fire);
+		this.fire();
 	}
 
-	public async removeExclusion(uri: vscode.Uri | string, fire = false): Promise<boolean> {
+	public removeExclusion(uri: vscode.Uri | string): boolean {
 		log.trace('SyncOnSaveManager.removeExclusion:', uri.toString());
 		const removed = this.exclusions.delete(uri.toString());
-		if (removed) {
-			await this.saveExclusions(fire);
-		}
+		if (removed) this.fire();
 		return removed;
 	}
 
@@ -134,46 +131,40 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 		}
 
 		if (this.exclusions.size !== originalSize) {
-			this.saveExclusions(); // Fire-and-forget
+			this.fire();
 		}
 	}
 
-	private async saveExclusions(fire = false): Promise<void> {
-		await context.globalState.update(this.exclusionsKey, Array.from(this.exclusions));
-		if (fire) this.syncOnSaveChangedEmitter.fire({ type: 'saved' });
+	private fire(): void {
+		this.syncOnSaveChangedEmitter.fire({ type: 'saved' });
+		this.save();
 	}
 
-	private async saveInclusions(fire = false): Promise<void> {
-		await context.globalState.update(this.inclusionsKey, Array.from(this.inclusions));
-		if (fire) this.syncOnSaveChangedEmitter.fire({ type: 'saved' });
+	private save(): void {
+		context.globalState.update(this.exclusionsKey, Array.from(this.exclusions));
+		context.globalState.update(this.inclusionsKey, Array.from(this.inclusions));
 	}
 
 	// Abstracted methods for commands
-	public async enableSync(uri: vscode.Uri): Promise<void> {
+	public enableSync(uri: vscode.Uri): void {
 		log.debug('SyncOnSaveManager.enableSync:', uri.fsPath);
 		const uriString = uri.toString();
 
-		// Update both sets in memory first
+		// Update both sets in memory
 		this.exclusions.delete(uriString);
 		this.inclusions.add(uriString);
 
-		// Parallel saves instead of sequential
-		await Promise.all([this.saveExclusions(false), this.saveInclusions(false)]);
-
-		this.syncOnSaveChangedEmitter.fire({ type: 'saved' });
+		this.fire();
 	}
 
-	public async disableSync(uri: vscode.Uri): Promise<void> {
+	public disableSync(uri: vscode.Uri): void {
 		log.debug('SyncOnSaveManager.disableSync:', uri.fsPath);
 		const uriString = uri.toString();
 
-		// Update both sets in memory first
+		// Update both sets in memory
 		this.exclusions.add(uriString);
 		this.inclusions.delete(uriString);
 
-		// Parallel saves instead of sequential
-		await Promise.all([this.saveExclusions(false), this.saveInclusions(false)]);
-
-		this.syncOnSaveChangedEmitter.fire({ type: 'saved' });
+		this.fire();
 	}
 })();

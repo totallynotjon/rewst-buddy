@@ -34,7 +34,7 @@ export class LinkTemplateInteractive extends GenericCommand {
 		};
 
 		log.trace('LinkTemplateInteractive: adding link and syncing');
-		await LinkManager.addLink(templateLink).save();
+		await LinkManager.addLink(templateLink);
 		await SyncManager.syncTemplate(document);
 
 		log.notifyInfo('SUCCESS: Linked template');

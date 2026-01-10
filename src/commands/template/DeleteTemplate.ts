@@ -34,7 +34,7 @@ export class DeleteTemplate extends GenericCommand {
 			throw log.notifyError(`Response from Rewst does not indicate success in deleting template`);
 		}
 
-		await LinkManager.removeLink(link.uriString).save();
+		await LinkManager.removeLink(link.uriString);
 
 		log.notifyInfo(`Deleted template ${link.template.organization.name}/${link.template.name} `);
 	}

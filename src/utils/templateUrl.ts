@@ -1,6 +1,6 @@
-import { log } from './log';
 import UrlPattern from 'url-pattern';
 import { validate as uuidValidate } from 'uuid';
+import { log } from './log';
 
 export interface TemplateURLParams {
 	orgId: string;
@@ -27,7 +27,7 @@ export async function getTemplateURLParams(templateURL: string | undefined): Pro
 	const params = template.match(url.pathname);
 
 	if (!params) {
-		log.error(`path does not match "/(:orgId)/templates/(:templateId)" ${templateURL}`);
+		log.error(`path does not match "/organizations/(:orgId)/templates/(:templateId)" ${templateURL}`);
 		throw new Error('path does not match pattern');
 	}
 

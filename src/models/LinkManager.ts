@@ -15,9 +15,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	private disposables: vscode.Disposable[] = [];
 
-	// Batch mode state for performance optimization
 	private batchMode = false;
-	private batchDirty = false;
 
 	init(): _ {
 		this.disposables.push(vscode.workspace.onDidRenameFiles(e => this.handleRename(e)));
@@ -32,6 +30,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	private async handleRename(e: vscode.FileRenameEvent): Promise<void> {
 		log.trace('LinkManager.handleRename: processing', { fileCount: e.files.length });
 
+		this.beginBatch();
 		try {
 			for (const file of e.files) {
 				const stat = await vscode.workspace.fs.stat(file.newUri);
@@ -57,10 +56,10 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 					await this.moveLink(file.oldUri.toString(), file.newUri.toString());
 				}
 			}
-
-			await this.save();
 		} catch (error) {
 			log.error('LinkManager.handleRename: failed', error);
+		} finally {
+			this.endBatch();
 		}
 	}
 
@@ -74,22 +73,26 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 			}
 		}
 		log.trace('LinkManager.clearTemplateLinks: cleared', cleared);
+		this.fire();
 		return this;
 	}
 
 	removeLink(uriString: string): _ {
 		log.trace('LinkManager.removeLink:', uriString);
 		this.linkMap.delete(uriString);
+		this.fire();
 		return this;
 	}
 
 	addLink(link: Link): _ {
 		log.trace('LinkManager.addLink:', link);
 		this.linkMap.set(link.uriString, link);
+		this.fire();
 		return this;
 	}
 
 	async moveLink(oldUriString: string, newUriString: string): Promise<_> {
+		if (!this.batchMode) throw log.error('Can only move link after initiating batch mode');
 		log.trace('LinkManager.moveLink: starting', { from: oldUriString, to: newUriString });
 
 		const link = this.linkMap.get(oldUriString);
@@ -101,55 +104,54 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		link.uriString = newUriString;
 
 		// Move inclusion status if present
-		const wasIncluded = await SyncOnSaveManager.removeInclusion(oldUriString);
-		if (wasIncluded) await SyncOnSaveManager.addInclusion(newUriString);
+		const wasIncluded = SyncOnSaveManager.removeInclusion(oldUriString);
+		if (wasIncluded) SyncOnSaveManager.addInclusion(newUriString);
 
 		// Move exclusion status if present
-		const wasExcluded = await SyncOnSaveManager.removeExclusion(oldUriString);
-		if (wasExcluded) await SyncOnSaveManager.addExclusion(newUriString);
+		const wasExcluded = SyncOnSaveManager.removeExclusion(oldUriString);
+		if (wasExcluded) SyncOnSaveManager.addExclusion(newUriString);
 
 		this.removeLink(oldUriString).addLink(link);
 
 		log.trace('LinkManager.moveLink: completed', { type: link.type });
 
+		this.fire();
 		return this;
 	}
 
 	beginBatch(): _ {
 		log.trace('LinkManager.beginBatch: entering batch mode');
 		this.batchMode = true;
-		this.batchDirty = false;
 		return this;
 	}
 
 	async endBatch(): Promise<_> {
-		log.trace('LinkManager.endBatch: exiting batch mode', { dirty: this.batchDirty });
+		log.trace('LinkManager.endBatch: exiting batch mode');
 		this.batchMode = false;
-		if (this.batchDirty) {
-			await this.save();
-			this.batchDirty = false;
-		}
+		this.fire();
 		return this;
+	}
+
+	fire() {
+		if (this.batchMode) return;
+
+		const links = Array.from(this.linkMap.values());
+		this.linksSavedEmitter.fire({
+			links: links,
+		});
+
+		this.updateLinksContext(links);
+		this.save();
 	}
 
 	async save(): Promise<_> {
-		// Defer save if in batch mode
-		if (this.batchMode) {
-			log.trace('LinkManager.save: deferring save (batch mode active)');
-			this.batchDirty = true;
-			return this;
-		}
-
+		log.trace('LinkManager.save');
 		const links: Link[] = Array.from(this.linkMap.values());
-		log.trace('LinkManager.save: saving', { linkCount: links.length });
 		await context.globalState.update(this.stateKey, links);
-		this.updateLinksContext(links);
-		this.linksSavedEmitter.fire({ links: links });
-		log.trace('LinkManager.save: completed');
 		return this;
 	}
 
-	private updateLinksContext(links: Link[]) {
+	private async updateLinksContext(links: Link[]) {
 		const folders: Record<string, boolean> = {};
 		const templates: Record<string, boolean> = {};
 		for (const link of links) {
@@ -159,40 +161,25 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 				templates[vscode.Uri.parse(link.uriString).fsPath] = true;
 			}
 		}
-		vscode.commands.executeCommand('setContext', `${extPrefix}.linkedTemplates`, templates);
-		vscode.commands.executeCommand('setContext', `${extPrefix}.linkedFolders`, folders);
+		await vscode.commands.executeCommand('setContext', `${extPrefix}.linkedTemplates`, templates);
+		await vscode.commands.executeCommand('setContext', `${extPrefix}.linkedFolders`, folders);
 	}
 
 	loadLinks(): _ {
+		this.loaded = true;
+
 		log.trace('LinkManager.loadLinks: loading');
 		const links = context.globalState.get<Link[]>(this.stateKey) ?? [];
 		log.debug('LinkManager.loadLinks: found links', links.length);
 		this.linkMap.clear();
-		let migrated = false;
+
+		this.beginBatch();
 
 		for (const link of links) {
-			// Handle missing type (pre-folder era)
-			if (link.type === undefined) {
-				link.type = 'Template';
-				migrated = true;
-			}
-
-			// Handle legacy sessionProfile field
-			if ((link as any).sessionProfile) {
-				link.org = (link as any).sessionProfile.org;
-				delete (link as any).sessionProfile;
-				migrated = true;
-			}
-
 			this.addLink(link);
 		}
-		this.loaded = true;
-		this.updateLinksContext(links);
 
-		if (migrated) {
-			log.debug('LinkManager.loadLinks: migrated legacy links');
-			this.save();
-		}
+		this.endBatch();
 
 		log.trace('LinkManager.loadLinks: completed');
 		return this;
@@ -231,13 +218,11 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	getTemplateLink(uri: vscode.Uri): TemplateLink {
 		this.loadIfNotAlready();
-
 		return this.getLink(uri, 'Template') as TemplateLink;
 	}
 
 	getFolderLink(uri: Uri): FolderLink {
 		this.loadIfNotAlready();
-
 		return this.getLink(uri, 'Folder') as FolderLink;
 	}
 

@@ -12,6 +12,6 @@ export class DisableSyncOnSave extends GenericCommand {
 			log.notifyError(`Sync-on-save is not enabled for this file.`);
 			return;
 		}
-		await SyncOnSaveManager.disableSync(document.uri);
+		SyncOnSaveManager.disableSync(document.uri);
 	}
 }

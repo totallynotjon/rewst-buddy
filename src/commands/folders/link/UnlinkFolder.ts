@@ -12,7 +12,7 @@ export class UnlinkFolder extends GenericCommand {
 			throw log.error(`There is no link to clear for uri ${uri.toString()}`);
 		}
 
-		await LinkManager.removeLink(uri.toString()).save();
+		await LinkManager.removeLink(uri.toString());
 		log.notifyInfo(`SUCCESS: Unlinked folder from uri ${uri.toString()}`);
 	}
 }

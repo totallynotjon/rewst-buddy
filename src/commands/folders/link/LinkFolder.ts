@@ -17,7 +17,7 @@ export class LinkFolder extends GenericCommand {
 			uriString: uri.toString(),
 			org: orgPick.org,
 		};
-		await LinkManager.addLink(link).save();
+		LinkManager.addLink(link);
 		log.notifyInfo('SUCCESS: Linked folder');
 
 		try {
