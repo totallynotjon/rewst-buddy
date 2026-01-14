@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.32.2",
+	"version": "0.32.3",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -247,6 +247,10 @@
 				{
 					"command": "rewst-buddy.FetchFolder",
 					"when": "rewst-buddy.anyActiveSessions && explorerResourceIsFolder && resourcePath in rewst-buddy.linkedFolders"
+				},
+				{
+					"command": "rewst-buddy.CopyTemplateID",
+					"when": "!explorerResourceIsFolder && resourcePath in rewst-buddy.linkedTemplates"
 				}
 			],
 			"commandPalette": [

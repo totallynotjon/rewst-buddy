@@ -1,15 +1,26 @@
 import { LinkManager } from '@models';
-import { ensureSavedDocument, log } from '@utils';
+import { ensureSavedDocument, log, parseArgsUri } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
 
 export class CopyTemplateID extends GenericCommand {
 	commandName = 'CopyTemplateID';
 
-	async execute(...args: unknown[]): Promise<void> {
-		const document = await ensureSavedDocument(args);
+	async execute(...args: any[]): Promise<void> {
+		let uri = undefined;
 		try {
-			const link = LinkManager.getTemplateLink(document.uri);
+			uri = parseArgsUri(args);
+		} catch (e) {
+			//no parsed uri, continue
+		}
+
+		if (!uri) {
+			const document = await ensureSavedDocument(args);
+			uri = document.uri;
+		}
+
+		try {
+			const link = LinkManager.getTemplateLink(uri);
 
 			const templateId = link.template.id;
 

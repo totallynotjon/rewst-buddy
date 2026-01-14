@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.32.3] - 2026-01-13
+
+### Changed
+
+- **Copy Template ID** - Command now available in file explorer context menu for linked template files
+
 ## [0.32.2] - 2026-01-13
 
 ### Fixed
