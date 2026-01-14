@@ -1,3 +1,4 @@
+import type { SessionChangeEvent } from '@events';
 import { FolderLink, Link, TemplateLink } from '@models';
 import { Session, SessionManager, TemplateFragment } from '@sessions';
 import { log, makeUniqueUri, writeTextFile } from '@utils';
@@ -8,17 +9,70 @@ import { SyncOnSaveManager } from './SyncOnSaveManager';
 export const SyncManager = new (class _ implements vscode.Disposable {
 	private syncingUris = new Set<string>();
 	private disposables: vscode.Disposable[] = [];
-	private interval!: NodeJS.Timeout;
+	private documentEventDisposables: vscode.Disposable[] = [];
+	private interval: NodeJS.Timeout | undefined;
+	private isActive = false;
 
-	constructor() {
-		this.disposables.push(vscode.workspace.onDidSaveTextDocument(async doc => await this.handleSave(doc)));
-		this.disposables.push(vscode.workspace.onDidOpenTextDocument(async doc => await this.checkAutoFetch(doc)));
+	init(): _ {
+		// Subscribe to session changes
+		this.disposables.push(SessionManager.onSessionChange(e => this.handleSessionChange(e)));
+
+		// Check initial state (sessions may already exist from loadSessions())
+		if (SessionManager.getActiveSessions().length > 0) {
+			this.activate();
+		}
+
+		return this;
+	}
+
+	private handleSessionChange(event: SessionChangeEvent): void {
+		const hasActiveSessions = event.activeProfiles.length > 0;
+
+		if (hasActiveSessions && !this.isActive) {
+			this.activate();
+		} else if (!hasActiveSessions && this.isActive) {
+			this.deactivate();
+		}
+	}
+
+	private activate(): void {
+		if (this.isActive) return;
+
+		log.debug('SyncManager: activating document listeners and folder fetch interval');
+		this.isActive = true;
+
+		// Register document event listeners
+		this.documentEventDisposables.push(
+			vscode.workspace.onDidSaveTextDocument(async doc => await this.handleSave(doc)),
+		);
+		this.documentEventDisposables.push(
+			vscode.workspace.onDidOpenTextDocument(async doc => await this.checkAutoFetch(doc)),
+		);
+
+		// Start the folder fetch interval
 		this.interval = setInterval(() => this.fetchAllFolders(), 15 * 60 * 1000);
 	}
 
+	private deactivate(): void {
+		if (!this.isActive) return;
+
+		log.debug('SyncManager: deactivating document listeners and folder fetch interval');
+		this.isActive = false;
+
+		// Dispose document event listeners
+		this.documentEventDisposables.forEach(d => d.dispose());
+		this.documentEventDisposables = [];
+
+		// Clear the interval
+		if (this.interval) {
+			clearInterval(this.interval);
+			this.interval = undefined;
+		}
+	}
+
 	dispose(): void {
+		this.deactivate();
 		this.disposables.forEach(d => d.dispose());
-		clearInterval(this.interval);
 	}
 
 	private async checkAutoFetch(doc: vscode.TextDocument) {
@@ -262,9 +316,12 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 	}
 
 	async fetchAllFolders() {
+		if (!this.isActive) return;
+
 		log.debug('Fetching all folders');
 		const links = LinkManager.getFolderLinks();
 		for (const link of links) {
+			if (!this.isActive) break; // Stop if deactivated mid-fetch
 			await this.fetchFolder(link);
 		}
 	}

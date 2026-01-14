@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.2] - 2026-01-13
+
+### Fixed
+
+- **Session Loading Timeout** - Added 10-second timeout to prevent extension hang if concurrent session loading fails
+- **Status Bar Session Validation** - Status bar now correctly checks for organization-specific sessions, not just any active session
+
 ## [0.32.1] - 2026-01-10
 
 ### Changed

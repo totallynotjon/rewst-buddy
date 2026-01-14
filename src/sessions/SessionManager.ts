@@ -1,5 +1,5 @@
 import type { SessionChangeEvent } from '@events';
-import { context } from '@global';
+import { context, extPrefix } from '@global';
 import { Org } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
@@ -8,9 +8,11 @@ import Session from './Session';
 import SessionProfile from './SessionProfile';
 
 export const SessionManager = new (class _ implements vscode.Disposable {
-	interval = setInterval(this.refreshActiveSessions, 15 * 60 * 1000);
+	private interval: NodeJS.Timeout | undefined;
+
 	dispose(): void {
-		clearInterval(this.interval);
+		this.stopRefreshInterval();
+		vscode.commands.executeCommand('setContext', `${extPrefix}.anyActiveSessions`, false);
 	}
 
 	sessionMap: Map<string, Session> = new Map<string, Session>();
@@ -19,10 +21,42 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	private loaded = false;
 	private loading = false;
 	readonly onSessionChange = this.sessionChangeEmitter.event;
+	private anyActiveSessions = false;
+
+	private setAnyActiveSessions(value: boolean) {
+		if (this.anyActiveSessions === value) return; // No change
+
+		vscode.commands.executeCommand('setContext', `${extPrefix}.anyActiveSessions`, value);
+		this.anyActiveSessions = value;
+
+		// Start/stop refresh interval based on session state
+		if (value) {
+			this.startRefreshInterval();
+		} else {
+			this.stopRefreshInterval();
+		}
+	}
+
+	private startRefreshInterval(): void {
+		if (this.interval) return; // Already running
+		log.debug('SessionManager: starting refresh interval');
+		this.interval = setInterval(() => this.refreshActiveSessions(), 15 * 60 * 1000);
+	}
+
+	private stopRefreshInterval(): void {
+		if (!this.interval) return; // Not running
+		log.debug('SessionManager: stopping refresh interval');
+		clearInterval(this.interval);
+		this.interval = undefined;
+	}
+
+	hasActiveSessions(): boolean {
+		return this.anyActiveSessions;
+	}
 
 	async init(): Promise<_> {
+		this.setAnyActiveSessions(false);
 		await SessionManager.loadSessions();
-
 		return this;
 	}
 
@@ -169,9 +203,14 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	async loadSessions(): Promise<Session[]> {
 		log.trace('loadSessions: starting');
 
-		if (this.loading) {
-			log.debug('loadSessions: already in progress, skipping');
-			return this.getActiveSessions();
+		const startTime = Date.now();
+		const maxWaitMs = 10000; // 10 seconds
+
+		while (this.loading) {
+			if (Date.now() - startTime > maxWaitMs) {
+				throw log.error('loadSessions: timeout waiting for concurrent load to complete');
+			}
+			await new Promise(resolve => setTimeout(resolve, 500));
 		}
 		if (this.loaded) {
 			log.debug('loadSessions: already loaded, skipping');
@@ -210,7 +249,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	private async saveProfiles(): Promise<void> {
-		await context.globalState.update(
+		context.globalState.update(
 			'SessionProfiles',
 			this.getActiveSessions().map(s => s.profile),
 		);
@@ -231,7 +270,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 		const profiles = Array.from(profileMap.values());
 
-		await context.globalState.update('RewstAllKnownProfiles', profiles);
+		context.globalState.update('RewstAllKnownProfiles', profiles);
 
 		this.sessionChangeEmitter.fire({
 			type: 'saved',
@@ -247,6 +286,8 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			throw log.error('saveSession: user has no id');
 		}
 
+		this.setAnyActiveSessions(true);
+
 		this.sessionMap.set(session.profile.user.id, session);
 		await this.saveProfiles();
 		log.trace('saveSession: saved', { sessionMapSize: this.sessionMap.size });
@@ -260,12 +301,14 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		log.debug('clearProfiles: clearing all sessions');
 		context.globalState.update('SessionProfiles', []);
 		this.sessionMap.clear();
+		this.setAnyActiveSessions(false);
 
 		this.sessionChangeEmitter.fire({
 			type: 'cleared',
 			allProfiles: this.getAllKnownProfiles(),
 			activeProfiles: [],
 		});
+
 		log.trace('clearProfiles: cleared');
 	}
 
@@ -273,7 +316,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		log.trace('getSessionForOrg: looking for', orgId);
 		const sessions = this.getActiveSessions();
 		for (const session of sessions) {
-			if (session.profile.allManagedOrgs.map(org => org.id ?? '1').includes(orgId)) {
+			if (session.profile.allManagedOrgs.some(org => org.id === orgId)) {
 				log.trace('getSessionForOrg: found', { label: session.profile.label });
 				return session;
 			}

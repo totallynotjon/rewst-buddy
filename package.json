@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.32.1",
+	"version": "0.32.2",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -238,7 +238,7 @@
 			"explorer/context": [
 				{
 					"command": "rewst-buddy.LinkFolder",
-					"when": "explorerResourceIsFolder && resourcePath not in rewst-buddy.linkedFolders"
+					"when": "rewst-buddy.anyActiveSessions && explorerResourceIsFolder && resourcePath not in rewst-buddy.linkedFolders"
 				},
 				{
 					"command": "rewst-buddy.UnlinkFolder",
@@ -246,13 +246,29 @@
 				},
 				{
 					"command": "rewst-buddy.FetchFolder",
-					"when": "explorerResourceIsFolder && resourcePath in rewst-buddy.linkedFolders"
+					"when": "rewst-buddy.anyActiveSessions && explorerResourceIsFolder && resourcePath in rewst-buddy.linkedFolders"
 				}
 			],
 			"commandPalette": [
 				{
 					"command": "rewst-buddy.LinkFolder",
 					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.prefix.LinkTemplateFromURL",
+					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.prefix.ClearSessions",
+					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.prefix.OpenTemplateFromURL",
+					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.prefix.OpenTemplateInteractive",
+					"when": "rewst-buddy.anyActiveSessions"
 				},
 				{
 					"command": "rewst-buddy.FetchFolder",
@@ -288,7 +304,7 @@
 				},
 				{
 					"command": "rewst-buddy.prefix.SyncTemplate",
-					"when": "resourcePath in rewst-buddy.linkedTemplates"
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
 				},
 				{
 					"command": "rewst-buddy.prefix.UnlinkTemplate",
@@ -296,7 +312,7 @@
 				},
 				{
 					"command": "rewst-buddy.prefix.DeleteTemplate",
-					"when": "resourcePath in rewst-buddy.linkedTemplates"
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
 				},
 				{
 					"command": "rewst-buddy.prefix.EnableSyncOnSave",
@@ -305,6 +321,14 @@
 				{
 					"command": "rewst-buddy.prefix.DisableSyncOnSave",
 					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.prefix.CreateTemplate",
+					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.prefix.LinkTemplateInteractive",
+					"when": "rewst-buddy.anyActiveSessions"
 				}
 			],
 			"editor/context": [
@@ -316,17 +340,17 @@
 				{
 					"command": "rewst-buddy.SyncTemplate",
 					"group": "z_rewst",
-					"when": "resourcePath in rewst-buddy.linkedTemplates"
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
 				},
 				{
 					"command": "rewst-buddy.LinkTemplateInteractive",
 					"group": "z_rewst",
-					"when": "resourcePath not in rewst-buddy.linkedTemplates"
+					"when": "rewst-buddy.anyActiveSessions && resourcePath not in rewst-buddy.linkedTemplates"
 				},
 				{
 					"command": "rewst-buddy.CreateTemplate",
 					"group": "z_rewst",
-					"when": "resourcePath not in rewst-buddy.linkedTemplates"
+					"when": "rewst-buddy.anyActiveSessions && resourcePath not in rewst-buddy.linkedTemplates"
 				},
 				{
 					"command": "rewst-buddy.UnlinkTemplate",
@@ -336,7 +360,7 @@
 				{
 					"command": "rewst-buddy.DeleteTemplate",
 					"group": "z_rewst",
-					"when": "resourcePath in rewst-buddy.linkedTemplates"
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
 				}
 			]
 		}

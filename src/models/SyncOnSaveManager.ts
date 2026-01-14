@@ -79,8 +79,10 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 
 	// Inclusion methods
 	public addInclusion(uri: vscode.Uri | string): void {
-		log.trace('SyncOnSaveManager.addInclusion:', uri.toString());
-		this.inclusions.add(uri.toString());
+		const key = uri.toString();
+		if (this.inclusions.has(key)) return; // Already exists
+		log.trace('SyncOnSaveManager.addInclusion:', key);
+		this.inclusions.add(key);
 		this.fire();
 	}
 
@@ -108,8 +110,10 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 
 	// Exclusion methods
 	public addExclusion(uri: vscode.Uri | string): void {
-		log.trace('SyncOnSaveManager.addExclusion:', uri.toString());
-		this.exclusions.add(uri.toString());
+		const key = uri.toString();
+		if (this.exclusions.has(key)) return; // Already exists
+		log.trace('SyncOnSaveManager.addExclusion:', key);
+		this.exclusions.add(key);
 		this.fire();
 	}
 

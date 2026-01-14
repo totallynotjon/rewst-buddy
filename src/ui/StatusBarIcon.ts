@@ -1,6 +1,6 @@
 import { extPrefix } from '@global';
 import { LinkManager, SyncOnSaveManager, TemplateLink } from '@models';
-import { Session, SessionManager } from '@sessions';
+import { SessionManager } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
 
@@ -44,12 +44,16 @@ export class StatusBar implements vscode.Disposable {
 			return;
 		}
 		this.item.text = 'Rewst Buddy: Linked';
-		this.item.backgroundColor = undefined;
 		this.item.tooltip = this.buildTooltip(link);
 
-		let session: Session;
+		if (!SessionManager.hasActiveSessions()) {
+			this.privateWarnNoSession();
+			return;
+		}
+
+		// Check if we have a session for this template's organization
 		try {
-			session = SessionManager.getSessionForOrg(link.org.id);
+			SessionManager.getSessionForOrg(link.org.id);
 		} catch (e) {
 			log.error(`No session found with access to org ${link.template.organization.name}`);
 			this.privateWarnNoSession();
@@ -58,10 +62,10 @@ export class StatusBar implements vscode.Disposable {
 
 		const isSyncEnabled = SyncOnSaveManager.isUriSynced(activeEditor.document.uri);
 
-		if (!isSyncEnabled) {
-			this.privateWarnSyncOnSaveDisabled();
-		} else {
+		if (isSyncEnabled) {
 			this.privateSyncOnSaveEnabled();
+		} else {
+			this.privateWarnSyncOnSaveDisabled();
 		}
 	}
 

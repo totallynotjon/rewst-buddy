@@ -147,7 +147,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	async save(): Promise<_> {
 		log.trace('LinkManager.save');
 		const links: Link[] = Array.from(this.linkMap.values());
-		await context.globalState.update(this.stateKey, links);
+		context.globalState.update(this.stateKey, links);
 		return this;
 	}
 
