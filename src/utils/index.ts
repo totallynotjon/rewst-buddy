@@ -1,3 +1,4 @@
+export { createAndLinkNewTemplate } from './createAndLinkNewTemplate';
 export { ensureSavedDocument, getDocumentFromArgs } from './ensureSavedDocument';
 export { isDescendant } from './isDescendant';
 export { log } from './log';

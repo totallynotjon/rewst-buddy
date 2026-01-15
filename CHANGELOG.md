@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.33.0] - 2026-01-14
+
+### Added
+
+- **Browser Extension Integration: Open Template** - New server endpoint allows browser extension to open templates directly in VS Code
+    - When triggered from browser, opens existing linked file and syncs to latest version
+    - If no link exists, creates new document and prompts user to save
+    - Seamless workflow between browser and VS Code editor
+
+### Changed
+
+- **Refactored Template Document Creation** - Extracted `createAndLinkNewTemplate` utility
+    - Consolidates duplicate code from `OpenTemplateFromURL` and `OpenTemplateInteractive` commands
+    - Improves maintainability and consistency
+
 ## [0.32.3] - 2026-01-13
 
 ### Changed

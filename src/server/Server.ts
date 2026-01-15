@@ -2,8 +2,8 @@ import { log } from '@utils';
 import http, { IncomingMessage, ServerResponse } from 'http';
 import vscode from 'vscode';
 import { getServerConfig } from './config';
-import { handleAddSession, validateRequest } from './handlers';
-import { AddSessionRequest, Response, ServerConfig } from './types';
+import { handleAddSession, handleOpenTemplate, validateRequest } from './handlers';
+import { BrowserRequest, Response, ServerConfig } from './types';
 
 export const Server = new (class _ implements vscode.Disposable {
 	private server: http.Server | null = null;
@@ -139,7 +139,7 @@ export const Server = new (class _ implements vscode.Disposable {
 			return;
 		}
 
-		let request: AddSessionRequest;
+		let request: BrowserRequest;
 		try {
 			request = JSON.parse(rawBody);
 			log.trace('Server.processRequest: parsed JSON', { action: request.action });
@@ -156,15 +156,21 @@ export const Server = new (class _ implements vscode.Disposable {
 			return;
 		}
 
-		if (request.action === 'addSession') {
-			log.debug('Server.processRequest: handling addSession');
-			await handleAddSession(request, res, this.sendResponse.bind(this));
-		} else {
-			log.debug('Server.processRequest: unknown action', (request as { action: string }).action);
-			this.sendResponse(res, 400, {
-				success: false,
-				error: `Unknown action: ${(request as { action: string }).action}`,
-			});
+		switch (request.action) {
+			case 'addSession':
+				log.debug('Server.processRequest: handling addSession');
+				await handleAddSession(request, res, this.sendResponse.bind(this));
+				break;
+			case 'openTemplate':
+				log.debug('Server.processRequest: handling openTemplate');
+				await handleOpenTemplate(request, res, this.sendResponse.bind(this));
+				break;
+			default:
+				log.debug('Server.processRequest: unknown action', (request as { action: string }).action);
+				this.sendResponse(res, 400, {
+					success: false,
+					error: `Unknown action: ${(request as { action: string }).action}`,
+				});
 		}
 	}
 

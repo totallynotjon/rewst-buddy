@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.32.3",
+	"version": "0.33.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"

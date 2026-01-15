@@ -114,7 +114,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			local: link.template.updatedAt,
 			remote: remoteTemplate.updatedAt,
 		});
-		await this.applyTemplatetoDocument(doc, session, remoteTemplate);
+		await this.applyTemplateToDocument(doc, session, remoteTemplate);
 	}
 
 	private async handleSave(document: vscode.TextDocument): Promise<void> {
@@ -236,7 +236,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			await this.addLink(templateLink, doc.uri);
 		} else if (bodyEmpty) {
 			log.debug('syncTemplateInternal: empty, downloading remote');
-			await this.applyTemplatetoDocument(doc, session, remoteTemplate);
+			await this.applyTemplateToDocument(doc, session, remoteTemplate);
 		} else if (isInSync) {
 			log.debug('syncTemplateInternal: timestamps match, uploading local changes');
 			await this.updateTemplateBody(doc);
@@ -267,7 +267,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 			case 'Download Latest':
 				log.trace('handleConflict: downloading remote');
-				await this.applyTemplatetoDocument(doc, session, remoteTemplate);
+				await this.applyTemplateToDocument(doc, session, remoteTemplate);
 				break;
 
 			case undefined:
@@ -275,12 +275,8 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	private async applyTemplatetoDocument(
-		doc: vscode.TextDocument,
-		session: Session,
-		remoteTemplate: TemplateFragment,
-	) {
-		log.trace('applyTemplatetoDocument: applying remote template', {
+	async applyTemplateToDocument(doc: vscode.TextDocument, session: Session, remoteTemplate: TemplateFragment) {
+		log.trace('applyTemplateToDocument: applying remote template', {
 			templateId: remoteTemplate.id,
 			bodyLength: remoteTemplate.body?.length ?? 0,
 		});
@@ -303,10 +299,10 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		await this.addLink(templateLink, doc.uri);
 
 		if ((await vscode.workspace.save(doc.uri)) === undefined) {
-			throw log.error('applyTemplatetoDocument: failed to save');
+			throw log.error('applyTemplateToDocument: failed to save');
 		}
 
-		log.trace('applyTemplatetoDocument: completed');
+		log.trace('applyTemplateToDocument: completed');
 	}
 
 	private async addLink(link: Link, uri: Uri) {
