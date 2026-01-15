@@ -102,13 +102,13 @@ Template links automatically update when you rename or move files - no broken li
 
 ### Session Receiver Server (v0.15)
 
-A local HTTP server that can receive session cookies from a browser extension, eliminating the need to manually copy/paste cookies.
+A local HTTP server that receives session cookies from the [Rewst Buddy Browser Extension](https://github.com/totallynotjon/rewst-buddy-browser), eliminating the need to manually copy/paste cookies.
 
-**How it works:**
+**Setup:**
 
-1. Server listens on `127.0.0.1:27121` (localhost only for security)
-2. Browser extension sends your Rewst cookies to the server
-3. Session is created automatically in VS Code
+1. Install the browser extension from [GitHub](https://github.com/totallynotjon/rewst-buddy-browser)
+2. The VS Code server starts automatically (enabled by default)
+3. Navigate to any Rewst page - your session transfers automatically
 
 **Configuration:**
 
