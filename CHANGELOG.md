@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.34.0] - 2026-01-16
+
+### Changed
+
+- **Memory Optimization** - Reduced RAM usage by storing template body hashes instead of full content
+    - Template links now store SHA-256 hash of body content instead of the full body text
+    - GraphQL queries optimized to fetch body content only when needed
+    - Existing links automatically migrated on load (no user action required)
+    - No changes to user-facing functionality - all sync and conflict detection works identically
+
 ## [0.33.0] - 2026-01-14
 
 ### Added

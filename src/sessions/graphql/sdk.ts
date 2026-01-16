@@ -1907,6 +1907,7 @@ export type MonacoMarkdownString = {
 
 export type Mutation = {
   __typename?: 'Mutation';
+  addAllowedTool: UserRoboRewstyPreferences;
   addFavoriteAction?: Maybe<Scalars['Void']['output']>;
   adminCreateIntegrationTestWorkflow?: Maybe<IntegrationWorkflowOutput>;
   adminCreateOrUpdatePack?: Maybe<Pack>;
@@ -1915,6 +1916,7 @@ export type Mutation = {
   bulkDeleteOrganizations?: Maybe<Scalars['Void']['output']>;
   bulkSetWorkflowTags: Array<Workflow>;
   bulkUpdateOrganizationFeaturePreviewSettingByLabel: Array<OrganizationFeaturePreviewSetting>;
+  clearOAuthTokenCache: OAuthTokenClearResult;
   clearWorkflowOutputs?: Maybe<Scalars['Void']['output']>;
   createActionOptions?: Maybe<Array<Maybe<ActionOption>>>;
   createAppPlatformReservedDomain?: Maybe<AppPlatformReservedDomain>;
@@ -1998,6 +2000,7 @@ export type Mutation = {
   generateDocumentation: DocumentationGenerationResponse;
   generatePackOrBundleAuthUrl?: Maybe<AuthUrlResponse>;
   generateThemeConfig: ThemeConfigGeneratorResponse;
+  getOAuthTokenStatus: OAuthTokenStatus;
   getPackInstallations?: Maybe<PackInstalledByResponse>;
   getPackPageUrl?: Maybe<Scalars['String']['output']>;
   grantDelegatedAccess: UserDelegatedAccess;
@@ -2010,6 +2013,7 @@ export type Mutation = {
   openaiCompletionItems: OpenAiResponse;
   reassignCSPCustomer: MicrosoftCspCustomer;
   refetchPackConfigRefOptions?: Maybe<JobRequestedResponse>;
+  removeAllowedTool: UserRoboRewstyPreferences;
   removeFavoriteAction?: Maybe<Scalars['Void']['output']>;
   renderJinja?: Maybe<Scalars['JSON']['output']>;
   restoreOrganization: Organization;
@@ -2062,6 +2066,7 @@ export type Mutation = {
   updateFormOverrides?: Maybe<Form>;
   updateManagedAndSubOrganizations?: Maybe<Scalars['Int']['output']>;
   updateMicrosoftCSPCustomer: MicrosoftCspCustomer;
+  updateMyRoboRewstyPreferences: UserRoboRewstyPreferences;
   updateOrgTriggerInstance?: Maybe<OrgTriggerInstance>;
   updateOrgVariables: Array<OrgVariable>;
   updateOrganization?: Maybe<Organization>;
@@ -2090,6 +2095,11 @@ export type Mutation = {
   upsertOrgFormFieldInstances: Array<OrgFormFieldInstance>;
   upsertOrgInterpreterSetting?: Maybe<OrgInterpreterSetting>;
   validateSiteCustomDomainDNS?: Maybe<DnsValidationResponse>;
+};
+
+
+export type MutationAddAllowedToolArgs = {
+  toolName: Scalars['String']['input'];
 };
 
 
@@ -2144,6 +2154,11 @@ export type MutationBulkUpdateOrganizationFeaturePreviewSettingByLabelArgs = {
   isEnabled: Scalars['Boolean']['input'];
   label: Scalars['String']['input'];
   orgIds: Array<Scalars['ID']['input']>;
+};
+
+
+export type MutationClearOAuthTokenCacheArgs = {
+  packConfigId: Scalars['ID']['input'];
 };
 
 
@@ -2582,6 +2597,11 @@ export type MutationGenerateThemeConfigArgs = {
 };
 
 
+export type MutationGetOAuthTokenStatusArgs = {
+  packConfigId: Scalars['ID']['input'];
+};
+
+
 export type MutationGetPackInstallationsArgs = {
   packId: Scalars['ID']['input'];
 };
@@ -2645,6 +2665,11 @@ export type MutationReassignCspCustomerArgs = {
 export type MutationRefetchPackConfigRefOptionsArgs = {
   packConfigId: Scalars['ID']['input'];
   reference?: InputMaybe<Scalars['JSON']['input']>;
+};
+
+
+export type MutationRemoveAllowedToolArgs = {
+  toolName: Scalars['String']['input'];
 };
 
 
@@ -2957,6 +2982,11 @@ export type MutationUpdateMicrosoftCspCustomerArgs = {
 };
 
 
+export type MutationUpdateMyRoboRewstyPreferencesArgs = {
+  preferences: UserRoboRewstyPreferencesInput;
+};
+
+
 export type MutationUpdateOrgTriggerInstanceArgs = {
   orgTriggerInstance: OrgTriggerInstanceInput;
 };
@@ -3132,6 +3162,41 @@ export type NewWorkflowExecutionLog = {
   workflowId: Scalars['ID']['output'];
   workflowType: WorkflowType;
 };
+
+export type OAuthTokenClearResult = {
+  __typename?: 'OAuthTokenClearResult';
+  cleared_tokens: Array<Scalars['String']['output']>;
+  message: Scalars['String']['output'];
+  success: Scalars['Boolean']['output'];
+};
+
+export type OAuthTokenStatus = {
+  __typename?: 'OAuthTokenStatus';
+  custom_refresh_interval?: Maybe<Scalars['Int']['output']>;
+  expires_at?: Maybe<Scalars['Float']['output']>;
+  expires_in_seconds?: Maybe<Scalars['Int']['output']>;
+  last_refreshed_at?: Maybe<Scalars['Float']['output']>;
+  message?: Maybe<Scalars['String']['output']>;
+  metadata_present: Scalars['Boolean']['output'];
+  next_refresh_time?: Maybe<Scalars['Float']['output']>;
+  refresh_buffer_seconds: Scalars['Int']['output'];
+  refresh_strategy: Scalars['String']['output'];
+  status: OAuthTokenStatusEnum;
+  time_until_expiration?: Maybe<Scalars['Float']['output']>;
+  time_until_refresh?: Maybe<Scalars['Float']['output']>;
+  token_present: Scalars['Boolean']['output'];
+};
+
+export enum OAuthTokenStatusEnum {
+  Error = 'error',
+  ExpiringSoon = 'expiring_soon',
+  Healthy = 'healthy',
+  MetadataInvalid = 'metadata_invalid',
+  NeedsRefresh = 'needs_refresh',
+  NoMetadata = 'no_metadata',
+  NoToken = 'no_token',
+  Unknown = 'unknown'
+}
 
 export type OnboardingQuestionnaireResponse = {
   __typename?: 'OnboardingQuestionnaireResponse';
@@ -3458,6 +3523,10 @@ export type OrganizationOnboardingCrateRequirement = {
   crateName: Scalars['String']['output'];
   createdAt: Scalars['String']['output'];
   createdBy?: Maybe<User>;
+  executionCount: Scalars['Int']['output'];
+  executionLastCountedAt?: Maybe<Scalars['String']['output']>;
+  executionThreshold: Scalars['Int']['output'];
+  executionThresholdMet: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
   installedAt?: Maybe<Scalars['String']['output']>;
   installedBy?: Maybe<User>;
@@ -3518,6 +3587,9 @@ export type OrganizationOnboardingPackRequirement = {
   isInstalled: Scalars['Boolean']['output'];
   isRequired: Scalars['Boolean']['output'];
   isSkipped?: Maybe<Scalars['Boolean']['output']>;
+  lastMappingSavedAt?: Maybe<Scalars['String']['output']>;
+  mappedOrgsCount: Scalars['Int']['output'];
+  needsOrgMapping: Scalars['Boolean']['output'];
   onboardingRequirement: OrganizationOnboardingRequirement;
   onboardingRequirementId: Scalars['ID']['output'];
   orgId: Scalars['ID']['output'];
@@ -3576,6 +3648,7 @@ export type OrganizationOnboardingRequirement = {
   questionnaireResponses?: Maybe<Array<OnboardingQuestionnaireResponse>>;
   requirementsCompleted?: Maybe<Scalars['Boolean']['output']>;
   requirementsPopulated?: Maybe<Scalars['Boolean']['output']>;
+  requirementsPopulatedAt?: Maybe<Scalars['String']['output']>;
   status?: Maybe<OnboardingStatus>;
   targetCustomerCount?: Maybe<Scalars['Int']['output']>;
   updatedAt: Scalars['String']['output'];
@@ -3589,8 +3662,10 @@ export type OrganizationOnboardingRequirementInput = {
   organizationType?: InputMaybe<OrganizationType>;
   requirementsCompleted?: InputMaybe<Scalars['Boolean']['input']>;
   requirementsPopulated?: InputMaybe<Scalars['Boolean']['input']>;
+  requirementsPopulatedAt?: InputMaybe<Scalars['String']['input']>;
   status?: InputMaybe<OnboardingStatus>;
   targetCustomerCount?: InputMaybe<Scalars['Int']['input']>;
+  updatedAt?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type OrganizationOnboardingRequirementSearchInput = {
@@ -4516,6 +4591,7 @@ export type Query = {
   microsoftCSPCustomers: Array<MicrosoftCspCustomer>;
   monacoFilterCompletionItems: Array<MonacoCompletionItem>;
   myAccessibleOrganizations: Array<Organization>;
+  myRoboRewstyPreferences?: Maybe<UserRoboRewstyPreferences>;
   onboardingQuestionnaireResponse?: Maybe<OnboardingQuestionnaireResponse>;
   onboardingQuestionnaireResponses: Array<OnboardingQuestionnaireResponse>;
   orgFormFieldInstance?: Maybe<OrgFormFieldInstance>;
@@ -4599,6 +4675,7 @@ export type Query = {
   userInvite?: Maybe<UserInvite>;
   userInvites?: Maybe<Array<Maybe<UserInvite>>>;
   userOrganization?: Maybe<Organization>;
+  userRoboRewstyPreferences?: Maybe<UserRoboRewstyPreferences>;
   users: Array<User>;
   validateSiteDomain?: Maybe<SiteDomainValid>;
   visibleOrgVariables: Array<OrgVariable>;
@@ -5541,6 +5618,11 @@ export type QueryUserInvitesArgs = {
   order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
   search?: InputMaybe<UserInviteSearchInput>;
   where?: InputMaybe<UserInviteWhereInput>;
+};
+
+
+export type QueryUserRoboRewstyPreferencesArgs = {
+  where?: InputMaybe<UserRoboRewstyPreferencesWhereInput>;
 };
 
 
@@ -6782,6 +6864,7 @@ export type TriggerTypesSearchInput = {
   isWebhook?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<String_Comparison_Exp>;
   outputSchema?: InputMaybe<Json_Comparison_Exp>;
+  pack?: InputMaybe<PackSearchInput>;
   parametersSchema?: InputMaybe<Json_Comparison_Exp>;
   ref?: InputMaybe<String_Comparison_Exp>;
   triggers?: InputMaybe<TriggerSearchInput>;
@@ -6980,6 +7063,27 @@ export type UserPreferencesInput = {
   dateFormat?: InputMaybe<Scalars['String']['input']>;
   datetimeFormat?: InputMaybe<Scalars['String']['input']>;
   isDarkModePreferred?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+export type UserRoboRewstyPreferences = {
+  __typename?: 'UserRoboRewstyPreferences';
+  alwaysAllowedTools: Array<Scalars['String']['output']>;
+  createdAt: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  metadata?: Maybe<Scalars['JSON']['output']>;
+  updatedAt: Scalars['String']['output'];
+  user: User;
+  userId: Scalars['ID']['output'];
+};
+
+export type UserRoboRewstyPreferencesInput = {
+  alwaysAllowedTools?: InputMaybe<Array<Scalars['String']['input']>>;
+  metadata?: InputMaybe<Scalars['JSON']['input']>;
+};
+
+export type UserRoboRewstyPreferencesWhereInput = {
+  id?: InputMaybe<Scalars['ID']['input']>;
+  userId?: InputMaybe<Scalars['ID']['input']>;
 };
 
 export type UserRolesInput = {
@@ -7575,14 +7679,16 @@ export type String_Comparison_Exp = {
 
 export type OrgFragment = { __typename?: 'Organization', id?: string | null, name: string };
 
-export type TemplateFragment = { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null };
+export type TemplateFragment = { __typename?: 'Template', id: string, name: string, description?: string | null, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null };
+
+export type FullTemplateFragment = { __typename?: 'Template', body: string, id: string, name: string, description?: string | null, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null };
 
 export type ListTemplatesQueryVariables = Exact<{
   orgId: Scalars['ID']['input'];
 }>;
 
 
-export type ListTemplatesQuery = { __typename?: 'Query', templates: Array<{ __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null }> };
+export type ListTemplatesQuery = { __typename?: 'Query', templates: Array<{ __typename?: 'Template', id: string, name: string, description?: string | null, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null }> };
 
 export type CreateTemplateMinimalMutationVariables = Exact<{
   name: Scalars['String']['input'];
@@ -7591,14 +7697,14 @@ export type CreateTemplateMinimalMutationVariables = Exact<{
 }>;
 
 
-export type CreateTemplateMinimalMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
+export type CreateTemplateMinimalMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
 
 export type UpdateTemplateMutationVariables = Exact<{
   template: TemplateUpdateInput;
 }>;
 
 
-export type UpdateTemplateMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
+export type UpdateTemplateMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
 
 export type UpdateTemplateBodyMutationVariables = Exact<{
   body?: InputMaybe<Scalars['String']['input']>;
@@ -7606,7 +7712,7 @@ export type UpdateTemplateBodyMutationVariables = Exact<{
 }>;
 
 
-export type UpdateTemplateBodyMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
+export type UpdateTemplateBodyMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
 
 export type UpdateTemplateNameMutationVariables = Exact<{
   name?: InputMaybe<Scalars['String']['input']>;
@@ -7614,14 +7720,14 @@ export type UpdateTemplateNameMutationVariables = Exact<{
 }>;
 
 
-export type UpdateTemplateNameMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
+export type UpdateTemplateNameMutation = { __typename?: 'Mutation', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
 
 export type GetTemplateQueryVariables = Exact<{
   id: Scalars['ID']['input'];
 }>;
 
 
-export type GetTemplateQuery = { __typename?: 'Query', template?: { __typename?: 'Template', id: string, name: string, description?: string | null, body: string, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
+export type GetTemplateQuery = { __typename?: 'Query', template?: { __typename?: 'Template', body: string, id: string, name: string, description?: string | null, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null } | null };
 
 export type DeleteTemplateMutationVariables = Exact<{
   id: Scalars['ID']['input'];
@@ -7648,7 +7754,6 @@ export const TemplateFragmentDoc = gql`
   id
   name
   description
-  body
   contentType
   context
   language
@@ -7683,6 +7788,12 @@ export const TemplateFragmentDoc = gql`
   }
 }
     ${OrgFragmentDoc}`;
+export const FullTemplateFragmentDoc = gql`
+    fragment fullTemplate on Template {
+  body
+  ...template
+}
+    ${TemplateFragmentDoc}`;
 export const UserFragmentDoc = gql`
     fragment user on User {
   createdAt
@@ -7738,10 +7849,10 @@ export const UpdateTemplateNameDocument = gql`
 export const GetTemplateDocument = gql`
     query getTemplate($id: ID!) {
   template(where: {id: $id}) {
-    ...template
+    ...fullTemplate
   }
 }
-    ${TemplateFragmentDoc}`;
+    ${FullTemplateFragmentDoc}`;
 export const DeleteTemplateDocument = gql`
     mutation deleteTemplate($id: ID!) {
   deleteTemplate(id: $id)

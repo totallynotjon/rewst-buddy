@@ -1,6 +1,6 @@
 import type { LinksSavedEvent } from '@events';
 import { context, extPrefix } from '@global';
-import { isDescendant, log } from '@utils';
+import { getHash, isDescendant, log } from '@utils';
 import vscode, { Uri } from 'vscode';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { FolderLink, Link, LinkType, Org, TemplateLink } from './types';
@@ -146,7 +146,16 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	async save(): Promise<_> {
 		log.trace('LinkManager.save');
-		const links: Link[] = Array.from(this.linkMap.values());
+		const links: Link[] = Array.from(this.linkMap.values()).map(link => {
+			if (link.type === 'Template') {
+				const templateLink = link as TemplateLink;
+				return {
+					...templateLink,
+					template: { ...templateLink.template, body: undefined },
+				};
+			}
+			return link;
+		});
 		context.globalState.update(this.stateKey, links);
 		return this;
 	}
@@ -176,6 +185,16 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		this.beginBatch();
 
 		for (const link of links) {
+			// Migrate old TemplateLinks: ensure bodyHash exists, clear template.body
+			if (link.type === 'Template') {
+				const templateLink = link as TemplateLink;
+				const body = (templateLink.template as any).body;
+				if (body !== undefined && !templateLink.bodyHash) {
+					templateLink.bodyHash = getHash(body);
+					log.trace('LinkManager.loadLinks: migrated old link with bodyHash', templateLink.template.id);
+				}
+				(templateLink.template as any).body = undefined;
+			}
 			this.addLink(link);
 		}
 

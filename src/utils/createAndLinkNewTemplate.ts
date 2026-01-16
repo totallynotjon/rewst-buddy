@@ -1,6 +1,7 @@
 import { LinkManager, TemplateLink } from '@models';
-import { TemplateFragment } from '@sessions';
+import { FullTemplateFragment } from '@sessions';
 import vscode from 'vscode';
+import { getHash } from './getHash';
 
 /**
  * Creates a new untitled document from template content,
@@ -8,8 +9,9 @@ import vscode from 'vscode';
  *
  * @returns true if saved and linked, false if user cancelled
  */
-export async function createAndLinkNewTemplate(template: TemplateFragment): Promise<boolean> {
-	const content = template.body ?? '';
+export async function createAndLinkNewTemplate(template: FullTemplateFragment): Promise<boolean> {
+	const content = template.body;
+	template.body = '';
 
 	const untitledUri = vscode.Uri.parse(`untitled:${template.name ?? template.id}`);
 	const doc = await vscode.workspace.openTextDocument(untitledUri);
@@ -28,6 +30,7 @@ export async function createAndLinkNewTemplate(template: TemplateFragment): Prom
 	const templateLink: TemplateLink = {
 		type: 'Template',
 		template: template,
+		bodyHash: getHash(content),
 		uriString: resultUri.toString(),
 		org: {
 			id: template.orgId,

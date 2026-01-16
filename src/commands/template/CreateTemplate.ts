@@ -1,6 +1,6 @@
 import { LinkManager, TemplateLink } from '@models';
 import { pickOrganization } from '@ui';
-import { ensureSavedDocument, log, requireUnlinked } from '@utils';
+import { ensureSavedDocument, getHash, log, requireUnlinked } from '@utils';
 import path from 'path';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
@@ -53,11 +53,12 @@ export class CreateTemplate extends GenericCommand {
 		const templateLink: TemplateLink = {
 			type: 'Template',
 			template: response.template,
+			bodyHash: getHash(body),
 			uriString: document.uri.toString(),
 			org: org,
 		};
 
-		await LinkManager.addLink(templateLink);
+		LinkManager.addLink(templateLink);
 
 		log.notifyInfo(`SUCCESS: Created template "${response.template.name}"`);
 	}

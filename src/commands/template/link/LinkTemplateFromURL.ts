@@ -1,6 +1,6 @@
 import { LinkManager, SyncManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
-import { ensureSavedDocument, getTemplateURLParams, log, requireUnlinked } from '@utils';
+import { ensureSavedDocument, getHash, getTemplateURLParams, log, requireUnlinked } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../../GenericCommand';
 
@@ -25,12 +25,13 @@ export class LinkTemplateFromURL extends GenericCommand {
 
 		log.trace('LinkTemplateFromURL: fetching template');
 		const template = await session.getTemplate(params.templateId);
-		template.body = document.getText();
 		template.updatedAt = '0';
+		template.body = '';
 
 		const templateLink: TemplateLink = {
 			type: 'Template',
 			template: template,
+			bodyHash: getHash(document.getText()),
 			uriString: document.uri.toString(),
 			org: {
 				id: template.orgId,

@@ -2,7 +2,6 @@ fragment template on Template {
 	id
 	name
 	description
-	body
 	contentType
 	context
 	language
@@ -35,6 +34,10 @@ fragment template on Template {
 		id
 		name
 	}
+}
+fragment fullTemplate on Template {
+	body
+	...template
 }
 
 query listTemplates($orgId: ID!) {
@@ -69,7 +72,7 @@ mutation updateTemplateName($name: String, $id: ID!) {
 
 query getTemplate($id: ID!) {
 	template(where: { id: $id }) {
-		...template
+		...fullTemplate
 	}
 }
 

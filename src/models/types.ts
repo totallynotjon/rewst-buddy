@@ -16,6 +16,7 @@ export interface Link {
 export interface TemplateLink extends Link {
 	type: 'Template';
 	template: TemplateFragment;
+	bodyHash: string;
 }
 
 export interface FolderLink extends Link {

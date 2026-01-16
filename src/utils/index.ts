@@ -1,5 +1,6 @@
 export { createAndLinkNewTemplate } from './createAndLinkNewTemplate';
 export { ensureSavedDocument, getDocumentFromArgs } from './ensureSavedDocument';
+export { getHash } from './getHash';
 export { isDescendant } from './isDescendant';
 export { log } from './log';
 export { makeUniqueUri } from './makeUniqueUri';

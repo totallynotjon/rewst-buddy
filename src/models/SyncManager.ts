@@ -1,7 +1,7 @@
 import type { SessionChangeEvent } from '@events';
 import { FolderLink, Link, TemplateLink } from '@models';
-import { Session, SessionManager, TemplateFragment } from '@sessions';
-import { log, makeUniqueUri, writeTextFile } from '@utils';
+import { FullTemplateFragment, Session, SessionManager } from '@sessions';
+import { getHash, log, makeUniqueUri, writeTextFile } from '@utils';
 import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
@@ -96,8 +96,9 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			log.trace('checkAutoFetch: failed to fetch remote, skipping');
 			return;
 		}
-		if (doc.getText() !== link.template.body) {
-			log.trace('checkAutoFetch: text has changed since last sync');
+
+		if (link.bodyHash !== getHash(doc.getText())) {
+			log.trace('checkAutoFetch: file has changed since last sync');
 			return;
 		}
 
@@ -155,7 +156,8 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			}
 
 			link.template = response.template;
-			await this.addLink(link, doc.uri);
+			link.bodyHash = getHash(body);
+			this.addLink(link, doc.uri);
 
 			log.info('Saved updated info to template');
 		} catch {
@@ -220,20 +222,21 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		});
 
 		const isInSync = link.template.updatedAt === remoteTemplate.updatedAt;
+
 		const bodySame = remoteTemplate.body === doc.getText();
 		const bodyEmpty = doc.getText() === '';
 
 		if (bodySame) {
-			log.debug('syncTemplateInternal: body the same ensuring stat indicates in sync');
-
+			remoteTemplate.body = '';
 			const templateLink: TemplateLink = {
 				type: 'Template',
+				bodyHash: getHash(doc.getText()),
 				template: remoteTemplate,
 				uriString: doc.uri.toString(),
 				org: session.profile.org,
 			};
 
-			await this.addLink(templateLink, doc.uri);
+			this.addLink(templateLink, doc.uri);
 		} else if (bodyEmpty) {
 			log.debug('syncTemplateInternal: empty, downloading remote');
 			await this.applyTemplateToDocument(doc, session, remoteTemplate);
@@ -246,7 +249,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	private async handleConflict(doc: vscode.TextDocument, session: Session, remoteTemplate: TemplateFragment) {
+	private async handleConflict(doc: vscode.TextDocument, session: Session, remoteTemplate: FullTemplateFragment) {
 		log.debug('handleConflict: conflict detected, prompting user');
 		log.info('Rewst and last update of local template are out of sync, need to remediate before push');
 
@@ -275,28 +278,32 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	async applyTemplateToDocument(doc: vscode.TextDocument, session: Session, remoteTemplate: TemplateFragment) {
+	async applyTemplateToDocument(doc: vscode.TextDocument, session: Session, remoteTemplate: FullTemplateFragment) {
 		log.trace('applyTemplateToDocument: applying remote template', {
 			templateId: remoteTemplate.id,
 			bodyLength: remoteTemplate.body?.length ?? 0,
 		});
 
+		const body = remoteTemplate.body;
+		remoteTemplate.body = '';
+
 		const edit = new vscode.WorkspaceEdit();
 		edit.replace(
 			doc.uri,
 			new vscode.Range(doc.lineAt(0).range.start, doc.lineAt(doc.lineCount - 1).range.end),
-			remoteTemplate.body ?? '',
+			body,
 		);
 		await vscode.workspace.applyEdit(edit);
 
 		const templateLink: TemplateLink = {
 			type: 'Template',
+			bodyHash: getHash(body),
 			template: remoteTemplate,
 			uriString: doc.uri.toString(),
 			org: session.profile.org,
 		};
 
-		await this.addLink(templateLink, doc.uri);
+		this.addLink(templateLink, doc.uri);
 
 		if ((await vscode.workspace.save(doc.uri)) === undefined) {
 			throw log.error('applyTemplateToDocument: failed to save');
@@ -305,9 +312,9 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		log.trace('applyTemplateToDocument: completed');
 	}
 
-	private async addLink(link: Link, uri: Uri) {
+	private addLink(link: Link, uri: Uri) {
 		log.trace('SyncManager.addLink: updating link with', uri.fsPath);
-		await LinkManager.addLink(link);
+		LinkManager.addLink(link);
 		log.trace('addLink: saved');
 	}
 
@@ -342,36 +349,66 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		const missingTemplates = templates.filter(t => !ids.includes(t.id));
 		log.debug('fetchFolder: missing templates to fetch', missingTemplates.length);
 
+		if (missingTemplates.length === 0) {
+			log.trace('fetchFolder: no missing templates');
+			return;
+		}
+
 		// BEGIN BATCH MODE - defer saves until all templates processed
 		LinkManager.beginBatch();
 		let successCount = 0;
 		try {
 			const folderUri = vscode.Uri.parse(uriString);
+			const CHUNK_SIZE = 20;
 
 			// Phase 1: Generate unique URIs (must be sequential for conflict detection)
-			const templateUris = new Map<TemplateFragment, Uri>();
+			const templateUris = new Map<string, Uri>();
 			const reservedUris = new Set<string>(); // Track allocated URIs for duplicates
 			for (const template of missingTemplates) {
 				const uri = await makeUniqueUri(folderUri, template.name, reservedUris);
-				templateUris.set(template, uri);
+				templateUris.set(template.id, uri);
 				reservedUris.add(uri.toString());
 			}
 
-			// Phase 2: Write files in chunks to avoid overwhelming the file system
-			const entries = Array.from(templateUris.entries());
-			const CHUNK_SIZE = 20;
-
-			for (let i = 0; i < entries.length; i += CHUNK_SIZE) {
-				const chunk = entries.slice(i, i + CHUNK_SIZE);
+			// Phase 2: Fetch full templates with body (in chunks)
+			const fullTemplates = new Map<string, FullTemplateFragment>();
+			for (let i = 0; i < missingTemplates.length; i += CHUNK_SIZE) {
+				const chunk = missingTemplates.slice(i, i + CHUNK_SIZE);
 				const results = await Promise.all(
-					chunk.map(async ([template, uri]) => {
+					chunk.map(async t => {
 						try {
-							await writeTextFile(uri, template.body);
+							const full = await session.getTemplate(t.id);
+							return { id: t.id, template: full };
+						} catch (err) {
+							log.warn(`fetchFolder: failed to fetch template "${t.name}": ${err}`);
+							return null;
+						}
+					}),
+				);
+				results.forEach(r => {
+					if (r) fullTemplates.set(r.id, r.template);
+				});
+			}
+
+			// Phase 3: Write files in chunks
+			const idsToProcess = Array.from(fullTemplates.keys());
+
+			for (let i = 0; i < idsToProcess.length; i += CHUNK_SIZE) {
+				const chunkIds = idsToProcess.slice(i, i + CHUNK_SIZE);
+				const results = await Promise.all(
+					chunkIds.map(async id => {
+						const template = fullTemplates.get(id)!;
+						const uri = templateUris.get(id)!;
+						try {
+							const body = template.body;
+							await writeTextFile(uri, body);
 							log.trace('fetchFolder: file written', uri.fsPath);
 
+							template.body = '';
 							const templateLink: TemplateLink = {
 								type: 'Template',
 								template: template,
+								bodyHash: getHash(body),
 								uriString: uri.toString(),
 								org: org,
 							};
@@ -397,29 +434,5 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 				? `SUCCESS: Fetched ${successCount} templates into the folder`
 				: `Fetched ${successCount}/${missingTemplates.length} templates into the folder`;
 		log.notifyInfo(message);
-	}
-
-	private async makeTemplate(folderLink: FolderLink, template: TemplateFragment) {
-		log.trace('makeTemplate: creating file', { templateId: template.id, templateName: template.name });
-
-		const folderUri = vscode.Uri.parse(folderLink.uriString);
-		const templateUri = await makeUniqueUri(folderUri, template.name);
-
-		try {
-			await writeTextFile(templateUri, template.body);
-			log.trace('makeTemplate: file written', templateUri.fsPath);
-		} catch (err) {
-			log.warn(`makeTemplate: failed to create file for "${template.name}": ${err}`);
-			return;
-		}
-
-		const templateLink: TemplateLink = {
-			type: 'Template',
-			template: template,
-			uriString: templateUri.toString(),
-			org: folderLink.org,
-		};
-
-		await this.addLink(templateLink, templateUri);
 	}
 })();
