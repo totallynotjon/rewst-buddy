@@ -100,6 +100,16 @@ When opening templates via `Open Template` or `Open Template from URL`:
 
 Template links automatically update when you rename or move files - no broken links when reorganizing your workspace.
 
+### Template Navigation (v0.35)
+
+When editing linked template files, you can navigate between templates:
+
+- **Ctrl+Click** (or Cmd+Click on Mac) on `template('UUID')` calls to jump directly to the linked template file
+- **Hover** over `template('UUID')` calls to see the template name and organization
+- Works with both single and double quoted UUIDs: `template("UUID")` or `template('UUID')`
+
+Note: Navigation only works when both the current file and the referenced template are linked locally.
+
 ### Session Receiver Server (v0.15)
 
 A local HTTP server that receives session cookies from the [Rewst Buddy Browser Extension](https://github.com/totallynotjon/rewst-buddy-browser), eliminating the need to manually copy/paste cookies.

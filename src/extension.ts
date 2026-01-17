@@ -1,6 +1,7 @@
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
 import { LinkManager, SyncManager, SyncOnSaveManager } from '@models';
+import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
 import { RewstViewProvider, SessionTreeDataProvider, StatusBar } from '@ui';
@@ -36,6 +37,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(new StatusBar());
 
 	CommandInitiater.registerCommands();
+
+	// Register DefinitionProvider for template({{guid}}) navigation
+	context.subscriptions.push(
+		vscode.languages.registerDefinitionProvider({ scheme: 'file' }, new TemplateDefinitionProvider()),
+		vscode.languages.registerHoverProvider({ scheme: 'file' }, new TemplateHoverProvider()),
+	);
 
 	log.info(`Finished activation of extension ${extPrefix}`);
 }

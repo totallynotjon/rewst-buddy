@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.35.0] - 2026-01-16
+
+### Added
+
+- **Template Navigation** - Ctrl+click on `template('UUID')` calls to jump to linked template files
+- **Template Hover Info** - Hover over `template('UUID')` calls to see template name and organization (or "Not linked locally" for unlinked templates)
+
+### Changed
+
+- **Performance** - Template ID lookups now use O(1) index instead of O(n) filtering
+
 ## [0.34.0] - 2026-01-16
 
 ### Changed

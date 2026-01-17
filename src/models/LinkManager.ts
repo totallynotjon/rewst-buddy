@@ -8,6 +8,7 @@ import { FolderLink, Link, LinkType, Org, TemplateLink } from './types';
 export const LinkManager = new (class _ implements vscode.Disposable {
 	readonly stateKey = 'RewstTemplateLinks';
 	linkMap = new Map<string, Link>();
+	private templateIdIndex = new Map<string, TemplateLink[]>();
 	loaded = false;
 
 	private readonly linksSavedEmitter = new vscode.EventEmitter<LinksSavedEvent>();
@@ -72,6 +73,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 				cleared++;
 			}
 		}
+		this.templateIdIndex.clear();
 		log.trace('LinkManager.clearTemplateLinks: cleared', cleared);
 		this.fire();
 		return this;
@@ -79,6 +81,10 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	removeLink(uriString: string): _ {
 		log.trace('LinkManager.removeLink:', uriString);
+		const link = this.linkMap.get(uriString);
+		if (link?.type === 'Template') {
+			this.removeFromTemplateIndex(link as TemplateLink);
+		}
 		this.linkMap.delete(uriString);
 		this.fire();
 		return this;
@@ -87,8 +93,29 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	addLink(link: Link): _ {
 		log.trace('LinkManager.addLink:', link);
 		this.linkMap.set(link.uriString, link);
+		if (link.type === 'Template') {
+			this.addToTemplateIndex(link as TemplateLink);
+		}
 		this.fire();
 		return this;
+	}
+
+	private addToTemplateIndex(link: TemplateLink): void {
+		const existing = this.templateIdIndex.get(link.template.id) ?? [];
+		existing.push(link);
+		this.templateIdIndex.set(link.template.id, existing);
+	}
+
+	private removeFromTemplateIndex(link: TemplateLink): void {
+		const existing = this.templateIdIndex.get(link.template.id);
+		if (existing) {
+			const filtered = existing.filter(l => l.uriString !== link.uriString);
+			if (filtered.length === 0) {
+				this.templateIdIndex.delete(link.template.id);
+			} else {
+				this.templateIdIndex.set(link.template.id, filtered);
+			}
+		}
 	}
 
 	async moveLink(oldUriString: string, newUriString: string): Promise<_> {
@@ -181,6 +208,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		const links = context.globalState.get<Link[]>(this.stateKey) ?? [];
 		log.debug('LinkManager.loadLinks: found links', links.length);
 		this.linkMap.clear();
+		this.templateIdIndex.clear();
 
 		this.beginBatch();
 
@@ -216,13 +244,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	getTemplateLinkFromId(templateId: string): TemplateLink[] {
 		this.loadIfNotAlready();
-
-		return Array.from(this.linkMap.values()).filter(l => {
-			if (l.type === 'Folder') return false;
-			if ((l as TemplateLink).template.id.localeCompare(templateId) === 0) {
-				return true;
-			}
-		}) as TemplateLink[];
+		return this.templateIdIndex.get(templateId) ?? [];
 	}
 
 	private getLink(uri: vscode.Uri, type: LinkType): Link {
