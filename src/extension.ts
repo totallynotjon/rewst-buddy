@@ -1,6 +1,6 @@
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
-import { LinkManager, SyncManager, SyncOnSaveManager } from '@models';
+import { LinkManager, SyncManager, SyncOnSaveManager, TemplateMetadataStore } from '@models';
 import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
@@ -32,6 +32,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(LinkManager.init());
 	context.subscriptions.push(SyncOnSaveManager.init());
 	context.subscriptions.push(await SessionManager.init());
+	context.subscriptions.push(TemplateMetadataStore.init());
 	context.subscriptions.push(SyncManager.init());
 	context.subscriptions.push(await Server.init());
 	context.subscriptions.push(new StatusBar());

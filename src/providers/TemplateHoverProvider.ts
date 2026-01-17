@@ -1,4 +1,4 @@
-import { LinkManager } from '@models';
+import { LinkManager, TemplateMetadataStore } from '@models';
 import vscode from 'vscode';
 import { findTemplateAtPosition } from './templatePatternUtils';
 
@@ -25,10 +25,20 @@ export class TemplateHoverProvider implements vscode.HoverProvider {
 		const linkedTemplates = LinkManager.getTemplateLinkFromId(match.templateId);
 
 		if (linkedTemplates.length === 0) {
-			// Template not linked locally - show ID only
+			// Template not linked locally - check global metadata store
+			const metadata = TemplateMetadataStore.getTemplateMetadata(match.templateId);
+			if (metadata) {
+				const content = new vscode.MarkdownString();
+				content.appendMarkdown(`**Template:** ${metadata.template.name}\n\n`);
+				content.appendMarkdown(`**Org:** ${metadata.org.name}\n\n`);
+				content.appendMarkdown(`*Click Ctrl to open*`);
+				return new vscode.Hover(content, hoverRange);
+			}
+
+			// Unknown template - show ID only
 			const content = new vscode.MarkdownString();
 			content.appendMarkdown(`**Template:** \`${match.templateId}\`\n\n`);
-			content.appendMarkdown(`*Not linked locally*`);
+			content.appendMarkdown(`*Unknown template*`);
 			return new vscode.Hover(content, hoverRange);
 		}
 

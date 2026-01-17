@@ -1,4 +1,6 @@
-import { LinkManager } from '@models';
+import { LinkManager, TemplateMetadata, TemplateMetadataStore } from '@models';
+import { SessionManager } from '@sessions';
+import { createAndLinkNewTemplate, log } from '@utils';
 import vscode from 'vscode';
 import { findTemplateAtPosition } from './templatePatternUtils';
 
@@ -23,14 +25,20 @@ export class TemplateDefinitionProvider implements vscode.DefinitionProvider {
 
 		// Check if referenced template is linked locally
 		const linkedTemplates = LinkManager.getTemplateLinkFromId(match.templateId);
+		const originRange = new vscode.Range(position.line, match.startChar, position.line, match.endChar);
 
 		if (linkedTemplates.length === 0) {
-			return; // Not linked locally - no definition available
+			// Not linked locally - check global metadata store
+			const metadata = TemplateMetadataStore.getTemplateMetadata(match.templateId);
+			if (metadata) {
+				// Trigger open flow for unlinked template (fire-and-forget)
+				this.openUnlinkedTemplate(match.templateId, metadata);
+			}
+			return; // Return undefined - VS Code will handle the newly opened file
 		}
 
 		// Return LocationLink with origin selection range for full pattern highlighting
 		const targetUri = vscode.Uri.parse(linkedTemplates[0].uriString);
-		const originRange = new vscode.Range(position.line, match.startChar, position.line, match.endChar);
 
 		return [
 			{
@@ -39,5 +47,15 @@ export class TemplateDefinitionProvider implements vscode.DefinitionProvider {
 				targetRange: new vscode.Range(0, 0, 0, 0),
 			},
 		];
+	}
+
+	private async openUnlinkedTemplate(templateId: string, metadata: TemplateMetadata): Promise<void> {
+		try {
+			const session = SessionManager.getSessionForOrg(metadata.org.id);
+			const fullTemplate = await session.getTemplate(templateId);
+			await createAndLinkNewTemplate(fullTemplate);
+		} catch (error) {
+			log.notifyError(`Failed to open template: ${error}`);
+		}
 	}
 }
