@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.36.0] - 2026-01-16
+
+### Added
+
+- **Template Metadata Caching** - New `TemplateMetadataStore` caches template names and org info across all active sessions
+    - Hover over `template('UUID')` calls now shows template name and org even for unlinked templates
+    - Templates are loaded in parallel chunks (5 concurrent requests) for better performance
+    - Automatically syncs when sessions are added/removed
+
+### Changed
+
+- **Improved Hover Experience** - Hover info now distinguishes between "Not linked locally" (known templates) and "Unknown template" (not found in any session)
+
 ## [0.35.0] - 2026-01-16
 
 ### Added
