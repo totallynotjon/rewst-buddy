@@ -17,7 +17,8 @@
 			"@global": ["context/index.ts"],
 			"@ui": ["ui/index.ts"],
 			"@server": ["server/index.ts"],
-			"@events": ["events/index.ts"]
+			"@events": ["events/index.ts"],
+			"@test": ["test/helpers/index.ts"]
 		},
 		"sourceMap": true,
 		"strict": true,

@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.36.0",
+	"version": "0.37.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -77,6 +77,11 @@
 					"type": "boolean",
 					"default": false,
 					"description": "When enabled, all linked files sync on save by default (use Disable Sync-On-Save to exclude specific files). When disabled, files only sync when explicitly enabled."
+				},
+				"rewst-buddy.autoFetchOnOpen": {
+					"type": "boolean",
+					"default": true,
+					"description": "When enabled, automatically fetch remote template updates when opening linked files. This only applies changes if the local file hasn't been modified since the last sync."
 				},
 				"rewst-buddy.server.enabled": {
 					"type": "boolean",
@@ -381,7 +386,10 @@
 		"lint:staged": "lint-staged",
 		"pre-commit": "bash .husky/pre-commit",
 		"check-types": "tsc --noEmit --watch",
-		"test": "vscode-test",
+		"test": "npm run compile:test && vscode-test",
+		"test:unit": "npm run compile:test && vscode-test -- --grep 'Unit:'",
+		"test:integration": "npm run compile:test && vscode-test -- --grep 'Integration:'",
+		"compile:test": "webpack --mode development",
 		"build": "npm run package",
 		"dev": "npm run watch",
 		"watch": "npm-run-all -p watch:*",
@@ -402,6 +410,7 @@
 		"@graphql-codegen/typescript-operations": "^5.0.6",
 		"@parcel/watcher": "^2.5.1",
 		"@stylistic/eslint-plugin": "^5.6.1",
+		"@types/glob": "^8.1.0",
 		"@types/mocha": "^10.0.10",
 		"@types/node": "^25.0.3",
 		"@types/vscode": "^1.107.0",
@@ -413,6 +422,7 @@
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import": "^2.32.0",
+		"glob": "^13.0.0",
 		"globals": "^16.5.0",
 		"graphql": "^16.12.0",
 		"graphql-request": "^7.4.0",

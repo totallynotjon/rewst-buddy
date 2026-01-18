@@ -8,6 +8,20 @@
 'use strict';
 
 const path = require('path');
+const glob = require('glob');
+
+/**@type {import('webpack').Configuration}*/
+const aliases = {
+	'@models': path.resolve(__dirname, 'src/models/index.ts'),
+	'@commands': path.resolve(__dirname, 'src/commands/index.ts'),
+	'@sessions': path.resolve(__dirname, 'src/sessions/index.ts'),
+	'@utils': path.resolve(__dirname, 'src/utils/index.ts'),
+	'@global': path.resolve(__dirname, 'src/context/index.ts'),
+	'@ui': path.resolve(__dirname, 'src/ui/index.ts'),
+	'@server': path.resolve(__dirname, 'src/server/index.ts'),
+	'@events': path.resolve(__dirname, 'src/events/index.ts'),
+	'@test': path.resolve(__dirname, 'src/test/helpers/index.ts'),
+};
 
 /**@type {import('webpack').Configuration}*/
 const config = {
@@ -28,16 +42,7 @@ const config = {
 	resolve: {
 		// support reading TypeScript and JavaScript files, 📖 -> https://github.com/TypeStrong/ts-loader
 		extensions: ['.ts', '.js'],
-		alias: {
-			'@models': path.resolve(__dirname, 'src/models/index.ts'),
-			'@commands': path.resolve(__dirname, 'src/commands/index.ts'),
-			'@sessions': path.resolve(__dirname, 'src/sessions/index.ts'),
-			'@utils': path.resolve(__dirname, 'src/utils/index.ts'),
-			'@global': path.resolve(__dirname, 'src/context/index.ts'),
-			'@ui': path.resolve(__dirname, 'src/ui/index.ts'),
-			'@server': path.resolve(__dirname, 'src/server/index.ts'),
-			'@events': path.resolve(__dirname, 'src/events/index.ts'),
-		},
+		alias: aliases,
 		modules: ['node_modules'],
 	},
 	module: {
@@ -60,4 +65,52 @@ const config = {
 	},
 };
 
-module.exports = config;
+/**
+ * Auto-discover test files using glob patterns.
+ * Unit tests: colocated throughout src/ (*.test.ts, excluding helpers and integration)
+ * Integration tests: centralized in src/test/integration/
+ */
+function getTestEntries() {
+	const entries = {};
+
+	// Unit tests: colocated throughout src/ (exclude helpers and integration)
+	const unitTests = glob.sync('src/**/*.test.ts', {
+		ignore: ['src/test/helpers/**', 'src/test/integration/**'],
+	});
+
+	for (const file of unitTests) {
+		const key = `unit/${file.replace('src/', '').replace('.ts', '')}`;
+		entries[key] = './' + file;
+	}
+
+	// Integration tests: centralized
+	const integrationTests = glob.sync('src/test/integration/*.test.ts');
+	for (const file of integrationTests) {
+		const key = `integration/${path.basename(file, '.ts')}`;
+		entries[key] = './' + file;
+	}
+
+	return entries;
+}
+
+/**@type {import('webpack').Configuration}*/
+const testConfig = {
+	...config,
+	entry: getTestEntries(),
+	output: {
+		path: path.resolve(__dirname, 'dist/test'),
+		filename: '[name].js',
+		libraryTarget: 'commonjs2',
+		devtoolModuleFilenameTemplate: '../../[resource-path]',
+	},
+	externals: {
+		...config.externals,
+		mocha: 'commonjs mocha',
+	},
+	resolve: {
+		...config.resolve,
+		alias: aliases,
+	},
+};
+
+module.exports = [config, testConfig];

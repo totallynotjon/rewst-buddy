@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.37.0] - 2026-01-18
+
+### Added
+
+- **Testing Infrastructure** - Comprehensive unit testing framework for contributors
+    - Mock session factory with configurable SDK responses
+    - Type-safe fixture builders for GraphQL types
+    - Auto-discovered tests via webpack glob patterns
+    - New npm scripts: `test:unit`, `test:integration`
+
+- **Auto-Fetch Configuration** - New `rewst-buddy.autoFetchOnOpen` setting
+    - Controls whether linked files fetch remote updates when opened
+    - Defaults to enabled (preserving previous behavior)
+
+### Changed
+
+- **Auto-Fetch Behavior** - Now independent of sync-on-save setting
+    - Previously only worked when sync-on-save was enabled for the file
+    - Now controlled by dedicated `autoFetchOnOpen` setting
+
 ## [0.36.0] - 2026-01-16
 
 ### Added

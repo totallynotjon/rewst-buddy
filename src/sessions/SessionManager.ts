@@ -343,4 +343,39 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		await Promise.all(resultsPromises);
 		log.debug('refreshActiveSessions: completed');
 	}
+
+	/**
+	 * FOR TESTING ONLY: Set sessions directly for unit tests
+	 * @param sessions - Sessions to set as active
+	 */
+	_setSessionsForTesting(sessions: Session[]): void {
+		this.sessionMap.clear();
+		sessions.forEach(session => {
+			const userId = session.profile.user.id;
+			if (userId) {
+				this.sessionMap.set(userId, session);
+			}
+		});
+		this.setAnyActiveSessions(sessions.length > 0);
+		this.sessionChangeEmitter.fire({
+			type: 'saved',
+			allProfiles: sessions.map(s => s.profile),
+			activeProfiles: sessions.map(s => s.profile),
+		});
+	}
+
+	/**
+	 * FOR TESTING ONLY: Reset SessionManager to initial state
+	 */
+	_resetForTesting(): void {
+		this.sessionMap.clear();
+		this.loaded = false;
+		this.loading = false;
+		this.setAnyActiveSessions(false);
+		this.sessionChangeEmitter.fire({
+			type: 'cleared',
+			allProfiles: [],
+			activeProfiles: [],
+		});
+	}
 })();

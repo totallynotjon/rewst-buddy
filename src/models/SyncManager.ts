@@ -5,6 +5,7 @@ import { getHash, log, makeUniqueUri, writeTextFile } from '@utils';
 import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
+import { determineSyncAction } from './syncDecision';
 
 export const SyncManager = new (class _ implements vscode.Disposable {
 	private syncingUris = new Set<string>();
@@ -78,9 +79,16 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 	private async checkAutoFetch(doc: vscode.TextDocument) {
 		log.trace('checkAutoFetch: checking', doc.uri.fsPath);
 
-		// only autofetch if sync on save enabled
-		if (!SyncOnSaveManager.isUriSynced(doc.uri)) {
-			log.trace('checkAutoFetch: sync not enabled, skipping');
+		// Check if autoFetch is enabled via configuration
+		const config = vscode.workspace.getConfiguration('rewst-buddy');
+		if (!config.get<boolean>('autoFetchOnOpen', true)) {
+			log.trace('checkAutoFetch: disabled by configuration, skipping');
+			return;
+		}
+
+		// Check if file is linked
+		if (!LinkManager.isLinked(doc.uri)) {
+			log.trace('checkAutoFetch: file not linked, skipping');
 			return;
 		}
 
@@ -216,36 +224,54 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			throw log.error('syncTemplateInternal: failed to fetch remote template');
 		}
 
-		log.debug('syncTemplateInternal: comparing timestamps', {
-			local: link.template.updatedAt,
-			remote: remoteTemplate.updatedAt,
+		const localBody = doc.getText();
+		const currentBodyHash = getHash(localBody);
+
+		log.debug('syncTemplateInternal: comparing states', {
+			localUpdatedAt: link.template.updatedAt,
+			remoteUpdatedAt: remoteTemplate.updatedAt,
+			storedBodyHash: link.bodyHash,
+			currentBodyHash,
 		});
 
-		const isInSync = link.template.updatedAt === remoteTemplate.updatedAt;
+		const decision = determineSyncAction({
+			localUpdatedAt: link.template.updatedAt,
+			remoteUpdatedAt: remoteTemplate.updatedAt,
+			localBody,
+			remoteBody: remoteTemplate.body,
+		});
 
-		const bodySame = remoteTemplate.body === doc.getText();
-		const bodyEmpty = doc.getText() === '';
+		log.debug('syncTemplateInternal: decision', decision.action);
 
-		if (bodySame) {
-			remoteTemplate.body = '';
-			const templateLink: TemplateLink = {
-				type: 'Template',
-				bodyHash: getHash(doc.getText()),
-				template: remoteTemplate,
-				uriString: doc.uri.toString(),
-				org: session.profile.org,
-			};
+		switch (decision.action) {
+			case 'update-metadata': {
+				// Bodies match - just update link metadata with latest remote info
+				remoteTemplate.body = '';
+				const templateLink: TemplateLink = {
+					type: 'Template',
+					bodyHash: currentBodyHash,
+					template: remoteTemplate,
+					uriString: doc.uri.toString(),
+					org: session.profile.org,
+				};
+				this.addLink(templateLink, doc.uri);
+				break;
+			}
 
-			this.addLink(templateLink, doc.uri);
-		} else if (bodyEmpty) {
-			log.debug('syncTemplateInternal: empty, downloading remote');
-			await this.applyTemplateToDocument(doc, session, remoteTemplate);
-		} else if (isInSync) {
-			log.debug('syncTemplateInternal: timestamps match, uploading local changes');
-			await this.updateTemplateBody(doc);
-		} else {
-			log.debug('syncTemplateInternal: conflict detected, timestamps differ and body differs');
-			await this.handleConflict(doc, session, remoteTemplate);
+			case 'download-remote':
+				log.debug('syncTemplateInternal: downloading remote (local empty)');
+				await this.applyTemplateToDocument(doc, session, remoteTemplate);
+				break;
+
+			case 'upload-local':
+				log.debug('syncTemplateInternal: uploading local changes (in sync)');
+				await this.updateTemplateBody(doc);
+				break;
+
+			case 'conflict':
+				log.debug('syncTemplateInternal: conflict detected');
+				await this.handleConflict(doc, session, remoteTemplate);
+				break;
 		}
 	}
 

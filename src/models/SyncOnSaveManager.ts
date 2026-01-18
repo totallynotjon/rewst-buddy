@@ -45,6 +45,16 @@ export const SyncOnSaveManager = new (class _ implements vscode.Disposable {
 		this.save();
 	}
 
+	/**
+	 * Reset all state for testing purposes.
+	 * This clears all inclusions/exclusions without persisting.
+	 */
+	_resetForTesting(): void {
+		this.inclusions.clear();
+		this.exclusions.clear();
+		this.syncByDefault = false;
+	}
+
 	public isUriSynced(uri: vscode.Uri): boolean {
 		if (!LinkManager.isLinked(uri)) {
 			log.trace('SyncOnSaveManager.isUriSynced: not linked', uri.fsPath);

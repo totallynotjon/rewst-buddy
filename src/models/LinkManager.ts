@@ -28,6 +28,17 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		this.linksSavedEmitter.dispose();
 	}
 
+	/**
+	 * Reset all state for testing purposes.
+	 * This clears all links and indexes without persisting.
+	 */
+	_resetForTesting(): void {
+		this.linkMap.clear();
+		this.templateIdIndex.clear();
+		this.loaded = false;
+		this.batchMode = false;
+	}
+
 	private async handleRename(e: vscode.FileRenameEvent): Promise<void> {
 		log.trace('LinkManager.handleRename: processing', { fileCount: e.files.length });
 
