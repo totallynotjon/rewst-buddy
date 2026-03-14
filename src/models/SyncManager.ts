@@ -2,10 +2,33 @@ import type { SessionChangeEvent } from '@events';
 import { FolderLink, Link, TemplateLink } from '@models';
 import { FullTemplateFragment, Session, SessionManager } from '@sessions';
 import { getHash, log, makeUniqueUri, writeTextFile } from '@utils';
+import * as os from 'os';
+import * as path from 'path';
 import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { determineSyncAction } from './syncDecision';
+
+async function showUploadDiff(
+	doc: vscode.TextDocument,
+	remoteBody: string,
+	templateName: string,
+	templateId: string,
+): Promise<boolean> {
+	const tmpUri = vscode.Uri.file(path.join(os.tmpdir(), `rewst-remote-${templateId}`));
+	try {
+		await writeTextFile(tmpUri, remoteBody);
+		await vscode.commands.executeCommand('vscode.diff', tmpUri, doc.uri, `${templateName}: Remote ↔ Local`);
+		const confirmed = await vscode.window.showInformationMessage(
+			`Upload local changes to "${templateName}"?`,
+			{ modal: true },
+			'Upload',
+		);
+		return confirmed === 'Upload';
+	} finally {
+		await vscode.workspace.fs.delete(tmpUri).then(undefined, () => {});
+	}
+}
 
 export const SyncManager = new (class _ implements vscode.Disposable {
 	private syncingUris = new Set<string>();
