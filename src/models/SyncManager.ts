@@ -1,7 +1,7 @@
 import type { SessionChangeEvent } from '@events';
 import { FolderLink, Link, TemplateLink } from '@models';
 import { FullTemplateFragment, Session, SessionManager } from '@sessions';
-import { getHash, log, makeUniqueUri, showUploadDiff, writeTextFile } from '@utils';
+import { getHash, log, makeUniqueUri, writeTextFile } from '@utils';
 import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
@@ -173,7 +173,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	async syncTemplate(doc: vscode.TextDocument, options?: { showDiff?: boolean }) {
+	async syncTemplate(doc: vscode.TextDocument) {
 		log.trace('syncTemplate: starting', doc.uri.fsPath);
 		const uriKey = doc.uri.toString();
 
@@ -184,7 +184,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 		this.syncingUris.add(uriKey);
 		try {
-			await this.syncTemplateInternal(doc, options?.showDiff ?? false);
+			await this.syncTemplateInternal(doc);
 			log.trace('syncTemplate: completed successfully');
 		} catch (e) {
 			throw log.error('syncTemplate: failed', e);
@@ -193,7 +193,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	private async syncTemplateInternal(doc: vscode.TextDocument, showDiff: boolean) {
+	private async syncTemplateInternal(doc: vscode.TextDocument) {
 		log.trace('syncTemplateInternal: starting');
 
 		if (doc.isUntitled) {
@@ -265,18 +265,6 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 			case 'upload-local':
 				log.debug('syncTemplateInternal: uploading local changes (in sync)');
-				if (showDiff) {
-					const confirmed = await showUploadDiff(
-						doc,
-						remoteTemplate.body,
-						link.template.name,
-						link.template.id,
-					);
-					if (!confirmed) {
-						log.debug('syncTemplateInternal: upload cancelled by user after diff review');
-						return;
-					}
-				}
 				await this.updateTemplateBody(doc);
 				break;
 
