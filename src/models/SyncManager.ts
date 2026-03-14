@@ -157,8 +157,8 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		if (!enabled) return;
 
 		try {
-			await this.syncTemplate(document);
-			log.notifyInfo('SUCCESS: Synced template');
+			const uploaded = await this.syncTemplate(document);
+			if (uploaded) log.notifyInfo('SUCCESS: Synced template');
 		} catch (e) {
 			log.notifyError('Failed to sync template:', e);
 		}
@@ -308,6 +308,9 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 				log.debug('syncTemplateInternal: conflict detected');
 				await this.handleConflict(doc, session, remoteTemplate);
 				return true;
+
+			default:
+				return false;
 		}
 	}
 
