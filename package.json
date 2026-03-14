@@ -134,6 +134,16 @@
 				"icon": "$(copy)"
 			},
 			{
+				"command": "rewst-buddy.prefix.OpenInRewst",
+				"title": "Rewst Buddy: Open in Rewst",
+				"icon": "$(link-external)"
+			},
+			{
+				"command": "rewst-buddy.OpenInRewst",
+				"title": "Open in Rewst",
+				"icon": "$(link-external)"
+			},
+			{
 				"command": "rewst-buddy.prefix.LinkTemplateFromURL",
 				"title": "Rewst Buddy: Link File to Template from URL",
 				"icon": "$(link-external)"
@@ -256,6 +266,10 @@
 				{
 					"command": "rewst-buddy.CopyTemplateID",
 					"when": "!explorerResourceIsFolder && resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.OpenInRewst",
+					"when": "rewst-buddy.anyActiveSessions && !explorerResourceIsFolder && resourcePath in rewst-buddy.linkedTemplates"
 				}
 			],
 			"commandPalette": [
@@ -293,6 +307,14 @@
 				},
 				{
 					"command": "rewst-buddy.CopyTemplateID",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.prefix.OpenInRewst",
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.OpenInRewst",
 					"when": "false"
 				},
 				{
@@ -345,6 +367,11 @@
 					"command": "rewst-buddy.CopyTemplateID",
 					"group": "z_rewst",
 					"when": "resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.OpenInRewst",
+					"group": "z_rewst",
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
 				},
 				{
 					"command": "rewst-buddy.SyncTemplate",
