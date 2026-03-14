@@ -1,7 +1,12 @@
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
 import { LinkManager, SyncManager, SyncOnSaveManager, TemplateMetadataStore } from '@models';
-import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
+import {
+	REWST_REMOTE_SCHEME,
+	remoteContentProvider,
+	TemplateDefinitionProvider,
+	TemplateHoverProvider,
+} from './providers';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
 import { RewstViewProvider, SessionTreeDataProvider, StatusBar } from '@ui';
@@ -38,6 +43,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(new StatusBar());
 
 	CommandInitiater.registerCommands();
+
+	// Register content provider for remote template diff views
+	context.subscriptions.push(
+		vscode.workspace.registerTextDocumentContentProvider(REWST_REMOTE_SCHEME, remoteContentProvider),
+	);
 
 	// Register DefinitionProvider for template({{guid}}) navigation
 	context.subscriptions.push(

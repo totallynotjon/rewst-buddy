@@ -10,4 +10,5 @@ export { parseCookieString } from './parseCookieString';
 export { requireUnlinked } from './requireUnlinked';
 export { getTemplateURLParams, TemplateURLParams } from './templateUrl';
 export { uriExists } from './uriExists';
+export { showUploadDiff } from './showUploadDiff';
 export { writeTextFile } from './writeTextFile';
