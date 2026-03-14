@@ -26,8 +26,10 @@ export class SyncTemplate extends GenericCommand {
 		log.debug('SyncTemplate: syncing', document.uri.fsPath);
 
 		try {
-			await SyncManager.syncTemplate(document, { showDiff: true });
-			log.notifyInfo('SUCCESS: Synced template');
+			const uploaded = await SyncManager.syncTemplate(document, { showDiff: true });
+			if (uploaded) {
+				log.notifyInfo('SUCCESS: Synced template');
+			}
 		} catch (e) {
 			log.notifyError('Failed to sync template:', e);
 		}

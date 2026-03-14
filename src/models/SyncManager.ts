@@ -173,19 +173,20 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	async syncTemplate(doc: vscode.TextDocument, options?: { showDiff?: boolean }) {
+	async syncTemplate(doc: vscode.TextDocument, options?: { showDiff?: boolean }): Promise<boolean> {
 		log.trace('syncTemplate: starting', doc.uri.fsPath);
 		const uriKey = doc.uri.toString();
 
 		if (this.syncingUris.has(uriKey)) {
 			log.debug('syncTemplate: already in progress, skipping');
-			return;
+			return false;
 		}
 
 		this.syncingUris.add(uriKey);
 		try {
-			await this.syncTemplateInternal(doc, options?.showDiff ?? false);
+			const uploaded = await this.syncTemplateInternal(doc, options?.showDiff ?? false);
 			log.trace('syncTemplate: completed successfully');
+			return uploaded;
 		} catch (e) {
 			throw log.error('syncTemplate: failed', e);
 		} finally {
@@ -193,7 +194,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	private async syncTemplateInternal(doc: vscode.TextDocument, showDiff: boolean) {
+	private async syncTemplateInternal(doc: vscode.TextDocument, showDiff: boolean): Promise<boolean> {
 		log.trace('syncTemplateInternal: starting');
 
 		if (doc.isUntitled) {
@@ -255,13 +256,13 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 					org: session.profile.org,
 				};
 				this.addLink(templateLink, doc.uri);
-				break;
+				return false;
 			}
 
 			case 'download-remote':
 				log.debug('syncTemplateInternal: downloading remote (local empty)');
 				await this.applyTemplateToDocument(doc, session, remoteTemplate);
-				break;
+				return true;
 
 			case 'upload-local':
 				log.debug('syncTemplateInternal: uploading local changes (in sync)');
@@ -274,16 +275,16 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 					);
 					if (!confirmed) {
 						log.debug('syncTemplateInternal: upload cancelled by user after diff review');
-						return;
+						return false;
 					}
 				}
 				await this.updateTemplateBody(doc);
-				break;
+				return true;
 
 			case 'conflict':
 				log.debug('syncTemplateInternal: conflict detected');
 				await this.handleConflict(doc, session, remoteTemplate);
-				break;
+				return true;
 		}
 	}
 
