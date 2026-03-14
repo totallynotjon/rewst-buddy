@@ -26,10 +26,7 @@ vsc-extension-quickstart.md
 
 # Test files
 **/.vscode-test.*
-
-# Only include the bundled entrypoint, exclude all other dist artifacts
-dist/**
-!dist/extension.js
+**/*.map
 
 # TypeScript source (keep only compiled)
 **/*.ts
