@@ -1,6 +1,5 @@
 import { LinkManager } from '@models';
-import { SessionManager } from '@sessions';
-import { getRegionConfigs } from '../../sessions/RegionConfig';
+import { getRegionConfigs, SessionManager } from '@sessions';
 import { log, parseArgsUri } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
@@ -19,7 +18,8 @@ export class OpenInRewst extends GenericCommand {
 		if (!uri) {
 			const editor = vscode.window.activeTextEditor;
 			if (!editor) {
-				throw log.error('OpenInRewst: no active editor');
+				log.notifyError('OpenInRewst: no active editor');
+				return;
 			}
 			uri = editor.document.uri;
 		}
@@ -32,9 +32,7 @@ export class OpenInRewst extends GenericCommand {
 				const session = SessionManager.getSessionForOrg(link.org.id);
 				baseUrl = session.profile.region.loginUrl;
 			} catch {
-				const knownProfile = SessionManager.getAllKnownProfiles().find(p =>
-					p.allManagedOrgs.some(o => o.id === link.org.id),
-				);
+				const knownProfile = SessionManager.getProfileForOrg(link.org.id);
 				baseUrl = knownProfile?.region.loginUrl ?? getRegionConfigs()[0].loginUrl;
 			}
 

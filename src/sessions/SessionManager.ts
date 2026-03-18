@@ -16,6 +16,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	sessionMap: Map<string, Session> = new Map<string, Session>();
+	private knownProfileOrgIndex = new Map<string, SessionProfile>();
 
 	private readonly sessionChangeEmitter = new vscode.EventEmitter<SessionChangeEvent>();
 	private loaded = false;
@@ -260,6 +261,19 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		return context.globalState.get<SessionProfile[]>('RewstAllKnownProfiles', []);
 	}
 
+	private rebuildKnownProfileOrgIndex(): void {
+		this.knownProfileOrgIndex.clear();
+		for (const profile of this.getAllKnownProfiles()) {
+			for (const org of profile.allManagedOrgs) {
+				this.knownProfileOrgIndex.set(org.id, profile);
+			}
+		}
+	}
+
+	public getProfileForOrg(orgId: string): SessionProfile | undefined {
+		return this.knownProfileOrgIndex.get(orgId);
+	}
+
 	private async saveKnownProfiles(): Promise<void> {
 		const profileMap = new Map<string, SessionProfile>();
 
@@ -271,6 +285,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		const profiles = Array.from(profileMap.values());
 
 		context.globalState.update('RewstAllKnownProfiles', profiles);
+		this.rebuildKnownProfileOrgIndex();
 
 		this.sessionChangeEmitter.fire({
 			type: 'saved',
@@ -357,6 +372,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			}
 		});
 		this.setAnyActiveSessions(sessions.length > 0);
+		this.rebuildKnownProfileOrgIndex();
 		this.sessionChangeEmitter.fire({
 			type: 'saved',
 			allProfiles: sessions.map(s => s.profile),
@@ -365,10 +381,19 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	/**
+	 * FOR TESTING ONLY: Set known profiles without active sessions
+	 */
+	_setKnownProfilesForTesting(profiles: SessionProfile[]): void {
+		context.globalState.update('RewstAllKnownProfiles', profiles);
+		this.rebuildKnownProfileOrgIndex();
+	}
+
+	/**
 	 * FOR TESTING ONLY: Reset SessionManager to initial state
 	 */
 	_resetForTesting(): void {
 		this.sessionMap.clear();
+		this.knownProfileOrgIndex.clear();
 		this.loaded = false;
 		this.loading = false;
 		this.setAnyActiveSessions(false);
