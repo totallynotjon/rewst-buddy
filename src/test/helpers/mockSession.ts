@@ -95,7 +95,7 @@ export function createMockSession(options: MockSessionOptions = {}): { session: 
 		...profile,
 	};
 
-	const session = new Session(sdk, sessionProfile);
+	const session = new Session(sdk, sessionProfile, dummyClient);
 
 	return { session, wrapper };
 }

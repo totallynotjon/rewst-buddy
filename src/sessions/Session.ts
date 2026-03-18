@@ -15,11 +15,15 @@ export default class Session {
 	public constructor(
 		public sdk: Sdk | undefined,
 		public profile: SessionProfile,
+		public client?: GraphQLClient,
 	) {
 		this.secrets = context.secrets;
 	}
 
-	private static newSdkAtRegion(cookieString: CookieString, config: RegionConfig): Sdk {
+	private static newSdkAtRegion(
+		cookieString: CookieString,
+		config: RegionConfig,
+	): { sdk: Sdk; client: GraphQLClient } {
 		log.trace('newSdkAtRegion: creating SDK', { region: config.name, url: config.graphqlUrl });
 
 		const client = new GraphQLClient(config.graphqlUrl, {
@@ -32,13 +36,13 @@ export default class Session {
 
 		const wrapper = Session.getWrapper();
 		const sdk = getSdk(client, wrapper);
-		return sdk;
+		return { sdk, client };
 	}
 
 	public static async newSdk(
 		token?: string,
 		cookieString?: CookieString,
-	): Promise<[Sdk, RegionConfig, CookieString]> {
+	): Promise<[Sdk, RegionConfig, CookieString, GraphQLClient]> {
 		log.trace('newSdk: starting', { hasToken: !!token, hasCookieString: !!cookieString });
 
 		if (cookieString === undefined && token === undefined) {
@@ -68,11 +72,11 @@ export default class Session {
 			}
 
 			for (const cookieString of cookieStrings) {
-				const sdk = Session.newSdkAtRegion(cookieString, config);
+				const { sdk, client } = Session.newSdkAtRegion(cookieString, config);
 				try {
 					if (await Session.validateSdk(sdk)) {
 						log.debug('newSdk: succeeded with region', config.name);
-						return [sdk, config, cookieString];
+						return [sdk, config, cookieString, client];
 					}
 				} catch {
 					log.trace('newSdk: failed for region', config.name);
@@ -150,7 +154,7 @@ export default class Session {
 			}
 
 			log.trace('refreshToken: validating new SDK');
-			const sdk = Session.newSdkAtRegion(new CookieString(cookieString), config);
+			const { sdk, client } = Session.newSdkAtRegion(new CookieString(cookieString), config);
 			if (!(await Session.validateSdk(sdk))) {
 				throw log.notifyError('refreshToken: new SDK validation failed');
 			}
@@ -158,6 +162,7 @@ export default class Session {
 			log.trace('refreshToken: storing new cookie');
 			await this.secrets.store(this.profile.org.id, cookieString);
 			this.sdk = sdk;
+			this.client = client;
 			log.info(`refreshToken: success for ${this.profile.label}`);
 		} catch (error) {
 			log.notifyError(`refreshToken: failed for ${this.profile.label}: ${error}`);
@@ -179,6 +184,22 @@ export default class Session {
 
 	async getCookies(): Promise<string> {
 		return await Session.getCookies(this.profile.org.id);
+	}
+
+	public async executeRawQuery(
+		document: string,
+		variables?: Record<string, unknown>,
+	): Promise<{ data?: unknown; errors?: unknown[] }> {
+		if (!this.client) {
+			throw log.error('executeRawQuery: no GraphQL client available');
+		}
+
+		log.trace('executeRawQuery: executing query');
+		const response = await this.client.rawRequest(document, variables);
+		return {
+			data: response.data,
+			errors: response.errors as unknown[] | undefined,
+		};
 	}
 
 	async getTemplate(templateId: string) {

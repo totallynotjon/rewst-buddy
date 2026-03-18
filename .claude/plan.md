@@ -29,11 +29,12 @@ User clicks ▶ Run on query cell
 
 **`src/sessions/Session.ts`** — Modify
 
-1. Change `newSdkAtRegion()` return type from `Sdk` to `{ sdk: Sdk; client: GraphQLClient }`
-2. Add optional `client` field to constructor: `constructor(sdk, profile, client?: GraphQLClient)`
-3. Update `newSdk()` return type to `[Sdk, RegionConfig, CookieString, GraphQLClient]`
-4. Update `refreshToken()` to store both `sdk` and `client` on `this`
-5. Add public method:
+1. Change `newSdkAtRegion()` (private static, line 22) to return `{ sdk: Sdk; client: GraphQLClient }` instead of just `Sdk`. The client is currently created as a local variable (line 25) and discarded — capture it alongside the SDK.
+2. Add public `client` field: `public client: GraphQLClient | undefined`
+3. Update constructor to accept client: `constructor(sdk, profile, client?: GraphQLClient)`
+4. Update `newSdk()` return type from `[Sdk, RegionConfig, CookieString]` to `[Sdk, RegionConfig, CookieString, GraphQLClient]`. Inside the region iteration loop (line 71), destructure `{ sdk, client }` from `newSdkAtRegion()` and return the client as the 4th tuple element at line 75.
+5. Update `refreshToken()` (line 153): destructure `{ sdk, client }` from `newSdkAtRegion()`, store both `this.sdk = sdk` and `this.client = client`.
+6. Add public method:
 
 ```typescript
 public async executeRawQuery(
@@ -42,17 +43,36 @@ public async executeRawQuery(
 ): Promise<{ data?: unknown; errors?: unknown[] }>
 ```
 
-Uses `this.client.rawRequest(document, variables)` — returns the full response envelope including errors, which a playground needs to display.
+Uses `this.client.rawRequest(document, variables)` — returns the full response envelope including errors, which a playground needs to display. Throws if `this.client` is undefined.
 
 **`src/sessions/SessionManager.ts`** — Modify
 
-Update `createSession()` (line 134) to destructure client from `Session.newSdk()` and pass it to `new Session(sdk, profile, client)`. Update destructuring at lines 86 and 89 to include the 4th element.
+Update `createSession()` to destructure the 4th element (client) from `Session.newSdk()` at lines 86 and 89:
+
+```typescript
+[sdk, regionConfig, cookieString, client] = await Session.newSdk(token);
+```
+
+Pass client to constructor: `new Session(sdk, profile, client)`.
+
+**`src/test/helpers/mockSession.ts`** — Modify
+
+Extend `createMockSession()` to also store the mock client on the session:
+
+```typescript
+const dummyClient = new GraphQLClient('http://localhost:9999/graphql');
+// ... existing SDK creation ...
+const session = new Session(sdk, sessionProfile, dummyClient);
+```
+
+This enables tests to stub `rawRequest` on `session.client` directly. The existing MockWrapper still handles typed SDK calls; `rawRequest` is mocked separately via the injected client.
 
 **`src/sessions/Session.test.ts`** — Create
 
-- Success: mock `rawRequest`, verify `{ data, errors }` returned
-- No client: verify throws
-- Error propagation: verify GraphQL errors passed through
+- Success: create Session with a mock client (stub `rawRequest` to return `{ data: {...} }`), call `executeRawQuery`, verify response
+- No client: create Session without client arg, call `executeRawQuery`, verify it throws
+- Error propagation: stub `rawRequest` to return `{ errors: [...] }`, verify errors passed through
+- Note: These tests mock the `GraphQLClient` directly (not via MockWrapper) since `rawRequest` bypasses the SDK wrapper chain
 
 ### Step 2: Notebook Serializer
 
@@ -87,7 +107,7 @@ Round-trip serialization, empty cells, malformed JSON fallback.
 Execute handler flow:
 
 1. Read the executed cell's text as the GraphQL query
-2. Look at the **next cell** — if it's JSON, parse as variables. Otherwise use `{}`
+2. Look at the **immediately next cell** — if its language is `json`, parse as variables. If it's not JSON or doesn't exist, use `{}`. Only checks the directly adjacent cell (index + 1), never searches further.
 3. Resolve session (see **Multi-Session Handling** below)
 4. Call `session.executeRawQuery(query, variables)`
 5. Render output:
@@ -100,9 +120,9 @@ Execute handler flow:
 The controller must be session-aware since users may have multiple authenticated sessions (different orgs/regions).
 
 - **1 session**: Use it automatically, no prompt (matches existing `pickSession()` behavior at `src/ui/pickers/SessionPicker.ts:13`)
-- **Multiple sessions, first execution**: Prompt via `pickSession()`. Cache the selected session's user ID in the notebook document metadata so subsequent executions reuse it without re-prompting.
+- **Multiple sessions, first execution**: Prompt via `pickSession()`. Cache the selected session's org ID in the notebook document metadata via `WorkspaceEdit` + `NotebookEdit.updateNotebookMetadata()` so subsequent executions reuse it without re-prompting.
 - **Cached session becomes invalid**: If the cached session ID no longer exists in `SessionManager.getActiveSessions()`, re-prompt.
-- **Changing sessions**: Add a `ChangePlaygroundSession` command that clears the notebook's cached session and re-prompts on next execution. Register it as a notebook toolbar action so it's accessible from the notebook UI.
+- **Changing sessions**: Add a `ChangePlaygroundSession` command that clears the notebook's cached session metadata (via `NotebookEdit.updateNotebookMetadata()`) and re-prompts on next execution. Register it as a notebook toolbar action (see Step 6 `notebook/toolbar` menu entry).
 - **Session indicator**: Include the active session label in cell output so the user always knows which session ran the query. On first open before any execution, the notebook header markdown cell can mention "Session will be selected on first run."
 
 **`src/notebook/PlaygroundController.test.ts`** — Create
@@ -130,19 +150,20 @@ export const SchemaManager = new (class SchemaManager implements vscode.Disposab
 
 `generateSchema(session)`:
 
-1. Run introspection via `session.executeRawQuery(getIntrospectionQuery())` — import `getIntrospectionQuery` from `graphql` package (already in devDependencies, webpack-bundled at runtime)
+1. Run introspection via `session.executeRawQuery(getIntrospectionQuery())` — import `getIntrospectionQuery` from `graphql` package. Note: `graphql` is in devDependencies but webpack-bundled at runtime. Verify the import survives tree-shaking after implementation; if not, move to `dependencies`.
 2. Write result to `.rewst/schema.json` in workspace root via `vscode.workspace.fs.writeFile`
 3. The GraphQL LSP accepts JSON introspection results — no need to convert to SDL
 
 `generateGraphQLConfig()`:
 
-1. If `.graphqlrc.yml` doesn't exist in workspace root, create it with `schema: .rewst/schema.json`
-2. If it exists, don't overwrite (user may have customized)
+1. Prompt the user: "Generate .graphqlrc.yml for GraphQL editor completions?" (only on first playground open, not on every session change)
+2. If user confirms and `.graphqlrc.yml` doesn't exist, create it with `schema: .rewst/schema.json`
+3. If it exists, don't overwrite (user may have customized)
 
-Triggers:
+Triggers and session selection:
 
-- On first playground open (if sessions exist)
-- On `SessionManager.onSessionChange` events
+- On first playground open: use the playground's selected session (or the sole active session if only one exists)
+- On `SessionManager.onSessionChange`: only regenerate if the changed session matches the one last used for schema generation (tracked via stored org ID). Don't regenerate on unrelated session changes.
 - Could add a manual refresh command later
 
 **`src/notebook/SchemaManager.test.ts`** — Create
@@ -173,10 +194,13 @@ export class OpenPlayground extends GenericCommand {
 		const doc = await vscode.workspace.openNotebookDocument('rewst-playground', new vscode.NotebookData(cells));
 		await vscode.window.showNotebookDocument(doc);
 
-		// Fire-and-forget schema generation
-		if (SessionManager.hasActiveSessions()) {
-			SchemaManager.generateSchema(SessionManager.getActiveSessions()[0]);
+		// Fire-and-forget schema generation using session selection logic
+		const sessions = SessionManager.getActiveSessions();
+		if (sessions.length === 1) {
+			SchemaManager.generateSchema(sessions[0]);
 		}
+		// If multiple sessions, schema generation deferred to first execution
+		// (when the user picks a session via the controller)
 	}
 }
 ```
@@ -193,11 +217,14 @@ Clears the active notebook's cached session metadata and re-prompts via `pickSes
 
 **`src/extension.ts`** — Modify
 
-After `CommandInitiater.registerCommands()`, register notebook infrastructure:
+Register notebook infrastructure **before** `CommandInitiater.registerCommands()` (the serializer must exist before the OpenPlayground command fires). SchemaManager registers alongside other managers; serializer and controller register alongside UI providers:
 
 ```typescript
+// After UI providers, before managers:
 context.subscriptions.push(vscode.workspace.registerNotebookSerializer('rewst-playground', new PlaygroundSerializer()));
 context.subscriptions.push(new PlaygroundController());
+
+// With other managers (after SessionManager.init()):
 context.subscriptions.push(SchemaManager.init());
 ```
 
@@ -238,16 +265,29 @@ Add sidebar button via `contributes.menus`:
 }]
 ```
 
+Add notebook toolbar button for session switching:
+
+```json
+"notebook/toolbar": [{
+  "command": "rewst-buddy.prefix.ChangePlaygroundSession",
+  "when": "notebookType == 'rewst-playground'"
+}]
+```
+
 Add to `commandPalette`:
 
 ```json
 {
-	"command": "rewst-buddy.prefix.OpenPlayground",
-	"when": "rewst-buddy.anyActiveSessions"
+  "command": "rewst-buddy.prefix.OpenPlayground",
+  "when": "rewst-buddy.anyActiveSessions"
+},
+{
+  "command": "rewst-buddy.prefix.ChangePlaygroundSession",
+  "when": "notebookType == 'rewst-playground'"
 }
 ```
 
-### Step 7: Index File
+### Step 7: Index File + Path Alias
 
 **`src/notebook/index.ts`** — Create
 
@@ -257,35 +297,46 @@ export { PlaygroundController } from './PlaygroundController';
 export { SchemaManager } from './SchemaManager';
 ```
 
+**`tsconfig.json`** — Modify: Add `"@notebook": ["src/notebook/index.ts"]` to `compilerOptions.paths`
+
+**`webpack.config.cjs`** — Modify: Add `'@notebook': path.resolve(__dirname, 'src/notebook/index.ts')` to `resolve.alias`
+
+Both files must be updated (per CLAUDE.md). Once aliased, imports in `extension.ts` and commands use `@notebook` instead of relative paths.
+
 ## File Summary
 
-| File                                               | Action                                                                |
-| -------------------------------------------------- | --------------------------------------------------------------------- |
-| `src/sessions/Session.ts`                          | Modify — add `client` field, `executeRawQuery()`, update return types |
-| `src/sessions/SessionManager.ts`                   | Modify — pass `client` through `createSession()`                      |
-| `src/sessions/Session.test.ts`                     | Create                                                                |
-| `src/notebook/PlaygroundSerializer.ts`             | Create                                                                |
-| `src/notebook/PlaygroundSerializer.test.ts`        | Create                                                                |
-| `src/notebook/PlaygroundController.ts`             | Create                                                                |
-| `src/notebook/PlaygroundController.test.ts`        | Create                                                                |
-| `src/notebook/SchemaManager.ts`                    | Create                                                                |
-| `src/notebook/SchemaManager.test.ts`               | Create                                                                |
-| `src/notebook/index.ts`                            | Create                                                                |
-| `src/commands/notebook/OpenPlayground.ts`          | Create                                                                |
-| `src/commands/notebook/ChangePlaygroundSession.ts` | Create                                                                |
-| `src/commands/notebook/index.ts`                   | Create                                                                |
-| `src/commands/exportedCommands.ts`                 | Modify — add notebook export                                          |
-| `src/extension.ts`                                 | Modify — register serializer, controller, schema manager              |
-| `package.json`                                     | Modify — notebooks, command, menus                                    |
+| File                                               | Action                                                                                 |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `src/sessions/Session.ts`                          | Modify — add `client` field, `executeRawQuery()`, update return types                  |
+| `src/sessions/SessionManager.ts`                   | Modify — pass `client` through `createSession()`                                       |
+| `src/sessions/Session.test.ts`                     | Create — tests mock GraphQLClient directly (not via MockWrapper)                       |
+| `src/test/helpers/mockSession.ts`                  | Modify — pass dummyClient to Session constructor                                       |
+| `src/notebook/PlaygroundSerializer.ts`             | Create                                                                                 |
+| `src/notebook/PlaygroundSerializer.test.ts`        | Create                                                                                 |
+| `src/notebook/PlaygroundController.ts`             | Create                                                                                 |
+| `src/notebook/PlaygroundController.test.ts`        | Create                                                                                 |
+| `src/notebook/SchemaManager.ts`                    | Create                                                                                 |
+| `src/notebook/SchemaManager.test.ts`               | Create                                                                                 |
+| `src/notebook/index.ts`                            | Create                                                                                 |
+| `src/commands/notebook/OpenPlayground.ts`          | Create                                                                                 |
+| `src/commands/notebook/ChangePlaygroundSession.ts` | Create                                                                                 |
+| `src/commands/notebook/index.ts`                   | Create                                                                                 |
+| `src/commands/exportedCommands.ts`                 | Modify — add notebook export                                                           |
+| `src/extension.ts`                                 | Modify — register serializer + controller before commands, SchemaManager with managers |
+| `package.json`                                     | Modify — notebooks, commands, menus (incl. notebook/toolbar + commandPalette)          |
+| `tsconfig.json`                                    | Modify — add `@notebook` path alias                                                    |
+| `webpack.config.cjs`                               | Modify — add `@notebook` path alias                                                    |
 
 ## Key Design Decisions
 
-1. **Variables convention**: Controller reads the next cell after a query cell as variables if it's JSON. Simple, matches mental model from GraphQL tools.
+1. **Variables convention**: Controller reads the immediately next cell (index + 1) as variables if its language is `json`. Simple, matches mental model from GraphQL tools. If not JSON or missing, variables default to `{}`.
 2. **JSON schema over SDL**: Output `.rewst/schema.json` with raw introspection result. Avoids needing `buildClientSchema`/`printSchema` at runtime. GraphQL LSP accepts JSON introspection via `.graphqlrc.yml`.
 3. **Transient by default**: `vscode.workspace.openNotebookDocument('rewst-playground', notebookData)` creates an untitled document. No file on disk until user saves.
-4. **Session caching**: Stored in notebook metadata after first pick, so user isn't re-prompted on each execution.
-5. **Fire-and-forget schema**: Schema generation doesn't block playground opening. If it fails, the playground still works without LSP completions.
-6. **`graphql` package**: Already in devDependencies and webpack-bundled. `getIntrospectionQuery()` is available at runtime.
+4. **Session caching**: Stored in notebook metadata (via `NotebookEdit.updateNotebookMetadata()`) after first pick, keyed by org ID. User isn't re-prompted on each execution.
+5. **Fire-and-forget schema**: Schema generation doesn't block playground opening. If it fails, the playground still works without LSP completions. With multiple sessions, schema generation defers to first execution when user picks a session.
+6. **`graphql` package**: In devDependencies and webpack-bundled. `getIntrospectionQuery()` should be available at runtime — verify after implementation; move to `dependencies` if tree-shaken.
+7. **Client injection for testability**: `GraphQLClient` stored on Session alongside SDK. `createMockSession()` passes a dummy client, enabling direct `rawRequest` stubbing in tests. Typed SDK calls continue to use MockWrapper as before.
+8. **`.graphqlrc.yml` opt-in**: Prompt user on first playground open rather than silently creating workspace config files.
 
 ## Verification
 

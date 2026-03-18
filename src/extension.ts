@@ -1,6 +1,7 @@
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
 import { LinkManager, SyncManager, SyncOnSaveManager, TemplateMetadataStore } from '@models';
+import { PlaygroundController, PlaygroundSerializer, SchemaManager } from '@notebook';
 import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
@@ -27,6 +28,12 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.window.registerWebviewViewProvider(RewstViewProvider.viewType, rewstViewProvider),
 	);
 
+	// Register notebook infrastructure (must exist before commands so notebook type is known)
+	context.subscriptions.push(
+		vscode.workspace.registerNotebookSerializer('rewst-playground', new PlaygroundSerializer()),
+	);
+	context.subscriptions.push(new PlaygroundController());
+
 	// Register managers (self-register for their respective VS Code events)
 	// Note: SessionManager must init before SyncManager so sessions are loaded first
 	context.subscriptions.push(LinkManager.init());
@@ -34,6 +41,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(await SessionManager.init());
 	context.subscriptions.push(TemplateMetadataStore.init());
 	context.subscriptions.push(SyncManager.init());
+	context.subscriptions.push(SchemaManager.init());
 	context.subscriptions.push(await Server.init());
 	context.subscriptions.push(new StatusBar());
 

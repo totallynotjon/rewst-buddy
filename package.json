@@ -30,6 +30,17 @@
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
+		"notebooks": [
+			{
+				"type": "rewst-playground",
+				"displayName": "Rewst GraphQL Playground",
+				"selector": [
+					{
+						"filenamePattern": "*.rewst-playground"
+					}
+				]
+			}
+		],
 		"configuration": {
 			"title": "Settings Editor Rewst-Buddy",
 			"type": "object",
@@ -222,6 +233,16 @@
 				"command": "rewst-buddy.prefix.DisableSyncOnSave",
 				"title": "Rewst Buddy: Disable Sync-On-Save",
 				"icon": "$(sync-ignored)"
+			},
+			{
+				"command": "rewst-buddy.prefix.OpenPlayground",
+				"title": "Rewst Buddy: Open GraphQL Playground",
+				"icon": "$(symbol-event)"
+			},
+			{
+				"command": "rewst-buddy.prefix.ChangePlaygroundSession",
+				"title": "Rewst Buddy: Change Playground Session",
+				"icon": "$(account)"
 			}
 		],
 		"viewsContainers": {
@@ -250,6 +271,19 @@
 		},
 		"submenus": [],
 		"menus": {
+			"view/title": [
+				{
+					"command": "rewst-buddy.prefix.OpenPlayground",
+					"when": "view == rewst-buddy.sessionTree && rewst-buddy.anyActiveSessions",
+					"group": "navigation"
+				}
+			],
+			"notebook/toolbar": [
+				{
+					"command": "rewst-buddy.prefix.ChangePlaygroundSession",
+					"when": "notebookType == 'rewst-playground'"
+				}
+			],
 			"explorer/context": [
 				{
 					"command": "rewst-buddy.LinkFolder",
@@ -360,6 +394,14 @@
 				{
 					"command": "rewst-buddy.prefix.LinkTemplateInteractive",
 					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.prefix.OpenPlayground",
+					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.prefix.ChangePlaygroundSession",
+					"when": "notebookType == 'rewst-playground'"
 				}
 			],
 			"editor/context": [
