@@ -154,6 +154,7 @@ All commands are also available via Command Palette (Cmd/Ctrl + Shift + P):
 - `Open Template` - Browse and open templates via picker (v0.14)
 - `Link Template` - Link current file via template picker (v0.14)
 - `Copy Template ID` - Copy linked template ID to clipboard (v0.25)
+- `Open in Rewst` - Open linked template in the Rewst web app (v0.38)
 
 **Template Operations (URL-based)**
 

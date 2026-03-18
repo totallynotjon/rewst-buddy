@@ -8,5 +8,5 @@ export function parseArgsUri(...args: any[]): vscode.Uri {
 		if (!Array.isArray(current) || current.length === 0) break;
 		current = current[0];
 	}
-	throw log.notifyError('Could not parse folder uri, command may have been run from the wrong context.');
+	throw log.error('Could not parse URI from command arguments');
 }

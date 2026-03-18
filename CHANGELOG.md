@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.38.0] - 2026-03-16
+
+### Added
+
+- **Open in Rewst** - New command to open a linked template directly in the Rewst web app
+    - Available in the explorer context menu, editor context menu, and command palette
+    - Works without an active session — falls back to previously known session profiles, then the configured region
+
 ## [0.37.0] - 2026-01-18
 
 ### Added
