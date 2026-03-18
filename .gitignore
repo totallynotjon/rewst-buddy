@@ -5,12 +5,7 @@ node_modules
 *.vsix
 tsconfig.tsbuildinfo
 
-# Claude Code files
-.claude/
+# Claude Code local files
+.claude/settings.*
 .claudeignore
-CLAUDE.md
-.claude
-
-
 .LOCAL
-CLAUDE.md
