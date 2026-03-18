@@ -6,6 +6,3 @@ node_modules
 tsconfig.tsbuildinfo
 
 # Claude Code local files
-.claude/settings.*
-.claudeignore
-.LOCAL
