@@ -79,14 +79,15 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		let sdk;
 		let regionConfig;
 		let cookieString;
+		let client;
 
 		if (cookies === undefined) {
 			log.trace('createSession: prompting for token');
 			const token = await this.getTokenForCreation();
-			[sdk, regionConfig, cookieString] = await Session.newSdk(token);
+			[sdk, regionConfig, cookieString, client] = await Session.newSdk(token);
 			cookies = cookieString.value;
 		} else {
-			[sdk, regionConfig, cookieString] = await Session.newSdk(cookies, new CookieString(cookies));
+			[sdk, regionConfig, cookieString, client] = await Session.newSdk(cookies, new CookieString(cookies));
 		}
 
 		log.debug('createSession: SDK initialized', { region: regionConfig.name });
@@ -131,7 +132,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			allManagedOrgs: allManagedOrgs,
 			user: user,
 		};
-		const session = new Session(sdk, profile);
+		const session = new Session(sdk, profile, client);
 
 		log.trace('createSession: storing cookie and saving session');
 		await context.secrets.store(org.id, cookieString.value);

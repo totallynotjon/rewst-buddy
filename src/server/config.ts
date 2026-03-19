@@ -9,3 +9,7 @@ export function getServerConfig(): ServerConfig {
 		host: config.get<string>('host', '127.0.0.1'),
 	};
 }
+
+export function isMcpEnabled(): boolean {
+	return vscode.workspace.getConfiguration('rewst-buddy.mcp').get<boolean>('enabled', true);
+}

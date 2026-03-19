@@ -99,9 +99,20 @@
 					"type": "string",
 					"default": "127.0.0.1",
 					"description": "Host address to bind the server (default: 127.0.0.1 for localhost-only access)"
+				},
+				"rewst-buddy.mcp.enabled": {
+					"type": "boolean",
+					"default": true,
+					"description": "Enable the MCP server endpoint on the local HTTP server, allowing AI assistants to interact with Rewst via your authenticated sessions"
 				}
 			}
 		},
+		"mcpServerDefinitionProviders": [
+			{
+				"id": "rewst-buddy-mcp",
+				"label": "Rewst Buddy"
+			}
+		],
 		"commands": [
 			{
 				"command": "rewst-buddy.prefix.NewSession",
@@ -474,5 +485,9 @@
 		"*.{json,md}": [
 			"prettier --write"
 		]
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.27.1",
+		"zod": "^4.3.6"
 	}
 }

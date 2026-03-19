@@ -18,7 +18,8 @@
 			"@ui": ["ui/index.ts"],
 			"@server": ["server/index.ts"],
 			"@events": ["events/index.ts"],
-			"@test": ["test/helpers/index.ts"]
+			"@test": ["test/helpers/index.ts"],
+			"@mcp": ["mcp/index.ts"]
 		},
 		"sourceMap": true,
 		"strict": true,

@@ -1,7 +1,8 @@
+import { handleMcpRequest } from '@mcp';
 import { log } from '@utils';
 import http, { IncomingMessage, ServerResponse } from 'http';
 import vscode from 'vscode';
-import { getServerConfig } from './config';
+import { getServerConfig, isMcpEnabled } from './config';
 import { handleAddSession, handleOpenTemplate, validateRequest } from './handlers';
 import { BrowserRequest, Response, ServerConfig } from './types';
 
@@ -100,9 +101,43 @@ export const Server = new (class _ implements vscode.Disposable {
 		return this.isRunning;
 	}
 
+	private readonly allowedHosts = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+	private isLocalHost(req: IncomingMessage): boolean {
+		const host = req.headers.host;
+		if (!host) return true; // No host header is OK for local tools
+		const hostname = host.replace(/:\d+$/, '');
+		return this.allowedHosts.has(hostname);
+	}
+
 	private handleRequest(req: IncomingMessage, res: ServerResponse): void {
 		log.trace('Server.handleRequest: incoming', { method: req.method, url: req.url });
 
+		if (!this.isLocalHost(req)) {
+			log.warn('Server.handleRequest: rejected non-localhost Host header', req.headers.host);
+			res.writeHead(403, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({ error: 'Forbidden: non-localhost Host header' }));
+			return;
+		}
+
+		// Route MCP requests to the MCP handler
+		if (req.url?.startsWith('/mcp') && isMcpEnabled()) {
+			log.trace('Server.handleRequest: routing to MCP handler');
+			res.setHeader('Access-Control-Allow-Origin', '*');
+			res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+			res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept, Mcp-Session-Id');
+
+			if (req.method === 'OPTIONS') {
+				res.writeHead(204);
+				res.end();
+				return;
+			}
+
+			handleMcpRequest(req, res);
+			return;
+		}
+
+		// Original browser extension handler
 		res.setHeader('Content-Type', 'application/json');
 		res.setHeader('Access-Control-Allow-Origin', '*');
 		res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');

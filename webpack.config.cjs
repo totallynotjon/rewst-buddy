@@ -21,6 +21,7 @@ const aliases = {
 	'@server': path.resolve(__dirname, 'src/server/index.ts'),
 	'@events': path.resolve(__dirname, 'src/events/index.ts'),
 	'@test': path.resolve(__dirname, 'src/test/helpers/index.ts'),
+	'@mcp': path.resolve(__dirname, 'src/mcp/index.ts'),
 };
 
 /**@type {import('webpack').Configuration}*/

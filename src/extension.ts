@@ -45,7 +45,51 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.languages.registerHoverProvider({ scheme: 'file' }, new TemplateHoverProvider()),
 	);
 
+	// Register MCP server definition provider for VS Code Copilot
+	registerMcpProvider(context);
+
 	log.info(`Finished activation of extension ${extPrefix}`);
+}
+
+function registerMcpProvider(context: vscode.ExtensionContext): void {
+	// Guard: vscode.lm.registerMcpServerDefinitionProvider may not exist in all VS Code forks
+	if (typeof vscode.lm?.registerMcpServerDefinitionProvider !== 'function') {
+		log.debug('MCP server definition provider API not available');
+		return;
+	}
+
+	const emitter = new vscode.EventEmitter<void>();
+	const config = vscode.workspace.getConfiguration('rewst-buddy.server');
+	const host = config.get<string>('host', '127.0.0.1');
+	const port = config.get<number>('port', 27121);
+	const version = context.extension?.packageJSON?.version ?? '0.0.0';
+
+	const provider = vscode.lm.registerMcpServerDefinitionProvider('rewst-buddy-mcp', {
+		onDidChangeMcpServerDefinitions: emitter.event,
+		provideMcpServerDefinitions() {
+			const mcpEnabled = vscode.workspace.getConfiguration('rewst-buddy.mcp').get<boolean>('enabled', true);
+
+			if (!mcpEnabled) return [];
+
+			return [
+				new vscode.McpHttpServerDefinition(
+					'Rewst Buddy',
+					vscode.Uri.parse(`http://${host}:${port}/mcp`),
+					undefined,
+					version,
+				),
+			];
+		},
+	});
+
+	// Re-fire when relevant config changes
+	const configWatcher = vscode.workspace.onDidChangeConfiguration(e => {
+		if (e.affectsConfiguration('rewst-buddy.server') || e.affectsConfiguration('rewst-buddy.mcp')) {
+			emitter.fire();
+		}
+	});
+
+	context.subscriptions.push(provider, emitter, configWatcher);
 }
 
 export function deactivate() {
