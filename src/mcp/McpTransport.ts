@@ -1,14 +1,15 @@
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { IncomingMessage, ServerResponse } from 'http';
-import { mcpServer } from './McpServer';
+import { createMcpServer } from './McpServer';
 import { log } from '@utils';
 
 export async function handleMcpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
 	log.trace('handleMcpRequest: incoming', { method: req.method, url: req.url });
 
 	try {
+		const server = createMcpServer();
 		const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-		await mcpServer.server.connect(transport);
+		await server.connect(transport);
 
 		if (req.method === 'POST') {
 			const body = await readBody(req);

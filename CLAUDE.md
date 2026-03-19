@@ -23,6 +23,16 @@ src/
 │   ├── TemplateDefinitionProvider.ts # Ctrl+click navigation
 │   ├── templatePatternUtils.ts      # Shared regex/matching utilities
 │   └── templatePatternUtils.test.ts # Colocated unit test
+├── mcp/               # MCP server for AI assistant integration
+│   ├── McpServer.ts           # MCP server singleton + tool registration
+│   ├── McpTransport.ts        # Streamable HTTP transport handler
+│   └── tools/                 # Tool implementations
+│       ├── resolveSession.ts  # Session resolution helper
+│       ├── schemas.ts         # Zod input schemas
+│       ├── sessionTools.ts    # rewst_list_sessions
+│       ├── templateTools.ts   # Template CRUD tools
+│       ├── userTools.ts       # rewst_get_current_user
+│       └── graphqlTools.ts    # rewst_introspect_schema, rewst_execute_graphql
 ├── models/            # Business logic managers
 │   ├── LinkManager.ts         # File-to-template associations (singleton)
 │   ├── LinkManager.test.ts    # Colocated unit test
@@ -60,6 +70,7 @@ src/
 | `@server`   | `src/server/index.ts`       | HTTP server        |
 | `@events`   | `src/events/index.ts`       | Event types        |
 | `@test`     | `src/test/helpers/index.ts` | Test utilities     |
+| `@mcp`      | `src/mcp/index.ts`         | MCP server         |
 
 **When adding a new alias:**
 
