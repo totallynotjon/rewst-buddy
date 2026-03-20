@@ -24,8 +24,9 @@ const GET_WORKFLOW_QUERY = `
 				parameters criteria formId
 			}
 			tasks {
-				id name description actionId
-				packOverrides parameters publishedResultAs transitions
+				id name description actionId input
+				publishResultAs transitionMode
+				packOverrides { packId packConfigId configSelectionMode }
 			}
 			tasksObject
 		}
@@ -76,7 +77,7 @@ export function registerWorkflowTools(server: McpServer): void {
 		{
 			title: 'Get Workflow',
 			description:
-				'Get full workflow details by ID. Returns: id, name, description, inputSchema, outputSchema, type, version, timeout, humanSecondsSaved, tags { id name color }, triggers { id name enabled description triggerType parameters criteria formId }, tasks { id name description actionId packOverrides parameters publishedResultAs transitions }, tasksObject. The tasks array defines the workflow logic. Use rewst_list_workflow_executions to see runs of this workflow.',
+				'Get full workflow details by ID. Returns: id, name, description, inputSchema, outputSchema, type, version, timeout, humanSecondsSaved, tags { id name color }, triggers { id name enabled description triggerType parameters criteria formId }, tasks { id name description actionId input publishResultAs transitionMode packOverrides }, tasksObject. The tasks array defines the workflow logic. Use rewst_list_workflow_executions to see runs of this workflow.',
 			inputSchema: getWorkflowSchema,
 			annotations: { readOnlyHint: true },
 		},
