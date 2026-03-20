@@ -8,8 +8,8 @@ import {
 } from './schemas';
 
 const LIST_WORKFLOW_EXECUTIONS_QUERY = `
-	query ListWorkflowExecutions($where: WorkflowExecutionWhereInput, $search: WorkflowExecutionSearchInput, $limit: Int, $offset: Int, $order: [JSON]) {
-		workflowExecutions(where: $where, search: $search, limit: $limit, offset: $offset, order: $order) {
+	query ListWorkflowExecutions($where: WorkflowExecutionWhereInput, $search: WorkflowExecutionSearchInput, $limit: Int, $offset: Int) {
+		workflowExecutions(where: $where, search: $search, limit: $limit, offset: $offset, order: [["createdAt", "DESC"]]) {
 			id status createdAt updatedAt
 			workflow { id name }
 			numSuccessfulTasks numAwaitingResponseTasks
@@ -40,8 +40,8 @@ const GET_WORKFLOW_EXECUTION_CONTEXTS_QUERY = `
 `;
 
 const SEARCH_TASK_LOGS_QUERY = `
-	query SearchTaskLogs($where: TaskLogWhereInput, $search: TaskLogSearchInput, $limit: Int, $offset: Int, $order: [JSON]) {
-		taskLogs(where: $where, search: $search, limit: $limit, offset: $offset, order: $order) {
+	query SearchTaskLogs($where: TaskLogWhereInput, $search: TaskLogSearchInput, $limit: Int, $offset: Int) {
+		taskLogs(where: $where, search: $search, limit: $limit, offset: $offset, order: [["createdAt", "DESC"]]) {
 			id status message input result executionTime
 			workflowTaskId workflowTask { name }
 			workflowExecutionId createdAt
