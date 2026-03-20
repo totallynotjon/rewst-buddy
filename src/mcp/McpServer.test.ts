@@ -30,6 +30,14 @@ suite('Unit: McpServer', () => {
 			'rewst_get_current_user',
 			'rewst_introspect_schema',
 			'rewst_execute_graphql',
+			'rewst_search_orgs',
+			'rewst_get_organization',
+			'rewst_list_workflows',
+			'rewst_get_workflow',
+			'rewst_list_workflow_executions',
+			'rewst_get_workflow_execution',
+			'rewst_get_workflow_execution_contexts',
+			'rewst_search_task_logs',
 		];
 
 		// Access the internal tool registry via the server's request handlers
@@ -256,6 +264,256 @@ suite('Unit: McpServer', () => {
 			SessionManager._setSessionsForTesting([session]);
 
 			assert.ok(session.client, 'Session should have a client for introspection');
+		});
+	});
+
+	suite('rewst_search_orgs', () => {
+		test('should search managed orgs', async () => {
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async () => ({
+				searchManagedOrgs: [
+					{ id: 'org-1', name: "Jon's Sandbox" },
+					{ id: 'org-2', name: "Dan's Sandbox" },
+				],
+			});
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_search_orgs');
+			const result = await tool({ search: 'sandbox' });
+			const data = JSON.parse(result.content[0].text);
+
+			assert.strictEqual(data.length, 2);
+			assert.strictEqual(data[0].name, "Jon's Sandbox");
+		});
+	});
+
+	suite('rewst_get_organization', () => {
+		test('should get organization by id', async () => {
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async () => ({
+				organization: { id: 'org-1', name: 'Test Org', isEnabled: true },
+			});
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_get_organization');
+			const result = await tool({ organizationId: 'org-1' });
+			const data = JSON.parse(result.content[0].text);
+
+			assert.strictEqual(data.id, 'org-1');
+			assert.strictEqual(data.name, 'Test Org');
+		});
+	});
+
+	suite('rewst_list_workflows', () => {
+		test('should list workflows for an org', async () => {
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async () => ({
+				workflows: [
+					{ id: 'wf-1', name: 'Workflow One', description: '' },
+					{ id: 'wf-2', name: 'Workflow Two', description: '' },
+				],
+			});
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_list_workflows');
+			const result = await tool({});
+			const data = JSON.parse(result.content[0].text);
+
+			assert.strictEqual(data.length, 2);
+			assert.strictEqual(data[0].name, 'Workflow One');
+		});
+
+		test('should pass name filter as ilike search', async () => {
+			let capturedVars: Record<string, unknown> = {};
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async (_query: any, vars: any) => {
+				capturedVars = vars as Record<string, unknown>;
+				return { workflows: [] };
+			};
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_list_workflows');
+			await tool({ name: 'test' });
+
+			assert.deepStrictEqual(
+				(capturedVars.search as Record<string, unknown>)?.name,
+				{ _ilike: '%test%' },
+			);
+		});
+	});
+
+	suite('rewst_get_workflow', () => {
+		test('should get workflow by id', async () => {
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async () => ({
+				workflow: {
+					id: 'wf-1',
+					name: 'Test Workflow',
+					tasks: [{ id: 'task-1', name: 'noop' }],
+				},
+			});
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_get_workflow');
+			const result = await tool({ workflowId: 'wf-1' });
+			const data = JSON.parse(result.content[0].text);
+
+			assert.strictEqual(data.id, 'wf-1');
+			assert.strictEqual(data.tasks.length, 1);
+		});
+	});
+
+	suite('rewst_list_workflow_executions', () => {
+		test('should list executions with default newest-first', async () => {
+			let capturedVars: Record<string, unknown> = {};
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async (_query: any, vars: any) => {
+				capturedVars = vars as Record<string, unknown>;
+				return {
+					workflowExecutions: [
+						{ id: 'exec-1', status: 'completed' },
+						{ id: 'exec-2', status: 'failed' },
+					],
+				};
+			};
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_list_workflow_executions');
+			const result = await tool({});
+			const data = JSON.parse(result.content[0].text);
+
+			assert.strictEqual(data.length, 2);
+			assert.deepStrictEqual(capturedVars.order, [{ createdAt: 'DESC' }]);
+		});
+
+		test('should filter by status and workflowId', async () => {
+			let capturedVars: Record<string, unknown> = {};
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async (_query: any, vars: any) => {
+				capturedVars = vars as Record<string, unknown>;
+				return { workflowExecutions: [] };
+			};
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_list_workflow_executions');
+			await tool({ status: 'failed', workflowId: 'wf-1' });
+
+			const where = capturedVars.where as Record<string, unknown>;
+			assert.strictEqual(where.status, 'failed');
+			assert.strictEqual(where.workflowId, 'wf-1');
+		});
+	});
+
+	suite('rewst_get_workflow_execution', () => {
+		test('should get execution with task logs', async () => {
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async () => ({
+				workflowExecution: {
+					id: 'exec-1',
+					status: 'failed',
+					taskLogs: [
+						{ id: 'log-1', status: 'failed', message: 'Connection refused' },
+					],
+				},
+			});
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_get_workflow_execution');
+			const result = await tool({ executionId: 'exec-1' });
+			const data = JSON.parse(result.content[0].text);
+
+			assert.strictEqual(data.id, 'exec-1');
+			assert.strictEqual(data.taskLogs.length, 1);
+			assert.strictEqual(data.taskLogs[0].message, 'Connection refused');
+		});
+	});
+
+	suite('rewst_get_workflow_execution_contexts', () => {
+		test('should return all contexts when no search', async () => {
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async () => ({
+				workflowExecutionContexts: [
+					{ admin_email: 'test@example.com' },
+					{ trigger_instance: { id: 'trig-1' } },
+				],
+			});
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_get_workflow_execution_contexts');
+			const result = await tool({ executionId: 'exec-1' });
+			const data = JSON.parse(result.content[0].text);
+
+			assert.strictEqual(data.length, 2);
+		});
+
+		test('should filter contexts by search text', async () => {
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async () => ({
+				workflowExecutionContexts: [
+					{ admin_email: 'test@example.com' },
+					{ trigger_instance: { id: 'trig-1' } },
+					{ some_data: 'unrelated' },
+				],
+			});
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_get_workflow_execution_contexts');
+			const result = await tool({ executionId: 'exec-1', search: 'example.com' });
+			const data = JSON.parse(result.content[0].text);
+
+			assert.strictEqual(data.length, 1);
+			assert.strictEqual(data[0].admin_email, 'test@example.com');
+		});
+	});
+
+	suite('rewst_search_task_logs', () => {
+		test('should return logs matching search in input/result', async () => {
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async () => ({
+				taskLogs: [
+					{ id: 'log-1', message: 'ok', input: { email: 'jon@example.com' }, result: {} },
+					{ id: 'log-2', message: 'ok', input: {}, result: { data: 'unrelated' } },
+					{ id: 'log-3', message: 'ok', input: {}, result: { email: 'jon@example.com' } },
+				],
+			});
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_search_task_logs');
+			const result = await tool({ search: 'jon@example.com' });
+			const data = JSON.parse(result.content[0].text);
+
+			assert.strictEqual(data.length, 2);
+			assert.strictEqual(data[0].id, 'log-1');
+			assert.strictEqual(data[1].id, 'log-3');
+		});
+
+		test('should pass through status and workflowId filters', async () => {
+			let capturedVars: Record<string, unknown> = {};
+			const { session } = createMockSession();
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			(session.client as any).request = async (_query: any, vars: any) => {
+				capturedVars = vars as Record<string, unknown>;
+				return { taskLogs: [] };
+			};
+			SessionManager._setSessionsForTesting([session]);
+
+			const tool = getToolCallback('rewst_search_task_logs');
+			await tool({ status: 'failed', workflowId: 'wf-1' });
+
+			const where = capturedVars.where as Record<string, unknown>;
+			assert.strictEqual(where.status, 'failed');
+			assert.deepStrictEqual(where.workflow, { id: 'wf-1' });
 		});
 	});
 });

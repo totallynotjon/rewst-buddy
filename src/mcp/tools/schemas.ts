@@ -52,3 +52,68 @@ export const executeGraphqlSchema = {
 	variables: z.record(z.string(), z.unknown()).optional().describe('Variables for the GraphQL operation'),
 	...optionalOrgId,
 };
+
+// Organization tools
+export const searchOrgsSchema = {
+	search: z.string().describe('Search string to match against organization names'),
+	limit: z.number().optional().describe('Max results to return (default 25)'),
+	offset: z.number().optional().describe('Number of results to skip for pagination'),
+	...optionalOrgId,
+};
+
+export const getOrganizationSchema = {
+	organizationId: z.string().describe('Organization ID to retrieve'),
+};
+
+// Workflow tools
+export const listWorkflowsSchema = {
+	name: z.string().optional().describe('Filter workflows by name (case-insensitive partial match)'),
+	limit: z.number().optional().describe('Max results to return (default 25)'),
+	offset: z.number().optional().describe('Number of results to skip for pagination'),
+	...optionalOrgId,
+};
+
+export const getWorkflowSchema = {
+	workflowId: z.string().describe('Workflow ID to retrieve'),
+	...optionalOrgId,
+};
+
+// Workflow Execution tools
+export const listWorkflowExecutionsSchema = {
+	workflowId: z.string().optional().describe('Filter by specific workflow ID'),
+	status: z.string().optional().describe('Filter by status (e.g. "completed", "failed", "running")'),
+	limit: z.number().optional().describe('Max results to return (default 25)'),
+	offset: z.number().optional().describe('Number of results to skip for pagination'),
+	...optionalOrgId,
+};
+
+export const getWorkflowExecutionSchema = {
+	executionId: z.string().describe('Workflow execution ID to retrieve'),
+	...optionalOrgId,
+};
+
+export const getWorkflowExecutionContextsSchema = {
+	executionId: z.string().describe('Workflow execution ID to get contexts for'),
+	search: z
+		.string()
+		.optional()
+		.describe(
+			'Text to search for within context data (client-side filter). Useful for finding specific input values, org names, etc.',
+		),
+	...optionalOrgId,
+};
+
+export const searchTaskLogsSchema = {
+	workflowId: z.string().optional().describe('Scope search to a specific workflow ID'),
+	executionId: z.string().optional().describe('Scope search to a specific execution ID'),
+	status: z.string().optional().describe('Filter by task status (e.g. "failed", "success")'),
+	search: z
+		.string()
+		.optional()
+		.describe(
+			'Text to search for within task log input, result, and message fields (client-side filter). Solves the "find where input contained X" problem.',
+		),
+	limit: z.number().optional().describe('Max results to return (default 25)'),
+	offset: z.number().optional().describe('Number of results to skip for pagination'),
+	...optionalOrgId,
+};
