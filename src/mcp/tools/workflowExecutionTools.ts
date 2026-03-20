@@ -78,8 +78,7 @@ export function registerWorkflowExecutionTools(server: McpServer): void {
 					where,
 					limit: limit ?? 25,
 					offset: offset ?? 0,
-					order: [{ createdAt: 'DESC' }],
-				},
+					},
 			);
 
 			return {
@@ -154,11 +153,11 @@ export function registerWorkflowExecutionTools(server: McpServer): void {
 		{
 			title: 'Search Task Logs',
 			description:
-				'Search task logs across executions with optional filters. Returns: id, status, message, input, result, executionTime, workflowTaskId, workflowTask { name }, workflowExecutionId, createdAt, runAsOrgId, principalOrgId. The search parameter does case-insensitive client-side filtering through the full JSON of each log entry (input, result, message) — solving the "find where input contained X" problem. Scope with workflowId or executionId to narrow results. Fetches 4x the limit when searching to compensate for client-side filtering.',
+				'Search task logs across executions with optional filters. Returns: id, status, message, input, result, executionTime, workflowTaskId, workflowTask { name }, workflowExecutionId, createdAt, runAsOrgId, principalOrgId. The search parameter does case-insensitive client-side filtering through the full JSON of each log entry (input, result, message) — solving the "find where input contained X" problem. Scope with executionId to narrow results. Fetches 4x the limit when searching to compensate for client-side filtering.',
 			inputSchema: searchTaskLogsSchema,
 			annotations: { readOnlyHint: true },
 		},
-		async ({ workflowId, executionId, status, search, limit, offset, orgId }) => {
+		async ({ executionId, status, search, limit, offset, orgId }) => {
 			const session = resolveSession(orgId);
 			const targetOrgId = orgId ?? session.profile.org.id;
 
@@ -166,14 +165,8 @@ export function registerWorkflowExecutionTools(server: McpServer): void {
 				throw new Error('Session has no GraphQL client available');
 			}
 
-			const where: Record<string, unknown> = {};
-			if (executionId) {
-				where.workflowExecutionId = executionId;
-			} else {
-				// When no executionId, scope by org via the workflow execution's org
-				where.workflowExecution = { orgId: targetOrgId };
-			}
-			if (workflowId) where.workflow = { id: workflowId };
+			const where: Record<string, unknown> = { principalOrgId: targetOrgId };
+			if (executionId) where.workflowExecutionId = executionId;
 			if (status) where.status = status;
 
 			// When doing client-side search, fetch more to filter from
@@ -185,8 +178,7 @@ export function registerWorkflowExecutionTools(server: McpServer): void {
 					where,
 					limit: fetchLimit,
 					offset: offset ?? 0,
-					order: [{ createdAt: 'DESC' }],
-				},
+					},
 			);
 
 			let logs = result.taskLogs;

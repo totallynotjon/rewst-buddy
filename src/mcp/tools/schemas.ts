@@ -104,7 +104,6 @@ export const getWorkflowExecutionContextsSchema = {
 };
 
 export const searchTaskLogsSchema = {
-	workflowId: z.string().optional().describe('Scope search to a specific workflow ID'),
 	executionId: z.string().optional().describe('Scope search to a specific execution ID'),
 	status: z.string().optional().describe('Filter by task status (e.g. "failed", "success")'),
 	search: z

@@ -498,7 +498,7 @@ suite('Unit: McpServer', () => {
 			assert.strictEqual(data[1].id, 'log-3');
 		});
 
-		test('should pass through status and workflowId filters', async () => {
+		test('should pass through status and executionId filters', async () => {
 			let capturedVars: Record<string, unknown> = {};
 			const { session } = createMockSession();
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -509,11 +509,11 @@ suite('Unit: McpServer', () => {
 			SessionManager._setSessionsForTesting([session]);
 
 			const tool = getToolCallback('rewst_search_task_logs');
-			await tool({ status: 'failed', workflowId: 'wf-1' });
+			await tool({ status: 'failed', executionId: 'exec-1' });
 
 			const where = capturedVars.where as Record<string, unknown>;
 			assert.strictEqual(where.status, 'failed');
-			assert.deepStrictEqual(where.workflow, { id: 'wf-1' });
+			assert.strictEqual(where.workflowExecutionId, 'exec-1');
 		});
 	});
 });
