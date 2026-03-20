@@ -413,7 +413,6 @@
 		}
 	},
 	"scripts": {
-		"prepare": "husky",
 		"format:pretty": "prettier --write \"./**/*.{js,jsx,mjs,cjs,ts,tsx,json,md}\"",
 		"format:eslint": "eslint --fix src",
 		"format": "npm-run-all -p format:*",

@@ -8,7 +8,7 @@ import {
 } from './schemas';
 
 const LIST_WORKFLOW_EXECUTIONS_QUERY = `
-	query ListWorkflowExecutions($where: WorkflowExecutionWhereInput, $search: WorkflowExecutionSearchInput, $limit: Int, $offset: Int, $order: [WorkflowExecutionOrderInput]) {
+	query ListWorkflowExecutions($where: WorkflowExecutionWhereInput, $search: WorkflowExecutionSearchInput, $limit: Int, $offset: Int, $order: [JSON]) {
 		workflowExecutions(where: $where, search: $search, limit: $limit, offset: $offset, order: $order) {
 			id status createdAt updatedAt
 			workflow { id name }
@@ -40,7 +40,7 @@ const GET_WORKFLOW_EXECUTION_CONTEXTS_QUERY = `
 `;
 
 const SEARCH_TASK_LOGS_QUERY = `
-	query SearchTaskLogs($where: TaskLogWhereInput, $search: TaskLogSearchInput, $limit: Int, $offset: Int, $order: [TaskLogOrderInput]) {
+	query SearchTaskLogs($where: TaskLogWhereInput, $search: TaskLogSearchInput, $limit: Int, $offset: Int, $order: [JSON]) {
 		taskLogs(where: $where, search: $search, limit: $limit, offset: $offset, order: $order) {
 			id status message input result executionTime
 			workflowTaskId workflowTask { name }
@@ -56,7 +56,7 @@ export function registerWorkflowExecutionTools(server: McpServer): void {
 		{
 			title: 'List Workflow Executions',
 			description:
-				'List workflow executions with optional filters. Defaults to newest first. Use rewst_get_workflow_execution for full details with task logs.',
+				'List workflow executions with optional filters. Defaults to newest first. Returns: id, status, createdAt, updatedAt, workflow { id name }, numSuccessfulTasks, numAwaitingResponseTasks. Status values include "completed", "failed", "running". Use rewst_get_workflow_execution with an execution id for full details including task logs. Use rewst_get_workflow_execution_contexts for the data that flowed through.',
 			inputSchema: listWorkflowExecutionsSchema,
 			annotations: { readOnlyHint: true },
 		},
@@ -93,7 +93,7 @@ export function registerWorkflowExecutionTools(server: McpServer): void {
 		{
 			title: 'Get Workflow Execution',
 			description:
-				'Get full workflow execution details including all task logs with their input/result data.',
+				'Get full workflow execution details by ID. Returns: id, status, createdAt, updatedAt, workflow { id name }, parentExecutionId, originatingExecutionId, and taskLogs array with: id, status, message, input, result, executionTime, workflowTaskId, workflowTask { name }, createdAt, runAsOrgId, principalOrgId. Task logs contain the full input/result data for each step. Use rewst_get_workflow_execution_contexts for the execution context data.',
 			inputSchema: getWorkflowExecutionSchema,
 			annotations: { readOnlyHint: true },
 		},
@@ -110,9 +110,7 @@ export function registerWorkflowExecutionTools(server: McpServer): void {
 			);
 
 			return {
-				content: [
-					{ type: 'text' as const, text: JSON.stringify(result.workflowExecution, null, 2) },
-				],
+				content: [{ type: 'text' as const, text: JSON.stringify(result.workflowExecution, null, 2) }],
 			};
 		},
 	);
@@ -122,7 +120,7 @@ export function registerWorkflowExecutionTools(server: McpServer): void {
 		{
 			title: 'Get Workflow Execution Contexts',
 			description:
-				'Get the context data that flowed through a workflow execution (trigger data, task inputs/outputs, variables). Optionally filter contexts by a search string to find specific values in the data.',
+				'Get the context data that flowed through a workflow execution — trigger data, task inputs/outputs, variables, and accumulated state. The search parameter does case-insensitive client-side filtering through the JSON context data, which is invaluable for finding specific values (emails, org names, error messages) in large execution contexts. Without search, returns all contexts.',
 			inputSchema: getWorkflowExecutionContextsSchema,
 			annotations: { readOnlyHint: true },
 		},
@@ -156,7 +154,7 @@ export function registerWorkflowExecutionTools(server: McpServer): void {
 		{
 			title: 'Search Task Logs',
 			description:
-				'Search task logs with optional filters. The search parameter does client-side filtering through task input, result, and message JSON — solving the "find where input contained X" problem that is difficult via raw GraphQL.',
+				'Search task logs across executions with optional filters. Returns: id, status, message, input, result, executionTime, workflowTaskId, workflowTask { name }, workflowExecutionId, createdAt, runAsOrgId, principalOrgId. The search parameter does case-insensitive client-side filtering through the full JSON of each log entry (input, result, message) — solving the "find where input contained X" problem. Scope with workflowId or executionId to narrow results. Fetches 4x the limit when searching to compensate for client-side filtering.',
 			inputSchema: searchTaskLogsSchema,
 			annotations: { readOnlyHint: true },
 		},

@@ -38,7 +38,7 @@ export function registerWorkflowTools(server: McpServer): void {
 		{
 			title: 'List Workflows',
 			description:
-				'List workflows for an organization with optional name search. Returns summaries — use rewst_get_workflow for full details including tasks.',
+				'List workflows for an organization with optional name search (case-insensitive partial match). Returns summaries with: id, name, description, createdAt, updatedAt, humanSecondsSaved, tags, triggers. Use rewst_get_workflow with a workflow id for full details including tasks and schemas. Use rewst_list_workflow_executions with a workflow id to see execution history.',
 			inputSchema: listWorkflowsSchema,
 			annotations: { readOnlyHint: true },
 		},
@@ -76,7 +76,7 @@ export function registerWorkflowTools(server: McpServer): void {
 		{
 			title: 'Get Workflow',
 			description:
-				'Get full workflow details by ID, including tasks, triggers, input/output schemas, and configuration.',
+				'Get full workflow details by ID. Returns: id, name, description, inputSchema, outputSchema, type, version, timeout, humanSecondsSaved, tags { id name color }, triggers { id name enabled description triggerType parameters criteria formId }, tasks { id name description actionId packOverrides parameters publishedResultAs transitions }, tasksObject. The tasks array defines the workflow logic. Use rewst_list_workflow_executions to see runs of this workflow.',
 			inputSchema: getWorkflowSchema,
 			annotations: { readOnlyHint: true },
 		},
@@ -87,10 +87,9 @@ export function registerWorkflowTools(server: McpServer): void {
 				throw new Error('Session has no GraphQL client available');
 			}
 
-			const result: { workflow: Record<string, unknown> } = await session.client.request(
-				GET_WORKFLOW_QUERY,
-				{ where: { id: workflowId } },
-			);
+			const result: { workflow: Record<string, unknown> } = await session.client.request(GET_WORKFLOW_QUERY, {
+				where: { id: workflowId },
+			});
 
 			return {
 				content: [{ type: 'text' as const, text: JSON.stringify(result.workflow, null, 2) }],

@@ -25,7 +25,7 @@ export function registerOrganizationTools(server: McpServer): void {
 		{
 			title: 'Search Organizations',
 			description:
-				'Search managed organizations by name. Returns matching orgs with their IDs. Use rewst_get_organization to get full details for a specific org.',
+				'Search managed organizations by name. Returns matching orgs with id and name fields. Use rewst_get_organization with the returned id to get full details. Example: search "sandbox" to find sandbox orgs.',
 			inputSchema: searchOrgsSchema,
 			annotations: { readOnlyHint: true },
 		},
@@ -51,7 +51,8 @@ export function registerOrganizationTools(server: McpServer): void {
 		'rewst_get_organization',
 		{
 			title: 'Get Organization',
-			description: 'Get full details for a specific organization by ID.',
+			description:
+				'Get full details for a specific organization by ID. Returns: id, name, domain, managingOrgId, isEnabled, isOnboarding, createdAt, orgSlug, managingOrg { id name }, tags { id name color }. Tip: use rewst_search_orgs first to find the org ID.',
 			inputSchema: getOrganizationSchema,
 			annotations: { readOnlyHint: true },
 		},
