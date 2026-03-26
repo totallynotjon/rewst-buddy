@@ -1,6 +1,6 @@
 import { LinkManager, SyncManager, TemplateLink } from '@models';
 import { pickTemplate } from '@ui';
-import { ensureSavedDocument, getHash, log, requireUnlinked } from '@utils';
+import { ensureSavedDocument, findAllTemplateReferences, getHash, log, requireUnlinked } from '@utils';
 import GenericCommand from '../../GenericCommand';
 
 export class LinkTemplateInteractive extends GenericCommand {
@@ -23,10 +23,12 @@ export class LinkTemplateInteractive extends GenericCommand {
 		template.updatedAt = '0';
 		template.body = '';
 
+		const body = document.getText();
 		const templateLink: TemplateLink = {
 			type: 'Template',
 			template: template,
-			bodyHash: getHash(document.getText()),
+			bodyHash: getHash(body),
+			referencedTemplateIds: findAllTemplateReferences(body),
 			uriString: document.uri.toString(),
 			org: {
 				id: template.orgId,

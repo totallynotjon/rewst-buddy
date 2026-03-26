@@ -1,10 +1,10 @@
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
-import { LinkManager, SyncManager, SyncOnSaveManager, TemplateMetadataStore } from '@models';
+import { LinkManager, SyncManager, SyncOnSaveManager, TemplateBundleManager, TemplateMetadataStore } from '@models';
 import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
-import { RewstViewProvider, SessionTreeDataProvider, StatusBar } from '@ui';
+import { BundleTreeDataProvider, RewstViewProvider, SessionTreeDataProvider, StatusBar } from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
 
@@ -34,6 +34,13 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(await SessionManager.init());
 	context.subscriptions.push(TemplateMetadataStore.init());
 	context.subscriptions.push(SyncManager.init());
+	// Register BundleTreeDataProvider before init so it catches the first event
+	const bundleTreeProvider = new BundleTreeDataProvider();
+	context.subscriptions.push(
+		bundleTreeProvider,
+		vscode.window.registerTreeDataProvider('rewst-buddy.bundleTree', bundleTreeProvider),
+	);
+	context.subscriptions.push(TemplateBundleManager.init());
 	context.subscriptions.push(await Server.init());
 	context.subscriptions.push(new StatusBar());
 

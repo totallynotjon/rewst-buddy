@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.39.0] - 2026-03-26
+
+### Added
+
+- **Template Bundles** - Automatic dependency-based grouping of related templates
+    - Scans linked template files for `{{ template('UUID') }}` references (all Jinja brace variants supported)
+    - Groups templates into bundles based on their dependency chain — a "root" template and all its descendants
+    - Shared templates appear in every bundle that references them
+    - Circular references handled as a single bundle
+    - Standalone templates (no references in or out) listed separately
+    - New **Template Bundles** panel in the Explorer sidebar
+    - Click any template in a bundle to open the real linked file
+    - Auto-rebuilds when templates are fetched or links change (debounced)
+    - New `Rewst Buddy: Bundle Templates` command for manual rebuild
+    - Refresh button in the panel header
+    - Context menu on bundle items (Open to Side, Copy Path, Reveal in File Manager, Sync, Unlink, etc.)
+    - Empty-state welcome view with link to rebuild command
+    - Error indicator in tree view when bundle build fails
+- Template reference IDs cached on links for zero-I/O bundle builds after initial scan
+- Automatic migration backfill for existing links without cached refs
+
+### Changed
+
+- `SyncTemplate` and `UnlinkTemplate` commands refactored to use shared `getDocumentFromArgs`
+- "Reveal in Finder" renamed to "Reveal in File Manager" for cross-platform consistency
+
+### Fixed
+
+- Auto-fetch crashing on startup when a linked folder was open (type mismatch in `checkAutoFetch`)
+
 ## [0.38.0] - 2026-03-16
 
 ### Added

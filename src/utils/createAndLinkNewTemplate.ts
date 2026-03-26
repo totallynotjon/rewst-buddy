@@ -1,4 +1,5 @@
 import { LinkManager, TemplateLink } from '@models';
+import { findAllTemplateReferences } from '../providers/templatePatternUtils';
 import { FullTemplateFragment } from '@sessions';
 import vscode from 'vscode';
 import { getHash } from './getHash';
@@ -31,6 +32,7 @@ export async function createAndLinkNewTemplate(template: FullTemplateFragment): 
 		type: 'Template',
 		template: template,
 		bodyHash: getHash(content),
+		referencedTemplateIds: findAllTemplateReferences(content),
 		uriString: resultUri.toString(),
 		org: {
 			id: template.orgId,

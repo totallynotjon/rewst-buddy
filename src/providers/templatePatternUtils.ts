@@ -26,3 +26,17 @@ export function findTemplateAtPosition(line: string, character: number): Templat
 
 	return null;
 }
+
+/**
+ * Find all template UUIDs referenced in a text body.
+ * Handles Jinja variations like {{ template('UUID') }}, {{- template("UUID") -}}, etc.
+ */
+export function findAllTemplateReferences(text: string): string[] {
+	TEMPLATE_PATTERN.lastIndex = 0;
+	const ids = new Set<string>();
+	let match: RegExpExecArray | null;
+	while ((match = TEMPLATE_PATTERN.exec(text)) !== null) {
+		ids.add(match[1]);
+	}
+	return [...ids];
+}

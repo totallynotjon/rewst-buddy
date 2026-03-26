@@ -1,3 +1,4 @@
+export { BundleTemplates } from './BundleTemplates';
 export { CopyTemplateID } from './CopyTemplateID';
 export { OpenInRewst } from './OpenInRewst';
 export { CreateTemplate } from './CreateTemplate';

@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Buddy for Rewst (Templates)",
-	"version": "0.38.0",
+	"version": "0.39.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -103,6 +103,31 @@
 			}
 		},
 		"commands": [
+			{
+				"command": "rewst-buddy.OpenToTheSide",
+				"title": "Open to the Side",
+				"icon": "$(split-horizontal)"
+			},
+			{
+				"command": "rewst-buddy.RevealInExplorer",
+				"title": "Reveal in Explorer Side Bar"
+			},
+			{
+				"command": "rewst-buddy.RevealInOS",
+				"title": "Reveal in File Manager"
+			},
+			{
+				"command": "rewst-buddy.OpenInIntegratedTerminal",
+				"title": "Open in Integrated Terminal"
+			},
+			{
+				"command": "rewst-buddy.CopyPath",
+				"title": "Copy Path"
+			},
+			{
+				"command": "rewst-buddy.CopyRelativePath",
+				"title": "Copy Relative Path"
+			},
 			{
 				"command": "rewst-buddy.prefix.NewSession",
 				"title": "Rewst Buddy: New Rewst Session",
@@ -222,6 +247,16 @@
 				"command": "rewst-buddy.prefix.DisableSyncOnSave",
 				"title": "Rewst Buddy: Disable Sync-On-Save",
 				"icon": "$(sync-ignored)"
+			},
+			{
+				"command": "rewst-buddy.prefix.BundleTemplates",
+				"title": "Rewst Buddy: Bundle Templates",
+				"icon": "$(package)"
+			},
+			{
+				"command": "rewst-buddy.BundleTemplates",
+				"title": "Bundle Templates",
+				"icon": "$(package)"
 			}
 		],
 		"viewsContainers": {
@@ -246,8 +281,20 @@
 					"name": "Sessions",
 					"icon": ""
 				}
+			],
+			"explorer": [
+				{
+					"id": "rewst-buddy.bundleTree",
+					"name": "Template Bundles"
+				}
 			]
 		},
+		"viewsWelcome": [
+			{
+				"view": "rewst-buddy.bundleTree",
+				"contents": "No template bundles found.\n[Bundle Templates](command:rewst-buddy.prefix.BundleTemplates)"
+			}
+		],
 		"submenus": [],
 		"menus": {
 			"explorer/context": [
@@ -273,6 +320,30 @@
 				}
 			],
 			"commandPalette": [
+				{
+					"command": "rewst-buddy.OpenToTheSide",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.RevealInExplorer",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.RevealInOS",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.OpenInIntegratedTerminal",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.CopyPath",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.CopyRelativePath",
+					"when": "false"
+				},
 				{
 					"command": "rewst-buddy.LinkFolder",
 					"when": "false"
@@ -360,6 +431,78 @@
 				{
 					"command": "rewst-buddy.prefix.LinkTemplateInteractive",
 					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.prefix.BundleTemplates",
+					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.BundleTemplates",
+					"when": "false"
+				}
+			],
+			"view/title": [
+				{
+					"command": "rewst-buddy.BundleTemplates",
+					"when": "view == rewst-buddy.bundleTree",
+					"group": "navigation"
+				}
+			],
+			"view/item/context": [
+				{
+					"command": "rewst-buddy.OpenToTheSide",
+					"when": "viewItem == bundleTemplate",
+					"group": "navigation@1"
+				},
+				{
+					"command": "rewst-buddy.RevealInOS",
+					"when": "viewItem == bundleTemplate",
+					"group": "navigation@3"
+				},
+				{
+					"command": "rewst-buddy.OpenInIntegratedTerminal",
+					"when": "viewItem == bundleTemplate",
+					"group": "navigation@4"
+				},
+				{
+					"command": "rewst-buddy.CopyPath",
+					"when": "viewItem == bundleTemplate",
+					"group": "5_copypath@1"
+				},
+				{
+					"command": "rewst-buddy.CopyRelativePath",
+					"when": "viewItem == bundleTemplate",
+					"group": "5_copypath@2"
+				},
+				{
+					"command": "rewst-buddy.RevealInExplorer",
+					"when": "viewItem == bundleTemplate",
+					"group": "5_copypath@3"
+				},
+				{
+					"command": "rewst-buddy.CopyTemplateID",
+					"when": "viewItem == bundleTemplate",
+					"group": "z_rewst@1"
+				},
+				{
+					"command": "rewst-buddy.OpenInRewst",
+					"when": "viewItem == bundleTemplate",
+					"group": "z_rewst@2"
+				},
+				{
+					"command": "rewst-buddy.SyncTemplate",
+					"when": "viewItem == bundleTemplate && rewst-buddy.anyActiveSessions",
+					"group": "z_rewst@3"
+				},
+				{
+					"command": "rewst-buddy.UnlinkTemplate",
+					"when": "viewItem == bundleTemplate",
+					"group": "z_rewst@4"
+				},
+				{
+					"command": "rewst-buddy.DeleteTemplate",
+					"when": "viewItem == bundleTemplate && rewst-buddy.anyActiveSessions",
+					"group": "z_rewst@5"
 				}
 			],
 			"editor/context": [

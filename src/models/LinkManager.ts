@@ -299,6 +299,11 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		return Array.from(this.linkMap.keys()).map(uri => vscode.Uri.parse(uri));
 	}
 
+	getAllTemplateLinks(): TemplateLink[] {
+		this.loadIfNotAlready();
+		return Array.from(this.linkMap.values()).filter((l): l is TemplateLink => l.type === 'Template');
+	}
+
 	getFolderLinks(): FolderLink[] {
 		this.loadIfNotAlready();
 

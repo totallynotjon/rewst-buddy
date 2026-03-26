@@ -1,20 +1,24 @@
 import vscode from 'vscode';
 import { log } from './log';
+import { parseArgsUri } from './parseArgsUri';
 
 export async function getDocumentFromArgs(args: any[]): Promise<vscode.TextDocument> {
-	let document: vscode.TextDocument;
-
-	if (args[0][0] instanceof vscode.Uri) {
-		document = await vscode.workspace.openTextDocument(args[0][0]);
-	} else {
-		const editor = vscode.window.activeTextEditor;
-		if (!editor) {
-			throw log.error('No active editor');
-		}
-		document = editor.document;
+	let uri: vscode.Uri | undefined;
+	try {
+		uri = parseArgsUri(args);
+	} catch {
+		// no uri from args, fall through to active editor
 	}
 
-	return document;
+	if (uri) {
+		return vscode.workspace.openTextDocument(uri);
+	}
+
+	const editor = vscode.window.activeTextEditor;
+	if (!editor) {
+		throw log.error('No active editor');
+	}
+	return editor.document;
 }
 
 /**

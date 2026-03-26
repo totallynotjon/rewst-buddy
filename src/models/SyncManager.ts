@@ -1,7 +1,7 @@
 import type { SessionChangeEvent } from '@events';
 import { FolderLink, Link, TemplateLink } from '@models';
 import { FullTemplateFragment, Session, SessionManager } from '@sessions';
-import { getHash, log, makeUniqueUri, writeTextFile } from '@utils';
+import { findAllTemplateReferences, getHash, log, makeUniqueUri, writeTextFile } from '@utils';
 import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
@@ -86,13 +86,17 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			return;
 		}
 
-		// Check if file is linked
 		if (!LinkManager.isLinked(doc.uri)) {
 			log.trace('checkAutoFetch: file not linked, skipping');
 			return;
 		}
 
-		const link = LinkManager.getTemplateLink(doc.uri);
+		const rawLink = LinkManager.linkMap.get(doc.uri.toString());
+		if (!rawLink || rawLink.type !== 'Template') {
+			log.trace('checkAutoFetch: not a template link, skipping');
+			return;
+		}
+		const link = rawLink as TemplateLink;
 
 		const session = SessionManager.getSessionForOrg(link.org.id);
 
@@ -165,6 +169,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 			link.template = response.template;
 			link.bodyHash = getHash(body);
+			link.referencedTemplateIds = findAllTemplateReferences(body);
 			this.addLink(link, doc.uri);
 
 			log.info('Saved updated info to template');
@@ -250,6 +255,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 				const templateLink: TemplateLink = {
 					type: 'Template',
 					bodyHash: currentBodyHash,
+					referencedTemplateIds: findAllTemplateReferences(localBody),
 					template: remoteTemplate,
 					uriString: doc.uri.toString(),
 					org: session.profile.org,
@@ -324,6 +330,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		const templateLink: TemplateLink = {
 			type: 'Template',
 			bodyHash: getHash(body),
+			referencedTemplateIds: findAllTemplateReferences(body),
 			template: remoteTemplate,
 			uriString: doc.uri.toString(),
 			org: session.profile.org,
@@ -435,6 +442,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 								type: 'Template',
 								template: template,
 								bodyHash: getHash(body),
+								referencedTemplateIds: findAllTemplateReferences(body),
 								uriString: uri.toString(),
 								org: org,
 							};

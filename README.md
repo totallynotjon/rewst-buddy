@@ -110,6 +110,19 @@ When editing linked template files, you can navigate between templates:
 
 Note: Navigation only works when both the current file and the referenced template are linked locally.
 
+### Template Bundles (v0.39)
+
+Templates that reference other templates via `{{ template('UUID') }}` are automatically grouped into **bundles** — visible in the Explorer sidebar under "Template Bundles".
+
+- **Automatic dependency detection** - Scans all linked template files for `template('UUID')` references (supports all Jinja brace variants: `{{`, `{{-`, `-}}`, etc.)
+- **Bundle grouping** - A "root" template is one that references others but isn't referenced itself. The root and all its descendants (full chain) form a bundle.
+- **Shared templates** - Templates referenced by multiple roots appear in every bundle that uses them
+- **Circular references** - Handled gracefully as a single bundle
+- **Standalone templates** - Templates with no references in or out are listed separately
+- **Click to open** - Clicking any template in a bundle opens the real linked file (sync-on-save works as normal)
+- **Auto-rebuild** - Bundles automatically update when templates are fetched or links change
+- **Manual rebuild** - Use `Rewst Buddy: Bundle Templates` from the command palette to refresh
+
 ### Session Receiver Server (v0.15)
 
 A local HTTP server that receives session cookies from the [Rewst Buddy Browser Extension](https://github.com/totallynotjon/rewst-buddy-browser), eliminating the need to manually copy/paste cookies.
@@ -161,6 +174,10 @@ All commands are also available via Command Palette (Cmd/Ctrl + Shift + P):
 - `Open Template from URL` - Open a template directly from URL
 - `Link Template from URL` - Link current file using a URL
 
+**Template Bundles**
+
+- `Bundle Templates` - Rebuild template bundle groupings
+
 **Sync & Maintenance**
 
 - `Sync Template` - Push changes with conflict detection
@@ -184,6 +201,17 @@ Click the Rewst Buddy icon in the activity bar to open the sidebar:
     - Expired sessions display with red error icon
     - Sessions automatically refresh every 15 minutes to stay active
     - With automatic refresh, sessions can stay alive for about 1 week with daily extension use
+
+### Template Bundles Panel (v0.39)
+
+Located in the Explorer sidebar, the **Template Bundles** panel groups related templates by dependency:
+
+- Organized by organization, then by bundle
+- Each bundle shows the root template and all templates it references (directly or transitively)
+- Shared templates appear in every bundle that references them
+- Standalone templates (no references) listed in a separate section
+- Click any entry to open the real file — all existing sync behavior works unchanged
+- Refresh button in the panel header to manually rebuild bundles
 
 ### Status Bar (v0.27)
 

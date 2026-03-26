@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { findTemplateAtPosition, TEMPLATE_PATTERN } from './templatePatternUtils';
+import { findAllTemplateReferences, findTemplateAtPosition, TEMPLATE_PATTERN } from './templatePatternUtils';
 
 const { suite, test } = Mocha;
 
@@ -108,5 +108,49 @@ suite('Unit: findTemplateAtPosition()', () => {
 		const result2 = findTemplateAtPosition(multiLine, 70);
 		assert.ok(result2);
 		assert.strictEqual(result2.templateId, '22222222-2222-2222-2222-222222222222');
+	});
+});
+
+suite('Unit: findAllTemplateReferences()', () => {
+	test('should return empty array for empty string', () => {
+		assert.deepStrictEqual(findAllTemplateReferences(''), []);
+	});
+
+	test('should return empty array for text with no template calls', () => {
+		assert.deepStrictEqual(findAllTemplateReferences('hello world, no templates here'), []);
+	});
+
+	test('should find a single reference', () => {
+		const text = '{{ template("550e8400-e29b-41d4-a716-446655440000") }}';
+		const refs = findAllTemplateReferences(text);
+		assert.deepStrictEqual(refs, ['550e8400-e29b-41d4-a716-446655440000']);
+	});
+
+	test('should find multiple distinct references', () => {
+		const text = [
+			'{{ template("11111111-1111-1111-1111-111111111111") }}',
+			'{{ template("22222222-2222-2222-2222-222222222222") }}',
+		].join('\n');
+		const refs = findAllTemplateReferences(text);
+		assert.strictEqual(refs.length, 2);
+		assert.ok(refs.includes('11111111-1111-1111-1111-111111111111'));
+		assert.ok(refs.includes('22222222-2222-2222-2222-222222222222'));
+	});
+
+	test('should deduplicate repeated references', () => {
+		const id = '550e8400-e29b-41d4-a716-446655440000';
+		const text = `template("${id}") + template("${id}")`;
+		const refs = findAllTemplateReferences(text);
+		assert.deepStrictEqual(refs, [id]);
+	});
+
+	test('should ignore non-matching patterns', () => {
+		const text = [
+			'template("not-a-uuid")',
+			'template("11111111-1111-1111-1111-111111111111")',
+			'some random text',
+		].join('\n');
+		const refs = findAllTemplateReferences(text);
+		assert.deepStrictEqual(refs, ['11111111-1111-1111-1111-111111111111']);
 	});
 });

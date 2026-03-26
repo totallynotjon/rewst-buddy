@@ -1,6 +1,6 @@
 import { LinkManager, TemplateLink } from '@models';
 import { pickOrganization } from '@ui';
-import { ensureSavedDocument, getHash, log, requireUnlinked } from '@utils';
+import { ensureSavedDocument, findAllTemplateReferences, getHash, log, requireUnlinked } from '@utils';
 import path from 'path';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
@@ -54,6 +54,7 @@ export class CreateTemplate extends GenericCommand {
 			type: 'Template',
 			template: response.template,
 			bodyHash: getHash(body),
+			referencedTemplateIds: findAllTemplateReferences(body),
 			uriString: document.uri.toString(),
 			org: org,
 		};
