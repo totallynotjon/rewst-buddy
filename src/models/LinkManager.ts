@@ -285,6 +285,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	}
 
 	getOrgTemplateLinks(org: Org): TemplateLink[] {
+		this.loadIfNotAlready();
 		const links = this.getOrgLinks(org);
 		return links.filter(l => l.type == 'Template') as TemplateLink[];
 	}
