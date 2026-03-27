@@ -11,6 +11,9 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	private templateIdIndex = new Map<string, TemplateLink[]>();
 	loaded = false;
 
+	/** URIs removed during loadLinks dedup — files still on disk, waiting for purgeDuplicates to delete them */
+	private pendingOrphanUris: string[] = [];
+
 	private readonly linksSavedEmitter = new vscode.EventEmitter<LinksSavedEvent>();
 	readonly onLinksSaved = this.linksSavedEmitter.event;
 
@@ -35,7 +38,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	_resetForTesting(): void {
 		this.linkMap.clear();
 		this.templateIdIndex.clear();
-		this.loaded = false;
+		this.loaded = true; // State is loaded (just empty) — prevents loadLinks from re-triggering
 		this.batchMode = false;
 	}
 
@@ -113,7 +116,12 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	private addToTemplateIndex(link: TemplateLink): void {
 		const existing = this.templateIdIndex.get(link.template.id) ?? [];
-		existing.push(link);
+		const idx = existing.findIndex(l => l.uriString === link.uriString);
+		if (idx >= 0) {
+			existing[idx] = link;
+		} else {
+			existing.push(link);
+		}
 		this.templateIdIndex.set(link.template.id, existing);
 	}
 
@@ -221,9 +229,41 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		this.linkMap.clear();
 		this.templateIdIndex.clear();
 
-		this.beginBatch();
+		// Deduplicate: keep only the most recently updated link per template ID
+		const bestByTemplateId = new Map<string, TemplateLink>();
+		const duplicateUris: string[] = [];
 
 		for (const link of links) {
+			if (link.type === 'Template') {
+				const tl = link as TemplateLink;
+				const existing = bestByTemplateId.get(tl.template.id);
+				if (existing) {
+					// Keep whichever has the more recent updatedAt
+					if (tl.template.updatedAt > existing.template.updatedAt) {
+						duplicateUris.push(existing.uriString);
+						bestByTemplateId.set(tl.template.id, tl);
+					} else {
+						duplicateUris.push(tl.uriString);
+					}
+					continue;
+				}
+				bestByTemplateId.set(tl.template.id, tl);
+			}
+		}
+
+		const duplicateSet = new Set(duplicateUris);
+		const deduped = links.filter(l => !duplicateSet.has(l.uriString));
+
+		if (duplicateUris.length > 0) {
+			log.info(
+				`LinkManager.loadLinks: removed ${duplicateUris.length} duplicate template links (kept most recent)`,
+			);
+			this.pendingOrphanUris = duplicateUris;
+		}
+
+		this.beginBatch();
+
+		for (const link of deduped) {
 			// Migrate old TemplateLinks: ensure bodyHash exists, clear template.body
 			if (link.type === 'Template') {
 				const templateLink = link as TemplateLink;
@@ -297,6 +337,66 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	getAllUris(): vscode.Uri[] {
 		this.loadIfNotAlready();
 		return Array.from(this.linkMap.keys()).map(uri => vscode.Uri.parse(uri));
+	}
+
+	/**
+	 * Remove duplicate links for the same template ID at runtime.
+	 * Keeps the link with the most recent updatedAt, removes extras and deletes their orphaned files.
+	 */
+	async purgeDuplicates(): Promise<number> {
+		this.loadIfNotAlready();
+
+		// Collect all URIs whose files need deleting:
+		// 1. Orphans from loadLinks dedup (links already removed, files still on disk)
+		const filesToDelete = [...this.pendingOrphanUris];
+		this.pendingOrphanUris = [];
+
+		// 2. Runtime duplicates still in linkMap
+		const bestByTemplateId = new Map<string, TemplateLink>();
+		for (const link of this.linkMap.values()) {
+			if (link.type !== 'Template') continue;
+			const tl = link as TemplateLink;
+			const existing = bestByTemplateId.get(tl.template.id);
+			if (!existing || tl.template.updatedAt > existing.template.updatedAt) {
+				bestByTemplateId.set(tl.template.id, tl);
+			}
+		}
+
+		const toRemove: TemplateLink[] = [];
+		for (const link of this.linkMap.values()) {
+			if (link.type !== 'Template') continue;
+			const tl = link as TemplateLink;
+			const best = bestByTemplateId.get(tl.template.id);
+			if (best && tl.uriString !== best.uriString) {
+				toRemove.push(tl);
+			}
+		}
+
+		// Remove runtime duplicate links and queue their files for deletion
+		if (toRemove.length > 0) {
+			this.beginBatch();
+			for (const link of toRemove) {
+				this.removeLink(link.uriString);
+				filesToDelete.push(link.uriString);
+			}
+			await this.endBatch();
+		}
+
+		// Delete all orphaned files from disk
+		for (const uriString of filesToDelete) {
+			try {
+				await vscode.workspace.fs.delete(vscode.Uri.parse(uriString));
+				log.debug('LinkManager.purgeDuplicates: deleted file', uriString);
+			} catch {
+				log.trace('LinkManager.purgeDuplicates: file already gone', uriString);
+			}
+		}
+
+		if (filesToDelete.length > 0) {
+			log.info(`LinkManager.purgeDuplicates: cleaned up ${filesToDelete.length} orphaned files`);
+		}
+
+		return filesToDelete.length;
 	}
 
 	getAllTemplateLinks(): TemplateLink[] {

@@ -97,7 +97,8 @@ suite('Unit: LinkManager', () => {
 
 	suite('getTemplateLinkFromId()', () => {
 		test('should find links by template ID', () => {
-			const templateId = '550e8400-e29b-41d4-a716-446655440000';
+			const templateId1 = '550e8400-e29b-41d4-a716-446655440000';
+			const templateId2 = '660e8400-e29b-41d4-a716-446655440001';
 			const uri1 = vscode.Uri.file('/test/file1.txt');
 			const uri2 = vscode.Uri.file('/test/file2.txt');
 
@@ -105,7 +106,7 @@ suite('Unit: LinkManager', () => {
 				uriString: uri1.toString(),
 				org: { id: 'org-1', name: 'Test Org' },
 				type: 'Template',
-				template: { id: templateId, name: 'Shared Template', updatedAt: '' } as any,
+				template: { id: templateId1, name: 'Template 1', updatedAt: '' } as any,
 				bodyHash: 'hash1',
 			};
 
@@ -113,7 +114,34 @@ suite('Unit: LinkManager', () => {
 				uriString: uri2.toString(),
 				org: { id: 'org-1', name: 'Test Org' },
 				type: 'Template',
-				template: { id: templateId, name: 'Shared Template', updatedAt: '' } as any,
+				template: { id: templateId2, name: 'Template 2', updatedAt: '' } as any,
+				bodyHash: 'hash2',
+			};
+
+			LinkManager.addLink(link1);
+			LinkManager.addLink(link2);
+
+			assert.strictEqual(LinkManager.getTemplateLinkFromId(templateId1).length, 1);
+			assert.strictEqual(LinkManager.getTemplateLinkFromId(templateId2).length, 1);
+		});
+
+		test('should replace duplicate links for same template ID and URI', () => {
+			const templateId = '550e8400-e29b-41d4-a716-446655440000';
+			const uri = vscode.Uri.file('/test/file1.txt');
+
+			const link1: TemplateLink = {
+				uriString: uri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: templateId, name: 'Template', updatedAt: '' } as any,
+				bodyHash: 'hash1',
+			};
+
+			const link2: TemplateLink = {
+				uriString: uri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: templateId, name: 'Template', updatedAt: '' } as any,
 				bodyHash: 'hash2',
 			};
 
@@ -121,7 +149,8 @@ suite('Unit: LinkManager', () => {
 			LinkManager.addLink(link2);
 
 			const links = LinkManager.getTemplateLinkFromId(templateId);
-			assert.strictEqual(links.length, 2);
+			assert.strictEqual(links.length, 1);
+			assert.strictEqual(links[0].bodyHash, 'hash2'); // Updated to latest
 		});
 
 		test('should return empty array for unknown template ID', () => {
@@ -241,6 +270,57 @@ suite('Unit: LinkManager', () => {
 
 			const uris = LinkManager.getAllUris();
 			assert.strictEqual(uris.length, 2);
+		});
+	});
+
+	suite('purgeDuplicates()', () => {
+		test('should remove duplicate links keeping the most recent', async () => {
+			const templateId = 'dup-template-id';
+			const uri1 = vscode.Uri.file('/test/file1.txt');
+			const uri2 = vscode.Uri.file('/test/file2.txt');
+
+			const olderLink: TemplateLink = {
+				uriString: uri1.toString(),
+				org: { id: 'org-1', name: 'Org' },
+				type: 'Template',
+				template: { id: templateId, name: 'Template', updatedAt: '2024-01-01T00:00:00Z' } as any,
+				bodyHash: 'old-hash',
+			};
+
+			const newerLink: TemplateLink = {
+				uriString: uri2.toString(),
+				org: { id: 'org-1', name: 'Org' },
+				type: 'Template',
+				template: { id: templateId, name: 'Template', updatedAt: '2024-06-01T00:00:00Z' } as any,
+				bodyHash: 'new-hash',
+			};
+
+			LinkManager.addLink(olderLink);
+			LinkManager.addLink(newerLink);
+
+			const removed = await LinkManager.purgeDuplicates();
+
+			assert.strictEqual(removed, 1);
+			// The newer link should survive
+			assert.strictEqual(LinkManager.isLinked(uri2), true);
+			assert.strictEqual(LinkManager.isLinked(uri1), false);
+			const surviving = LinkManager.getTemplateLinkFromId(templateId);
+			assert.strictEqual(surviving.length, 1);
+			assert.strictEqual(surviving[0].bodyHash, 'new-hash');
+		});
+
+		test('should return 0 when no duplicates exist', async () => {
+			const link: TemplateLink = {
+				uriString: vscode.Uri.file('/test/file.txt').toString(),
+				org: { id: 'org-1', name: 'Org' },
+				type: 'Template',
+				template: { id: 'unique-id', name: 'T', updatedAt: '' } as any,
+				bodyHash: 'h',
+			};
+
+			LinkManager.addLink(link);
+			const removed = await LinkManager.purgeDuplicates();
+			assert.strictEqual(removed, 0);
 		});
 	});
 
