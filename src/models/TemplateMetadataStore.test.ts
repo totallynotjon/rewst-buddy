@@ -1,209 +1,366 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment, createMockSession, Fixtures } from '@test';
+import vscode from 'vscode';
+import { LinkManager, TemplateLink, TemplateMetadataStore } from '@models';
 import { SessionManager } from '@sessions';
-import { TemplateMetadataStore } from './TemplateMetadataStore';
+import { initTestEnvironment, createMockSession, Fixtures } from '@test';
 
 const { suite, test, setup, teardown } = Mocha;
+
+function makeTemplateLink(orgId: string, orgName: string, templateId: string): TemplateLink {
+	return {
+		uriString: vscode.Uri.file(`/test/${templateId}.txt`).toString(),
+		org: { id: orgId, name: orgName },
+		type: 'Template',
+		template: { id: templateId, name: `Template ${templateId}`, updatedAt: '' } as any,
+		bodyHash: 'hash',
+	};
+}
 
 suite('Unit: TemplateMetadataStore', () => {
 	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
-		TemplateMetadataStore.dispose();
+		LinkManager._resetForTesting();
+		TemplateMetadataStore._resetForTesting();
 	});
 
 	teardown(() => {
+		TemplateMetadataStore._resetForTesting();
 		SessionManager._resetForTesting();
-		TemplateMetadataStore.dispose();
+		LinkManager._resetForTesting();
 	});
 
-	test('should load templates from a single session', async () => {
-		// Create test org and templates
-		const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Test Org 1' });
-		const templates = [
-			Fixtures.template({ id: 'template-1', name: 'Template 1', orgId: org1.id }),
-			Fixtures.template({ id: 'template-2', name: 'Template 2', orgId: org1.id }),
-			Fixtures.template({ id: 'template-3', name: 'Template 3', orgId: org1.id }),
-		];
+	suite('basic loading', () => {
+		test('should load templates from a single session with linked org', async () => {
+			const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Test Org 1' });
+			const templates = [
+				Fixtures.template({ id: 'template-1', name: 'Template 1', orgId: org1.id }),
+				Fixtures.template({ id: 'template-2', name: 'Template 2', orgId: org1.id }),
+				Fixtures.template({ id: 'template-3', name: 'Template 3', orgId: org1.id }),
+			];
 
-		// Create mock session with templates
-		const { session, wrapper } = createMockSession({
-			profile: { org: org1, allManagedOrgs: [org1] },
+			const { session, wrapper } = createMockSession({
+				profile: { org: org1, allManagedOrgs: [org1] },
+			});
+
+			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
+			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'existing-link'));
+			SessionManager._setSessionsForTesting([session]);
+
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			assert.strictEqual(wrapper.getCallsFor('listTemplates').length, 1);
+
+			const meta1 = TemplateMetadataStore.getTemplateMetadata('template-1');
+			assert.ok(meta1, 'Template 1 metadata should exist');
+			assert.strictEqual(meta1?.template.name, 'Template 1');
+			assert.strictEqual(meta1?.org.id, org1.id);
+
+			const meta2 = TemplateMetadataStore.getTemplateMetadata('template-2');
+			assert.ok(meta2, 'Template 2 metadata should exist');
+			assert.strictEqual(meta2?.template.name, 'Template 2');
 		});
 
-		wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
+		test('should load templates from multiple sessions with linked orgs', async () => {
+			const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
+			const org2 = Fixtures.orgModel({ id: 'org-2', name: 'Org 2' });
 
-		// Set the session
-		SessionManager._setSessionsForTesting([session]);
+			const org1Templates = [
+				Fixtures.template({ id: 'template-1-1', name: 'Org 1 Template 1', orgId: org1.id }),
+				Fixtures.template({ id: 'template-1-2', name: 'Org 1 Template 2', orgId: org1.id }),
+			];
 
-		// Initialize the store (this triggers loading)
-		TemplateMetadataStore.init();
+			const org2Templates = [Fixtures.template({ id: 'template-2-1', name: 'Org 2 Template 1', orgId: org2.id })];
 
-		// Wait for async loading to complete
-		await new Promise(resolve => setTimeout(resolve, 100));
+			const { session: session1, wrapper: wrapper1 } = createMockSession({
+				profile: { org: org1, allManagedOrgs: [org1] },
+			});
+			wrapper1.when('listTemplates', { data: Fixtures.listTemplatesQuery(org1Templates) });
 
-		// Verify templates were loaded
-		assert.strictEqual(wrapper.getCallsFor('listTemplates').length, 1);
+			const { session: session2, wrapper: wrapper2 } = createMockSession({
+				profile: { org: org2, allManagedOrgs: [org2] },
+			});
+			wrapper2.when('listTemplates', { data: Fixtures.listTemplatesQuery(org2Templates) });
 
-		// Verify we can retrieve templates
-		const meta1 = TemplateMetadataStore.getTemplateMetadata('template-1');
-		assert.ok(meta1, 'Template 1 metadata should exist');
-		assert.strictEqual(meta1?.template.name, 'Template 1');
-		assert.strictEqual(meta1?.org.id, org1.id);
+			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
+			LinkManager.addLink(makeTemplateLink(org2.id, org2.name, 'link-org2'));
+			SessionManager._setSessionsForTesting([session1, session2]);
 
-		const meta2 = TemplateMetadataStore.getTemplateMetadata('template-2');
-		assert.ok(meta2, 'Template 2 metadata should exist');
-		assert.strictEqual(meta2?.template.name, 'Template 2');
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			assert.strictEqual(wrapper1.getCallsFor('listTemplates').length, 1);
+			assert.strictEqual(wrapper2.getCallsFor('listTemplates').length, 1);
+
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata('template-1-1')?.template.name,
+				'Org 1 Template 1',
+			);
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata('template-1-2')?.template.name,
+				'Org 1 Template 2',
+			);
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata('template-2-1')?.template.name,
+				'Org 2 Template 1',
+			);
+		});
+
+		test('should return undefined for unknown template ID', () => {
+			const result = TemplateMetadataStore.getTemplateMetadata('nonexistent');
+			assert.strictEqual(result, undefined);
+		});
+
+		test('should handle SDK errors gracefully', async () => {
+			const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
+
+			const { session, wrapper } = createMockSession({
+				profile: { org, allManagedOrgs: [org] },
+			});
+
+			wrapper.when('listTemplates', {
+				error: Fixtures.networkError('Failed to load templates'),
+			});
+
+			LinkManager.addLink(makeTemplateLink(org.id, org.name, 'link-1'));
+			SessionManager._setSessionsForTesting([session]);
+			TemplateMetadataStore.init();
+
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			assert.strictEqual(wrapper.getCallsFor('listTemplates').length, 1);
+			assert.strictEqual(TemplateMetadataStore.getTemplateMetadata('any-id'), undefined);
+		});
 	});
 
-	test('should load templates from multiple sessions with different orgs', async () => {
-		// Create orgs and templates
-		const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
-		const org2 = Fixtures.orgModel({ id: 'org-2', name: 'Org 2' });
+	suite('priority loading', () => {
+		test('should load linked orgs immediately and defer non-linked orgs', async () => {
+			const linkedOrg = Fixtures.orgModel({ id: 'linked-org', name: 'Linked Org' });
+			const unlinkedOrg = Fixtures.orgModel({ id: 'unlinked-org', name: 'Unlinked Org' });
 
-		const org1Templates = [
-			Fixtures.template({ id: 'template-1-1', name: 'Org 1 Template 1', orgId: org1.id }),
-			Fixtures.template({ id: 'template-1-2', name: 'Org 1 Template 2', orgId: org1.id }),
-		];
+			const linkedTemplate = Fixtures.template({ id: 'linked-t1', name: 'Linked Template', orgId: linkedOrg.id });
+			const unlinkedTemplate = Fixtures.template({
+				id: 'unlinked-t1',
+				name: 'Unlinked Template',
+				orgId: unlinkedOrg.id,
+			});
 
-		const org2Templates = [Fixtures.template({ id: 'template-2-1', name: 'Org 2 Template 1', orgId: org2.id })];
+			const { session, wrapper } = createMockSession({
+				profile: {
+					org: linkedOrg,
+					allManagedOrgs: [linkedOrg, unlinkedOrg],
+				},
+			});
 
-		// Create two mock sessions
-		const { session: session1, wrapper: wrapper1 } = createMockSession({
-			profile: { org: org1, allManagedOrgs: [org1] },
+			wrapper.when('listTemplates', (vars: any) => {
+				if (vars.orgId === linkedOrg.id) {
+					return { data: Fixtures.listTemplatesQuery([linkedTemplate]) };
+				}
+				return { data: Fixtures.listTemplatesQuery([unlinkedTemplate]) };
+			});
+
+			LinkManager.addLink(makeTemplateLink(linkedOrg.id, linkedOrg.name, 'existing-link'));
+			SessionManager._setSessionsForTesting([session]);
+
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			const linkedMeta = TemplateMetadataStore.getTemplateMetadata('linked-t1');
+			assert.ok(linkedMeta, 'Linked org template should be loaded immediately');
+			assert.strictEqual(linkedMeta!.template.name, 'Linked Template');
+
+			const unlinkedMeta = TemplateMetadataStore.getTemplateMetadata('unlinked-t1');
+			assert.strictEqual(unlinkedMeta, undefined, 'Unlinked org template should not be loaded yet');
+
+			const calls = wrapper.getCallsFor('listTemplates');
+			assert.strictEqual(calls.length, 1, 'Only linked org should have been called so far');
+			assert.strictEqual(calls[0].variables.orgId, linkedOrg.id);
 		});
-		wrapper1.when('listTemplates', { data: Fixtures.listTemplatesQuery(org1Templates) });
 
-		const { session: session2, wrapper: wrapper2 } = createMockSession({
-			profile: { org: org2, allManagedOrgs: [org2] },
+		test('should defer all orgs when none have links', async () => {
+			const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
+			const org2 = Fixtures.orgModel({ id: 'org-2', name: 'Org 2' });
+
+			const { session, wrapper } = createMockSession({
+				profile: {
+					org: org1,
+					allManagedOrgs: [org1, org2],
+				},
+			});
+
+			wrapper.when('listTemplates', (vars: any) => {
+				return { data: Fixtures.listTemplatesQuery([Fixtures.template({ orgId: vars.orgId })]) };
+			});
+
+			SessionManager._setSessionsForTesting([session]);
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			const calls = wrapper.getCallsFor('listTemplates');
+			assert.strictEqual(calls.length, 0, 'No orgs should load immediately when none have links');
 		});
-		wrapper2.when('listTemplates', { data: Fixtures.listTemplatesQuery(org2Templates) });
 
-		// Set both sessions
-		SessionManager._setSessionsForTesting([session1, session2]);
+		test('should handle session with multiple managed orgs (only linked ones load first)', async () => {
+			const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Primary Org' });
+			const org2 = Fixtures.orgModel({ id: 'org-2', name: 'Managed Org 1' });
+			const org3 = Fixtures.orgModel({ id: 'org-3', name: 'Managed Org 2' });
 
-		// Initialize the store
-		TemplateMetadataStore.init();
+			const { session, wrapper } = createMockSession({
+				profile: {
+					org: org1,
+					allManagedOrgs: [org1, org2, org3],
+				},
+			});
 
-		// Wait for async loading
-		await new Promise(resolve => setTimeout(resolve, 100));
+			wrapper.when('listTemplates', (vars: any) => {
+				const templates = [
+					Fixtures.template({ id: `t-${vars.orgId}`, name: `T ${vars.orgId}`, orgId: vars.orgId }),
+				];
+				return { data: Fixtures.listTemplatesQuery(templates) };
+			});
 
-		// Verify both sessions were queried
-		assert.strictEqual(wrapper1.getCallsFor('listTemplates').length, 1);
-		assert.strictEqual(wrapper2.getCallsFor('listTemplates').length, 1);
+			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
+			LinkManager.addLink(makeTemplateLink(org3.id, org3.name, 'link-org3'));
+			SessionManager._setSessionsForTesting([session]);
+			TemplateMetadataStore.init();
 
-		// Verify all templates are available
-		const meta1_1 = TemplateMetadataStore.getTemplateMetadata('template-1-1');
-		assert.strictEqual(meta1_1?.template.name, 'Org 1 Template 1');
-		assert.strictEqual(meta1_1?.org.id, org1.id);
+			await new Promise(resolve => setTimeout(resolve, 100));
 
-		const meta1_2 = TemplateMetadataStore.getTemplateMetadata('template-1-2');
-		assert.strictEqual(meta1_2?.template.name, 'Org 1 Template 2');
+			// Only linked orgs (org1, org3) should have loaded immediately
+			const calls = wrapper.getCallsFor('listTemplates');
+			assert.strictEqual(calls.length, 2, 'Only 2 linked orgs should load immediately');
+			const calledOrgIds = calls.map((c: any) => c.variables.orgId).sort();
+			assert.deepStrictEqual(calledOrgIds, [org1.id, org3.id].sort());
 
-		const meta2_1 = TemplateMetadataStore.getTemplateMetadata('template-2-1');
-		assert.strictEqual(meta2_1?.template.name, 'Org 2 Template 1');
-		assert.strictEqual(meta2_1?.org.id, org2.id);
+			assert.ok(TemplateMetadataStore.getTemplateMetadata(`t-${org1.id}`));
+			assert.ok(TemplateMetadataStore.getTemplateMetadata(`t-${org3.id}`));
+			assert.strictEqual(TemplateMetadataStore.getTemplateMetadata(`t-${org2.id}`), undefined);
+		});
 	});
 
-	test('should handle sessions with multiple managed orgs', async () => {
-		// Create multiple orgs
-		const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Primary Org' });
-		const org2 = Fixtures.orgModel({ id: 'org-2', name: 'Managed Org 1' });
-		const org3 = Fixtures.orgModel({ id: 'org-3', name: 'Managed Org 2' });
+	suite('generation counter (stale write protection)', () => {
+		test('should discard results from stale loads after reset', async () => {
+			const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
+			const template = Fixtures.template({ id: 't1', name: 'Template 1', orgId: org.id });
 
-		const org1Templates = [Fixtures.template({ id: 't1', name: 'T1', orgId: org1.id })];
-		const org2Templates = [Fixtures.template({ id: 't2', name: 'T2', orgId: org2.id })];
-		const org3Templates = [Fixtures.template({ id: 't3', name: 'T3', orgId: org3.id })];
+			const { session, wrapper } = createMockSession({
+				profile: { org, allManagedOrgs: [org] },
+			});
 
-		// Create session that manages all three orgs
-		const { session, wrapper } = createMockSession({
-			profile: {
-				org: org1,
-				allManagedOrgs: [org1, org2, org3],
-			},
+			LinkManager.addLink(makeTemplateLink(org.id, org.name, 'link-1'));
+			wrapper.when('listTemplates', {
+				data: Fixtures.listTemplatesQuery([template]),
+				delay: 200,
+			});
+
+			SessionManager._setSessionsForTesting([session]);
+			TemplateMetadataStore.init();
+
+			// Reset while load is in flight
+			await new Promise(resolve => setTimeout(resolve, 50));
+			TemplateMetadataStore._resetForTesting();
+
+			// Wait for the delayed response to arrive
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata('t1'),
+				undefined,
+				'Stale load results should be discarded after reset',
+			);
 		});
-
-		// Configure wrapper to return different templates for each org
-		wrapper.when('listTemplates', vars => {
-			if (vars.orgId === org1.id) {
-				return { data: Fixtures.listTemplatesQuery(org1Templates) };
-			} else if (vars.orgId === org2.id) {
-				return { data: Fixtures.listTemplatesQuery(org2Templates) };
-			} else if (vars.orgId === org3.id) {
-				return { data: Fixtures.listTemplatesQuery(org3Templates) };
-			}
-			return { data: Fixtures.listTemplatesQuery([]) };
-		});
-
-		SessionManager._setSessionsForTesting([session]);
-		TemplateMetadataStore.init();
-
-		// Wait for async loading
-		await new Promise(resolve => setTimeout(resolve, 100));
-
-		// Should have queried all three orgs
-		assert.strictEqual(wrapper.getCallsFor('listTemplates').length, 3);
-
-		// Verify templates from all orgs are available
-		assert.strictEqual(TemplateMetadataStore.getTemplateMetadata('t1')?.template.name, 'T1');
-		assert.strictEqual(TemplateMetadataStore.getTemplateMetadata('t2')?.template.name, 'T2');
-		assert.strictEqual(TemplateMetadataStore.getTemplateMetadata('t3')?.template.name, 'T3');
 	});
 
-	test('should clear all templates when sessions are cleared', async () => {
-		const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
-		const templates = [Fixtures.template({ id: 'template-1', name: 'Template 1', orgId: org.id })];
+	suite('pendingReload', () => {
+		test('should reload after current load finishes when triggered during loading', async () => {
+			const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
 
-		const { session, wrapper } = createMockSession({
-			profile: { org, allManagedOrgs: [org] },
+			const { session, wrapper } = createMockSession({
+				profile: { org, allManagedOrgs: [org] },
+			});
+
+			LinkManager.addLink(makeTemplateLink(org.id, org.name, 'link-1'));
+
+			let callCount = 0;
+			wrapper.when('listTemplates', () => {
+				callCount++;
+				return {
+					data: Fixtures.listTemplatesQuery([
+						Fixtures.template({ id: `t-${callCount}`, name: `Template ${callCount}`, orgId: org.id }),
+					]),
+					delay: callCount === 1 ? 100 : 0,
+				};
+			});
+
+			SessionManager._setSessionsForTesting([session]);
+			TemplateMetadataStore.init();
+
+			// Fire a session saved event while first load is in progress
+			await new Promise(resolve => setTimeout(resolve, 20));
+			SessionManager._setSessionsForTesting([session]);
+
+			// Wait for both loads to complete
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			const calls = wrapper.getCallsFor('listTemplates');
+			assert.ok(calls.length >= 2, `Expected at least 2 listTemplates calls, got ${calls.length}`);
 		});
-		wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
-
-		SessionManager._setSessionsForTesting([session]);
-		TemplateMetadataStore.init();
-
-		await new Promise(resolve => setTimeout(resolve, 100));
-
-		// Verify template is loaded
-		assert.ok(TemplateMetadataStore.getTemplateMetadata('template-1'), 'Template should be loaded');
-
-		// Clear sessions
-		SessionManager._resetForTesting();
-
-		// Template should be cleared
-		assert.strictEqual(
-			TemplateMetadataStore.getTemplateMetadata('template-1'),
-			undefined,
-			'Template should be cleared',
-		);
 	});
 
-	test('should handle SDK errors gracefully', async () => {
-		const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
+	suite('session change handling', () => {
+		test('should clear metadata when sessions are cleared', async () => {
+			const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
+			const templates = [Fixtures.template({ id: 'template-1', name: 'Template 1', orgId: org.id })];
 
-		const { session, wrapper } = createMockSession({
-			profile: { org, allManagedOrgs: [org] },
+			const { session, wrapper } = createMockSession({
+				profile: { org, allManagedOrgs: [org] },
+			});
+			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
+
+			LinkManager.addLink(makeTemplateLink(org.id, org.name, 'link-1'));
+			SessionManager._setSessionsForTesting([session]);
+			TemplateMetadataStore.init();
+
+			await new Promise(resolve => setTimeout(resolve, 100));
+			assert.ok(TemplateMetadataStore.getTemplateMetadata('template-1'), 'Template should be loaded');
+
+			SessionManager.clearProfiles();
+
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata('template-1'),
+				undefined,
+				'Template should be cleared after sessions cleared',
+			);
 		});
+	});
 
-		// Configure wrapper to return an error
-		wrapper.when('listTemplates', {
-			error: Fixtures.networkError('Failed to load templates'),
+	suite('dispose()', () => {
+		test('should clear indexes on dispose', async () => {
+			const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
+			const template = Fixtures.template({ id: 't1', name: 'Template 1', orgId: org.id });
+
+			const { session, wrapper } = createMockSession({
+				profile: { org, allManagedOrgs: [org] },
+			});
+
+			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery([template]) });
+			LinkManager.addLink(makeTemplateLink(org.id, org.name, 'link-1'));
+			SessionManager._setSessionsForTesting([session]);
+
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			assert.ok(TemplateMetadataStore.getTemplateMetadata('t1'), 'Template should be loaded before dispose');
+
+			TemplateMetadataStore.dispose();
+
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata('t1'),
+				undefined,
+				'Template should be cleared after dispose',
+			);
 		});
-
-		SessionManager._setSessionsForTesting([session]);
-		TemplateMetadataStore.init();
-
-		await new Promise(resolve => setTimeout(resolve, 100));
-
-		// Should have attempted to call listTemplates
-		assert.strictEqual(wrapper.getCallsFor('listTemplates').length, 1);
-
-		// But no templates should be loaded (error was handled gracefully)
-		assert.strictEqual(
-			TemplateMetadataStore.getTemplateMetadata('any-id'),
-			undefined,
-			'No templates should be loaded after error',
-		);
 	});
 });
