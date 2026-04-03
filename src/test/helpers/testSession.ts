@@ -35,7 +35,7 @@ export async function getTestSession(): Promise<Session> {
 
 	const token = getTestToken();
 
-	const [sdk, regionConfig, cookieString] = await Session.newSdk(token);
+	const [sdk, regionConfig, cookieString, client] = await Session.newSdk(token);
 
 	const response = await sdk.User();
 	if (!response.user) {
@@ -56,7 +56,7 @@ export async function getTestSession(): Promise<Session> {
 		user: response.user,
 	};
 
-	cachedSession = new Session(sdk, profile);
+	cachedSession = new Session(sdk, profile, client);
 	return cachedSession;
 }
 
