@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.39.3] - 2026-04-03
+
+### Added
+
+- **Stale Link Pruning** - Automatically removes template/folder links when their backing files no longer exist
+    - Real-time cleanup via `onDidDeleteFiles` watcher when files or folders are deleted in VS Code
+    - Startup pruning catches files deleted while VS Code was closed, using parallelized filesystem checks
+    - Conservative behavior: links are kept if the file check fails for ambiguous reasons (permissions, network timeouts)
+
 ## [0.39.2] - 2026-04-03
 
 ### Changed

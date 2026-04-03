@@ -20,6 +20,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	init(): _ {
 		this.disposables.push(vscode.workspace.onDidRenameFiles(e => this.handleRename(e)));
+		this.disposables.push(vscode.workspace.onDidDeleteFiles(e => this.handleDelete(e)));
 		return this;
 	}
 
@@ -35,8 +36,16 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	_resetForTesting(): void {
 		this.linkMap.clear();
 		this.templateIdIndex.clear();
-		this.loaded = false;
+		this.loaded = true;
 		this.batchMode = false;
+	}
+
+	_pruneForTesting(): Promise<void> {
+		return this.pruneStaleLinks();
+	}
+
+	_handleDeleteForTesting(e: vscode.FileDeleteEvent): void {
+		return this.handleDelete(e);
 	}
 
 	private async handleRename(e: vscode.FileRenameEvent): Promise<void> {
@@ -70,6 +79,66 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 			}
 		} catch (error) {
 			log.error('LinkManager.handleRename: failed', error);
+		} finally {
+			this.endBatch();
+		}
+	}
+
+	private handleDelete(e: vscode.FileDeleteEvent): void {
+		log.trace('LinkManager.handleDelete: processing', { fileCount: e.files.length });
+		this.beginBatch();
+		try {
+			for (const uri of e.files) {
+				const uriString = uri.toString();
+				if (this.linkMap.has(uriString)) {
+					this.removeLink(uriString);
+				} else {
+					const toRemove = [...this.linkMap.keys()].filter(key => isDescendant(uri, vscode.Uri.parse(key)));
+					for (const key of toRemove) this.removeLink(key);
+				}
+			}
+		} catch (error) {
+			log.error('LinkManager.handleDelete: failed', error);
+		} finally {
+			this.endBatch();
+		}
+	}
+
+	private async pruneStaleLinks(): Promise<void> {
+		const entries = Array.from(this.linkMap.keys());
+		const results = await Promise.allSettled(
+			entries.map(async uri => {
+				try {
+					await vscode.workspace.fs.stat(vscode.Uri.parse(uri));
+					return true;
+				} catch (error) {
+					if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
+						return false;
+					}
+					return true; // Keep link on ambiguous errors (permissions, network)
+				}
+			}),
+		);
+
+		const stale: string[] = [];
+		for (let i = 0; i < entries.length; i++) {
+			const result = results[i];
+			if (result.status === 'fulfilled' && result.value === false) {
+				stale.push(entries[i]);
+			}
+		}
+
+		if (stale.length === 0) return;
+
+		log.info('LinkManager.pruneStaleLinks: removing stale links', { count: stale.length });
+		this.beginBatch();
+		try {
+			for (const uriString of stale) {
+				if (this.linkMap.has(uriString)) {
+					log.debug('LinkManager.pruneStaleLinks: removed', uriString);
+					this.removeLink(uriString);
+				}
+			}
 		} finally {
 			this.endBatch();
 		}
@@ -239,6 +308,8 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		}
 
 		this.endBatch();
+
+		this.pruneStaleLinks().catch(err => log.error('LinkManager.pruneStaleLinks: failed', err));
 
 		log.trace('LinkManager.loadLinks: completed');
 		return this;
