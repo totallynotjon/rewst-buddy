@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.39.1] - 2026-04-03
+
+### Fixed
+
+- **Template Index Deduplication** - Fixed `templateIdIndex` accumulating duplicate entries on every sync operation (save, auto-fetch, metadata update), causing duplicate items in template QuickPick and wasted memory in providers
+- **Org Template Links Loading** - Added missing `loadIfNotAlready()` guard to `getOrgTemplateLinks()`, preventing potential empty results when called before links are loaded
+
 ## [0.39.0] - 2026-03-26
 
 ### Added

@@ -113,8 +113,9 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	private addToTemplateIndex(link: TemplateLink): void {
 		const existing = this.templateIdIndex.get(link.template.id) ?? [];
-		existing.push(link);
-		this.templateIdIndex.set(link.template.id, existing);
+		const filtered = existing.filter(l => l.uriString !== link.uriString);
+		filtered.push(link);
+		this.templateIdIndex.set(link.template.id, filtered);
 	}
 
 	private removeFromTemplateIndex(link: TemplateLink): void {
@@ -285,6 +286,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	}
 
 	getOrgTemplateLinks(org: Org): TemplateLink[] {
+		this.loadIfNotAlready();
 		const links = this.getOrgLinks(org);
 		return links.filter(l => l.type == 'Template') as TemplateLink[];
 	}

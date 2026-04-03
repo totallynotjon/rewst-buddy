@@ -129,6 +129,79 @@ suite('Unit: LinkManager', () => {
 			assert.strictEqual(links.length, 0);
 		});
 
+		test('should not create duplicates when same link is re-added', () => {
+			const uri = vscode.Uri.file('/test/file.txt');
+			const link: TemplateLink = {
+				uriString: uri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: 'template-1', name: 'Test', updatedAt: '2024-01-01' } as any,
+				bodyHash: 'hash-v1',
+			};
+
+			LinkManager.addLink(link);
+			assert.strictEqual(LinkManager.getTemplateLinkFromId('template-1').length, 1);
+
+			link.bodyHash = 'hash-v2';
+			LinkManager.addLink(link);
+			assert.strictEqual(LinkManager.getTemplateLinkFromId('template-1').length, 1);
+
+			link.bodyHash = 'hash-v3';
+			LinkManager.addLink(link);
+			const result = LinkManager.getTemplateLinkFromId('template-1');
+			assert.strictEqual(result.length, 1);
+			assert.strictEqual(result[0].bodyHash, 'hash-v3');
+		});
+
+		test('should preserve both entries when same template has different URIs after re-add', () => {
+			const templateId = 'shared-template';
+			const uri1 = vscode.Uri.file('/test/file1.txt');
+			const uri2 = vscode.Uri.file('/test/file2.txt');
+
+			const link1: TemplateLink = {
+				uriString: uri1.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: templateId, name: 'Shared', updatedAt: '' } as any,
+				bodyHash: 'hash1',
+			};
+
+			const link2: TemplateLink = {
+				uriString: uri2.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: templateId, name: 'Shared', updatedAt: '' } as any,
+				bodyHash: 'hash2',
+			};
+
+			LinkManager.addLink(link1);
+			LinkManager.addLink(link2);
+			assert.strictEqual(LinkManager.getTemplateLinkFromId(templateId).length, 2);
+
+			link1.bodyHash = 'hash1-updated';
+			LinkManager.addLink(link1);
+			assert.strictEqual(LinkManager.getTemplateLinkFromId(templateId).length, 2);
+		});
+
+		test('should not grow index across repeated sync cycles', () => {
+			const uri = vscode.Uri.file('/test/synced.txt');
+			const link: TemplateLink = {
+				uriString: uri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: 'sync-template', name: 'Synced', updatedAt: '' } as any,
+				bodyHash: 'hash',
+			};
+
+			for (let i = 0; i < 10; i++) {
+				link.bodyHash = `hash-cycle-${i}`;
+				LinkManager.addLink(link);
+			}
+
+			assert.strictEqual(LinkManager.getTemplateLinkFromId('sync-template').length, 1);
+			assert.strictEqual(LinkManager.getAllTemplateLinks().length, 1);
+		});
+
 		test('should update index when link is removed', () => {
 			const templateId = 'template-to-remove';
 			const uri = vscode.Uri.file('/test/file.txt');
