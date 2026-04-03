@@ -317,6 +317,122 @@ suite('Unit: LinkManager', () => {
 		});
 	});
 
+	suite('pruneStaleLinks()', () => {
+		test('should remove links pointing to non-existent files', async () => {
+			const existingUri = vscode.Uri.file(__filename); // This test file exists
+			const missingUri = vscode.Uri.file('/nonexistent/path/template.js');
+
+			const existingLink: TemplateLink = {
+				uriString: existingUri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: 't-exists', name: 'Existing', updatedAt: '' } as any,
+				bodyHash: 'h1',
+			};
+
+			const missingLink: TemplateLink = {
+				uriString: missingUri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: 't-missing', name: 'Missing', updatedAt: '' } as any,
+				bodyHash: 'h2',
+			};
+
+			LinkManager.addLink(existingLink);
+			LinkManager.addLink(missingLink);
+			assert.strictEqual(LinkManager.isLinked(existingUri), true);
+			assert.strictEqual(LinkManager.isLinked(missingUri), true);
+
+			await LinkManager._pruneForTesting();
+
+			assert.strictEqual(LinkManager.isLinked(existingUri), true, 'Existing file link should be kept');
+			assert.strictEqual(LinkManager.isLinked(missingUri), false, 'Missing file link should be pruned');
+		});
+
+		test('should keep all links when all files exist', async () => {
+			const uri = vscode.Uri.file(__filename);
+			const link: TemplateLink = {
+				uriString: uri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: 't1', name: 'Test', updatedAt: '' } as any,
+				bodyHash: 'hash',
+			};
+
+			LinkManager.addLink(link);
+			await LinkManager._pruneForTesting();
+
+			assert.strictEqual(LinkManager.isLinked(uri), true, 'Link to existing file should be kept');
+		});
+
+		test('should do nothing when there are no links', async () => {
+			await LinkManager._pruneForTesting();
+			assert.strictEqual(LinkManager.getAllTemplateLinks().length, 0);
+		});
+	});
+
+	suite('handleDelete()', () => {
+		test('should remove a directly linked file on delete', () => {
+			const uri = vscode.Uri.file('/test/linked-file.txt');
+			const link: TemplateLink = {
+				uriString: uri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: 't1', name: 'Test', updatedAt: '' } as any,
+				bodyHash: 'hash',
+			};
+
+			LinkManager.addLink(link);
+			assert.strictEqual(LinkManager.isLinked(uri), true);
+
+			LinkManager._handleDeleteForTesting({ files: [uri] });
+			assert.strictEqual(LinkManager.isLinked(uri), false);
+		});
+
+		test('should remove descendant links when a directory is deleted', () => {
+			const dirUri = vscode.Uri.file('/test/project');
+			const child1Uri = vscode.Uri.file('/test/project/file1.txt');
+			const child2Uri = vscode.Uri.file('/test/project/sub/file2.txt');
+			const outsideUri = vscode.Uri.file('/test/other/file3.txt');
+
+			const makeLink = (uri: vscode.Uri, id: string): TemplateLink => ({
+				uriString: uri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id, name: `Template ${id}`, updatedAt: '' } as any,
+				bodyHash: 'hash',
+			});
+
+			LinkManager.addLink(makeLink(child1Uri, 't1'));
+			LinkManager.addLink(makeLink(child2Uri, 't2'));
+			LinkManager.addLink(makeLink(outsideUri, 't3'));
+
+			LinkManager._handleDeleteForTesting({ files: [dirUri] });
+
+			assert.strictEqual(LinkManager.isLinked(child1Uri), false, 'Child file should be removed');
+			assert.strictEqual(LinkManager.isLinked(child2Uri), false, 'Nested child should be removed');
+			assert.strictEqual(LinkManager.isLinked(outsideUri), true, 'Outside file should remain');
+		});
+
+		test('should do nothing when deleting an unlinked file', () => {
+			const linkedUri = vscode.Uri.file('/test/linked.txt');
+			const unlinkedUri = vscode.Uri.file('/test/unlinked.txt');
+
+			const link: TemplateLink = {
+				uriString: linkedUri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: 't1', name: 'Test', updatedAt: '' } as any,
+				bodyHash: 'hash',
+			};
+
+			LinkManager.addLink(link);
+			LinkManager._handleDeleteForTesting({ files: [unlinkedUri] });
+
+			assert.strictEqual(LinkManager.isLinked(linkedUri), true, 'Existing link should remain');
+		});
+	});
+
 	suite('onLinksSaved event', () => {
 		test('should emit event when link is added', done => {
 			const uri = vscode.Uri.file('/test/file.txt');
