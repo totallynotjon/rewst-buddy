@@ -36,7 +36,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	_resetForTesting(): void {
 		this.linkMap.clear();
 		this.templateIdIndex.clear();
-		this.loaded = false;
+		this.loaded = true;
 		this.batchMode = false;
 	}
 
