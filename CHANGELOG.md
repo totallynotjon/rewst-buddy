@@ -9,6 +9,15 @@
     - Startup pruning catches files deleted while VS Code was closed, using parallelized filesystem checks
     - Conservative behavior: links are kept if the file check fails for ambiguous reasons (permissions, network timeouts)
 
+### Changed
+
+- **Lazy Template Metadata Loading** - Template metadata now loads only for orgs with existing template links first, deferring all other orgs (30s at startup, 5s on session events). For a user with links in 3 of 60 orgs, this reduces immediate API calls from 60 to 3.
+
+### Fixed
+
+- **Silent Reload Drop** - Template metadata reload requests were silently ignored when triggered during an active load; now queues and retries after the current load completes
+- **Stale Write Protection** - In-flight API responses could write data into a cleared metadata store (e.g., if sessions were cleared mid-load); a generation counter now prevents this
+
 ## [0.39.1] - 2026-04-03
 
 ### Fixed
