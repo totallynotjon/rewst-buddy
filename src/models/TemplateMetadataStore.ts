@@ -26,6 +26,7 @@ export const TemplateMetadataStore = new (class _ implements vscode.Disposable {
 	private pendingReload = false;
 	private loadGeneration = 0;
 	private deferredTimer: ReturnType<typeof setTimeout> | undefined;
+	private deferredDelayOverride: number | undefined;
 
 	init(): _ {
 		this.disposables.push(SessionManager.onSessionChange(e => this.handleSessionChange(e)));
@@ -34,10 +35,14 @@ export const TemplateMetadataStore = new (class _ implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		this.loadGeneration++;
 		this.clearDeferredTimer();
 		this.disposables.forEach(d => d.dispose());
+		this.disposables = [];
 		this.templateIndex.clear();
 		this.orgIndex.clear();
+		this.loading = false;
+		this.pendingReload = false;
 	}
 
 	getTemplateMetadata(templateId: string): TemplateMetadata | undefined {
@@ -121,15 +126,21 @@ export const TemplateMetadataStore = new (class _ implements vscode.Disposable {
 			if (generation !== this.loadGeneration) return;
 
 			if (deferredOrgs.length > 0) {
+				const delay = this.deferredDelayOverride ?? deferredDelayMs;
 				this.deferredTimer = setTimeout(() => {
 					this.deferredTimer = undefined;
-					this.loadOrgChunks(deferredOrgs, generation).then(() => {
-						log.debug('TemplateMetadataStore: deferred load complete', {
-							templateCount: this.templateIndex.size,
-							orgCount: this.orgIndex.size,
+					if (generation !== this.loadGeneration) return;
+					this.loadOrgChunks(deferredOrgs, generation)
+						.then(() => {
+							log.debug('TemplateMetadataStore: deferred load complete', {
+								templateCount: this.templateIndex.size,
+								orgCount: this.orgIndex.size,
+							});
+						})
+						.catch(error => {
+							log.error('TemplateMetadataStore: deferred load failed', error);
 						});
-					});
-				}, deferredDelayMs);
+				}, delay);
 			}
 
 			log.debug('TemplateMetadataStore: priority load complete', {
@@ -162,8 +173,12 @@ export const TemplateMetadataStore = new (class _ implements vscode.Disposable {
 		generation: number,
 	): Promise<void> {
 		try {
+			if (!session.sdk) {
+				log.warn('TemplateMetadataStore: no SDK available for org', org.name);
+				return;
+			}
 			log.trace('TemplateMetadataStore: loading templates for org', org.name);
-			const response = await session.sdk?.listTemplates({ orgId: org.id });
+			const response = await session.sdk.listTemplates({ orgId: org.id });
 
 			if (generation !== this.loadGeneration) return;
 
@@ -200,6 +215,10 @@ export const TemplateMetadataStore = new (class _ implements vscode.Disposable {
 		}
 	}
 
+	_setDeferredDelayForTesting(ms: number): void {
+		this.deferredDelayOverride = ms;
+	}
+
 	_resetForTesting(): void {
 		this.clearDeferredTimer();
 		this.disposables.forEach(d => d.dispose());
@@ -209,5 +228,6 @@ export const TemplateMetadataStore = new (class _ implements vscode.Disposable {
 		this.loading = false;
 		this.pendingReload = false;
 		this.loadGeneration++;
+		this.deferredDelayOverride = undefined;
 	}
 })();

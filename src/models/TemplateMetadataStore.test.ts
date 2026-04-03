@@ -309,6 +309,137 @@ suite('Unit: TemplateMetadataStore', () => {
 		});
 	});
 
+	suite('deferred timer', () => {
+		test('should load deferred orgs after timer fires', async () => {
+			const linkedOrg = Fixtures.orgModel({ id: 'linked-org', name: 'Linked Org' });
+			const deferredOrg = Fixtures.orgModel({ id: 'deferred-org', name: 'Deferred Org' });
+
+			const linkedTemplate = Fixtures.template({ id: 'linked-t1', name: 'Linked Template', orgId: linkedOrg.id });
+			const deferredTemplate = Fixtures.template({
+				id: 'deferred-t1',
+				name: 'Deferred Template',
+				orgId: deferredOrg.id,
+			});
+
+			const { session, wrapper } = createMockSession({
+				profile: { org: linkedOrg, allManagedOrgs: [linkedOrg, deferredOrg] },
+			});
+
+			wrapper.when('listTemplates', (vars: any) => {
+				if (vars.orgId === linkedOrg.id) {
+					return { data: Fixtures.listTemplatesQuery([linkedTemplate]) };
+				}
+				return { data: Fixtures.listTemplatesQuery([deferredTemplate]) };
+			});
+
+			LinkManager.addLink(makeTemplateLink(linkedOrg.id, linkedOrg.name, 'link-1'));
+			TemplateMetadataStore._setDeferredDelayForTesting(200);
+			SessionManager._setSessionsForTesting([session]);
+
+			TemplateMetadataStore.init();
+
+			// Wait for priority load only
+			await new Promise(resolve => setTimeout(resolve, 50));
+			assert.ok(
+				TemplateMetadataStore.getTemplateMetadata('linked-t1'),
+				'Linked template should load immediately',
+			);
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata('deferred-t1'),
+				undefined,
+				'Deferred template should not be loaded yet',
+			);
+
+			// Wait for deferred timer (200ms) to fire and complete
+			await new Promise(resolve => setTimeout(resolve, 300));
+			assert.ok(
+				TemplateMetadataStore.getTemplateMetadata('deferred-t1'),
+				'Deferred template should load after timer fires',
+			);
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata('deferred-t1')!.template.name,
+				'Deferred Template',
+			);
+		});
+
+		test('should discard stale deferred load when generation changes before timer fires', async () => {
+			const linkedOrg = Fixtures.orgModel({ id: 'linked-org', name: 'Linked Org' });
+			const deferredOrg = Fixtures.orgModel({ id: 'deferred-org', name: 'Deferred Org' });
+
+			const { session, wrapper } = createMockSession({
+				profile: { org: linkedOrg, allManagedOrgs: [linkedOrg, deferredOrg] },
+			});
+
+			wrapper.when('listTemplates', (vars: any) => {
+				return {
+					data: Fixtures.listTemplatesQuery([
+						Fixtures.template({ id: `t-${vars.orgId}`, name: `T ${vars.orgId}`, orgId: vars.orgId }),
+					]),
+				};
+			});
+
+			LinkManager.addLink(makeTemplateLink(linkedOrg.id, linkedOrg.name, 'link-1'));
+			TemplateMetadataStore._setDeferredDelayForTesting(100);
+			SessionManager._setSessionsForTesting([session]);
+
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 50));
+
+			// Clear sessions before deferred timer fires — increments generation
+			SessionManager.clearProfiles();
+
+			// Wait for deferred timer to fire
+			await new Promise(resolve => setTimeout(resolve, 200));
+
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata(`t-${deferredOrg.id}`),
+				undefined,
+				'Deferred load should be discarded after generation change',
+			);
+		});
+
+		test('should not leak data when dispose is called with pending deferred timer', async () => {
+			const linkedOrg = Fixtures.orgModel({ id: 'linked-org', name: 'Linked Org' });
+			const deferredOrg = Fixtures.orgModel({ id: 'deferred-org', name: 'Deferred Org' });
+
+			const { session, wrapper } = createMockSession({
+				profile: { org: linkedOrg, allManagedOrgs: [linkedOrg, deferredOrg] },
+			});
+
+			wrapper.when('listTemplates', (vars: any) => {
+				return {
+					data: Fixtures.listTemplatesQuery([
+						Fixtures.template({ id: `t-${vars.orgId}`, name: `T ${vars.orgId}`, orgId: vars.orgId }),
+					]),
+				};
+			});
+
+			LinkManager.addLink(makeTemplateLink(linkedOrg.id, linkedOrg.name, 'link-1'));
+			TemplateMetadataStore._setDeferredDelayForTesting(100);
+			SessionManager._setSessionsForTesting([session]);
+
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 50));
+
+			// Dispose before deferred timer fires
+			TemplateMetadataStore.dispose();
+
+			// Wait past when the deferred timer would have fired
+			await new Promise(resolve => setTimeout(resolve, 200));
+
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata(`t-${linkedOrg.id}`),
+				undefined,
+				'Linked org data should be cleared after dispose',
+			);
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata(`t-${deferredOrg.id}`),
+				undefined,
+				'Deferred org should not leak data after dispose',
+			);
+		});
+	});
+
 	suite('session change handling', () => {
 		test('should clear metadata when sessions are cleared', async () => {
 			const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
