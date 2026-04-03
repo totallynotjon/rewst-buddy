@@ -1,6 +1,6 @@
 import type { LinksSavedEvent } from '@events';
 import { context, extPrefix } from '@global';
-import { getHash, isDescendant, log, uriExists } from '@utils';
+import { getHash, isDescendant, log } from '@utils';
 import vscode, { Uri } from 'vscode';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { FolderLink, Link, LinkType, Org, TemplateLink } from './types';
@@ -93,11 +93,8 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 				if (this.linkMap.has(uriString)) {
 					this.removeLink(uriString);
 				} else {
-					for (const key of this.linkMap.keys()) {
-						if (isDescendant(uri, vscode.Uri.parse(key))) {
-							this.removeLink(key);
-						}
-					}
+					const toRemove = [...this.linkMap.keys()].filter(key => isDescendant(uri, vscode.Uri.parse(key)));
+					for (const key of toRemove) this.removeLink(key);
 				}
 			}
 		} catch (error) {
@@ -109,7 +106,19 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	private async pruneStaleLinks(): Promise<void> {
 		const entries = Array.from(this.linkMap.keys());
-		const results = await Promise.allSettled(entries.map(uri => uriExists(vscode.Uri.parse(uri))));
+		const results = await Promise.allSettled(
+			entries.map(async uri => {
+				try {
+					await vscode.workspace.fs.stat(vscode.Uri.parse(uri));
+					return true;
+				} catch (error) {
+					if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
+						return false;
+					}
+					return true; // Keep link on ambiguous errors (permissions, network)
+				}
+			}),
+		);
 
 		const stale: string[] = [];
 		for (let i = 0; i < entries.length; i++) {
