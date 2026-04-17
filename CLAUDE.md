@@ -60,6 +60,34 @@ src/
 └── extension.ts       # Entry point
 ```
 
+## User-Facing Documentation
+
+User docs are split between a short landing README and three deep-dive files in `docs/`. When adding or editing user-facing documentation, put content in the file whose purpose it matches — don't duplicate across files.
+
+```
+README.md             # Marketplace/GitHub landing: banner, about, install,
+                      #   3-step quick start, features glance, security, links out.
+                      #   Keep short (~100 lines). No exhaustive feature detail.
+docs/
+├── quickstart.md     # Onboarding: first-time session setup (cookie + browser ext),
+│                     #   single-template workflow (primary), bulk folder workflow.
+├── features.md       # Per-feature deep dives, one H2 per feature
+│                     #   (Auto-Sync, Auto-Fetch, Smart Opening, Rename,
+│                     #   Stale Link Pruning, Navigation, Bundles, Server).
+└── reference.md      # Flat reference: sidebar, status bar, commands list,
+                      #   settings table, multi-region setup.
+```
+
+**Conventions:**
+
+- Lead the Quick Start with the **single-template** workflow. Folder linking is secondary — framed as "mirror an entire org's templates locally."
+- Command names in docs must match `package.json` `contributes.commands` titles exactly (e.g., `Link File to Template`, not `Link Template`).
+- Settings table in `reference.md` must match `package.json` `contributes.configuration.properties` (name, type, default).
+- Status bar appears in the **bottom-left** (`StatusBarAlignment.Left` in `src/ui/StatusBarIcon.ts`).
+- "Unofficial" framing stays prominent in README — banner at top, title includes "Unofficial", package.json description starts with "Unofficial".
+- Relative links (`docs/features.md`, `#anchor`) resolve on both GitHub and the VS Code Marketplace — prefer them over absolute URLs.
+- When adding a new feature, update: `docs/features.md` (deep dive), `docs/reference.md` (commands + settings if any), `README.md` "Features at a glance" bullet if user-visible, and `CHANGELOG.md`.
+
 ## Path Aliases (CRITICAL)
 
 **Must be configured in BOTH files:**
