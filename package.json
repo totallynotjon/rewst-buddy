@@ -2,7 +2,7 @@
 	"publisher": "JBramley",
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
-	"description": "Buddy for Rewst (Templates)",
+	"description": "Unofficial community VS Code extension for editing Rewst templates locally. Not affiliated with Rewst LLC.",
 	"version": "0.39.3",
 	"icon": "media/rewst-buddy.png",
 	"engines": {

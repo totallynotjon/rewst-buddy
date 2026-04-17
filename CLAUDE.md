@@ -2,6 +2,21 @@
 
 VS Code extension for managing Rewst templates locally. Users link local files to Rewst templates, edit in VS Code, and sync changes back to Rewst with conflict detection.
 
+## Tool Usage During Planning & Exploration
+
+During planning, research, and exploration phases, **always use the pre-approved tools** that do not require user confirmation:
+
+- **`Read`** — read file contents (prefer over `Bash(cat ...)`)
+- **`Glob`** — find files by pattern (prefer over `Bash(find ...)` or `Bash(ls ...)`)
+- **`Grep`** — search file contents (prefer over `Bash(grep ...)` or `Bash(rg ...)`)
+- **`Bash(git log/diff/show/status/branch)`** — inspect git state
+- **`Bash(ls/tree)`** — list directory contents
+- **`mcp__ide__getDiagnostics`** — check TypeScript errors
+
+These tools run without prompting the user. **Never use Bash equivalents** (e.g., `Bash(cat ...)`, `Bash(grep ...)`, `Bash(find ...)`) for tasks these dedicated tools handle — the dedicated tools are faster, produce better output, and don't require approval.
+
+Subagents (Plan, Explore, etc.) inherit these permissions and should follow the same preference. Only prompt the user for write operations (Edit, Write) and potentially destructive commands.
+
 ## Directory Structure
 
 ```

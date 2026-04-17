@@ -1,16 +1,18 @@
-# rewst-buddy - VS Code Extension
+# Rewst Buddy — Unofficial VS Code Extension for Rewst
+
+> ⚠️ **Unofficial community project.** This extension is not affiliated with, endorsed by, or supported by Rewst LLC. "Rewst" is a trademark of its respective owner. Use at your own risk — for support, open an issue on [GitHub](https://github.com/totallynotjon/rewst-buddy/issues), not with Rewst.
 
 ## About
 
-I work with Rewst templates a lot. I made this extension to make it easier to make small tweaks and changes to templates when developing scripts/html in Rewst. Instead of having tabs open in a browser, you can make edits directly to files in your filesystem. This means you can have all the power of vscode while managing your Rewst templates: folders, extensions, git, ai agents editing files, etc.
+I work with Rewst templates a lot. I built this extension — on my own time, as a community contributor — to make small tweaks and changes to templates easier when developing scripts/HTML in Rewst. Instead of keeping tabs open in a browser, you can edit files directly on your filesystem and get everything VS Code offers: folders, extensions, git, AI agents editing files, and so on.
 
-This works by a 'Link & Sync' methodology. You can link an entire folder to an organization and fetch all templates at once, or link individual templates to local files. After files are linked, edits can automatically sync to Rewst on save.
+The extension uses a "Link & Sync" model: link an entire folder to an organization and fetch all templates at once, or link individual templates to local files. Once linked, edits can sync back to Rewst automatically on save.
 
-Our sync should be even safer than using tabs in your browser. As part of a sync operation, we pull the template and make sure it hasn't been edited since the latest version we got from Rewst. (In your browser it would just override it).
+This extension's sync is safer than editing in browser tabs — before pushing, it pulls the template and verifies it hasn't changed since your last fetch. (The browser just overwrites.)
 
-The extension works by using your Rewst cookies and making the calls to Rewst as if from the browser. Your session is linked from the 'appSession' cookie (or a similar cookie if you are in another region, see [Multi-Region Setup](#multi-region-setup)). (I am planning to make a browser extension to automate this process to make it easier and allow less technical users to not get their cookie over and over).
+## Install
 
-Since Rewst does not expose API keys for working with GraphQL directly, we do rely on using your cookie locally. This is not stored beyond VSCodes secret storage, and no external calls are made beyond to Rewst. If you have security concerns feel free to audit the codebase and raise any issues.
+Search "rewst-buddy" in the VS Code Extensions view, or install from the [Marketplace](https://marketplace.visualstudio.com/items?itemName=JBramley.rewst-buddy).
 
 ## Quick Start
 
@@ -52,7 +54,7 @@ If you prefer to work with specific templates rather than downloading everything
 
 **3. Edit and sync:**
 
-- Make your changes and **save** - templates auto-sync on save
+- Make your changes and **save** — templates auto-sync on save
 - **Click the status bar item in the bottom-right** to toggle sync-on-save per file
 - Or right-click → **Sync Template** to manually push changes
 
@@ -60,9 +62,11 @@ If you prefer to work with specific templates rather than downloading everything
 
 - Right-click → **Unlink Template** to remove the association
 
+## Features
+
 ### Auto-Sync on Save
 
-By default, sync-on-save is **disabled** - you must enable it per file by clicking the status bar item in the bottom-right corner.
+By default, sync-on-save is **disabled** — you must enable it per file by clicking the status bar item in the bottom-right corner.
 
 To enable sync-on-save globally for all linked files:
 
@@ -79,7 +83,7 @@ You can also use `Enable Sync-On-Save` and `Disable Sync-On-Save` commands from 
 
 > Auto-sync performs the same safety checks as manual sync, preventing overwrites if the template was modified in Rewst since your last sync.
 
-### Auto-Fetch on Open (v0.27)
+### Auto-Fetch on Open
 
 When you open a linked template file with sync-on-save enabled, the extension automatically checks if there are newer changes in Rewst and downloads them if:
 
@@ -88,7 +92,7 @@ When you open a linked template file with sync-on-save enabled, the extension au
 
 This keeps your local files in sync with Rewst changes made by others, while protecting your local edits from being overwritten.
 
-### Smart Template Opening (v0.29)
+### Smart Template Opening
 
 When opening templates via `Open Template` or `Open Template from URL`:
 
@@ -98,9 +102,9 @@ When opening templates via `Open Template` or `Open Template from URL`:
 
 ### File Rename Support
 
-Template links automatically update when you rename or move files - no broken links when reorganizing your workspace.
+Template links automatically update when you rename or move files — no broken links when reorganizing your workspace.
 
-### Template Navigation (v0.35)
+### Template Navigation
 
 When editing linked template files, you can navigate between templates:
 
@@ -110,20 +114,20 @@ When editing linked template files, you can navigate between templates:
 
 Note: Navigation only works when both the current file and the referenced template are linked locally.
 
-### Template Bundles (v0.39)
+### Template Bundles
 
 Templates that reference other templates via `{{ template('UUID') }}` are automatically grouped into **bundles** — visible in the Explorer sidebar under "Template Bundles".
 
-- **Automatic dependency detection** - Scans all linked template files for `template('UUID')` references (supports all Jinja brace variants: `{{`, `{{-`, `-}}`, etc.)
-- **Bundle grouping** - A "root" template is one that references others but isn't referenced itself. The root and all its descendants (full chain) form a bundle.
-- **Shared templates** - Templates referenced by multiple roots appear in every bundle that uses them
-- **Circular references** - Handled gracefully as a single bundle
-- **Standalone templates** - Templates with no references in or out are listed separately
-- **Click to open** - Clicking any template in a bundle opens the real linked file (sync-on-save works as normal)
-- **Auto-rebuild** - Bundles automatically update when templates are fetched or links change
-- **Manual rebuild** - Use `Rewst Buddy: Bundle Templates` from the command palette to refresh
+- **Automatic dependency detection** — Scans all linked template files for `template('UUID')` references (supports all Jinja brace variants: `{{`, `{{-`, `-}}`, etc.)
+- **Bundle grouping** — A "root" template is one that references others but isn't referenced itself. The root and all its descendants (full chain) form a bundle.
+- **Shared templates** — Templates referenced by multiple roots appear in every bundle that uses them
+- **Circular references** — Handled gracefully as a single bundle
+- **Standalone templates** — Templates with no references in or out are listed separately
+- **Click to open** — Clicking any template in a bundle opens the real linked file (sync-on-save works as normal)
+- **Auto-rebuild** — Bundles automatically update when templates are fetched or links change
+- **Manual rebuild** — Use `Rewst Buddy: Bundle Templates` from the command palette to refresh
 
-### Session Receiver Server (v0.15)
+### Session Receiver Server
 
 A local HTTP server that receives session cookies from the [Rewst Buddy Browser Extension](https://github.com/totallynotjon/rewst-buddy-browser), eliminating the need to manually copy/paste cookies.
 
@@ -131,7 +135,7 @@ A local HTTP server that receives session cookies from the [Rewst Buddy Browser 
 
 1. Install the browser extension from [GitHub](https://github.com/totallynotjon/rewst-buddy-browser)
 2. The VS Code server starts automatically (enabled by default)
-3. Navigate to any Rewst page - your session transfers automatically
+3. Navigate to any Rewst page — your session transfers automatically
 
 **Configuration:**
 
@@ -147,51 +151,7 @@ The server is enabled by default. Use `Start Server` / `Stop Server` commands fo
 
 ## Configuration
 
-### Available Commands
-
-All commands are also available via Command Palette (Cmd/Ctrl + Shift + P):
-
-**Session Management**
-
-- `New Rewst Session` - Add a new session with token
-- `Clear Sessions` - Remove all saved sessions
-
-**Folder Operations (v0.26)**
-
-- `Link Folder` - Link folder to organization (automatically downloads all templates)
-- `Unlink Folder` - Remove folder link
-- `Fetch Folder` - Manually check for and download new templates (runs automatically every 15 minutes)
-
-**Template Operations (Interactive)**
-
-- `Open Template` - Browse and open templates via picker (v0.14)
-- `Link Template` - Link current file via template picker (v0.14)
-- `Copy Template ID` - Copy linked template ID to clipboard (v0.25)
-- `Open in Rewst` - Open linked template in the Rewst web app (v0.38)
-
-**Template Operations (URL-based)**
-
-- `Open Template from URL` - Open a template directly from URL
-- `Link Template from URL` - Link current file using a URL
-
-**Template Bundles**
-
-- `Bundle Templates` - Rebuild template bundle groupings
-
-**Sync & Maintenance**
-
-- `Sync Template` - Push changes with conflict detection
-- `Enable Sync-On-Save` - Enable automatic sync for current file
-- `Disable Sync-On-Save` - Disable automatic sync for current file
-- `Unlink Template` - Remove template link from current file
-- `Unlink All Templates` - Remove all file-to-template associations
-
-**Server**
-
-- `Start Server` - Start the session receiver server
-- `Stop Server` - Stop the session receiver server
-
-### Sidebar (v0.20)
+### Sidebar
 
 Click the Rewst Buddy icon in the activity bar to open the sidebar:
 
@@ -202,7 +162,7 @@ Click the Rewst Buddy icon in the activity bar to open the sidebar:
     - Sessions automatically refresh every 15 minutes to stay active
     - With automatic refresh, sessions can stay alive for about 1 week with daily extension use
 
-### Template Bundles Panel (v0.39)
+### Template Bundles Panel
 
 Located in the Explorer sidebar, the **Template Bundles** panel groups related templates by dependency:
 
@@ -213,7 +173,7 @@ Located in the Explorer sidebar, the **Template Bundles** panel groups related t
 - Click any entry to open the real file — all existing sync behavior works unchanged
 - Refresh button in the panel header to manually rebuild bundles
 
-### Status Bar (v0.27)
+### Status Bar
 
 When editing a linked template, a status indicator appears in the **bottom-right corner** of VS Code:
 
@@ -223,6 +183,50 @@ When editing a linked template, a status indicator appears in the **bottom-right
 - Displays error indicator if no active session exists for the template's organization
 
 The status bar item hides when viewing non-linked files.
+
+### Commands
+
+All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the `Rewst Buddy:` prefix.
+
+**Session Management**
+
+- `New Rewst Session` — Add a new session with token
+- `Clear Sessions` — Remove all saved sessions
+
+**Folder Operations**
+
+- `Link Folder` — Link folder to organization (automatically downloads all templates)
+- `Unlink Folder` — Remove folder link
+- `Fetch Folder` — Manually check for and download new templates (runs automatically every 15 minutes)
+
+**Template Operations (Interactive)**
+
+- `Open Template` — Browse and open templates via picker
+- `Link Template` — Link current file via template picker
+- `Copy Template ID` — Copy linked template ID to clipboard
+- `Open in Rewst` — Open linked template in the Rewst web app
+
+**Template Operations (URL-based)**
+
+- `Open Template from URL` — Open a template directly from URL
+- `Link Template from URL` — Link current file using a URL
+
+**Template Bundles**
+
+- `Bundle Templates` — Rebuild template bundle groupings
+
+**Sync & Maintenance**
+
+- `Sync Template` — Push changes with conflict detection
+- `Enable Sync-On-Save` — Enable automatic sync for current file
+- `Disable Sync-On-Save` — Disable automatic sync for current file
+- `Unlink Template` — Remove template link from current file
+- `Unlink All Templates` — Remove all file-to-template associations
+
+**Server**
+
+- `Start Server` — Start the session receiver server
+- `Stop Server` — Stop the session receiver server
 
 ### Multi-Region Setup
 
@@ -251,6 +255,21 @@ For non-NA Rewst instances, configure custom regions in VS Code settings:
 }
 ```
 
-> **Disclaimer**: This is an unofficial community tool not affiliated with Rewst LLC. Use at your own risk. Sessions inherit your current Rewst permissions.
+## Security & Authentication
+
+Rewst does not publish a public API, so this extension authenticates the same way the Rewst web app does: with your browser session cookie (`appSession`, or the equivalent cookie for your region — see [Multi-Region Setup](#multi-region-setup)). A planned companion browser extension will automate the cookie transfer for less technical users.
+
+- Your cookie is stored only in VS Code's built-in [SecretStorage](https://code.visualstudio.com/api/references/vscode-api#SecretStorage) (OS-level encrypted storage).
+- No data is sent anywhere other than Rewst's own API.
+- Sessions inherit your current Rewst permissions — the extension can do nothing you can't already do in the browser.
+
+If you have security concerns, the codebase is MIT-licensed and open for audit — please [open an issue](https://github.com/totallynotjon/rewst-buddy/issues) with any findings.
+
+## Support & Contributing
+
+- **Bugs & feature requests**: [GitHub Issues](https://github.com/totallynotjon/rewst-buddy/issues) (not Rewst support)
+- **Source**: [github.com/totallynotjon/rewst-buddy](https://github.com/totallynotjon/rewst-buddy)
+
+## License
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
