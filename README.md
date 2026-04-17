@@ -104,6 +104,14 @@ When opening templates via `Open Template` or `Open Template from URL`:
 
 Template links automatically update when you rename or move files — no broken links when reorganizing your workspace.
 
+### Stale Link Pruning
+
+When you delete a linked file, its template/folder link is cleaned up automatically — no manual unlink required.
+
+- Real-time: deletions through VS Code's explorer trigger immediate link removal.
+- On startup: links whose files were deleted while VS Code was closed get pruned on next load.
+- Conservative: if the filesystem check fails ambiguously (permissions, network timeouts), the link is kept rather than wrongly removed.
+
 ### Template Navigation
 
 When editing linked template files, you can navigate between templates:
@@ -131,9 +139,11 @@ Templates that reference other templates via `{{ template('UUID') }}` are automa
 
 A local HTTP server that receives session cookies from the [Rewst Buddy Browser Extension](https://github.com/totallynotjon/rewst-buddy-browser), eliminating the need to manually copy/paste cookies.
 
+> The browser extension is not yet published to the Chrome Web Store — it must be sideloaded (loaded as an unpacked extension in developer mode). See the [rewst-buddy-browser README](https://github.com/totallynotjon/rewst-buddy-browser) for load-unpacked instructions.
+
 **Setup:**
 
-1. Install the browser extension from [GitHub](https://github.com/totallynotjon/rewst-buddy-browser)
+1. Clone or download [rewst-buddy-browser](https://github.com/totallynotjon/rewst-buddy-browser) and load it unpacked in your browser's extensions page (developer mode enabled)
 2. The VS Code server starts automatically (enabled by default)
 3. Navigate to any Rewst page — your session transfers automatically
 
@@ -257,7 +267,7 @@ For non-NA Rewst instances, configure custom regions in VS Code settings:
 
 ## Security & Authentication
 
-Rewst does not publish a public API, so this extension authenticates the same way the Rewst web app does: with your browser session cookie (`appSession`, or the equivalent cookie for your region — see [Multi-Region Setup](#multi-region-setup)). A planned companion browser extension will automate the cookie transfer for less technical users.
+Rewst does not publish a public API, so this extension authenticates the same way the Rewst web app does: with your browser session cookie (`appSession`, or the equivalent cookie for your region — see [Multi-Region Setup](#multi-region-setup)). A companion [browser extension](https://github.com/totallynotjon/rewst-buddy-browser) automates the cookie transfer (sideload required — not yet on the Chrome Web Store).
 
 - Your cookie is stored only in VS Code's built-in [SecretStorage](https://code.visualstudio.com/api/references/vscode-api#SecretStorage) (OS-level encrypted storage).
 - No data is sent anywhere other than Rewst's own API.
