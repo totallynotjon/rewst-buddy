@@ -1,3 +1,5 @@
+export { ApplyRewstAiEdit } from './ApplyRewstAiEdit';
+export { AskRewstAI } from './AskRewstAI';
 export { CopyPath } from './CopyPath';
 export { CopyRelativePath } from './CopyRelativePath';
 export { FocusSidebar } from './FocusSidebar';

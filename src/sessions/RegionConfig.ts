@@ -6,6 +6,13 @@ export interface RegionConfig {
 	cookieName: string;
 	graphqlUrl: string;
 	loginUrl: string;
+	subscriptionsUrl?: string;
+}
+
+// The WS endpoint lives at /subscriptions, not /graphql (a WS upgrade against
+// /graphql falls through to Apollo's HTTP handler and returns 400).
+export function getSubscriptionsUrl(config: RegionConfig): string {
+	return config.subscriptionsUrl ?? config.graphqlUrl.replace(/^http/, 'ws').replace(/\/graphql$/, '/subscriptions');
 }
 
 export function getRegionConfigs(): RegionConfig[] {

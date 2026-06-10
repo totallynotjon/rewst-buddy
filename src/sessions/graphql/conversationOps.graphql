@@ -1,0 +1,55 @@
+fragment conversation on Conversation {
+	id
+	title
+	type
+	orgId
+	userId
+	metadata
+	createdAt
+	updatedAt
+}
+
+fragment conversationMessage on ConversationMessage {
+	id
+	conversationId
+	role
+	content
+	metadata
+	userId
+	createdAt
+	updatedAt
+}
+
+query getConversations($where: ConversationWhereInput, $limit: Int, $offset: Int, $order: [[String!]]) {
+	conversations(where: $where, limit: $limit, offset: $offset, order: $order) {
+		...conversation
+		firstUserMessage {
+			content
+			role
+			createdAt
+		}
+	}
+}
+
+query getConversation($id: ID!) {
+	conversation(id: $id) {
+		...conversation
+		messages {
+			...conversationMessage
+		}
+	}
+}
+
+mutation deleteConversation($id: ID!) {
+	deleteConversation(id: $id)
+}
+
+mutation createConversationMessageVote($vote: ConversationMessageVoteInput!) {
+	createConversationMessageVote(vote: $vote) {
+		id
+		vote
+		reason
+		comment
+		conversationMessageId
+	}
+}

@@ -75,6 +75,30 @@ Templates that reference other templates via `{{ template('UUID') }}` are automa
 - **Auto-rebuild** — Bundles automatically update when templates are fetched or links change
 - **Manual rebuild** — Use `Rewst Buddy: Bundle Templates` from the command palette to refresh
 
+## Ask Rewst AI (RoboRewsty)
+
+Talk to Rewst's AI assistant (the same RoboRewsty that powers the in-app chat) directly from VS Code's Chat view.
+
+**Usage:**
+
+1. Open the Chat view (or run `Rewst Buddy: Ask Rewst AI` from the command palette)
+2. Type `@rewst` followed by your question, e.g. `@rewst how do I parse JSON in a Jinja template?`
+3. Watch progress updates (thinking, searching documentation, running tools) while the answer streams in
+
+**Behavior:**
+
+- **Multi-turn** — follow-up questions in the same chat session continue the same Rewst conversation, with full server-side memory
+- **Attached context** — files attached via the paperclip or `#file`, and editor selections, are included in the question (size-capped; oversized attachments are truncated)
+- **Apply suggestions** — when an answer contains code blocks, an **Apply to <file>** button appears (targeting the attached or active file). It opens a diff of the current file vs the suggestion; confirm to apply. The edit is left unsaved so you can review — sync-on-save only fires when you save
+- **Custom instructions** — set `rewst-buddy.ai.customInstructions` to prepend standing instructions (answer style, environment details) to every question. Sent as part of your message, so it can't override Rewst's own system prompt
+- **Sources** — documentation citations are attached as references on the response
+- **Organization selection** — with one active session, your primary organization is used automatically; with multiple sessions you pick once per chat session
+- **Conversations live in Rewst** — every exchange is a real Rewst conversation, also visible in the Rewst web app's chat history
+- **Latency** — full answers typically take 20–40 seconds; the assistant runs documentation-search tools mid-stream, so progress updates are normal
+- Cancel any time with the stop button
+
+> Requires VS Code's Chat view (available when a chat provider such as GitHub Copilot is set up). The conversation type can be changed via the `rewst-buddy.ai.conversationType` setting.
+
 ## Session Receiver Server
 
 A local HTTP server that receives session cookies from the [Rewst Buddy Browser Extension](https://github.com/totallynotjon/rewst-buddy-browser), eliminating the need to manually copy/paste cookies.

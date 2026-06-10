@@ -4,7 +4,14 @@ import { LinkManager, SyncManager, SyncOnSaveManager, TemplateBundleManager, Tem
 import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
-import { BundleTreeDataProvider, RewstViewProvider, SessionTreeDataProvider, StatusBar } from '@ui';
+import {
+	BundleTreeDataProvider,
+	ProposedContentProvider,
+	RewstChatParticipant,
+	RewstViewProvider,
+	SessionTreeDataProvider,
+	StatusBar,
+} from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
 
@@ -53,6 +60,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(TemplateBundleManager.init());
 	context.subscriptions.push(Server.init());
+	context.subscriptions.push(RewstChatParticipant.init());
+	context.subscriptions.push(ProposedContentProvider.init());
 	context.subscriptions.push(new StatusBar());
 
 	log.info(`Finished activation of extension ${extPrefix}`);

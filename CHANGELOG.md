@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.40.0] - 2026-06-10
+
+### Added
+
+- **Ask Rewst AI (RoboRewsty)** - New `@rewst` chat participant in VS Code's Chat view streams answers from Rewst's AI assistant, with live progress, documentation source references, multi-turn conversation memory, attached file/selection context, apply-suggestion buttons with diff preview, and cancellation. New `Rewst Buddy: Ask Rewst AI` command opens the Chat view pre-filled with `@rewst`. New `rewst-buddy.ai.conversationType` setting selects the assistant mode (`HELP_DOCS` default) and `rewst-buddy.ai.customInstructions` prepends standing instructions to every question. Region config gains an optional `subscriptionsUrl` for the WebSocket endpoint (derived from `graphqlUrl` when omitted)
+
 ## [0.39.4] - 2026-06-10
 
 ### Changed

@@ -76,6 +76,10 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 - `Unlink All Templates` — Remove all file-to-template associations
 - `Delete Template` — Delete the linked template on Rewst (with confirmation) and unlink
 
+**AI Assistant**
+
+- `Ask Rewst AI` — Open the Chat view with `@rewst` ready to answer questions via Rewst's AI assistant
+
 **Server**
 
 - `Start Server` — Start the session receiver server
@@ -84,14 +88,16 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 
 All settings live under the `rewst-buddy.*` namespace. Edit via VS Code Settings (Cmd/Ctrl + ,) → search "rewst-buddy", or `settings.json` directly.
 
-| Setting                           | Type      | Default                                                     | Description                                                                                                                                                           |
-| --------------------------------- | --------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `rewst-buddy.regions`             | `array`   | `[{North America, appSession, api.rewst.io, app.rewst.io}]` | Regional configuration for different Rewst instances. See [Multi-Region Setup](#multi-region-setup).                                                                  |
-| `rewst-buddy.syncOnSaveByDefault` | `boolean` | `false`                                                     | When enabled, all linked files sync on save by default (use Disable Sync-On-Save to exclude specific files). When disabled, files only sync when explicitly enabled.  |
-| `rewst-buddy.autoFetchOnOpen`     | `boolean` | `true`                                                      | When enabled, automatically fetch remote template updates when opening linked files. Only applies changes if the local file hasn't been modified since the last sync. |
-| `rewst-buddy.server.enabled`      | `boolean` | `true`                                                      | Enable the local HTTP server to receive session tokens from browser extensions.                                                                                       |
-| `rewst-buddy.server.port`         | `number`  | `27121`                                                     | Port number for the local HTTP server (range 1024–65535).                                                                                                             |
-| `rewst-buddy.server.host`         | `string`  | `127.0.0.1`                                                 | Host address to bind the server (default `127.0.0.1` for localhost-only access).                                                                                      |
+| Setting                             | Type      | Default                                                     | Description                                                                                                                                                           |
+| ----------------------------------- | --------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `rewst-buddy.regions`               | `array`   | `[{North America, appSession, api.rewst.io, app.rewst.io}]` | Regional configuration for different Rewst instances. See [Multi-Region Setup](#multi-region-setup).                                                                  |
+| `rewst-buddy.syncOnSaveByDefault`   | `boolean` | `false`                                                     | When enabled, all linked files sync on save by default (use Disable Sync-On-Save to exclude specific files). When disabled, files only sync when explicitly enabled.  |
+| `rewst-buddy.autoFetchOnOpen`       | `boolean` | `true`                                                      | When enabled, automatically fetch remote template updates when opening linked files. Only applies changes if the local file hasn't been modified since the last sync. |
+| `rewst-buddy.server.enabled`        | `boolean` | `true`                                                      | Enable the local HTTP server to receive session tokens from browser extensions.                                                                                       |
+| `rewst-buddy.server.port`           | `number`  | `27121`                                                     | Port number for the local HTTP server (range 1024–65535).                                                                                                             |
+| `rewst-buddy.server.host`           | `string`  | `127.0.0.1`                                                 | Host address to bind the server (default `127.0.0.1` for localhost-only access).                                                                                      |
+| `rewst-buddy.ai.conversationType`   | `string`  | `HELP_DOCS`                                                 | Conversation type sent to the Rewst AI assistant (`HELP_DOCS` or `WORKFLOW_DIAGNOSIS`).                                                                               |
+| `rewst-buddy.ai.customInstructions` | `string`  | `""`                                                        | Standing instructions prepended to every message sent to the Rewst AI assistant. Sent as part of your message — cannot override Rewst's own system prompt.            |
 
 ## Multi-Region Setup
 
@@ -120,4 +126,4 @@ For non-NA Rewst instances, configure custom regions in VS Code settings:
 }
 ```
 
-Each region entry requires `name`, `cookieName`, `graphqlUrl`, and `loginUrl`.
+Each region entry requires `name`, `cookieName`, `graphqlUrl`, and `loginUrl`. An optional `subscriptionsUrl` sets the WebSocket endpoint used by the AI assistant; when omitted it is derived from `graphqlUrl` (e.g. `https://api.rewst.io/graphql` → `wss://api.rewst.io/subscriptions`).

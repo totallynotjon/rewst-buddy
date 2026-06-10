@@ -16,6 +16,7 @@ export type Scalars = {
   Int: { input: number; output: number; }
   Float: { input: number; output: number; }
   JSON: { input: any; output: any; }
+  OnboardingQuestionnaireResponseValue: { input: any; output: any; }
   Upload: { input: any; output: any; }
   Void: { input: any; output: any; }
 };
@@ -25,6 +26,7 @@ export type Action = {
   actionOptions: Array<ActionOption>;
   category?: Maybe<Scalars['String']['output']>;
   className?: Maybe<Scalars['String']['output']>;
+  currentVersion?: Maybe<Scalars['String']['output']>;
   defaultHumanSecondsSaved?: Maybe<Scalars['Int']['output']>;
   deprecated?: Maybe<Scalars['Boolean']['output']>;
   deprecationMessage?: Maybe<Scalars['String']['output']>;
@@ -151,6 +153,13 @@ export type ActiveConversationRequest = {
   requestId: Scalars['ID']['output'];
   updatedAt?: Maybe<Scalars['String']['output']>;
   userId?: Maybe<Scalars['ID']['output']>;
+};
+
+export type AffectedWorkflowInfo = {
+  __typename?: 'AffectedWorkflowInfo';
+  affectedActionNames: Array<Scalars['String']['output']>;
+  workflowId: Scalars['ID']['output'];
+  workflowName: Scalars['String']['output'];
 };
 
 export type ApiClient = {
@@ -324,6 +333,46 @@ export type BaseStreamResponse = {
   isFinished: Scalars['Boolean']['output'];
 };
 
+export type BreakingChangeActionInput = {
+  actionRefs: Array<Scalars['String']['input']>;
+  packRef: Scalars['String']['input'];
+};
+
+/**
+ * Filter for `bulkSetFormPermissions` when applying to every user matching
+ * the drawer's current server filter. Mirrors the Users tab's query
+ * variables (org + optional free-text search on username).
+ */
+export type BulkFormUserFilterInput = {
+  orgId: Scalars['ID']['input'];
+  search?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type BulkSetFormPermissionsInput = {
+  formId: Scalars['ID']['input'];
+  operation: FormGrantOperation;
+  permission: FormPermissionKey;
+  roleIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  /**
+   * Scope. Exactly one of `userFilter` / `userIds` / `roleIds` must be
+   * provided:
+   *   - userFilter: apply to every user matching the filter (server-side
+   *     expansion of org + optional search)
+   *   - userIds: apply to an explicit user id list (drawer's "this page"
+   *     scope for the Users tab)
+   *   - roleIds: apply to an explicit role id list (drawer's Roles tab)
+   */
+  userFilter?: InputMaybe<BulkFormUserFilterInput>;
+  userIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+};
+
+export type BulkSetFormPermissionsResult = {
+  __typename?: 'BulkSetFormPermissionsResult';
+  changesApplied: Scalars['Int']['output'];
+  formId: Scalars['ID']['output'];
+  zedtoken?: Maybe<Scalars['String']['output']>;
+};
+
 export type CspApplicationGrant = {
   enterpriseApplicationId: Scalars['String']['input'];
   scope: Scalars['String']['input'];
@@ -362,6 +411,13 @@ export type CheckInput = {
   objectId: Scalars['String']['input'];
   objectType: Scalars['String']['input'];
   relation: Scalars['String']['input'];
+};
+
+export type CheckSpiceDbPermissionInput = {
+  permission: Scalars['String']['input'];
+  resourceId: Scalars['String']['input'];
+  resourceType: Scalars['String']['input'];
+  userId: Scalars['ID']['input'];
 };
 
 export type CloneFormStreamSuccessResponse = BaseCloneObjectSuccessResponse & BaseCloningResponse & BaseStreamEvent & {
@@ -600,6 +656,7 @@ export enum ConfigSelectionModes {
 export type Conversation = {
   __typename?: 'Conversation';
   createdAt: Scalars['String']['output'];
+  firstUserMessage?: Maybe<ConversationMessagePreview>;
   id: Scalars['ID']['output'];
   messages: Array<ConversationMessage>;
   metadata?: Maybe<Scalars['JSON']['output']>;
@@ -663,6 +720,13 @@ export type ConversationMessageItemResponse = {
   updatedAt: Scalars['String']['output'];
   user?: Maybe<User>;
   userId?: Maybe<Scalars['ID']['output']>;
+};
+
+export type ConversationMessagePreview = {
+  __typename?: 'ConversationMessagePreview';
+  content: Scalars['String']['output'];
+  createdAt: Scalars['String']['output'];
+  role: ConversationRole;
 };
 
 export type ConversationMessageResponse = {
@@ -745,6 +809,7 @@ export type Crate = {
   overrides?: Maybe<Array<CrateOverride>>;
   primaryPack?: Maybe<Pack>;
   primaryPackId?: Maybe<Scalars['ID']['output']>;
+  primaryUnpackedWorkflows?: Maybe<Array<CratePrimaryUnpackedWorkflow>>;
   providedValue?: Maybe<Scalars['String']['output']>;
   replicationRegions?: Maybe<Array<CrateReplicationRegion>>;
   requiredOrgVariables?: Maybe<Array<Scalars['String']['output']>>;
@@ -861,6 +926,13 @@ export type CrateOverrideOptionInput = {
   isDefault?: InputMaybe<Scalars['Boolean']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
   value?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type CratePrimaryUnpackedWorkflow = {
+  __typename?: 'CratePrimaryUnpackedWorkflow';
+  id: Scalars['ID']['output'];
+  isSynchronized: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
 };
 
 export enum CrateReplicationRegion {
@@ -1425,6 +1497,29 @@ export type FormFieldsArgs = {
   orgContextId?: InputMaybe<Scalars['ID']['input']>;
 };
 
+export type FormAuditAuthorizedOrg = {
+  __typename?: 'FormAuditAuthorizedOrg';
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+};
+
+export type FormAuditEntry = {
+  __typename?: 'FormAuditEntry';
+  authorizedOrgs: Array<FormAuditAuthorizedOrg>;
+  formId: Scalars['ID']['output'];
+  formName: Scalars['String']['output'];
+  grants: Array<FormAuditGrant>;
+  hasManagedOrgsCascade: Scalars['Boolean']['output'];
+};
+
+export type FormAuditGrant = {
+  __typename?: 'FormAuditGrant';
+  label: Scalars['String']['output'];
+  permission: FormPermissionKey;
+  subjectId: Scalars['ID']['output'];
+  subjectType: FormPermissionSubjectType;
+};
+
 export type FormCloneOverridesInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
@@ -1524,6 +1619,84 @@ export type FormFieldWhereInput = {
   type?: InputMaybe<FormFieldType>;
 };
 
+export type FormGrantChangeInput = {
+  operation: FormGrantOperation;
+  permission: FormPermissionKey;
+  subjectId: Scalars['ID']['input'];
+  subjectType: FormPermissionSubjectType;
+};
+
+export enum FormGrantOperation {
+  Allow = 'ALLOW',
+  Deny = 'DENY',
+  Reset = 'RESET'
+}
+
+/**
+ * Origin of a subject's effective grant on a form.
+ * - ROLE_DEFAULT: granted via role assignment; no override tuple on the form.
+ * - OVERRIDE_ALLOW: explicit allow override row.
+ * - OVERRIDE_DENY: explicit deny override row (blocks role default).
+ * - NONE: not effective, no override.
+ */
+export enum FormGrantSource {
+  None = 'NONE',
+  OverrideAllow = 'OVERRIDE_ALLOW',
+  OverrideDeny = 'OVERRIDE_DENY',
+  RoleDefault = 'ROLE_DEFAULT'
+}
+
+export type FormGrantState = {
+  __typename?: 'FormGrantState';
+  enabled: Scalars['Boolean']['output'];
+  permission: FormPermissionKey;
+  source: FormGrantSource;
+};
+
+/**
+ * Form permission drawer types — maps to peck-order `form` grants in
+ * packages/peck-order/schema.zed. See plan at
+ * /home/codeplug/.claude/plans/cached-meandering-lecun.md.
+ *
+ * CREATE is intentionally absent: form creation is an org/role-scoped
+ * capability (peck-order organization#role_form_creators), not a per-form
+ * override. peck-order still accepts the create permission in CDC events
+ * for back-compat with any in-flight data.
+ */
+export enum FormPermissionKey {
+  Clone = 'CLONE',
+  Delete = 'DELETE',
+  Edit = 'EDIT',
+  ExternalView = 'EXTERNAL_VIEW',
+  ManageAccess = 'MANAGE_ACCESS',
+  Publish = 'PUBLISH',
+  Submit = 'SUBMIT',
+  View = 'VIEW'
+}
+
+export type FormPermissionState = {
+  __typename?: 'FormPermissionState';
+  formId: Scalars['ID']['output'];
+  roles: Array<FormPermissionSubject>;
+  triggers: Array<FormTriggerSummary>;
+  /** Total users matching the current org/search filter, ignoring pagination. */
+  userTotalCount: Scalars['Int']['output'];
+  users: Array<FormPermissionSubject>;
+};
+
+export type FormPermissionSubject = {
+  __typename?: 'FormPermissionSubject';
+  grants: Array<FormGrantState>;
+  id: Scalars['ID']['output'];
+  label: Scalars['String']['output'];
+  type: FormPermissionSubjectType;
+};
+
+export enum FormPermissionSubjectType {
+  Role = 'ROLE',
+  User = 'USER'
+}
+
 export type FormSearchInput = {
   clonedFromId?: InputMaybe<Id_Comparison_Exp>;
   createdBy?: InputMaybe<UserSearchInput>;
@@ -1535,6 +1708,36 @@ export type FormSearchInput = {
   triggerId?: InputMaybe<Id_Comparison_Exp>;
   unpackedFromId?: InputMaybe<Id_Comparison_Exp>;
   updatedBy?: InputMaybe<UserSearchInput>;
+};
+
+export type FormTriggerAuthorizedOrg = {
+  __typename?: 'FormTriggerAuthorizedOrg';
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+};
+
+/**
+ * Read-only summary of a form_submission trigger tied to the form. Exposes the
+ * two levers that drive the `form#suborg_grant` tuples in SpiceDB:
+ * - `autoActivateManagedOrgs`: cascade to every descendant of the form's org
+ * - `authorizedOrgs`: explicit child orgs activated via org_trigger_instances
+ * Editing these lives in the workflow builder, not the permissions drawer.
+ */
+export type FormTriggerSummary = {
+  __typename?: 'FormTriggerSummary';
+  authorizedOrgs: Array<FormTriggerAuthorizedOrg>;
+  autoActivateManagedOrgs: Scalars['Boolean']['output'];
+  enabled: Scalars['Boolean']['output'];
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+  /**
+   * The workflow this trigger belongs to, used by the drawer to deep-link
+   * back into the workflow builder with the trigger pre-selected.
+   * Workflow's owning org may differ from the form's owning org for
+   * managed/parent workflows.
+   */
+  workflowId: Scalars['ID']['output'];
+  workflowOrgId: Scalars['ID']['output'];
 };
 
 export type FormUpdateInput = {
@@ -1912,8 +2115,21 @@ export type Mutation = {
   adminCreateIntegrationTestWorkflow?: Maybe<IntegrationWorkflowOutput>;
   adminCreateOrUpdatePack?: Maybe<Pack>;
   adminCreateOrUpdatePackBundle?: Maybe<PackBundle>;
+  /**
+   * Approve a pending user invite. Only org admins or staff can approve requests.
+   * This will send the invite email to the user.
+   */
+  approveUserInvite: UserInvite;
+  assignRoleToUser: UserRole;
   bulkCreateOrganizations: Array<Organization>;
   bulkDeleteOrganizations?: Maybe<Scalars['Void']['output']>;
+  /**
+   * Apply a single (permission, operation) to every subject matching the
+   * supplied scope in one transaction. The server expands the filter, so
+   * the client doesn't have to materialize an edit per user for
+   * column-header "Grant all" style actions.
+   */
+  bulkSetFormPermissions: BulkSetFormPermissionsResult;
   bulkSetWorkflowTags: Array<Workflow>;
   bulkUpdateOrganizationFeaturePreviewSettingByLabel: Array<OrganizationFeaturePreviewSetting>;
   clearOAuthTokenCache: OAuthTokenClearResult;
@@ -1931,6 +2147,7 @@ export type Mutation = {
   createFeaturePreviewSetting?: Maybe<FeaturePreviewSetting>;
   createForeignObjectReference?: Maybe<ForeignObjectReference>;
   createForm?: Maybe<Form>;
+  createGDAPGroups?: Maybe<JobRequestedResponse>;
   createMicrosoftCSPCustomer: MicrosoftCspCustomer;
   createOrUpdateForeignObjectReference?: Maybe<ForeignObjectReference>;
   createOrUpdateOnboardingQuestionnaireResponse?: Maybe<OnboardingQuestionnaireResponse>;
@@ -1994,6 +2211,7 @@ export type Mutation = {
   deleteWorkflowPatch?: Maybe<Scalars['Void']['output']>;
   deleteWorkflows?: Maybe<Array<Maybe<Scalars['ID']['output']>>>;
   duplicateComponent?: Maybe<Component>;
+  excludeUserFromRole: UserRoleExclusion;
   findAndDeleteUserInvite?: Maybe<Scalars['Int']['output']>;
   generateComponent: ComponentGeneratorResponse;
   generateDiffExplanation: DiffExplanationResponse;
@@ -2004,32 +2222,84 @@ export type Mutation = {
   getPackInstallations?: Maybe<PackInstalledByResponse>;
   getPackPageUrl?: Maybe<Scalars['String']['output']>;
   grantDelegatedAccess: UserDelegatedAccess;
+  /**
+   * Bulk-grant: every effective member of the org (and its descendants)
+   * inherits this role.
+   */
+  grantRoleToOrganizationMembers: OrganizationRoleMembership;
   installPack?: Maybe<Organization>;
   killConversation: Scalars['Boolean']['output'];
   killWorkflowExecution?: Maybe<Scalars['JSON']['output']>;
   linkMicrosoftCSPCustomer: MicrosoftCspCustomer;
+  markOrgMappingComplete?: Maybe<OrganizationOnboardingPackRequirement>;
   /** @deprecated Replaced with microsoftCSPConsentRequest subscription */
   modifyCSPConsent: CspConsentResult;
   openaiCompletionItems: OpenAiResponse;
+  /**
+   * Preview the import without creating any organizations.
+   * Validates all records and returns categorization.
+   */
+  previewOrganizationImport: OrganizationImportPreviewResult;
+  /**
+   * Process the organization import, creating valid organizations.
+   * Returns the import record with all results.
+   */
+  processOrganizationImport: OrganizationImportResult;
   reassignCSPCustomer: MicrosoftCspCustomer;
+  /**
+   * Record an audit-log entry for a permissions report download. Called by
+   * the Permissions Report modal after the CSV/ZIP successfully reaches the
+   * user's browser. The full role/user/permission matrix is a
+   * security-sensitive read; logging the download event (who, when, which
+   * report types) is required for SOC2-style audit trails.
+   */
+  recordPermissionsReportDownload: Scalars['Boolean']['output'];
   refetchPackConfigRefOptions?: Maybe<JobRequestedResponse>;
+  refreshOnboardingOrgMappingProgress?: Maybe<OrganizationOnboardingRequirement>;
   removeAllowedTool: UserRoboRewstyPreferences;
   removeFavoriteAction?: Maybe<Scalars['Void']['output']>;
+  removeRoleFromUser: Scalars['Boolean']['output'];
+  removeUserExclusion: Scalars['Boolean']['output'];
   renderJinja?: Maybe<Scalars['JSON']['output']>;
+  /**
+   * Delete every per-user and per-role override for a form in one transaction.
+   * The caller's own overrides are deleted like any other row — after reset,
+   * access falls back to role defaults + cascade.
+   */
+  resetFormPermissions: ResetFormPermissionsResult;
   restoreOrganization: Organization;
   revertTriggerPatch: Scalars['JSON']['output'];
   revertWorkflowPatch: Scalars['JSON']['output'];
   revokeDelegatedAccess: Scalars['Boolean']['output'];
+  revokeRoleFromOrganizationMembers: Scalars['Boolean']['output'];
   rotateApiClientSecret: ApiClientSecretRotation;
   runTriggerWithMCP?: Maybe<JobRequestedResponse>;
   runWorkflowForOptions?: Maybe<WorkflowOptionsResponse>;
   setFavoriteActions: Array<UserFavoriteAction>;
+  setFormPermissions: SetFormPermissionsResult;
   setFormTags?: Maybe<Form>;
   /** @deprecated Replaced with linkMicrosoftCSPCustomer and unlinkMicrosoftCSPCustomer mutations */
   setManagedOrgGraphTenantId?: Maybe<ForeignObjectReference>;
   setOrgFormFieldInstanceStatuses: Scalars['Boolean']['output'];
+  /**
+   * Toggle the org-level Engine Next (Temporal) setting for `orgId`. Cascade is opt-in: when
+   * `cascade` is true, enabling or disabling propagates the value to every descendant org via LTREE.
+   * Returns the upserted `organization_feature_preview_settings` rows so Apollo cache can update.
+   *
+   * Requires the caller to be an org admin who manages `orgId`. Staff-org callers must have
+   * support write access to the affected org(s). Gated by `ENABLE_WORKFLOW_TEMPORAL` for `orgId`
+   * or one of its managing orgs; calls return `TEMPORAL_DISABLED` when the flag is off for that
+   * org chain.
+   *
+   * Authz is enforced inside the resolver (isOrgAdminUser + verifyStaffOrgUserHasOrgWriteAccess +
+   * per-descendant verifyUserManagesOrg), NOT via a schema `@requires*` directive: org admins —
+   * not just staff/support — must be able to call this, which is finer-grained than the available
+   * directives express.
+   */
+  setOrgTemporalEnabled: Array<OrganizationFeaturePreviewSetting>;
   setOrganizationTags?: Maybe<Organization>;
   setTestUserSession?: Maybe<Scalars['Void']['output']>;
+  setWorkflowTemporal: Workflow;
   shallowCloneForm?: Maybe<Form>;
   shallowCloneSite?: Maybe<Site>;
   shallowCloneTemplate?: Maybe<Template>;
@@ -2061,6 +2331,7 @@ export type Mutation = {
   updateCrate?: Maybe<Crate>;
   updateCrateOverride?: Maybe<CrateOverride>;
   updateCrateOverrideOption?: Maybe<CrateOverrideOption>;
+  updateCustomInstructions: UserRoboRewstyPreferences;
   updateFeaturePreviewSetting?: Maybe<FeaturePreviewSetting>;
   updateForm?: Maybe<Form>;
   updateFormOverrides?: Maybe<Form>;
@@ -2134,6 +2405,17 @@ export type MutationAdminCreateOrUpdatePackBundleArgs = {
 };
 
 
+export type MutationApproveUserInviteArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type MutationAssignRoleToUserArgs = {
+  roleId: Scalars['ID']['input'];
+  userId: Scalars['ID']['input'];
+};
+
+
 export type MutationBulkCreateOrganizationsArgs = {
   organizations: Array<OrganizationInput>;
 };
@@ -2141,6 +2423,11 @@ export type MutationBulkCreateOrganizationsArgs = {
 
 export type MutationBulkDeleteOrganizationsArgs = {
   organizationIds: Array<Scalars['ID']['input']>;
+};
+
+
+export type MutationBulkSetFormPermissionsArgs = {
+  input: BulkSetFormPermissionsInput;
 };
 
 
@@ -2230,6 +2517,11 @@ export type MutationCreateForeignObjectReferenceArgs = {
 
 export type MutationCreateFormArgs = {
   form: FormCreateInput;
+};
+
+
+export type MutationCreateGdapGroupsArgs = {
+  packConfigId: Scalars['ID']['input'];
 };
 
 
@@ -2558,6 +2850,12 @@ export type MutationDuplicateComponentArgs = {
 };
 
 
+export type MutationExcludeUserFromRoleArgs = {
+  roleId: Scalars['ID']['input'];
+  userId: Scalars['ID']['input'];
+};
+
+
 export type MutationFindAndDeleteUserInviteArgs = {
   email: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
@@ -2618,6 +2916,12 @@ export type MutationGrantDelegatedAccessArgs = {
 };
 
 
+export type MutationGrantRoleToOrganizationMembersArgs = {
+  orgId: Scalars['ID']['input'];
+  roleId: Scalars['ID']['input'];
+};
+
+
 export type MutationInstallPackArgs = {
   name?: InputMaybe<Scalars['String']['input']>;
   orgId: Scalars['ID']['input'];
@@ -2642,6 +2946,12 @@ export type MutationLinkMicrosoftCspCustomerArgs = {
 };
 
 
+export type MutationMarkOrgMappingCompleteArgs = {
+  complete: Scalars['Boolean']['input'];
+  id: Scalars['ID']['input'];
+};
+
+
 export type MutationModifyCspConsentArgs = {
   action?: InputMaybe<CspConsentAction>;
   applicationGrants?: InputMaybe<Array<CspApplicationGrant>>;
@@ -2656,15 +2966,36 @@ export type MutationOpenaiCompletionItemsArgs = {
 };
 
 
+export type MutationPreviewOrganizationImportArgs = {
+  input: OrganizationImportInput;
+};
+
+
+export type MutationProcessOrganizationImportArgs = {
+  input: OrganizationImportInput;
+};
+
+
 export type MutationReassignCspCustomerArgs = {
   cspTenantId: Scalars['ID']['input'];
   customerId: Scalars['ID']['input'];
 };
 
 
+export type MutationRecordPermissionsReportDownloadArgs = {
+  orgId: Scalars['ID']['input'];
+  reportTypes: Array<PermissionsReportType>;
+};
+
+
 export type MutationRefetchPackConfigRefOptionsArgs = {
   packConfigId: Scalars['ID']['input'];
   reference?: InputMaybe<Scalars['JSON']['input']>;
+};
+
+
+export type MutationRefreshOnboardingOrgMappingProgressArgs = {
+  orgId: Scalars['ID']['input'];
 };
 
 
@@ -2679,12 +3010,29 @@ export type MutationRemoveFavoriteActionArgs = {
 };
 
 
+export type MutationRemoveRoleFromUserArgs = {
+  roleId: Scalars['ID']['input'];
+  userId: Scalars['ID']['input'];
+};
+
+
+export type MutationRemoveUserExclusionArgs = {
+  roleId: Scalars['ID']['input'];
+  userId: Scalars['ID']['input'];
+};
+
+
 export type MutationRenderJinjaArgs = {
   orgId: Scalars['ID']['input'];
   principalOrgId?: InputMaybe<Scalars['ID']['input']>;
   template: Scalars['String']['input'];
   triggerId?: InputMaybe<Scalars['ID']['input']>;
   vars?: InputMaybe<Scalars['JSON']['input']>;
+};
+
+
+export type MutationResetFormPermissionsArgs = {
+  formId: Scalars['ID']['input'];
 };
 
 
@@ -2710,6 +3058,12 @@ export type MutationRevertWorkflowPatchArgs = {
 export type MutationRevokeDelegatedAccessArgs = {
   organizationId: Scalars['ID']['input'];
   userId: Scalars['ID']['input'];
+};
+
+
+export type MutationRevokeRoleFromOrganizationMembersArgs = {
+  orgId: Scalars['ID']['input'];
+  roleId: Scalars['ID']['input'];
 };
 
 
@@ -2741,6 +3095,11 @@ export type MutationSetFavoriteActionsArgs = {
 };
 
 
+export type MutationSetFormPermissionsArgs = {
+  input: SetFormPermissionsInput;
+};
+
+
 export type MutationSetFormTagsArgs = {
   form: SetFormTagsInput;
 };
@@ -2759,6 +3118,13 @@ export type MutationSetOrgFormFieldInstanceStatusesArgs = {
 };
 
 
+export type MutationSetOrgTemporalEnabledArgs = {
+  cascade?: InputMaybe<Scalars['Boolean']['input']>;
+  enabled: Scalars['Boolean']['input'];
+  orgId: Scalars['ID']['input'];
+};
+
+
 export type MutationSetOrganizationTagsArgs = {
   orgId: Scalars['ID']['input'];
   tagIds: Array<Scalars['ID']['input']>;
@@ -2767,6 +3133,12 @@ export type MutationSetOrganizationTagsArgs = {
 
 export type MutationSetTestUserSessionArgs = {
   userId: Scalars['ID']['input'];
+};
+
+
+export type MutationSetWorkflowTemporalArgs = {
+  enabled: Scalars['Boolean']['input'];
+  workflowId: Scalars['ID']['input'];
 };
 
 
@@ -2954,6 +3326,11 @@ export type MutationUpdateCrateOverrideOptionArgs = {
 };
 
 
+export type MutationUpdateCustomInstructionsArgs = {
+  customInstructions: Scalars['String']['input'];
+};
+
+
 export type MutationUpdateFeaturePreviewSettingArgs = {
   featurePreviewSetting?: InputMaybe<UpdateFeaturePreviewSettingInput>;
 };
@@ -2998,6 +3375,7 @@ export type MutationUpdateOrgVariablesArgs = {
 
 
 export type MutationUpdateOrganizationArgs = {
+  cascadeChildOrgReenable?: InputMaybe<Scalars['Boolean']['input']>;
   organization?: InputMaybe<OrganizationUpdateInput>;
 };
 
@@ -3118,6 +3496,7 @@ export type MutationUpdateWorkflowArgs = {
   comment?: InputMaybe<Scalars['String']['input']>;
   commentDescription?: InputMaybe<Scalars['String']['input']>;
   createPatch?: InputMaybe<Scalars['Boolean']['input']>;
+  openedAt?: InputMaybe<Scalars['String']['input']>;
   overwrite?: InputMaybe<Scalars['Boolean']['input']>;
   overwritePatchId?: InputMaybe<Scalars['ID']['input']>;
   trigger?: InputMaybe<TriggerCreateInput>;
@@ -3198,6 +3577,21 @@ export enum OAuthTokenStatusEnum {
   Unknown = 'unknown'
 }
 
+/**
+ * How @requiresPermission / @filtersByPermission behave when the
+ * `spicedb_permissions` Statsig flag is OFF.
+ *
+ * - DENY (default) — throw AUTH_ERR. Use for SpiceDB-only fields with no
+ *   legacy authz directive.
+ * - ALLOW — pass through to the wrapped resolver. Use for fields being
+ *   MIGRATED from `@auth` / `@requiresManagesOwningOrg` so the legacy
+ *   directive still enforces when the flag is OFF.
+ */
+export enum OnFlagOff {
+  Allow = 'ALLOW',
+  Deny = 'DENY'
+}
+
 export type OnboardingQuestionnaireResponse = {
   __typename?: 'OnboardingQuestionnaireResponse';
   createdAt: Scalars['String']['output'];
@@ -3206,7 +3600,7 @@ export type OnboardingQuestionnaireResponse = {
   onboardingRequirementId: Scalars['ID']['output'];
   questionField: Scalars['String']['output'];
   questionText?: Maybe<Scalars['String']['output']>;
-  responseValue?: Maybe<Scalars['JSON']['output']>;
+  responseValue?: Maybe<Scalars['OnboardingQuestionnaireResponseValue']['output']>;
   updatedAt: Scalars['String']['output'];
   updatedBy?: Maybe<User>;
 };
@@ -3215,7 +3609,7 @@ export type OnboardingQuestionnaireResponseInput = {
   onboardingRequirementId: Scalars['ID']['input'];
   questionField: Scalars['String']['input'];
   questionText?: InputMaybe<Scalars['String']['input']>;
-  responseValue?: InputMaybe<Scalars['JSON']['input']>;
+  responseValue: Scalars['OnboardingQuestionnaireResponseValue']['input'];
 };
 
 export type OnboardingQuestionnaireResponseWhereInput = {
@@ -3325,6 +3719,7 @@ export type OrgTriggerInstance = {
   id: Scalars['ID']['output'];
   isManualActivation?: Maybe<Scalars['Boolean']['output']>;
   lastSearchedAt?: Maybe<Scalars['String']['output']>;
+  nextFireTime?: Maybe<Scalars['String']['output']>;
   orgId?: Maybe<Scalars['ID']['output']>;
   organization?: Maybe<Organization>;
   state?: Maybe<Scalars['JSON']['output']>;
@@ -3447,6 +3842,15 @@ export type Organization = {
   createdAt?: Maybe<Scalars['String']['output']>;
   createdTags: Array<Tag>;
   deletedAt?: Maybe<Scalars['String']['output']>;
+  /**
+   * Number of descendant organizations beneath this org (excludes self), computed by descending
+   * the LTREE org hierarchy.
+   *
+   * LAZY BY CONVENTION: each resolution triggers a full LTREE descent. Frontend MUST only request
+   * this field from the Engine Next confirmation modal's dedicated query — do NOT include it in
+   * `getSelectedOrg` or any always-on query, or every selected-org refetch will pay the LTREE cost.
+   */
+  descendantOrgCount: Scalars['Int']['output'];
   domain?: Maybe<Scalars['String']['output']>;
   featurePreviewSettings?: Maybe<Array<Maybe<OrganizationFeaturePreviewSetting>>>;
   forms: Array<Form>;
@@ -3471,6 +3875,18 @@ export type Organization = {
   supportAccessStatus?: Maybe<SupportAccessStatus>;
   tags: Array<Tag>;
   templates: Array<Template>;
+  /**
+   * Whether the Engine Next (org-level Temporal) toggle is on for this organization. Derived from
+   * the `organization_feature_preview_settings` row keyed by the Engine Next setting UUID — the
+   * catalog row's `label` is presentation-only and is NOT consulted by this resolver.
+   */
+  temporalEnabled: Scalars['Boolean']['output'];
+  /**
+   * Whether the Engine Next feature-preview surface is available for this organization. True when
+   * the `ENABLE_WORKFLOW_TEMPORAL` Statsig gate is enabled for this org or one of its managing orgs.
+   * This controls row visibility/management affordances, not whether the org-level toggle is on.
+   */
+  temporalFeaturePreviewAvailable: Scalars['Boolean']['output'];
   tid?: Maybe<Scalars['ID']['output']>;
   triggerInstances: Array<OrgTriggerInstance>;
   triggers: Array<Trigger>;
@@ -3495,6 +3911,25 @@ export type OrganizationManagedAndSubOrgsArgs = {
   order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
 };
 
+export type OrganizationAuditEntry = {
+  __typename?: 'OrganizationAuditEntry';
+  organizationId: Scalars['ID']['output'];
+  organizationName: Scalars['String']['output'];
+  roles: Array<OrganizationAuditRole>;
+};
+
+export type OrganizationAuditRole = {
+  __typename?: 'OrganizationAuditRole';
+  /**
+   * FORM_GRANTS ids (e.g. `form_viewer`, `form_editor`) granted by this role.
+   * System roles return defaults from POLICY.md; custom roles return their
+   * authorizedPermissions array (filtered to valid form grant ids).
+   */
+  authorizedPermissions: Array<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
+};
+
 export type OrganizationFeaturePreviewSetting = {
   __typename?: 'OrganizationFeaturePreviewSetting';
   featurePreviewSetting?: Maybe<FeaturePreviewSetting>;
@@ -3502,6 +3937,152 @@ export type OrganizationFeaturePreviewSetting = {
   isEnabled?: Maybe<Scalars['Boolean']['output']>;
   orgId?: Maybe<Scalars['ID']['output']>;
 };
+
+export type OrganizationImport = {
+  __typename?: 'OrganizationImport';
+  completedAt?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['String']['output'];
+  createdBy?: Maybe<User>;
+  createdById?: Maybe<Scalars['ID']['output']>;
+  errorMessage?: Maybe<Scalars['String']['output']>;
+  failedCount: Scalars['Int']['output'];
+  id: Scalars['ID']['output'];
+  importType: OrganizationImportType;
+  orgId: Scalars['ID']['output'];
+  organization?: Maybe<Organization>;
+  records: Array<OrganizationImportRecord>;
+  skippedCount: Scalars['Int']['output'];
+  startedAt?: Maybe<Scalars['String']['output']>;
+  status: OrganizationImportStatus;
+  successfulCount: Scalars['Int']['output'];
+  totalRecords: Scalars['Int']['output'];
+  updatedAt: Scalars['String']['output'];
+};
+
+
+export type OrganizationImportRecordsArgs = {
+  category?: InputMaybe<OrganizationImportRecordCategory>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  status?: InputMaybe<OrganizationImportRecordStatus>;
+};
+
+export type OrganizationImportInput = {
+  /**
+   * The parent organization ID under which all imported orgs will be created.
+   * If a record specifies managingOrgId, it will be used instead (with authorization check).
+   */
+  defaultManagingOrgId: Scalars['ID']['input'];
+  /** Import type identifier for tracking. */
+  importType?: InputMaybe<OrganizationImportType>;
+  /**
+   * Pack config ID for the PSA integration. When provided, org variable mappings
+   * are created for each successfully imported organization using the record's
+   * externalId. The org variable name is derived from the pack's orgVariables schema.
+   */
+  psaPackConfigId?: InputMaybe<Scalars['ID']['input']>;
+  /** Pre-parsed array of organization records to import. */
+  records: Array<OrganizationImportRecordInput>;
+};
+
+export type OrganizationImportPreviewRecord = {
+  __typename?: 'OrganizationImportPreviewRecord';
+  category: OrganizationImportRecordCategory;
+  domain?: Maybe<Scalars['String']['output']>;
+  isEnabled?: Maybe<Scalars['Boolean']['output']>;
+  managingOrgId?: Maybe<Scalars['ID']['output']>;
+  orgSlug?: Maybe<Scalars['String']['output']>;
+  organizationName: Scalars['String']['output'];
+  /** Resolved tag IDs from the provided tag names. */
+  resolvedTagIds?: Maybe<Array<Scalars['ID']['output']>>;
+  rowNumber: Scalars['Int']['output'];
+  /** Tag names provided in the import record. */
+  tagNames?: Maybe<Array<Scalars['String']['output']>>;
+  validationErrors?: Maybe<Array<ValidationError>>;
+};
+
+export type OrganizationImportPreviewResult = {
+  __typename?: 'OrganizationImportPreviewResult';
+  records: Array<OrganizationImportPreviewRecord>;
+  summary: OrganizationImportSummary;
+};
+
+export type OrganizationImportRecord = {
+  __typename?: 'OrganizationImportRecord';
+  category: OrganizationImportRecordCategory;
+  createdAt: Scalars['String']['output'];
+  domain?: Maybe<Scalars['String']['output']>;
+  errorMessage?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  importId: Scalars['ID']['output'];
+  isEnabled?: Maybe<Scalars['Boolean']['output']>;
+  managingOrgId?: Maybe<Scalars['ID']['output']>;
+  orgSlug?: Maybe<Scalars['String']['output']>;
+  organizationName: Scalars['String']['output'];
+  rowNumber: Scalars['Int']['output'];
+  status: OrganizationImportRecordStatus;
+  tagIds?: Maybe<Array<Scalars['ID']['output']>>;
+  updatedAt: Scalars['String']['output'];
+  validationErrors?: Maybe<Array<ValidationError>>;
+};
+
+export enum OrganizationImportRecordCategory {
+  Existing = 'EXISTING',
+  Invalid = 'INVALID',
+  New = 'NEW',
+  Pending = 'PENDING'
+}
+
+export type OrganizationImportRecordInput = {
+  domain?: InputMaybe<Scalars['String']['input']>;
+  /**
+   * External organization ID from an integration (e.g. PSA company ID).
+   * Used with psaPackConfigId to create org variable mappings.
+   */
+  externalId?: InputMaybe<Scalars['String']['input']>;
+  isEnabled?: InputMaybe<Scalars['Boolean']['input']>;
+  managingOrgId?: InputMaybe<Scalars['ID']['input']>;
+  orgSlug?: InputMaybe<Scalars['String']['input']>;
+  organizationName: Scalars['String']['input'];
+  /**
+   * Tag names to apply to the organization. Tags must exist and belong to the
+   * managing organization or be global tags.
+   */
+  tagNames?: InputMaybe<Array<Scalars['String']['input']>>;
+};
+
+export enum OrganizationImportRecordStatus {
+  Failed = 'FAILED',
+  Skipped = 'SKIPPED'
+}
+
+export type OrganizationImportResult = {
+  __typename?: 'OrganizationImportResult';
+  import: OrganizationImport;
+  summary: OrganizationImportSummary;
+};
+
+export enum OrganizationImportStatus {
+  Completed = 'COMPLETED',
+  Failed = 'FAILED',
+  Processing = 'PROCESSING'
+}
+
+export type OrganizationImportSummary = {
+  __typename?: 'OrganizationImportSummary';
+  existingOrganizations: Scalars['Int']['output'];
+  failedCreations: Scalars['Int']['output'];
+  invalidRecords: Scalars['Int']['output'];
+  newOrganizations: Scalars['Int']['output'];
+  skippedCreations: Scalars['Int']['output'];
+  successfulCreations: Scalars['Int']['output'];
+  totalRecords: Scalars['Int']['output'];
+};
+
+export enum OrganizationImportType {
+  Csv = 'CSV',
+  Psa = 'PSA'
+}
 
 export type OrganizationInput = {
   domain?: InputMaybe<Scalars['String']['input']>;
@@ -3538,6 +4119,8 @@ export type OrganizationOnboardingCrateRequirement = {
   onboardingRequirementId: Scalars['ID']['output'];
   orgId: Scalars['ID']['output'];
   organization: Organization;
+  parentPackRequirement?: Maybe<OrganizationOnboardingPackRequirement>;
+  parentPackRequirementId?: Maybe<Scalars['ID']['output']>;
   skippedAt?: Maybe<Scalars['String']['output']>;
   skippedById?: Maybe<Scalars['ID']['output']>;
   updatedAt: Scalars['String']['output'];
@@ -3585,6 +4168,7 @@ export type OrganizationOnboardingPackRequirement = {
   installedById?: Maybe<Scalars['ID']['output']>;
   isConfigured: Scalars['Boolean']['output'];
   isInstalled: Scalars['Boolean']['output'];
+  isOrgMappingManuallyCompleted: Scalars['Boolean']['output'];
   isRequired: Scalars['Boolean']['output'];
   isSkipped?: Maybe<Scalars['Boolean']['output']>;
   lastMappingSavedAt?: Maybe<Scalars['String']['output']>;
@@ -3593,6 +4177,8 @@ export type OrganizationOnboardingPackRequirement = {
   onboardingRequirement: OrganizationOnboardingRequirement;
   onboardingRequirementId: Scalars['ID']['output'];
   orgId: Scalars['ID']['output'];
+  orgMappingManuallyCompletedAt?: Maybe<Scalars['String']['output']>;
+  orgMappingManuallyCompletedById?: Maybe<Scalars['ID']['output']>;
   organization: Organization;
   packType: PackType;
   selectedPack?: Maybe<Pack>;
@@ -3681,6 +4267,12 @@ export type OrganizationOnboardingRequirementWhereInput = {
   requirementsCompleted?: InputMaybe<Scalars['Boolean']['input']>;
   requirementsPopulated?: InputMaybe<Scalars['Boolean']['input']>;
   status?: InputMaybe<OnboardingStatus>;
+};
+
+export type OrganizationRoleMembership = {
+  __typename?: 'OrganizationRoleMembership';
+  orgId: Scalars['ID']['output'];
+  roleId: Scalars['ID']['output'];
 };
 
 export type OrganizationSearchInput = {
@@ -3919,6 +4511,7 @@ export type PackConfig = {
   organization?: Maybe<Organization>;
   pack?: Maybe<Pack>;
   packId?: Maybe<Scalars['ID']['output']>;
+  testActionRun?: Maybe<PackTestActionRun>;
   updatedAt?: Maybe<Scalars['String']['output']>;
   visibleForOrganizations: Array<Organization>;
 };
@@ -4152,6 +4745,19 @@ export type PackStatusSearch = {
   _in?: InputMaybe<Array<PackStatus>>;
   _ne?: InputMaybe<PackStatus>;
   _nin?: InputMaybe<Array<PackStatus>>;
+};
+
+export type PackTestActionRun = {
+  __typename?: 'PackTestActionRun';
+  createdAt: Scalars['String']['output'];
+  errorMsg?: Maybe<Scalars['String']['output']>;
+  executionId?: Maybe<Scalars['ID']['output']>;
+  id: Scalars['ID']['output'];
+  isPassing: Scalars['Boolean']['output'];
+  packConfig?: Maybe<PackConfig>;
+  packConfigId: Scalars['ID']['output'];
+  responseTimeMs?: Maybe<Scalars['Int']['output']>;
+  updatedAt: Scalars['String']['output'];
 };
 
 export enum PackType {
@@ -4443,6 +5049,47 @@ export type Permission = {
   templateId?: Maybe<Scalars['ID']['output']>;
 };
 
+export enum PermissionAuditExportFormat {
+  Csv = 'csv',
+  Json = 'json'
+}
+
+export enum PermissionAuditItemType {
+  Permission = 'permission',
+  Role = 'role'
+}
+
+export type PermissionAuditLogEntry = {
+  __typename?: 'PermissionAuditLogEntry';
+  action: Scalars['String']['output'];
+  actionDetails: Scalars['JSON']['output'];
+  actor?: Maybe<User>;
+  actorUserEmail: Scalars['String']['output'];
+  actorUserId?: Maybe<Scalars['ID']['output']>;
+  createdAt: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  itemType: Scalars['String']['output'];
+  orgId?: Maybe<Scalars['ID']['output']>;
+  orgName: Scalars['String']['output'];
+  organization?: Maybe<Organization>;
+  resourceId?: Maybe<Scalars['ID']['output']>;
+};
+
+export type PermissionAuditLogFiltersInput = {
+  endDate?: InputMaybe<Scalars['String']['input']>;
+  itemType?: InputMaybe<PermissionAuditItemType>;
+  startDate?: InputMaybe<Scalars['String']['input']>;
+  userId?: InputMaybe<Scalars['ID']['input']>;
+  userSearch?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type PermissionAuditLogList = {
+  __typename?: 'PermissionAuditLogList';
+  entries: Array<PermissionAuditLogEntry>;
+  hasMore: Scalars['Boolean']['output'];
+  totalCount: Scalars['Int']['output'];
+};
+
 export type PermissionCreateInput = {
   id?: InputMaybe<Scalars['ID']['input']>;
   objectId?: InputMaybe<Scalars['String']['input']>;
@@ -4454,6 +5101,20 @@ export type PermissionCreateInput = {
   roleIds?: InputMaybe<Array<Scalars['String']['input']>>;
   templateId?: InputMaybe<Scalars['ID']['input']>;
 };
+
+/**
+ * Surface for `@requiresPermission` denials — controls how the frontend
+ * renders the AUTH_ERR.
+ *
+ * - TOAST (default) — denial is silent at the GraphQL layer; the route
+ *   component / Apollo handler decide what to render. Existing behavior.
+ * - PAGE — denial is "user-visible" at the route level; the frontend route
+ *   component renders <AccessDeniedPage> in place of the resource content.
+ */
+export enum PermissionDenialSurface {
+  Page = 'PAGE',
+  Toast = 'TOAST'
+}
 
 export type PermissionUpdateInput = {
   excludeOrgIds?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
@@ -4473,8 +5134,47 @@ export type PermissionWhereInput = {
   templateId?: InputMaybe<Scalars['ID']['input']>;
 };
 
+/**
+ * The four report types exposed by the Permissions Report panel. Used as the
+ * audit-log payload for `recordPermissionsReportDownload` so the schema
+ * rejects arbitrary strings at the boundary — `permission_audit_log` rows are
+ * read by compliance tooling that does not re-validate the payload.
+ */
+export enum PermissionsReportType {
+  Organizations = 'ORGANIZATIONS',
+  Resources = 'RESOURCES',
+  Roles = 'ROLES',
+  Users = 'USERS'
+}
+
 export type PhasedCloneEvent = {
   phase: ClonePhase;
+};
+
+export type PsaAccountType = {
+  __typename?: 'PsaAccountType';
+  id: Scalars['String']['output'];
+  label: Scalars['String']['output'];
+};
+
+export type PsaFilterOptions = {
+  __typename?: 'PsaFilterOptions';
+  accountTypes: Array<PsaAccountType>;
+  statuses: Array<PsaStatus>;
+};
+
+export type PsaOrganization = {
+  __typename?: 'PsaOrganization';
+  accountTypeIds: Array<Scalars['String']['output']>;
+  id: Scalars['String']['output'];
+  name: Scalars['String']['output'];
+  statusId?: Maybe<Scalars['String']['output']>;
+};
+
+export type PsaStatus = {
+  __typename?: 'PsaStatus';
+  id: Scalars['String']['output'];
+  label: Scalars['String']['output'];
 };
 
 export type PublicCrate = {
@@ -4521,8 +5221,27 @@ export type Query = {
   apiClients: ApiClientList;
   appPlatformReservedDomain?: Maybe<AppPlatformReservedDomain>;
   appPlatformReservedDomains: Array<AppPlatformReservedDomain>;
+  /**
+   * Org-wide audit projection used by the permissions report CSV builder.
+   * Returns one row per form. Unlike `formPermissionState`, this does not
+   * enumerate users: only users with explicit ALLOW overrides are surfaced.
+   * Role grants are computed from system-role defaults overlaid with explicit
+   * role overrides. Issues one Postgres query per category (forms, overrides,
+   * triggers, org_roles, users-for-overrides) regardless of form count.
+   */
+  bulkFormPermissionsAudit: Array<FormAuditEntry>;
+  /**
+   * Org-wide audit projection used by the permissions report CSV builder.
+   * Returns one entry per organization in the caller's subtree (orgId +
+   * descendants), each with its assigned roles and the form-grant IDs those
+   * roles carry (system role defaults or the custom role's authorized
+   * permissions). Single query — no per-role round trips.
+   */
+  bulkOrganizationsAudit: Array<OrganizationAuditEntry>;
   check?: Maybe<Scalars['JSON']['output']>;
   checkAuthorization?: Maybe<Scalars['JSON']['output']>;
+  checkSpiceDBPermission?: Maybe<SpiceDbCheckResult>;
+  checkUserManagesOrg: Scalars['Boolean']['output'];
   commonlyUsedIntegrationActions: Array<CommonlyUsedAction>;
   component?: Maybe<Component>;
   componentInstance?: Maybe<ComponentInstance>;
@@ -4557,6 +5276,13 @@ export type Query = {
   foreignObjectReference?: Maybe<ForeignObjectReference>;
   foreignObjectReferences: Array<ForeignObjectReference>;
   form?: Maybe<Form>;
+  /**
+   * Users are server-paginated to bound per-request work (drawer bulk-checks
+   * every returned user × permission against peck-order). orgId is validated
+   * against the form's own org and its form_submission trigger authorized
+   * orgs; callers cannot enumerate users of arbitrary orgs through this query.
+   */
+  formPermissionState?: Maybe<FormPermissionState>;
   forms: Array<Form>;
   getAppPermissions: Array<Site>;
   getCannyToken?: Maybe<Scalars['String']['output']>;
@@ -4577,6 +5303,7 @@ export type Query = {
   jinjaRenderSession?: Maybe<JinjaRenderSession>;
   jinjaTemplate?: Maybe<Template>;
   latestInterpreterVersions?: Maybe<Array<InterpreterVersion>>;
+  latestWorkflowExecution?: Maybe<WorkflowExecution>;
   listDelegatedAccess: Array<UserDelegatedAccess>;
   livePage?: Maybe<EncodedPageNodes>;
   localReferenceOptions: Array<DropdownOption>;
@@ -4594,6 +5321,7 @@ export type Query = {
   myRoboRewstyPreferences?: Maybe<UserRoboRewstyPreferences>;
   onboardingQuestionnaireResponse?: Maybe<OnboardingQuestionnaireResponse>;
   onboardingQuestionnaireResponses: Array<OnboardingQuestionnaireResponse>;
+  orgBreadcrumb?: Maybe<Array<Maybe<OrgBreadcrumb>>>;
   orgFormFieldInstance?: Maybe<OrgFormFieldInstance>;
   orgFormFieldInstanceStatus?: Maybe<Scalars['Boolean']['output']>;
   orgFormFieldInstances?: Maybe<Array<OrgFormFieldInstance>>;
@@ -4606,6 +5334,10 @@ export type Query = {
   orgVariables: Array<OrgVariable>;
   organization?: Maybe<Organization>;
   organizationApiClients: ApiClientList;
+  /** Get a specific organization import by ID. */
+  organizationImport?: Maybe<OrganizationImport>;
+  /** Get organization import history for a managing organization. */
+  organizationImports: Array<OrganizationImport>;
   organizationOnboardingCrateRequirement?: Maybe<OrganizationOnboardingCrateRequirement>;
   organizationOnboardingCrateRequirements: Array<OrganizationOnboardingCrateRequirement>;
   organizationOnboardingPackRequirement?: Maybe<OrganizationOnboardingPackRequirement>;
@@ -4635,7 +5367,13 @@ export type Query = {
   pages: Array<Page>;
   pendingTasksAggregate: PendingTasksAggregate;
   permission?: Maybe<Permission>;
+  permissionAuditLog: PermissionAuditLogList;
+  permissionAuditLogExport: Scalars['String']['output'];
   permissions: Array<Permission>;
+  /** Fetch account type and status filter options from the specified PSA integration */
+  psaFilterOptions: PsaFilterOptions;
+  /** Fetch organizations from the specified PSA integration, filtered by account types and statuses */
+  psaOrganizations: Array<PsaOrganization>;
   publicCrates: Array<PublicCrate>;
   recentComponentVersions: Array<ComponentTree>;
   reservedOrganizationName?: Maybe<ReservedOrganizationName>;
@@ -4643,10 +5381,25 @@ export type Query = {
   resourceTypesByPack: Array<PackResourceTypesContainer>;
   roboRewstyConfigOption: RoboRewstyConfigValue;
   roboRewstyConfigOptions: Array<RoboRewstyConfigValue>;
+  /**
+   * Batched membership counts for the role list sidebar, scoped to the
+   * caller's managed subtree.
+   */
+  roleOrganizationMembershipCounts: Array<RoleOrganizationCount>;
+  /**
+   * Orgs whose effective members inherit the role (bulk membership).
+   *
+   * When `includeSubOrgs` is true, descendants of each directly-granted org are
+   * included with `isDirectAssignment=false` (cascade preview). Direct rows
+   * always come back regardless of the flag.
+   *
+   * `limit` and `offset` are optional; omit both to return the full set.
+   */
+  roleOrganizationMemberships: Array<RoleOrganizationRow>;
+  roleUserCounts: Array<RoleUserCount>;
   roles: Array<Role>;
-  runner?: Maybe<Runner>;
-  runners: Array<Runner>;
   searchInstalledPackActions: Array<Pack>;
+  searchManagedOrgs: Array<Organization>;
   sensorType?: Maybe<SensorType>;
   sensorTypes: Array<SensorType>;
   site?: Maybe<Site>;
@@ -4657,11 +5410,6 @@ export type Query = {
   taskExecutionStats: Scalars['Int']['output'];
   taskLog?: Maybe<TaskLog>;
   taskLogs: Array<TaskLog>;
-  /**
-   * Query daily tasks executed and time saved statistics from Redshift data lake.
-   * Returns aggregated task counts and time saved by date for an organization and its sub-orgs.
-   */
-  tasksExecutedAndTimeSavedStats?: Maybe<TasksExecutedAndTimeSavedStats>;
   template?: Maybe<Template>;
   templates: Array<Template>;
   timeSavedGroupBySubOrg: Array<TimeSavedGroupByOrg>;
@@ -4697,6 +5445,7 @@ export type Query = {
   workflowTask?: Maybe<WorkflowTask>;
   workflowTasks: Array<WorkflowTask>;
   workflows: Array<Workflow>;
+  workflowsAffectedByBreakingChanges: Array<AffectedWorkflowInfo>;
 };
 
 
@@ -4775,6 +5524,16 @@ export type QueryAppPlatformReservedDomainsArgs = {
 };
 
 
+export type QueryBulkFormPermissionsAuditArgs = {
+  orgId: Scalars['ID']['input'];
+};
+
+
+export type QueryBulkOrganizationsAuditArgs = {
+  orgId: Scalars['ID']['input'];
+};
+
+
 export type QueryCheckArgs = {
   where: Array<CheckInput>;
 };
@@ -4782,6 +5541,16 @@ export type QueryCheckArgs = {
 
 export type QueryCheckAuthorizationArgs = {
   where: CheckAuthorizationInput;
+};
+
+
+export type QueryCheckSpiceDbPermissionArgs = {
+  where: CheckSpiceDbPermissionInput;
+};
+
+
+export type QueryCheckUserManagesOrgArgs = {
+  orgId: Scalars['ID']['input'];
 };
 
 
@@ -4969,6 +5738,16 @@ export type QueryFormArgs = {
 };
 
 
+export type QueryFormPermissionStateArgs = {
+  formId: Scalars['ID']['input'];
+  orgId?: InputMaybe<Scalars['ID']['input']>;
+  userLimit?: InputMaybe<Scalars['Int']['input']>;
+  userOffset?: InputMaybe<Scalars['Int']['input']>;
+  userSearch?: InputMaybe<Scalars['String']['input']>;
+  zedtoken?: InputMaybe<Scalars['String']['input']>;
+};
+
+
 export type QueryFormsArgs = {
   hasTagIds?: InputMaybe<Array<InputMaybe<Scalars['ID']['input']>>>;
   limit?: InputMaybe<Scalars['Int']['input']>;
@@ -5050,6 +5829,13 @@ export type QueryLatestInterpreterVersionsArgs = {
 };
 
 
+export type QueryLatestWorkflowExecutionArgs = {
+  orgId: Scalars['ID']['input'];
+  status?: InputMaybe<Scalars['String']['input']>;
+  workflowId: Scalars['ID']['input'];
+};
+
+
 export type QueryListDelegatedAccessArgs = {
   organizationId: Scalars['ID']['input'];
 };
@@ -5065,8 +5851,12 @@ export type QueryLivePageArgs = {
 
 export type QueryLocalReferenceOptionsArgs = {
   filterArg?: InputMaybe<Scalars['JSON']['input']>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
   modelName: LocalReferenceModel;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
   orgId: Scalars['ID']['input'];
+  search?: InputMaybe<Scalars['String']['input']>;
 };
 
 
@@ -5124,6 +5914,12 @@ export type QueryOnboardingQuestionnaireResponsesArgs = {
   offset?: InputMaybe<Scalars['Int']['input']>;
   order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
   where?: InputMaybe<OnboardingQuestionnaireResponseWhereInput>;
+};
+
+
+export type QueryOrgBreadcrumbArgs = {
+  orgId: Scalars['ID']['input'];
+  rootOrgId: Scalars['ID']['input'];
 };
 
 
@@ -5203,6 +5999,21 @@ export type QueryOrganizationArgs = {
 export type QueryOrganizationApiClientsArgs = {
   orgId: Scalars['ID']['input'];
   pagination?: InputMaybe<ApiClientListInput>;
+};
+
+
+export type QueryOrganizationImportArgs = {
+  id: Scalars['ID']['input'];
+};
+
+
+export type QueryOrganizationImportsArgs = {
+  importType?: InputMaybe<OrganizationImportType>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
+  orgId: Scalars['ID']['input'];
+  status?: InputMaybe<OrganizationImportStatus>;
 };
 
 
@@ -5397,8 +6208,43 @@ export type QueryPermissionArgs = {
 };
 
 
+export type QueryPermissionAuditLogArgs = {
+  filters?: InputMaybe<PermissionAuditLogFiltersInput>;
+  includeSubOrgs?: InputMaybe<Scalars['Boolean']['input']>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  orgId: Scalars['ID']['input'];
+};
+
+
+export type QueryPermissionAuditLogExportArgs = {
+  filters?: InputMaybe<PermissionAuditLogFiltersInput>;
+  format: PermissionAuditExportFormat;
+  includeSubOrgs?: InputMaybe<Scalars['Boolean']['input']>;
+  orgId: Scalars['ID']['input'];
+};
+
+
 export type QueryPermissionsArgs = {
   where?: InputMaybe<PermissionWhereInput>;
+};
+
+
+export type QueryPsaFilterOptionsArgs = {
+  orgId: Scalars['ID']['input'];
+  psaPackConfigId: Scalars['ID']['input'];
+  psaRef: Scalars['String']['input'];
+  refresh?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
+export type QueryPsaOrganizationsArgs = {
+  accountTypes?: InputMaybe<Array<Scalars['String']['input']>>;
+  orgId: Scalars['ID']['input'];
+  psaPackConfigId: Scalars['ID']['input'];
+  psaRef: Scalars['String']['input'];
+  refresh?: InputMaybe<Scalars['Boolean']['input']>;
+  statuses?: InputMaybe<Array<Scalars['String']['input']>>;
 };
 
 
@@ -5437,25 +6283,42 @@ export type QueryRoboRewstyConfigOptionsArgs = {
 };
 
 
+export type QueryRoleOrganizationMembershipCountsArgs = {
+  orgId: Scalars['ID']['input'];
+  roleIds: Array<Scalars['ID']['input']>;
+};
+
+
+export type QueryRoleOrganizationMembershipsArgs = {
+  includeSubOrgs?: InputMaybe<Scalars['Boolean']['input']>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  roleId: Scalars['ID']['input'];
+};
+
+
+export type QueryRoleUserCountsArgs = {
+  orgId: Scalars['ID']['input'];
+  roleIds: Array<Scalars['ID']['input']>;
+};
+
+
 export type QueryRolesArgs = {
   where?: InputMaybe<RoleWhereInput>;
 };
 
 
-export type QueryRunnerArgs = {
-  where?: InputMaybe<RunnerInput>;
-};
-
-
-export type QueryRunnersArgs = {
-  where?: InputMaybe<RunnerInput>;
-};
-
-
 export type QuerySearchInstalledPackActionsArgs = {
   actionFilter?: InputMaybe<Scalars['String']['input']>;
+  actionSearch?: InputMaybe<ActionSearch>;
   order?: InputMaybe<Array<Array<Scalars['String']['input']>>>;
   orgId: Scalars['ID']['input'];
+  packSearch?: InputMaybe<PackSearchInput>;
+};
+
+
+export type QuerySearchManagedOrgsArgs = {
+  input: SearchManagedOrgsInput;
 };
 
 
@@ -5528,13 +6391,6 @@ export type QueryTaskLogsArgs = {
 };
 
 
-export type QueryTasksExecutedAndTimeSavedStatsArgs = {
-  endDate: Scalars['String']['input'];
-  orgId: Scalars['ID']['input'];
-  startDate: Scalars['String']['input'];
-};
-
-
 export type QueryTemplateArgs = {
   where?: InputMaybe<TemplateInput>;
 };
@@ -5591,6 +6447,8 @@ export type QueryTriggerTypesArgs = {
 
 
 export type QueryTriggersArgs = {
+  excludeTagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
+  hasTagIds?: InputMaybe<Array<Scalars['ID']['input']>>;
   includeUnlisted?: InputMaybe<Scalars['Boolean']['input']>;
   limit?: InputMaybe<Scalars['Int']['input']>;
   offset?: InputMaybe<Scalars['Int']['input']>;
@@ -5787,6 +6645,12 @@ export type QueryWorkflowsArgs = {
   where?: InputMaybe<WorkflowWhereInput>;
 };
 
+
+export type QueryWorkflowsAffectedByBreakingChangesArgs = {
+  actions: Array<BreakingChangeActionInput>;
+  orgId: Scalars['ID']['input'];
+};
+
 export type QueryInput = {
   objectId?: InputMaybe<Scalars['String']['input']>;
   objectType?: InputMaybe<Scalars['String']['input']>;
@@ -5867,6 +6731,19 @@ export type ReservedOrganizationNameWhereInput = {
   updatedBy?: InputMaybe<UserWhereInput>;
 };
 
+/**
+ * Result of a `resetFormPermissions` call. `deletedCount` is the number of
+ * `form_permission_overrides` rows removed by the reset; `0` is a valid
+ * success when the form had no overrides to begin with. `zedtoken` carries
+ * SpiceDB's post-write snapshot — see `SetFormPermissionsResult.zedtoken`.
+ */
+export type ResetFormPermissionsResult = {
+  __typename?: 'ResetFormPermissionsResult';
+  deletedCount: Scalars['Int']['output'];
+  success: Scalars['Boolean']['output'];
+  zedtoken?: Maybe<Scalars['String']['output']>;
+};
+
 export type RoboRewstyConfigValue = {
   __typename?: 'RoboRewstyConfigValue';
   configKey?: Maybe<Scalars['String']['output']>;
@@ -5884,25 +6761,88 @@ export type RoboRewstyConfigWhere = {
 export type Role = {
   __typename?: 'Role';
   authorizedPermissions?: Maybe<Array<Maybe<Scalars['String']['output']>>>;
+  authorizedSpicedbPermissions?: Maybe<Array<Maybe<Scalars['String']['output']>>>;
+  color?: Maybe<Scalars['String']['output']>;
   description?: Maybe<Scalars['String']['output']>;
+  icon?: Maybe<Scalars['String']['output']>;
   id?: Maybe<Scalars['ID']['output']>;
   name?: Maybe<Scalars['String']['output']>;
   orgId?: Maybe<Scalars['ID']['output']>;
+  userCount?: Maybe<Scalars['Int']['output']>;
+};
+
+/**
+ * Compact role identity used to render chips alongside an organization in the
+ * Roles Management Organizations tab. Stays separate from `Role` so we don't
+ * have to load the heavier RBAC fields (`authorizedPermissions`, etc.) per chip.
+ */
+export type RoleAssignment = {
+  __typename?: 'RoleAssignment';
+  color?: Maybe<Scalars['String']['output']>;
+  icon?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  name: Scalars['String']['output'];
 };
 
 export type RoleCreateInput = {
   authorizedPermissions?: InputMaybe<Array<Scalars['String']['input']>>;
+  authorizedSpicedbPermissions?: InputMaybe<Array<Scalars['String']['input']>>;
+  color?: InputMaybe<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
+  icon?: InputMaybe<Scalars['String']['input']>;
   id?: InputMaybe<Scalars['ID']['input']>;
   name: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
   rolePermissions?: InputMaybe<Array<Scalars['String']['input']>>;
 };
 
+export type RoleOrganizationCount = {
+  __typename?: 'RoleOrganizationCount';
+  count: Scalars['Int']['output'];
+  roleId: Scalars['ID']['output'];
+};
+
+/**
+ * One row in the Roles Management Organizations tab.
+ *
+ * `isDirectAssignment` distinguishes orgs directly granted the role from
+ * descendants surfaced when `includeSubOrgs=true`. Only direct rows are
+ * removable from this tab; sub-org rows are read-only.
+ *
+ * `assignedRoles` is the full set of roles granted to that org via bulk
+ * membership — used to render the chip list per row regardless of which role
+ * is currently being viewed.
+ */
+export type RoleOrganizationRow = {
+  __typename?: 'RoleOrganizationRow';
+  assignedRoles: Array<RoleAssignment>;
+  id: Scalars['ID']['output'];
+  isDirectAssignment: Scalars['Boolean']['output'];
+  isEnabled: Scalars['Boolean']['output'];
+  name: Scalars['String']['output'];
+  /**
+   * Immediate parent org's name, when this org is a sub-org. Rendered as a
+   * secondary line under the org name so admins can tell siblings apart at a
+   * glance. Null for top-level orgs.
+   */
+  parentName?: Maybe<Scalars['String']['output']>;
+};
+
 export type RoleUpdateInput = {
   authorizedPermissions?: InputMaybe<Array<Scalars['String']['input']>>;
+  authorizedSpicedbPermissions?: InputMaybe<Array<Scalars['String']['input']>>;
+  color?: InputMaybe<Scalars['String']['input']>;
+  description?: InputMaybe<Scalars['String']['input']>;
+  icon?: InputMaybe<Scalars['String']['input']>;
   id: Scalars['ID']['input'];
+  name?: InputMaybe<Scalars['String']['input']>;
   rolePermissions?: InputMaybe<Array<Scalars['String']['input']>>;
+};
+
+export type RoleUserCount = {
+  __typename?: 'RoleUserCount';
+  count: Scalars['Int']['output'];
+  roleId: Scalars['ID']['output'];
 };
 
 export type RoleWhereInput = {
@@ -5929,6 +6869,12 @@ export type RunnerInput = {
   outputKey?: InputMaybe<Scalars['String']['input']>;
   outputSchema?: InputMaybe<Scalars['JSON']['input']>;
   runnerParameters?: InputMaybe<Scalars['JSON']['input']>;
+};
+
+export type SearchManagedOrgsInput = {
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  search?: InputMaybe<Scalars['String']['input']>;
 };
 
 export type SensorType = {
@@ -5964,6 +6910,25 @@ export type SensorTypeSearchInput = {
   notifyOnTriggerChanges?: InputMaybe<Scalars['Boolean']['input']>;
   packId?: InputMaybe<Id_Comparison_Exp>;
   ref?: InputMaybe<String_Comparison_Exp>;
+};
+
+export type SetFormPermissionsInput = {
+  changes: Array<FormGrantChangeInput>;
+  formId: Scalars['ID']['input'];
+};
+
+export type SetFormPermissionsResult = {
+  __typename?: 'SetFormPermissionsResult';
+  changesApplied: Scalars['Int']['output'];
+  formId: Scalars['ID']['output'];
+  /**
+   * SpiceDB zedtoken from the synchronous write-through to peck-order. Pass
+   * to the next `formPermissionState` query so its bulk Check reads with
+   * `Consistency.at_least_as_fresh(zedtoken)`. Null when the sync RPC failed
+   * gracefully — the CDC path will still converge; the client falls back to
+   * default consistency on the refetch.
+   */
+  zedtoken?: Maybe<Scalars['String']['output']>;
 };
 
 export type SetFormTagsInput = {
@@ -6096,6 +7061,19 @@ export type SourceField = {
   schema?: Maybe<Scalars['JSON']['output']>;
 };
 
+export type SpiceDbCheckResult = {
+  __typename?: 'SpiceDBCheckResult';
+  debugTrace: Array<Scalars['String']['output']>;
+  hasPermission: Scalars['Boolean']['output'];
+  /**
+   * Whether the `spicedb_permissions` Statsig gate evaluates to ON for the
+   * subject user. Lets the admin checker surface a "would the directives
+   * actually enforce this on real traffic for that user?" signal next to
+   * the raw SpiceDB result. `null` when the user can't be loaded.
+   */
+  subjectSpicedbFlagEnabled?: Maybe<Scalars['Boolean']['output']>;
+};
+
 export type Subscription = {
   __typename?: 'Subscription';
   actionResults?: Maybe<Scalars['JSON']['output']>;
@@ -6124,6 +7102,7 @@ export type Subscription = {
   rateLimitingStatus?: Maybe<RateLimitingStatusEvent>;
   renderPage?: Maybe<Scalars['JSON']['output']>;
   resendUserInviteEmail?: Maybe<ResendUserInviteEmailStreamEvent>;
+  syncRoboRewstyWorkflowDraft: WorkflowDraftSyncResponse;
   synchronizeClones?: Maybe<SynchronizeClonesStreamEvent>;
   taskLogs?: Maybe<TaskLogEvent>;
   triggerCriteria?: Maybe<TriggerCriteriaEvent>;
@@ -6307,6 +7286,15 @@ export type SubscriptionRenderPageArgs = {
 
 export type SubscriptionResendUserInviteEmailArgs = {
   inviteId: Scalars['ID']['input'];
+};
+
+
+export type SubscriptionSyncRoboRewstyWorkflowDraftArgs = {
+  conversationId?: InputMaybe<Scalars['ID']['input']>;
+  expectedDraftHash?: InputMaybe<Scalars['String']['input']>;
+  expectedRevision?: InputMaybe<Scalars['Int']['input']>;
+  orgId: Scalars['ID']['input'];
+  workflow: Scalars['JSON']['input'];
 };
 
 
@@ -6558,12 +7546,6 @@ export type TaskLogWhereInput = {
   workflowTaskId?: InputMaybe<Scalars['ID']['input']>;
 };
 
-export type TasksExecutedAndTimeSavedStats = {
-  __typename?: 'TasksExecutedAndTimeSavedStats';
-  taskCounts: Array<TaskCountByDate>;
-  timeSaved: Array<TimeSavedByDate>;
-};
-
 export type Template = {
   __typename?: 'Template';
   body: Scalars['String']['output'];
@@ -6700,6 +7682,7 @@ export type Trigger = {
   clonedFrom?: Maybe<Trigger>;
   clonedFromId?: Maybe<Scalars['ID']['output']>;
   clones: Array<Maybe<Trigger>>;
+  createdAt?: Maybe<Scalars['String']['output']>;
   criteria?: Maybe<Scalars['JSON']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   enabled?: Maybe<Scalars['Boolean']['output']>;
@@ -6719,6 +7702,7 @@ export type Trigger = {
   triggerTypeId: Scalars['ID']['output'];
   unpackedFrom?: Maybe<Crate>;
   unpackedFromId?: Maybe<Scalars['ID']['output']>;
+  updatedAt?: Maybe<Scalars['String']['output']>;
   vars?: Maybe<Array<Maybe<Scalars['JSON']['output']>>>;
   workflow: Workflow;
   workflowId: Scalars['ID']['output'];
@@ -6782,6 +7766,7 @@ export type TriggerSearchInput = {
   criteria?: InputMaybe<Json_Comparison_Exp>;
   description?: InputMaybe<String_Comparison_Exp>;
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
+  formId?: InputMaybe<Id_Comparison_Exp>;
   id?: InputMaybe<Id_Comparison_Exp>;
   isSynchronized?: InputMaybe<Bool_Comparison_Exp>;
   name?: InputMaybe<String_Comparison_Exp>;
@@ -6880,7 +7865,7 @@ export type TriggerUpdateInput = {
   description?: InputMaybe<Scalars['String']['input']>;
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   formId?: InputMaybe<Scalars['ID']['input']>;
-  id?: InputMaybe<Scalars['ID']['input']>;
+  id: Scalars['ID']['input'];
   isActivatedForOwner?: InputMaybe<Scalars['Boolean']['input']>;
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
@@ -7014,6 +7999,9 @@ export type UserFavoriteActionInput = {
 export type UserInvite = {
   __typename?: 'UserInvite';
   acceptedAt?: Maybe<Scalars['String']['output']>;
+  approvedAt?: Maybe<Scalars['String']['output']>;
+  approvedBy?: Maybe<User>;
+  approvedById?: Maybe<Scalars['ID']['output']>;
   createdAt?: Maybe<Scalars['String']['output']>;
   createdBy?: Maybe<User>;
   createdById?: Maybe<Scalars['ID']['output']>;
@@ -7022,6 +8010,7 @@ export type UserInvite = {
   isAccepted?: Maybe<Scalars['Boolean']['output']>;
   orgId: Scalars['ID']['output'];
   organization: Organization;
+  requiresApproval: Scalars['Boolean']['output'];
   roleIds?: Maybe<Array<Maybe<Scalars['String']['output']>>>;
   roles?: Maybe<Array<Maybe<Scalars['JSON']['output']>>>;
   sendEmail?: Maybe<Scalars['Boolean']['output']>;
@@ -7030,6 +8019,7 @@ export type UserInvite = {
 export type UserInviteCreateInput = {
   email: Scalars['String']['input'];
   orgId: Scalars['ID']['input'];
+  requiresApproval?: InputMaybe<Scalars['Boolean']['input']>;
   roleIds: Array<Scalars['String']['input']>;
   sendEmail?: InputMaybe<Scalars['Boolean']['input']>;
 };
@@ -7069,6 +8059,7 @@ export type UserRoboRewstyPreferences = {
   __typename?: 'UserRoboRewstyPreferences';
   alwaysAllowedTools: Array<Scalars['String']['output']>;
   createdAt: Scalars['String']['output'];
+  customInstructions?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
   metadata?: Maybe<Scalars['JSON']['output']>;
   updatedAt: Scalars['String']['output'];
@@ -7084,6 +8075,20 @@ export type UserRoboRewstyPreferencesInput = {
 export type UserRoboRewstyPreferencesWhereInput = {
   id?: InputMaybe<Scalars['ID']['input']>;
   userId?: InputMaybe<Scalars['ID']['input']>;
+};
+
+export type UserRole = {
+  __typename?: 'UserRole';
+  orgId: Scalars['ID']['output'];
+  roleId: Scalars['ID']['output'];
+  userId: Scalars['ID']['output'];
+};
+
+export type UserRoleExclusion = {
+  __typename?: 'UserRoleExclusion';
+  orgId: Scalars['ID']['output'];
+  roleId: Scalars['ID']['output'];
+  userId: Scalars['ID']['output'];
 };
 
 export type UserRolesInput = {
@@ -7116,6 +8121,13 @@ export type UserWhereInput = {
   roleIds?: InputMaybe<Array<Scalars['String']['input']>>;
   sub?: InputMaybe<Scalars['String']['input']>;
   username?: InputMaybe<Scalars['String']['input']>;
+};
+
+export type ValidationError = {
+  __typename?: 'ValidationError';
+  code?: Maybe<Scalars['String']['output']>;
+  field: Scalars['String']['output'];
+  message: Scalars['String']['output'];
 };
 
 export enum VoteReason {
@@ -7162,6 +8174,8 @@ export type Workflow = {
   input: Array<Scalars['String']['output']>;
   inputSchema?: Maybe<Scalars['JSON']['output']>;
   isSynchronized?: Maybe<Scalars['Boolean']['output']>;
+  latestPatchCreatedAt?: Maybe<Scalars['String']['output']>;
+  metadata?: Maybe<Scalars['JSON']['output']>;
   name?: Maybe<Scalars['String']['output']>;
   notes?: Maybe<Array<WorkflowNote>>;
   orgId: Scalars['ID']['output'];
@@ -7176,6 +8190,7 @@ export type Workflow = {
   taskActions: Array<Action>;
   tasks: Array<WorkflowTask>;
   tasksObject?: Maybe<Scalars['JSON']['output']>;
+  temporalEnabled: Scalars['Boolean']['output'];
   timeout?: Maybe<Scalars['Int']['output']>;
   tokens?: Maybe<Array<Scalars['JSON']['output']>>;
   triggers?: Maybe<Array<Maybe<Trigger>>>;
@@ -7208,6 +8223,15 @@ export type WorkflowVisibleForOrganizationsArgs = {
   where?: InputMaybe<OrganizationInput>;
 };
 
+export type WorkflowDraftSyncResponse = {
+  __typename?: 'WorkflowDraftSyncResponse';
+  didSucceed: Scalars['Boolean']['output'];
+  draftHash?: Maybe<Scalars['String']['output']>;
+  error?: Maybe<Scalars['String']['output']>;
+  isFinished: Scalars['Boolean']['output'];
+  revision?: Maybe<Scalars['Int']['output']>;
+};
+
 export enum WorkflowEventType {
   ActionEditing = 'ACTION_EDITING',
   ActionEditingDone = 'ACTION_EDITING_DONE',
@@ -7234,6 +8258,7 @@ export type WorkflowExecution = {
   pendingTasks?: Maybe<Array<Maybe<PendingTask>>>;
   processedCompletionAt?: Maybe<Scalars['String']['output']>;
   status?: Maybe<Scalars['String']['output']>;
+  statusEnum?: Maybe<WorkflowExecutionStatusEnum>;
   subExecutions: Array<WorkflowExecution>;
   taskLogs: Array<TaskLog>;
   updatedAt?: Maybe<Scalars['String']['output']>;
@@ -7297,6 +8322,34 @@ export type WorkflowExecutionStats = {
   succeeded: Scalars['Int']['output'];
 };
 
+/**
+ * Typed mirror of WorkflowExecution.status. Added in SC-93156 as a non-breaking
+ * sibling of the legacy `status: String` field so the SC-84208 graph-api Visibility
+ * resolver has an enum contract to target without disturbing existing app/playwright
+ * consumers that still read `status` as a free-form String. Values mirror the
+ * WorkflowExecutionStatus Python enum (engine/persistence/workflow_execution.py)
+ * upper-cased per GraphQL convention — including transient states (REQUESTED,
+ * SCHEDULED, PAUSING, RESUMING, RETRYING, CANCELING) which Postgres-backed queries
+ * can surface even though Temporal Visibility queries won't see them.
+ */
+export enum WorkflowExecutionStatusEnum {
+  Abandoned = 'ABANDONED',
+  Canceled = 'CANCELED',
+  Canceling = 'CANCELING',
+  Delayed = 'DELAYED',
+  Failed = 'FAILED',
+  Paused = 'PAUSED',
+  Pausing = 'PAUSING',
+  Pending = 'PENDING',
+  Requested = 'REQUESTED',
+  Resuming = 'RESUMING',
+  Retrying = 'RETRYING',
+  Running = 'RUNNING',
+  Scheduled = 'SCHEDULED',
+  Succeeded = 'SUCCEEDED',
+  Timeout = 'TIMEOUT'
+}
+
 export type WorkflowExecutionWhereInput = {
   id?: InputMaybe<Scalars['ID']['input']>;
   numAwaitingResponseTasks?: InputMaybe<Scalars['Int']['input']>;
@@ -7317,6 +8370,7 @@ export type WorkflowInput = {
   input?: InputMaybe<Array<Scalars['String']['input']>>;
   inputSchema?: InputMaybe<Scalars['JSON']['input']>;
   isSynchronized?: InputMaybe<Scalars['Boolean']['input']>;
+  metadata?: InputMaybe<Scalars['JSON']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;
   notes?: InputMaybe<Array<WorkflowNoteInput>>;
   orgId?: InputMaybe<Scalars['ID']['input']>;
@@ -7579,8 +8633,12 @@ export type WorkflowTransition = {
   from?: Maybe<Scalars['String']['output']>;
   id?: Maybe<Scalars['ID']['output']>;
   label?: Maybe<Scalars['String']['output']>;
+  left?: Maybe<Scalars['Float']['output']>;
+  orientation?: Maybe<Scalars['String']['output']>;
   publish: Array<Scalars['JSON']['output']>;
+  targetHandles?: Maybe<Scalars['JSON']['output']>;
   to?: Maybe<Scalars['String']['output']>;
+  top?: Maybe<Scalars['Float']['output']>;
   when?: Maybe<Scalars['String']['output']>;
 };
 
@@ -7590,7 +8648,9 @@ export type WorkflowTransitionInput = {
   id?: InputMaybe<Scalars['ID']['input']>;
   label?: InputMaybe<Scalars['String']['input']>;
   left?: InputMaybe<Scalars['Float']['input']>;
+  orientation?: InputMaybe<Scalars['String']['input']>;
   publish?: InputMaybe<Array<InputMaybe<Scalars['JSON']['input']>>>;
+  targetHandles?: InputMaybe<Scalars['JSON']['input']>;
   to?: InputMaybe<Scalars['String']['input']>;
   top?: InputMaybe<Scalars['Float']['input']>;
   when?: InputMaybe<Scalars['String']['input']>;
@@ -7677,6 +8737,41 @@ export type String_Comparison_Exp = {
   _substr?: InputMaybe<Scalars['String']['input']>;
 };
 
+export type ConversationFragment = { __typename?: 'Conversation', id: string, title?: string | null, type: ConversationType, orgId: string, userId: string, metadata?: any | null, createdAt: string, updatedAt: string };
+
+export type ConversationMessageFragment = { __typename?: 'ConversationMessage', id: string, conversationId: string, role: ConversationRole, content: string, metadata?: any | null, userId?: string | null, createdAt: string, updatedAt: string };
+
+export type GetConversationsQueryVariables = Exact<{
+  where?: InputMaybe<ConversationWhereInput>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+  order?: InputMaybe<Array<InputMaybe<Array<Scalars['String']['input']> | Scalars['String']['input']>> | InputMaybe<Array<Scalars['String']['input']> | Scalars['String']['input']>>;
+}>;
+
+
+export type GetConversationsQuery = { __typename?: 'Query', conversations: Array<{ __typename?: 'Conversation', id: string, title?: string | null, type: ConversationType, orgId: string, userId: string, metadata?: any | null, createdAt: string, updatedAt: string, firstUserMessage?: { __typename?: 'ConversationMessagePreview', content: string, role: ConversationRole, createdAt: string } | null }> };
+
+export type GetConversationQueryVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type GetConversationQuery = { __typename?: 'Query', conversation?: { __typename?: 'Conversation', id: string, title?: string | null, type: ConversationType, orgId: string, userId: string, metadata?: any | null, createdAt: string, updatedAt: string, messages: Array<{ __typename?: 'ConversationMessage', id: string, conversationId: string, role: ConversationRole, content: string, metadata?: any | null, userId?: string | null, createdAt: string, updatedAt: string }> } | null };
+
+export type DeleteConversationMutationVariables = Exact<{
+  id: Scalars['ID']['input'];
+}>;
+
+
+export type DeleteConversationMutation = { __typename?: 'Mutation', deleteConversation: string };
+
+export type CreateConversationMessageVoteMutationVariables = Exact<{
+  vote: ConversationMessageVoteInput;
+}>;
+
+
+export type CreateConversationMessageVoteMutation = { __typename?: 'Mutation', createConversationMessageVote: { __typename?: 'ConversationMessageVote', id: string, vote: VoteType, reason?: VoteReason | null, comment?: string | null, conversationMessageId: string } };
+
 export type OrgFragment = { __typename?: 'Organization', id?: string | null, name: string };
 
 export type TemplateFragment = { __typename?: 'Template', id: string, name: string, description?: string | null, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null };
@@ -7743,6 +8838,30 @@ export type UserQueryVariables = Exact<{ [key: string]: never; }>;
 
 export type UserQuery = { __typename?: 'Query', user?: { __typename?: 'User', createdAt?: string | null, id?: string | null, isApiUser?: boolean | null, isTokenUser?: boolean | null, isSuperuser?: boolean | null, isTestUser?: boolean | null, orgId?: string | null, roleIds: Array<string>, roles?: Array<any | null> | null, sub?: string | null, username?: string | null, parentUserId?: string | null, parentUsername?: string | null, organization?: { __typename?: 'Organization', id?: string | null, name: string } | null, allManagedOrgs: Array<{ __typename?: 'Organization', id?: string | null, name: string }> } | null };
 
+export const ConversationFragmentDoc = gql`
+    fragment conversation on Conversation {
+  id
+  title
+  type
+  orgId
+  userId
+  metadata
+  createdAt
+  updatedAt
+}
+    `;
+export const ConversationMessageFragmentDoc = gql`
+    fragment conversationMessage on ConversationMessage {
+  id
+  conversationId
+  role
+  content
+  metadata
+  userId
+  createdAt
+  updatedAt
+}
+    `;
 export const OrgFragmentDoc = gql`
     fragment org on Organization {
   id
@@ -7809,6 +8928,45 @@ export const UserFragmentDoc = gql`
   username
   parentUserId
   parentUsername
+}
+    `;
+export const GetConversationsDocument = gql`
+    query getConversations($where: ConversationWhereInput, $limit: Int, $offset: Int, $order: [[String!]]) {
+  conversations(where: $where, limit: $limit, offset: $offset, order: $order) {
+    ...conversation
+    firstUserMessage {
+      content
+      role
+      createdAt
+    }
+  }
+}
+    ${ConversationFragmentDoc}`;
+export const GetConversationDocument = gql`
+    query getConversation($id: ID!) {
+  conversation(id: $id) {
+    ...conversation
+    messages {
+      ...conversationMessage
+    }
+  }
+}
+    ${ConversationFragmentDoc}
+${ConversationMessageFragmentDoc}`;
+export const DeleteConversationDocument = gql`
+    mutation deleteConversation($id: ID!) {
+  deleteConversation(id: $id)
+}
+    `;
+export const CreateConversationMessageVoteDocument = gql`
+    mutation createConversationMessageVote($vote: ConversationMessageVoteInput!) {
+  createConversationMessageVote(vote: $vote) {
+    id
+    vote
+    reason
+    comment
+    conversationMessageId
+  }
 }
     `;
 export const ListTemplatesDocument = gql`
@@ -7880,6 +9038,18 @@ const defaultWrapper: SdkFunctionWrapper = (action, _operationName, _operationTy
 
 export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = defaultWrapper) {
   return {
+    getConversations(variables?: GetConversationsQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<GetConversationsQuery> {
+      return withWrapper((wrappedRequestHeaders) => client.request<GetConversationsQuery>({ document: GetConversationsDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'getConversations', 'query', variables);
+    },
+    getConversation(variables: GetConversationQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<GetConversationQuery> {
+      return withWrapper((wrappedRequestHeaders) => client.request<GetConversationQuery>({ document: GetConversationDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'getConversation', 'query', variables);
+    },
+    deleteConversation(variables: DeleteConversationMutationVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<DeleteConversationMutation> {
+      return withWrapper((wrappedRequestHeaders) => client.request<DeleteConversationMutation>({ document: DeleteConversationDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'deleteConversation', 'mutation', variables);
+    },
+    createConversationMessageVote(variables: CreateConversationMessageVoteMutationVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<CreateConversationMessageVoteMutation> {
+      return withWrapper((wrappedRequestHeaders) => client.request<CreateConversationMessageVoteMutation>({ document: CreateConversationMessageVoteDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'createConversationMessageVote', 'mutation', variables);
+    },
     listTemplates(variables: ListTemplatesQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<ListTemplatesQuery> {
       return withWrapper((wrappedRequestHeaders) => client.request<ListTemplatesQuery>({ document: ListTemplatesDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'listTemplates', 'query', variables);
     },
