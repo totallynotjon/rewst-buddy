@@ -6,7 +6,7 @@ export class ClearSessions extends GenericCommand {
 	commandName = 'ClearSessions';
 
 	async execute(...args: unknown[]): Promise<void> {
-		SessionManager.clearProfiles();
+		await SessionManager.clearProfiles();
 		log.notifyInfo('Cleared saved sessions');
 	}
 }

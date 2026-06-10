@@ -19,9 +19,9 @@ export const Server = new (class _ implements vscode.Disposable {
 			}),
 		);
 	}
-	async init(): Promise<_> {
-		// Start server if enabled
-		await this.startIfEnabled();
+	init(): _ {
+		// Start server in background if enabled
+		this.startIfEnabled().catch(err => log.error('Server.init: failed to start', err));
 		return this;
 	}
 
@@ -121,9 +121,26 @@ export const Server = new (class _ implements vscode.Disposable {
 			return;
 		}
 
-		let rawBody = '';
-		req.on('data', chunk => (rawBody += chunk));
-		req.on('end', () => this.processRequest(rawBody, res));
+		const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+		const chunks: Buffer[] = [];
+		let totalBytes = 0;
+		let rejected = false;
+		req.on('data', (chunk: Buffer) => {
+			if (rejected) return;
+			totalBytes += chunk.length;
+			if (totalBytes > MAX_BODY_BYTES) {
+				rejected = true;
+				log.warn('Server.handleRequest: request body too large', { totalBytes });
+				this.sendResponse(res, 413, { success: false, error: 'Request body too large' });
+				req.destroy();
+				return;
+			}
+			chunks.push(chunk);
+		});
+		req.on('end', () => {
+			if (rejected) return;
+			this.processRequest(Buffer.concat(chunks).toString('utf-8'), res);
+		});
 		req.on('error', err => {
 			log.error('Server.handleRequest: request error', err);
 			this.sendResponse(res, 500, { success: false, error: 'Request error' });

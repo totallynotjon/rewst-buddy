@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.39.4] - 2026-06-10
+
+### Changed
+
+- **Instant Activation** - Commands, hover/definition providers, and the status bar now register immediately at startup; session loading and the local HTTP server start in the background. Activation no longer blocks on the Rewst API (previously a slow connection stalled the whole extension)
+- **Scalability for Large MSPs** - Org-to-session lookups now use an O(1) index instead of scanning all managed orgs on every save/sync; link lookups by org use a dedicated index; folder fetch diffing is Set-based. Startup stale-link checks and template reference scans now run in bounded chunks instead of unbounded parallel I/O
+- **Batched Persistence** - Link changes are persisted with a short debounce instead of rewriting stored state on every individual change; bulk operations write once
+
+### Fixed
+
+- **Persistence Race** - Batch link operations (folder fetch, renames, pruning) now resolve only after state is actually persisted, preventing rare stale reads after bulk changes
+- **Stale Session Index on Re-auth** - Re-authenticating the same user no longer leaves orgs dropped from the new profile pointing at the old session
+- **Browser Extension Race at Startup** - "Open template" requests from the browser extension during the first seconds after VS Code starts now wait for sessions to load instead of failing
+- **HTTP Server Hardening** - Local server now rejects request bodies over 1 MB (413) instead of buffering unbounded data
+
 ## [0.39.3] - 2026-04-03
 
 ### Added

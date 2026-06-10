@@ -27,11 +27,22 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.window.registerWebviewViewProvider(RewstViewProvider.viewType, rewstViewProvider),
 	);
 
-	// Register managers (self-register for their respective VS Code events)
-	// Note: SessionManager must init before SyncManager so sessions are loaded first
+	// Register commands and language providers first so they are available
+	// immediately; session loading and the HTTP server start in the background.
+	CommandInitiater.registerCommands();
+
+	// Register DefinitionProvider for template({{guid}}) navigation
+	context.subscriptions.push(
+		vscode.languages.registerDefinitionProvider({ scheme: 'file' }, new TemplateDefinitionProvider()),
+		vscode.languages.registerHoverProvider({ scheme: 'file' }, new TemplateHoverProvider()),
+	);
+
+	// Register managers (self-register for their respective VS Code events).
+	// SessionManager.init() kicks off session loading in the background;
+	// consumers react via onSessionChange when sessions arrive.
 	context.subscriptions.push(LinkManager.init());
 	context.subscriptions.push(SyncOnSaveManager.init());
-	context.subscriptions.push(await SessionManager.init());
+	context.subscriptions.push(SessionManager.init());
 	context.subscriptions.push(TemplateMetadataStore.init());
 	context.subscriptions.push(SyncManager.init());
 	// Register BundleTreeDataProvider before init so it catches the first event
@@ -41,16 +52,8 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.window.registerTreeDataProvider('rewst-buddy.bundleTree', bundleTreeProvider),
 	);
 	context.subscriptions.push(TemplateBundleManager.init());
-	context.subscriptions.push(await Server.init());
+	context.subscriptions.push(Server.init());
 	context.subscriptions.push(new StatusBar());
-
-	CommandInitiater.registerCommands();
-
-	// Register DefinitionProvider for template({{guid}}) navigation
-	context.subscriptions.push(
-		vscode.languages.registerDefinitionProvider({ scheme: 'file' }, new TemplateDefinitionProvider()),
-		vscode.languages.registerHoverProvider({ scheme: 'file' }, new TemplateHoverProvider()),
-	);
 
 	log.info(`Finished activation of extension ${extPrefix}`);
 }

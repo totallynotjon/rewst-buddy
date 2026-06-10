@@ -17,6 +17,9 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 	sessionMap: Map<string, Session> = new Map<string, Session>();
 	private knownProfileOrgIndex = new Map<string, SessionProfile>();
+	private orgSessionIndex = new Map<string, Session>();
+	private knownProfilesCache: SessionProfile[] | undefined;
+	private suppressProfileSaves = false;
 
 	private readonly sessionChangeEmitter = new vscode.EventEmitter<SessionChangeEvent>();
 	private loaded = false;
@@ -55,9 +58,10 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		return this.anyActiveSessions;
 	}
 
-	async init(): Promise<_> {
+	init(): _ {
 		this.setAnyActiveSessions(false);
-		await SessionManager.loadSessions();
+		this.rebuildKnownProfileOrgIndex();
+		this.loadSessions().catch(err => log.error('SessionManager.init: background session load failed', err));
 		return this;
 	}
 
@@ -197,8 +201,8 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 	private async newProfiles(): Promise<SessionProfile[]> {
 		const profiles = this.getSavedProfiles();
-		const existing = this.getActiveSessions().map(s => s.profile.user.id ?? '');
-		return profiles.filter(f => !existing.includes(f.user.id ?? ''));
+		const existing = new Set(this.getActiveSessions().map(s => s.profile.user.id ?? ''));
+		return profiles.filter(f => !existing.has(f.user.id ?? ''));
 	}
 
 	async loadSessions(): Promise<Session[]> {
@@ -223,17 +227,23 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			const newProfiles = await this.newProfiles();
 			log.debug('loadSessions: profiles to load', newProfiles.length);
 
-			const resultsPromises = newProfiles.map(async profile => {
-				log.trace('loadSessions: loading profile', { label: profile.label, orgId: profile.org.id });
-				try {
-					return await this.createSession(await Session.getCookies(profile.org.id));
-				} catch (err) {
-					log.error(`loadSessions: failed to create session for ${profile.org.id}: ${err}`);
-					return undefined;
-				}
-			});
+			// Defer profile persistence to the single saveProfiles() below
+			this.suppressProfileSaves = true;
+			try {
+				const resultsPromises = newProfiles.map(async profile => {
+					log.trace('loadSessions: loading profile', { label: profile.label, orgId: profile.org.id });
+					try {
+						return await this.createSession(await Session.getCookies(profile.org.id));
+					} catch (err) {
+						log.error(`loadSessions: failed to create session for ${profile.org.id}: ${err}`);
+						return undefined;
+					}
+				});
 
-			await Promise.all(resultsPromises);
+				await Promise.all(resultsPromises);
+			} finally {
+				this.suppressProfileSaves = false;
+			}
 			this.loaded = true;
 
 			await this.saveProfiles();
@@ -250,7 +260,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	private async saveProfiles(): Promise<void> {
-		context.globalState.update(
+		await context.globalState.update(
 			'SessionProfiles',
 			this.getActiveSessions().map(s => s.profile),
 		);
@@ -258,7 +268,10 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	public getAllKnownProfiles(): SessionProfile[] {
-		return context.globalState.get<SessionProfile[]>('RewstAllKnownProfiles', []);
+		if (this.knownProfilesCache === undefined) {
+			this.knownProfilesCache = context.globalState.get<SessionProfile[]>('RewstAllKnownProfiles', []);
+		}
+		return this.knownProfilesCache;
 	}
 
 	private rebuildKnownProfileOrgIndex(): void {
@@ -277,14 +290,14 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	private async saveKnownProfiles(): Promise<void> {
 		const profileMap = new Map<string, SessionProfile>();
 
-		context.globalState
-			.get<SessionProfile[]>('RewstAllKnownProfiles', [])
+		this.getAllKnownProfiles()
 			.concat(this.getSavedProfiles())
 			.forEach(profile => profileMap.set(profile.user.id ?? '', profile));
 
 		const profiles = Array.from(profileMap.values());
 
-		context.globalState.update('RewstAllKnownProfiles', profiles);
+		this.knownProfilesCache = profiles;
+		await context.globalState.update('RewstAllKnownProfiles', profiles);
 		this.rebuildKnownProfileOrgIndex();
 
 		this.sessionChangeEmitter.fire({
@@ -303,19 +316,41 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 		this.setAnyActiveSessions(true);
 
+		const previous = this.sessionMap.get(session.profile.user.id);
+		if (previous && previous !== session) {
+			this.unindexSession(previous);
+		}
 		this.sessionMap.set(session.profile.user.id, session);
-		await this.saveProfiles();
+		this.indexSession(session);
+
+		if (!this.suppressProfileSaves) {
+			await this.saveProfiles();
+		}
 		log.trace('saveSession: saved', { sessionMapSize: this.sessionMap.size });
+	}
+
+	private indexSession(session: Session): void {
+		this.orgSessionIndex.set(session.profile.org.id, session);
+		for (const org of session.profile.allManagedOrgs) {
+			this.orgSessionIndex.set(org.id, session);
+		}
+	}
+
+	private unindexSession(session: Session): void {
+		for (const [orgId, indexed] of this.orgSessionIndex) {
+			if (indexed === session) this.orgSessionIndex.delete(orgId);
+		}
 	}
 
 	private getSavedProfiles(): SessionProfile[] {
 		return context.globalState.get<SessionProfile[]>('SessionProfiles') ?? [];
 	}
 
-	public clearProfiles() {
+	public async clearProfiles(): Promise<void> {
 		log.debug('clearProfiles: clearing all sessions');
-		context.globalState.update('SessionProfiles', []);
+		await context.globalState.update('SessionProfiles', []);
 		this.sessionMap.clear();
+		this.orgSessionIndex.clear();
 		this.setAnyActiveSessions(false);
 
 		this.sessionChangeEmitter.fire({
@@ -329,12 +364,10 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 	public getSessionForOrg(orgId: string): Session {
 		log.trace('getSessionForOrg: looking for', orgId);
-		const sessions = this.getActiveSessions();
-		for (const session of sessions) {
-			if (session.profile.allManagedOrgs.some(org => org.id === orgId)) {
-				log.trace('getSessionForOrg: found', { label: session.profile.label });
-				return session;
-			}
+		const session = this.orgSessionIndex.get(orgId);
+		if (session) {
+			log.trace('getSessionForOrg: found', { label: session.profile.label });
+			return session;
 		}
 		throw log.error(`getSessionForOrg: no session found for ${orgId}`);
 	}
@@ -365,10 +398,12 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	 */
 	_setSessionsForTesting(sessions: Session[]): void {
 		this.sessionMap.clear();
+		this.orgSessionIndex.clear();
 		sessions.forEach(session => {
 			const userId = session.profile.user.id;
 			if (userId) {
 				this.sessionMap.set(userId, session);
+				this.indexSession(session);
 			}
 		});
 		this.setAnyActiveSessions(sessions.length > 0);
@@ -384,6 +419,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	 * FOR TESTING ONLY: Set known profiles without active sessions
 	 */
 	_setKnownProfilesForTesting(profiles: SessionProfile[]): void {
+		this.knownProfilesCache = profiles;
 		context.globalState.update('RewstAllKnownProfiles', profiles);
 		this.rebuildKnownProfileOrgIndex();
 	}
@@ -394,6 +430,9 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	_resetForTesting(): void {
 		this.sessionMap.clear();
 		this.knownProfileOrgIndex.clear();
+		this.orgSessionIndex.clear();
+		this.knownProfilesCache = undefined;
+		this.suppressProfileSaves = false;
 		this.loaded = false;
 		this.loading = false;
 		this.setAnyActiveSessions(false);

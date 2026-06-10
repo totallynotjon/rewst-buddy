@@ -65,20 +65,23 @@ export const TemplateBundleManager = new (class _ implements vscode.Disposable {
 			// Backfill links that were persisted before referencedTemplateIds existed
 			const unscanned = allLinks.filter(l => l.referencedTemplateIds === undefined);
 			if (unscanned.length > 0) {
-				await Promise.all(
-					unscanned.map(async link => {
-						try {
-							const uri = vscode.Uri.parse(link.uriString);
-							const content = await vscode.workspace.fs.readFile(uri);
-							link.referencedTemplateIds = findAllTemplateReferences(
-								Buffer.from(content).toString('utf-8'),
-							);
-						} catch {
-							link.referencedTemplateIds = [];
-						}
-					}),
-				);
-				await LinkManager.save();
+				const CHUNK_SIZE = 20;
+				for (let i = 0; i < unscanned.length; i += CHUNK_SIZE) {
+					await Promise.all(
+						unscanned.slice(i, i + CHUNK_SIZE).map(async link => {
+							try {
+								const uri = vscode.Uri.parse(link.uriString);
+								const content = await vscode.workspace.fs.readFile(uri);
+								link.referencedTemplateIds = findAllTemplateReferences(
+									Buffer.from(content).toString('utf-8'),
+								);
+							} catch {
+								link.referencedTemplateIds = [];
+							}
+						}),
+					);
+				}
+				await LinkManager.flush();
 			}
 
 			if (allLinks.length === 0) {

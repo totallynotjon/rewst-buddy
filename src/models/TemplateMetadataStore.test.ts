@@ -386,7 +386,7 @@ suite('Unit: TemplateMetadataStore', () => {
 			await new Promise(resolve => setTimeout(resolve, 50));
 
 			// Clear sessions before deferred timer fires — increments generation
-			SessionManager.clearProfiles();
+			await SessionManager.clearProfiles();
 
 			// Wait for deferred timer to fire
 			await new Promise(resolve => setTimeout(resolve, 200));
@@ -457,7 +457,7 @@ suite('Unit: TemplateMetadataStore', () => {
 			await new Promise(resolve => setTimeout(resolve, 100));
 			assert.ok(TemplateMetadataStore.getTemplateMetadata('template-1'), 'Template should be loaded');
 
-			SessionManager.clearProfiles();
+			await SessionManager.clearProfiles();
 
 			assert.strictEqual(
 				TemplateMetadataStore.getTemplateMetadata('template-1'),
