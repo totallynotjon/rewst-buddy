@@ -34,6 +34,9 @@ Analyze code changes and work with the user to identify and resolve bugs before 
 **Phase 2: Documentation Updates (After Bug Resolution)**
 Update version numbers, changelogs, and README files based on the analyzed changes.
 
+**Phase 3: GitHub Release (After Documentation Committed and Pushed)**
+Create a GitHub release tagged at the new version, using the changelog entry as release notes.
+
 # Phase 1: Code Review and Bug Detection
 
 ## Step 1: Analyze Code Changes
@@ -225,8 +228,46 @@ Release vX.X.X: [Brief description of key changes]
 
 ```
 
-Please review these updates and let me know if you'd like any changes.
+Please review these updates. Once you've applied them, committed the release, and pushed to the target branch, let me know and I'll create the GitHub release (Phase 3).
 ```
+
+# Phase 3: GitHub Release
+
+Only proceed after the user confirms the release commit (version bump + changelog + any README updates) has been committed **and pushed** to the target branch on the remote.
+
+## Step 1: Verify Prerequisites
+
+Before creating the release, confirm:
+
+- `gh` is authenticated: `gh auth status`
+- The release commit is pushed: `git status` shows nothing to push, and `git log origin/<target_branch>..HEAD` is empty
+- A release for this tag does not already exist: `gh release view vX.X.X` should fail (not found)
+
+If the commit is not yet pushed, stop and ask the user to push first — `gh release create` tags the latest commit on the remote, so an unpushed commit would tag the wrong revision.
+
+## Step 2: Extract Release Notes
+
+Read the new version's section from the changelog file (everything under `## [X.X.X] - YYYY-MM-DD` up to the next `## [` heading) and write just that body to a temp file (e.g. `/tmp/release-notes-vX.X.X.md`). This becomes the release body via `--notes-file`.
+
+## Step 3: Confirm Before Publishing
+
+Show the user the exact command and the extracted notes. **This creates a public GitHub release — wait for explicit confirmation before running it.**
+
+- Tag: `vX.X.X` (match the existing `v`-prefixed tag convention)
+- Title: `vX.X.X`
+- Body: the changelog section from Step 2
+
+## Step 4: Create the Release
+
+On confirmation, run:
+
+```bash
+gh release create vX.X.X \
+  --title "vX.X.X" \
+  --notes-file /tmp/release-notes-vX.X.X.md
+```
+
+Report the release URL on success. If the command fails, surface the exact error and stop.
 
 # Analysis Process
 
