@@ -367,8 +367,8 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 		const { org, uriString } = folderLink;
 
-		const ids = LinkManager.getOrgTemplateLinks(org).map(l => l.template.id);
-		log.debug('fetchFolder: existing template count', ids.length);
+		const ids = new Set(LinkManager.getOrgTemplateLinks(org).map(l => l.template.id));
+		log.debug('fetchFolder: existing template count', ids.size);
 
 		const session = SessionManager.getSessionForOrg(org.id);
 
@@ -379,7 +379,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		const templates = response.templates;
 		log.debug('fetchFolder: remote template count', templates.length);
 
-		const missingTemplates = templates.filter(t => !ids.includes(t.id));
+		const missingTemplates = templates.filter(t => !ids.has(t.id));
 		log.debug('fetchFolder: missing templates to fetch', missingTemplates.length);
 
 		if (missingTemplates.length === 0) {

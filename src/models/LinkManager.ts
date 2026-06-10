@@ -5,10 +5,14 @@ import vscode, { Uri } from 'vscode';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { FolderLink, Link, LinkType, Org, TemplateLink } from './types';
 
+const PERSIST_DEBOUNCE_MS = 300;
+const PRUNE_STAT_CHUNK_SIZE = 50;
+
 export const LinkManager = new (class _ implements vscode.Disposable {
 	readonly stateKey = 'RewstTemplateLinks';
 	linkMap = new Map<string, Link>();
 	private templateIdIndex = new Map<string, TemplateLink[]>();
+	private orgIdIndex = new Map<string, Set<string>>();
 	loaded = false;
 
 	private readonly linksSavedEmitter = new vscode.EventEmitter<LinksSavedEvent>();
@@ -17,6 +21,8 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	private disposables: vscode.Disposable[] = [];
 
 	private batchMode = false;
+	private persistTimer: NodeJS.Timeout | undefined;
+	private persistInFlight: Promise<void> | undefined;
 
 	init(): _ {
 		this.disposables.push(vscode.workspace.onDidRenameFiles(e => this.handleRename(e)));
@@ -25,6 +31,13 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		// Issue any pending persist immediately; VS Code flushes queued
+		// globalState writes on shutdown, but a debounce timer would be lost.
+		if (this.persistTimer) {
+			clearTimeout(this.persistTimer);
+			this.persistTimer = undefined;
+			this.save();
+		}
 		this.disposables.forEach(d => d.dispose());
 		this.linksSavedEmitter.dispose();
 	}
@@ -34,8 +47,14 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	 * This clears all links and indexes without persisting.
 	 */
 	_resetForTesting(): void {
+		if (this.persistTimer) {
+			clearTimeout(this.persistTimer);
+			this.persistTimer = undefined;
+		}
+		this.persistInFlight = undefined;
 		this.linkMap.clear();
 		this.templateIdIndex.clear();
+		this.orgIdIndex.clear();
 		this.loaded = true;
 		this.batchMode = false;
 	}
@@ -80,7 +99,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		} catch (error) {
 			log.error('LinkManager.handleRename: failed', error);
 		} finally {
-			this.endBatch();
+			await this.endBatch();
 		}
 	}
 
@@ -100,31 +119,35 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		} catch (error) {
 			log.error('LinkManager.handleDelete: failed', error);
 		} finally {
-			this.endBatch();
+			this.endBatch().catch(err => log.error('LinkManager.handleDelete: persist failed', err));
 		}
 	}
 
 	private async pruneStaleLinks(): Promise<void> {
 		const entries = Array.from(this.linkMap.keys());
-		const results = await Promise.allSettled(
-			entries.map(async uri => {
-				try {
-					await vscode.workspace.fs.stat(vscode.Uri.parse(uri));
-					return true;
-				} catch (error) {
-					if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
-						return false;
-					}
-					return true; // Keep link on ambiguous errors (permissions, network)
-				}
-			}),
-		);
 
 		const stale: string[] = [];
-		for (let i = 0; i < entries.length; i++) {
-			const result = results[i];
-			if (result.status === 'fulfilled' && result.value === false) {
-				stale.push(entries[i]);
+		for (let i = 0; i < entries.length; i += PRUNE_STAT_CHUNK_SIZE) {
+			const chunk = entries.slice(i, i + PRUNE_STAT_CHUNK_SIZE);
+			const results = await Promise.allSettled(
+				chunk.map(async uri => {
+					try {
+						await vscode.workspace.fs.stat(vscode.Uri.parse(uri));
+						return true;
+					} catch (error) {
+						if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
+							return false;
+						}
+						return true; // Keep link on ambiguous errors (permissions, network)
+					}
+				}),
+			);
+
+			for (let j = 0; j < chunk.length; j++) {
+				const result = results[j];
+				if (result.status === 'fulfilled' && result.value === false) {
+					stale.push(chunk[j]);
+				}
 			}
 		}
 
@@ -140,16 +163,17 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 				}
 			}
 		} finally {
-			this.endBatch();
+			await this.endBatch();
 		}
 	}
 
 	clearTemplateLinks(): _ {
 		log.debug('LinkManager.clearTemplateLinks: clearing all template links');
 		let cleared = 0;
-		for (const link of this.linkMap.values()) {
+		for (const [uriString, link] of this.linkMap) {
 			if (link.type === 'Template') {
-				this.linkMap.delete(link.uriString);
+				this.linkMap.delete(uriString);
+				this.removeFromOrgIndex(link.org.id, uriString);
 				cleared++;
 			}
 		}
@@ -165,6 +189,10 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		if (link?.type === 'Template') {
 			this.removeFromTemplateIndex(link as TemplateLink);
 		}
+		if (link) {
+			// Key off the parameter: moveLink mutates link.uriString before calling here
+			this.removeFromOrgIndex(link.org.id, uriString);
+		}
 		this.linkMap.delete(uriString);
 		this.fire();
 		return this;
@@ -176,8 +204,25 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		if (link.type === 'Template') {
 			this.addToTemplateIndex(link as TemplateLink);
 		}
+		this.addToOrgIndex(link);
 		this.fire();
 		return this;
+	}
+
+	private addToOrgIndex(link: Link): void {
+		let uris = this.orgIdIndex.get(link.org.id);
+		if (!uris) {
+			uris = new Set();
+			this.orgIdIndex.set(link.org.id, uris);
+		}
+		uris.add(link.uriString);
+	}
+
+	private removeFromOrgIndex(orgId: string, uriString: string): void {
+		const uris = this.orgIdIndex.get(orgId);
+		if (!uris) return;
+		uris.delete(uriString);
+		if (uris.size === 0) this.orgIdIndex.delete(orgId);
 	}
 
 	private addToTemplateIndex(link: TemplateLink): void {
@@ -190,7 +235,9 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 	private removeFromTemplateIndex(link: TemplateLink): void {
 		const existing = this.templateIdIndex.get(link.template.id);
 		if (existing) {
-			const filtered = existing.filter(l => l.uriString !== link.uriString);
+			// Filter by identity: moveLink mutates link.uriString before removal,
+			// so string comparison against the old key would miss the entry
+			const filtered = existing.filter(l => l !== link);
 			if (filtered.length === 0) {
 				this.templateIdIndex.delete(link.template.id);
 			} else {
@@ -237,6 +284,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		log.trace('LinkManager.endBatch: exiting batch mode');
 		this.batchMode = false;
 		this.fire();
+		await this.flush();
 		return this;
 	}
 
@@ -248,8 +296,40 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 			links: links,
 		});
 
-		this.updateLinksContext(links);
-		this.save();
+		this.schedulePersist();
+	}
+
+	private schedulePersist(): void {
+		if (this.persistTimer) clearTimeout(this.persistTimer);
+		this.persistTimer = setTimeout(() => {
+			this.persistTimer = undefined;
+			this.flush().catch(err => log.error('LinkManager: debounced persist failed', err));
+		}, PERSIST_DEBOUNCE_MS);
+	}
+
+	/**
+	 * Persist current state immediately, cancelling any pending debounce.
+	 * Concurrent calls are serialized behind the in-flight persist.
+	 */
+	async flush(): Promise<void> {
+		if (this.persistTimer) {
+			clearTimeout(this.persistTimer);
+			this.persistTimer = undefined;
+		}
+
+		const previous = this.persistInFlight ?? Promise.resolve();
+		const current = previous
+			.catch(() => undefined)
+			.then(async () => {
+				await this.updateLinksContext(Array.from(this.linkMap.values()));
+				await this.save();
+			});
+		this.persistInFlight = current;
+		try {
+			await current;
+		} finally {
+			if (this.persistInFlight === current) this.persistInFlight = undefined;
+		}
 	}
 
 	async save(): Promise<_> {
@@ -264,7 +344,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 			}
 			return link;
 		});
-		context.globalState.update(this.stateKey, links);
+		await context.globalState.update(this.stateKey, links);
 		return this;
 	}
 
@@ -290,6 +370,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		log.debug('LinkManager.loadLinks: found links', links.length);
 		this.linkMap.clear();
 		this.templateIdIndex.clear();
+		this.orgIdIndex.clear();
 
 		this.beginBatch();
 
@@ -307,7 +388,7 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 			this.addLink(link);
 		}
 
-		this.endBatch();
+		this.endBatch().catch(err => log.error('LinkManager.loadLinks: persist failed', err));
 
 		this.pruneStaleLinks().catch(err => log.error('LinkManager.pruneStaleLinks: failed', err));
 
@@ -352,8 +433,14 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	getOrgLinks(org: Org): Link[] {
 		this.loadIfNotAlready();
-		const links = Array.from(this.linkMap.values());
-		return links.filter(link => link.org.id === org.id);
+		const uris = this.orgIdIndex.get(org.id);
+		if (!uris) return [];
+		const links: Link[] = [];
+		for (const uri of uris) {
+			const link = this.linkMap.get(uri);
+			if (link) links.push(link);
+		}
+		return links;
 	}
 
 	getOrgTemplateLinks(org: Org): TemplateLink[] {

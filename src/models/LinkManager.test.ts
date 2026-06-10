@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
-import { LinkManager, TemplateLink, FolderLink } from '@models';
+import { LinkManager, TemplateLink, FolderLink, Link } from '@models';
 import { initTestEnvironment } from '@test';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -490,6 +490,124 @@ suite('Unit: LinkManager', () => {
 				subscription.dispose();
 				done();
 			});
+		});
+	});
+
+	suite('debounced persistence', () => {
+		const makeLink = (path: string, id: string): TemplateLink => ({
+			uriString: vscode.Uri.file(path).toString(),
+			org: { id: 'org-1', name: 'Test Org' },
+			type: 'Template',
+			template: { id, name: `Template ${id}`, updatedAt: '' } as any,
+			bodyHash: 'hash',
+		});
+
+		function getPersisted(): Link[] {
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const { context } = require('@global');
+			return context.globalState.get(LinkManager.stateKey) ?? [];
+		}
+
+		test('flush() persists all pending changes in one write', async () => {
+			LinkManager.addLink(makeLink('/test/d1.txt', 't1'));
+			LinkManager.addLink(makeLink('/test/d2.txt', 't2'));
+
+			await LinkManager.flush();
+
+			assert.strictEqual(getPersisted().length, 2);
+		});
+
+		test('endBatch() resolves only after state is persisted', async () => {
+			LinkManager.beginBatch();
+			LinkManager.addLink(makeLink('/test/b1.txt', 't1'));
+			LinkManager.addLink(makeLink('/test/b2.txt', 't2'));
+
+			await LinkManager.endBatch();
+
+			assert.strictEqual(getPersisted().length, 2);
+		});
+
+		test('flush() is idempotent', async () => {
+			LinkManager.addLink(makeLink('/test/i1.txt', 't1'));
+
+			await LinkManager.flush();
+			await LinkManager.flush();
+
+			assert.strictEqual(getPersisted().length, 1);
+		});
+
+		test('removeLink change is persisted on flush', async () => {
+			const link = makeLink('/test/r1.txt', 't1');
+			LinkManager.addLink(link);
+			await LinkManager.flush();
+			assert.strictEqual(getPersisted().length, 1);
+
+			LinkManager.removeLink(link.uriString);
+			await LinkManager.flush();
+			assert.strictEqual(getPersisted().length, 0);
+		});
+	});
+
+	suite('org index', () => {
+		const org1 = { id: 'org-1', name: 'Org One' };
+		const org2 = { id: 'org-2', name: 'Org Two' };
+
+		const makeLink = (path: string, id: string, org = org1): TemplateLink => ({
+			uriString: vscode.Uri.file(path).toString(),
+			org,
+			type: 'Template',
+			template: { id, name: `Template ${id}`, updatedAt: '' } as any,
+			bodyHash: 'hash',
+		});
+
+		test('getOrgLinks reflects removals', () => {
+			const link1 = makeLink('/test/o1.txt', 't1');
+			const link2 = makeLink('/test/o2.txt', 't2');
+			LinkManager.addLink(link1);
+			LinkManager.addLink(link2);
+			assert.strictEqual(LinkManager.getOrgLinks(org1).length, 2);
+
+			LinkManager.removeLink(link1.uriString);
+			const remaining = LinkManager.getOrgLinks(org1);
+			assert.strictEqual(remaining.length, 1);
+			assert.strictEqual(remaining[0].uriString, link2.uriString);
+		});
+
+		test('getOrgLinks returns empty for unknown org', () => {
+			LinkManager.addLink(makeLink('/test/o1.txt', 't1'));
+			assert.strictEqual(LinkManager.getOrgLinks({ id: 'nope', name: 'Nope' }).length, 0);
+		});
+
+		test('getOrgLinks survives moveLink rename (uriString mutated before removal)', async () => {
+			const oldUri = vscode.Uri.file('/test/old-name.txt').toString();
+			const newUri = vscode.Uri.file('/test/new-name.txt').toString();
+			LinkManager.addLink(makeLink('/test/old-name.txt', 't1'));
+
+			LinkManager.beginBatch();
+			await LinkManager.moveLink(oldUri, newUri);
+			await LinkManager.endBatch();
+
+			const links = LinkManager.getOrgLinks(org1);
+			assert.strictEqual(links.length, 1, 'exactly one link should remain after rename');
+			assert.strictEqual(links[0].uriString, newUri);
+		});
+
+		test('clearTemplateLinks removes template links from org index but keeps folders', () => {
+			LinkManager.addLink(makeLink('/test/t1.txt', 't1'));
+			LinkManager.addLink(makeLink('/test/t2.txt', 't2', org2));
+			const folderLink: FolderLink = {
+				uriString: vscode.Uri.file('/test/folder').toString(),
+				org: org1,
+				type: 'Folder',
+			};
+			LinkManager.addLink(folderLink);
+
+			LinkManager.clearTemplateLinks();
+
+			const org1Links = LinkManager.getOrgLinks(org1);
+			assert.strictEqual(org1Links.length, 1);
+			assert.strictEqual(org1Links[0].type, 'Folder');
+			assert.strictEqual(LinkManager.getOrgLinks(org2).length, 0);
 		});
 	});
 });

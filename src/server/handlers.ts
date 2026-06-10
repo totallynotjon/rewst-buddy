@@ -104,6 +104,10 @@ export async function handleOpenTemplate(
 	log.info('handleOpenTemplate: received request');
 
 	try {
+		// Sessions may still be loading in the background after activation;
+		// loadSessions is idempotent and returns immediately once loaded.
+		await SessionManager.loadSessions();
+
 		// Get session for org (needed for both paths)
 		const session = SessionManager.getSessionForOrg(request.orgId);
 
