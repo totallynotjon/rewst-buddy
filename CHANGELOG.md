@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.40.1] - 2026-06-10
+
+### Fixed
+
+- **Prompt Injection via Attached Files** - File content attached to `@rewst` questions is now wrapped in fences longer than any backtick run it contains, so files containing ` ``` ` can no longer break out of their context block and inject instructions into the AI conversation
+- **Truncated Apply Suggestions** - Code block extraction now follows CommonMark fence rules (closing fence must match the opening length), so answers containing nested fences no longer produce silently truncated content in the Apply-to-file buttons
+
 ## [0.40.0] - 2026-06-10
 
 ### Added

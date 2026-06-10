@@ -40,4 +40,21 @@ suite('Unit: extractCodeBlocks', () => {
 	test('does not treat inline code as a block', () => {
 		assert.deepStrictEqual(extractCodeBlocks('Use `template(id)` inline.'), []);
 	});
+
+	test('preserves inner triple backticks inside a four-backtick fence', () => {
+		const md = '````md\nUse a fence:\n```\ncode\n```\nDone.\n````';
+		assert.deepStrictEqual(extractCodeBlocks(md), [
+			{ language: 'md', content: 'Use a fence:\n```\ncode\n```\nDone.' },
+		]);
+	});
+
+	test('accepts a closing fence longer than the opening fence', () => {
+		const md = '```\ncontent\n`````';
+		assert.deepStrictEqual(extractCodeBlocks(md), [{ language: undefined, content: 'content' }]);
+	});
+
+	test('requires fences at line start', () => {
+		const md = 'inline ```js\nnot a block\n```';
+		assert.deepStrictEqual(extractCodeBlocks(md), []);
+	});
 });

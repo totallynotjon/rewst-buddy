@@ -98,12 +98,20 @@ export function firstReferencedFileUri(references: readonly vscode.ChatPromptRef
 	return undefined;
 }
 
+// Fence longer than any backtick run in the content, so embedded ``` can't
+// close the block early (prompt-injection vector via crafted workspace files).
+function fenceFor(content: string): string {
+	const longestRun = content.match(/`+/g)?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
+	return '`'.repeat(Math.max(3, longestRun + 1));
+}
+
 export function formatPromptWithReferences(prompt: string, references: ResolvedReference[]): string {
 	if (references.length === 0) return prompt;
 
 	const blocks = references.map(ref => {
 		const note = ref.truncated ? ' (truncated)' : '';
-		return `### ${ref.label}${note}\n\`\`\`\n${ref.content}\n\`\`\``;
+		const fence = fenceFor(ref.content);
+		return `### ${ref.label}${note}\n${fence}\n${ref.content}\n${fence}`;
 	});
 
 	return `${prompt}\n\nThe user attached the following context from their editor:\n\n${blocks.join('\n\n')}`;

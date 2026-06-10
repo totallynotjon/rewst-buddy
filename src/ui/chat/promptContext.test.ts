@@ -121,5 +121,13 @@ suite('Unit: promptContext', () => {
 			assert.match(result, /### a\.jinja \(lines 1-3\)\n```\n\{\{ foo \}\}\n```/);
 			assert.match(result, /### b\.jinja \(truncated\)\n```\nbody\n```/);
 		});
+
+		test('uses a fence longer than any backtick run in the content', () => {
+			const content = 'docs:\n```\nfenced\n```\nand ````raw````';
+			const result = formatPromptWithReferences('q', [{ label: 'c.md', content, truncated: false }]);
+			const fence = '`'.repeat(5);
+			assert.ok(result.includes(`### c.md\n${fence}\ndocs:`), 'opening fence should be 5 backticks');
+			assert.ok(result.endsWith(`\n${fence}`), 'closing fence should be 5 backticks');
+		});
 	});
 });
