@@ -117,6 +117,10 @@ Off by default because they let a remote assistant direct activity on your machi
 - **Web** (`rewst-buddy.ai.enableWebTools`) — `web_search` and `fetch_url` for public pages. Only http(s) is allowed; private/loopback hosts are always blocked
 - **Commands** (`rewst-buddy.ai.enableCommandTool`) — `run_command` runs shell commands in your workspace root (60s timeout, capped output). When enabled, **every command pops an approval dialog showing exactly what will run**; decline and it won't retry. `rewst-buddy.ai.autoApproveCommands` skips the prompt — leave it off unless you fully trust what the assistant may propose
 
+### Approving Rewst actions
+
+Some of RoboRewsty's own Rewst-side actions require your approval before they run. When one comes up, the chat shows **what** it wants to run (the tool name and its arguments) with inline **Approve** and **Always allow** buttons — no more leaving VS Code to approve in the Rewst web app. **Approve** runs it once and the answer continues; **Always allow "<tool>"** approves it now and remembers your choice in your Rewst preferences so that tool stops asking. The Rewst web app stays available as a fallback.
+
 ### Context and answers
 
 - **Attached context** — files attached via the paperclip or `#file`, and editor selections, are included in the question (size-capped)

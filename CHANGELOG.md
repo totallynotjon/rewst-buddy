@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Approve RoboRewsty tool requests in VS Code** - When RoboRewsty needs approval to run one of its Rewst-side actions, the `@rewst` chat now shows _what_ it wants to run (tool name + arguments) with inline **Approve** / **Always allow** buttons, instead of the old dead-end "approve in the Rewst web app" message. Approving allow-lists the tool and resumes the request so the answer continues; **Always allow** keeps it on your Rewst preferences (via `addAllowedTool`) while a one-time **Approve** removes it again afterward. The web app stays available as a fallback
+
 ## [0.40.2] - 2026-06-10
 
 ### Added

@@ -8,17 +8,18 @@ import { ConversationEventMapper, type ConversationEvent, type RawConversationPa
 
 const DEFAULT_INACTIVITY_TIMEOUT_MS = 120_000;
 
-// Live-verified document (docs/dev/rewst-ai-api.md). The web app also sends a
-// $resumeRequestId variable; reconnect support is deferred until that form is
-// probe-verified (scripts/probe-ai.mjs).
+// Live-verified document (docs/dev/rewst-ai-api.md). $resumeRequestId is the
+// web app's reattach/continue handle — passed to resume a paused request (e.g.
+// after an approval_required); null for a fresh turn.
 const CONVERSATION_MESSAGE_SUBSCRIPTION = `
-	subscription ($message: String!, $orgId: ID!, $conversationId: ID, $conversationType: String, $metadata: JSON) {
+	subscription ($message: String!, $orgId: ID!, $conversationId: ID, $conversationType: String, $metadata: JSON, $resumeRequestId: ID) {
 		conversationMessage(
 			message: $message
 			orgId: $orgId
 			conversationId: $conversationId
 			conversationType: $conversationType
 			metadata: $metadata
+			resumeRequestId: $resumeRequestId
 		) {
 			status
 			error
@@ -38,6 +39,8 @@ export interface AskOptions {
 	message: string;
 	conversationId?: string;
 	conversationType?: string;
+	/** Reattach to a paused request (e.g. to continue after approval_required). */
+	resumeRequestId?: string;
 	cancellation?: vscode.CancellationToken;
 	inactivityTimeoutMs?: number;
 }
@@ -175,12 +178,14 @@ export async function* askRewstAi(options: AskOptions): AsyncGenerator<Conversat
 		// Without metadata.orgId the server registers the request and then
 		// silently never processes it (docs/dev/rewst-ai-api.md).
 		metadata: { orgId },
+		resumeRequestId: options.resumeRequestId ?? null,
 	};
 
 	log.debug('askRewstAi: starting subscription', {
 		orgId,
 		conversationId: variables.conversationId,
 		conversationType: variables.conversationType,
+		resumeRequestId: variables.resumeRequestId,
 	});
 
 	try {

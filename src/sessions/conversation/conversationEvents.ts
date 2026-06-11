@@ -11,6 +11,13 @@ export interface ConversationSource {
 	section?: string;
 }
 
+/** A server-side tool RoboRewsty wants to run, awaiting the user's approval. */
+export interface ApprovalTool {
+	name: string;
+	args?: unknown;
+	id?: string;
+}
+
 export type ConversationEvent =
 	| { kind: 'registered'; requestId: string }
 	| { kind: 'conversation'; conversationId: string }
@@ -22,6 +29,17 @@ export type ConversationEvent =
 			sources: ConversationSource[];
 			conversationId?: string;
 			messageId?: string;
+	  }
+	| {
+			/**
+			 * The turn paused because a Rewst-side agent tool needs approval. Carry
+			 * the requestId so the caller can resume, and the raw metadata so the UI
+			 * can still surface the requirement when the tool shape is unrecognized.
+			 */
+			kind: 'approval';
+			tools: ApprovalTool[];
+			requestId?: string;
+			raw: Record<string, unknown>;
 	  }
 	| { kind: 'error'; message: string };
 
@@ -46,7 +64,6 @@ const STATUS_LABELS: Record<string, string> = {
 const TERMINAL_ERROR_MESSAGES: Record<string, string> = {
 	interrupted: 'The request was interrupted.',
 	conversation_killed: 'The conversation was stopped by another client.',
-	approval_required: 'This request requires approval in the Rewst web app.',
 };
 
 function asString(value: unknown): string | undefined {
@@ -72,6 +89,24 @@ function parseSources(metadata: Record<string, unknown> | null | undefined): Con
 }
 
 /**
+ * Parses the tool(s) awaiting approval from an approval_required payload. The
+ * live field names are not verified (see docs/dev/rewst-ai-api.md), so this
+ * mirrors the TOOL_CALL_IN_PROGRESS shape (metadata.toolCalls: [{ name, args,
+ * id }]) and tolerates absence — the raw metadata still rides along on the event.
+ */
+function parseApprovalTools(metadata: Record<string, unknown> | undefined): ApprovalTool[] {
+	const raw = metadata?.toolCalls;
+	if (!Array.isArray(raw)) return [];
+	return raw.flatMap(entry => {
+		if (typeof entry !== 'object' || entry === null) return [];
+		const item = entry as Record<string, unknown>;
+		const name = asString(item.name);
+		if (!name) return [];
+		return [{ name, args: item.args, id: asString(item.id) }];
+	});
+}
+
+/**
  * Stateful mapper: de-duplicates conversation_id announcements and normalizes
  * streaming chunks regardless of whether the server sends deltas or cumulative
  * partial content.
@@ -79,6 +114,10 @@ function parseSources(metadata: Record<string, unknown> | null | undefined): Con
 export class ConversationEventMapper {
 	private conversationId: string | undefined;
 	private streamedText = '';
+	private lastRequestId: string | undefined;
+	// approval_required carries no toolCalls of its own; it follows the
+	// TOOL_CALL_IN_PROGRESS for the tool being gated, so remember those.
+	private lastToolCalls: ApprovalTool[] = [];
 
 	map(raw: RawConversationPayload | null | undefined): ConversationEvent[] {
 		if (!raw) return [];
@@ -96,7 +135,20 @@ export class ConversationEventMapper {
 		switch (status) {
 			case 'request_registered': {
 				const requestId = asString(metadata?.requestId);
-				if (requestId) events.push({ kind: 'registered', requestId });
+				if (requestId) {
+					this.lastRequestId = requestId;
+					events.push({ kind: 'registered', requestId });
+				}
+				break;
+			}
+			case 'approval_required': {
+				const parsed = parseApprovalTools(metadata);
+				events.push({
+					kind: 'approval',
+					tools: parsed.length > 0 ? parsed : this.lastToolCalls,
+					requestId: asString(metadata?.requestId) ?? this.lastRequestId,
+					raw: metadata ?? {},
+				});
 				break;
 			}
 			case 'streaming_response': {
@@ -105,7 +157,9 @@ export class ConversationEventMapper {
 				break;
 			}
 			case 'TOOL_CALL_IN_PROGRESS': {
-				events.push({ kind: 'status', label: `Running tool: ${this.toolName(metadata)}…` });
+				const tools = parseApprovalTools(metadata);
+				if (tools.length > 0) this.lastToolCalls = tools;
+				events.push({ kind: 'status', label: `Running tool: ${tools[0]?.name ?? 'unknown'}…` });
 				break;
 			}
 			case 'complete': {
@@ -148,15 +202,6 @@ export class ConversationEventMapper {
 		}
 		this.streamedText += partialContent;
 		return partialContent;
-	}
-
-	private toolName(metadata: Record<string, unknown> | undefined): string {
-		const toolCalls = metadata?.toolCalls;
-		if (Array.isArray(toolCalls) && toolCalls.length > 0) {
-			const first = toolCalls[0] as Record<string, unknown>;
-			return asString(first?.name) ?? 'unknown';
-		}
-		return 'unknown';
 	}
 
 	private errorMessage(raw: RawConversationPayload): string {

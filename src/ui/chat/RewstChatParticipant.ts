@@ -1,5 +1,5 @@
 import { context, extPrefix } from '@global';
-import { askRewstAi, Session, SessionManager, type ConversationSource } from '@sessions';
+import { askRewstAi, Session, SessionManager, type ApprovalTool, type ConversationSource } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
 import { pickOrganization } from '../pickers';
@@ -28,11 +28,32 @@ import { WEB_TOOL_SPECS } from './tools/webTools';
 import { COMMAND_TOOL_SPECS } from './tools/commandTool';
 
 const PARTICIPANT_ID = 'rewst-buddy.rewst';
+// Command an inline approval button invokes, and the prompt it re-submits so
+// handleRequest recognizes the follow-up turn as a resume.
+const APPROVE_COMMAND = 'ResumeRoboRewstyApproval';
+const APPROVE_PROMPT = '/approve';
 
 interface ChatTarget {
 	session: Session;
 	orgId: string;
 	conversationId?: string;
+}
+
+/** Everything needed to continue after the user clicks Approve. */
+interface PendingApproval {
+	orgId: string;
+	conversationId?: string;
+	conversationType: string;
+	/**
+	 * The message to re-send once the tool is allow-listed. Resuming the paused
+	 * request doesn't re-run the tool (allow-listing doesn't mark that request
+	 * approved), so we re-ask in the same conversation; a fresh request re-checks
+	 * the allow-list at tool-call time and runs the now-allowed tool.
+	 */
+	message: string;
+	toolNames: string[];
+	/** true = keep the tool allow-listed (Always allow); false = revert after the turn. */
+	always: boolean;
 }
 
 interface TurnOptions {
@@ -41,21 +62,63 @@ interface TurnOptions {
 	message: string;
 	conversationId?: string;
 	conversationType: string;
+	/** Resume a paused request instead of sending a fresh message. */
+	resumeRequestId?: string;
 }
 
 type TurnOutcome =
 	| { kind: 'answer'; content: string; sources: ConversationSource[]; conversationId?: string; gate: ChunkGate }
+	| { kind: 'approval'; tools: ApprovalTool[]; requestId?: string; conversationId?: string }
 	| { kind: 'error'; message: string; conversationId?: string }
 	| { kind: 'incomplete'; conversationId?: string };
 
+/** Human-readable description of the tool(s) awaiting approval, with their args. */
+function describeApprovalTools(tools: ApprovalTool[]): string {
+	if (tools.length === 0) return 'an unspecified Rewst action';
+	return tools
+		.map(tool => {
+			const args = tool.args === undefined ? '' : `\n${truncate(safeJson(tool.args), 500)}`;
+			return `- \`${tool.name}\`${args}`;
+		})
+		.join('\n');
+}
+
+function safeJson(value: unknown): string {
+	try {
+		return JSON.stringify(value, null, 2) ?? String(value);
+	} catch {
+		return String(value);
+	}
+}
+
+function truncate(text: string, max: number): string {
+	return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
 export const RewstChatParticipant = new (class RewstChatParticipant implements vscode.Disposable {
 	private participant: vscode.ChatParticipant | undefined;
+	private approveCommand: vscode.Disposable | undefined;
+	// Set when an inline Approve button is clicked; consumed by the resulting
+	// /approve turn to resume the paused request.
+	private pendingApproval: PendingApproval | undefined;
 
 	init(): this {
 		this.participant = vscode.chat.createChatParticipant(PARTICIPANT_ID, (request, chatContext, stream, token) =>
 			this.handleRequest(request, chatContext, stream, token),
 		);
 		this.participant.iconPath = vscode.Uri.joinPath(context.extensionUri, 'media', 'rewst-buddy.png');
+		// The approval buttons can't stream back into a closed response, so they
+		// stash the context and re-open the chat with /approve to continue.
+		this.approveCommand = vscode.commands.registerCommand(
+			`${extPrefix}.${APPROVE_COMMAND}`,
+			(ctx: PendingApproval) => {
+				this.pendingApproval = ctx;
+				// Options-object form auto-submits (a bare string only pre-fills).
+				return vscode.commands.executeCommand('workbench.action.chat.open', {
+					query: `@rewst ${APPROVE_PROMPT}`,
+				});
+			},
+		);
 		log.debug('RewstChatParticipant: registered', PARTICIPANT_ID);
 		return this;
 	}
@@ -63,6 +126,8 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 	dispose(): void {
 		this.participant?.dispose();
 		this.participant = undefined;
+		this.approveCommand?.dispose();
+		this.approveCommand = undefined;
 	}
 
 	private async handleRequest(
@@ -77,24 +142,7 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 			return {};
 		}
 
-		const target = await this.resolveTarget(chatContext);
-		if (!target) return {};
-
 		const aiConfig = vscode.workspace.getConfiguration(`${extPrefix}.ai`);
-		let conversationType = aiConfig.get<string>('conversationType', 'HELP_DOCS');
-
-		// @rewst /resume — load a previous Rewst conversation into the chat
-		// and pin this chat session to it.
-		if (request.command === 'resume') {
-			const resumed = await this.pickAndRenderConversation(target, stream);
-			if (!resumed) return {};
-			target.conversationId = resumed.id;
-			conversationType = resumed.type ?? conversationType;
-			if (!request.prompt.trim()) {
-				return { metadata: { rewst: { conversationId: resumed.id, orgId: target.orgId } } };
-			}
-		}
-		const customInstructions = aiConfig.get<string>('customInstructions', '');
 		const toolsEnabled =
 			aiConfig.get<boolean>('enableWorkspaceTools', true) && (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
 		// 0 (or less) means unlimited rounds — the loop runs until the
@@ -102,39 +150,100 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 		const configuredRounds = aiConfig.get<number>('maxToolRounds', 4);
 		const maxToolRounds = toolsEnabled ? (configuredRounds <= 0 ? Number.POSITIVE_INFINITY : configuredRounds) : 0;
 
-		stream.progress('Asking RoboRewsty…');
-
-		// Attached files / editor selections (#file, paperclip, implicit
-		// selection) arrive as references — inline them into the message.
-		const references = await resolveReferences(request.references);
-		let message = prependInstructions(formatPromptWithReferences(request.prompt, references), customInstructions);
-		if (toolsEnabled) {
-			const specs = [
-				...WORKSPACE_TOOL_SPECS,
-				...(aiConfig.get<boolean>('enableEditTools', true) ? EDIT_TOOL_SPECS : []),
-				...(aiConfig.get<boolean>('enableWebTools', false) ? WEB_TOOL_SPECS : []),
-				...(aiConfig.get<boolean>('enableCommandTool', false) ? COMMAND_TOOL_SPECS : []),
-			];
-			const overview = await buildWorkspaceOverview();
-			if (overview) message += `\n\nThe user's VS Code workspace:\n${overview}`;
-			message += `\n\n${buildToolInstructions(specs)}`;
-		}
-		// Target for apply-suggestion buttons; captured now because the active
-		// editor can change while the answer streams.
-		const editTarget = firstReferencedFileUri(request.references) ?? vscode.window.activeTextEditor?.document.uri;
-
-		let conversationId = target.conversationId;
-		const metadata = () => ({ rewst: { conversationId, orgId: target.orgId } });
 		// Files already attached as references on this response (deduped across rounds).
 		const referencedFiles = new Set<string>();
 		// Cycle guard: identical tool requests are dropped/blocked across rounds.
 		const deduper = new RequestDeduper();
 		let consecutiveBlockedRounds = 0;
+		// Tools allow-listed for a one-time "Approve"; removed once the turn ends.
+		const toolsToRevert = new Set<string>();
+
+		let target: ChatTarget;
+		let conversationType: string;
+		let message: string;
+		let editTarget: vscode.Uri | undefined;
+
+		const pending = this.consumePendingApproval(request);
+		if (pending) {
+			// Follow-up turn from an inline Approve button: allow-list the tool(s)
+			// and resume the paused request (the tool only runs while allow-listed).
+			try {
+				target = {
+					session: SessionManager.getSessionForOrg(pending.orgId),
+					orgId: pending.orgId,
+					conversationId: pending.conversationId,
+				};
+			} catch {
+				stream.markdown('That Rewst session is no longer available, so the action could not be approved.');
+				return {};
+			}
+			conversationType = pending.conversationType;
+			// Re-ask the original request now that the tool will be allow-listed.
+			message = pending.message;
+			for (const toolName of pending.toolNames) {
+				try {
+					await target.session.sdk?.addAllowedTool({ toolName });
+					if (!pending.always) toolsToRevert.add(toolName);
+				} catch (error) {
+					log.notifyError(
+						`Could not approve "${toolName}": ${error instanceof Error ? error.message : error}`,
+					);
+				}
+			}
+			stream.progress('Approved — continuing…');
+		} else {
+			const resolved = await this.resolveTarget(chatContext);
+			if (!resolved) return {};
+			target = resolved;
+			conversationType = aiConfig.get<string>('conversationType', 'HELP_DOCS');
+
+			// @rewst /resume — load a previous Rewst conversation into the chat
+			// and pin this chat session to it.
+			if (request.command === 'resume') {
+				const resumed = await this.pickAndRenderConversation(target, stream);
+				if (!resumed) return {};
+				target.conversationId = resumed.id;
+				conversationType = resumed.type ?? conversationType;
+				if (!request.prompt.trim()) {
+					return { metadata: { rewst: { conversationId: resumed.id, orgId: target.orgId } } };
+				}
+			}
+			const customInstructions = aiConfig.get<string>('customInstructions', '');
+			stream.progress('Asking RoboRewsty…');
+
+			// Attached files / editor selections (#file, paperclip, implicit
+			// selection) arrive as references — inline them into the message.
+			const references = await resolveReferences(request.references);
+			message = prependInstructions(formatPromptWithReferences(request.prompt, references), customInstructions);
+			if (toolsEnabled) {
+				const specs = [
+					...WORKSPACE_TOOL_SPECS,
+					...(aiConfig.get<boolean>('enableEditTools', true) ? EDIT_TOOL_SPECS : []),
+					...(aiConfig.get<boolean>('enableWebTools', false) ? WEB_TOOL_SPECS : []),
+					...(aiConfig.get<boolean>('enableCommandTool', false) ? COMMAND_TOOL_SPECS : []),
+				];
+				const overview = await buildWorkspaceOverview();
+				if (overview) message += `\n\nThe user's VS Code workspace:\n${overview}`;
+				message += `\n\n${buildToolInstructions(specs)}`;
+			}
+			// Target for apply-suggestion buttons; captured now because the active
+			// editor can change while the answer streams.
+			editTarget = firstReferencedFileUri(request.references) ?? vscode.window.activeTextEditor?.document.uri;
+		}
+
+		let conversationId = target.conversationId;
+		const metadata = () => ({ rewst: { conversationId, orgId: target.orgId } });
 
 		try {
 			for (let round = 0; ; round++) {
 				const turn = await this.runTurn(
-					{ session: target.session, orgId: target.orgId, message, conversationId, conversationType },
+					{
+						session: target.session,
+						orgId: target.orgId,
+						message,
+						conversationId,
+						conversationType,
+					},
 					stream,
 					token,
 				);
@@ -144,6 +253,12 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 					return { errorDetails: { message: turn.message }, metadata: metadata() };
 				}
 				if (turn.kind === 'incomplete' || token.isCancellationRequested) return { metadata: metadata() };
+				if (turn.kind === 'approval') {
+					// Inline buttons end the turn; clicking one re-enters via /approve
+					// and re-sends this same driving message with the tool allow-listed.
+					this.renderApprovalRequest(stream, turn, target.orgId, conversationId, conversationType, message);
+					return { metadata: metadata() };
+				}
 
 				const requests = toolsEnabled ? parseToolRequests(turn.content) : [];
 				if (requests.length === 0 || round >= maxToolRounds) {
@@ -178,6 +293,16 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 			const message = error instanceof Error ? error.message : String(error);
 			log.error(`RewstChatParticipant: request failed: ${message}`);
 			return { errorDetails: { message }, metadata: metadata() };
+		} finally {
+			// Undo one-time approvals now that the (possibly multi-round) turn is
+			// done and the tool has already run server-side.
+			for (const toolName of toolsToRevert) {
+				try {
+					await target.session.sdk?.removeAllowedTool({ toolName });
+				} catch (error) {
+					log.debug('RewstChatParticipant: approval revert failed', toolName, error);
+				}
+			}
 		}
 	}
 
@@ -199,6 +324,7 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 			message: options.message,
 			conversationId,
 			conversationType: options.conversationType,
+			resumeRequestId: options.resumeRequestId,
 			cancellation: token,
 		})) {
 			switch (event.kind) {
@@ -223,11 +349,75 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 						conversationId: event.conversationId ?? conversationId,
 						gate,
 					};
+				case 'approval':
+					return { kind: 'approval', tools: event.tools, requestId: event.requestId, conversationId };
 				case 'error':
 					return { kind: 'error', message: event.message, conversationId };
 			}
 		}
 		return { kind: 'incomplete', conversationId };
+	}
+
+	/**
+	 * If this turn is an Approve-button follow-up, take the stashed context. The
+	 * stash is set synchronously right before the chat re-opens, so the next turn
+	 * is the approval; we still verify the prompt/command (VS Code may surface the
+	 * re-submitted `/approve` as a command, literal prompt, or empty prompt) and
+	 * clear any stale stash so it can never leak into a later question.
+	 */
+	private consumePendingApproval(request: vscode.ChatRequest): PendingApproval | undefined {
+		const pending = this.pendingApproval;
+		this.pendingApproval = undefined;
+		if (!pending) return undefined;
+		const prompt = request.prompt.trim();
+		const isApproveTurn =
+			request.command === 'approve' || prompt === APPROVE_PROMPT || prompt === 'approve' || prompt === '';
+		return isApproveTurn ? pending : undefined;
+	}
+
+	/**
+	 * The turn paused because a Rewst-side agent tool needs the user's approval.
+	 * Renders what it wants to run plus inline Approve / Always allow buttons.
+	 *
+	 * The tool runs server-side only while it is on the user's Rewst allow-list,
+	 * and there is no per-request approve mutation — so approving allow-lists the
+	 * tool (addAllowedTool) and re-sends the request. "Approve" reverts the
+	 * allow-listing afterward (approval_required only fires for tools that weren't
+	 * already allowed, so removing restores the prior state); "Always allow" keeps it.
+	 */
+	private renderApprovalRequest(
+		stream: vscode.ChatResponseStream,
+		turn: Extract<TurnOutcome, { kind: 'approval' }>,
+		orgId: string,
+		conversationId: string | undefined,
+		conversationType: string,
+		message: string,
+	): void {
+		const description = describeApprovalTools(turn.tools);
+		const toolNames = turn.tools.map(tool => tool.name).filter(Boolean);
+		// With no named tool we have nothing to allow-list, so re-asking would
+		// just pause again — point the user at the web app instead.
+		if (toolNames.length === 0) {
+			stream.markdown(
+				`\n\n*RoboRewsty needs approval to run a Rewst action, but it didn't name the tool, so it can't be approved from here. You can approve it in the Rewst web app.*\n`,
+			);
+			return;
+		}
+
+		stream.markdown(`\n\n*RoboRewsty needs your approval to run a Rewst action:*\n\n${description}\n\n`);
+
+		const base = { orgId, conversationId, conversationType, message, toolNames };
+		stream.button({
+			command: `${extPrefix}.${APPROVE_COMMAND}`,
+			title: 'Approve',
+			arguments: [{ ...base, always: false } satisfies PendingApproval],
+		});
+		const label = toolNames.length === 1 ? `Always allow "${toolNames[0]}"` : 'Always allow these tools';
+		stream.button({
+			command: `${extPrefix}.${APPROVE_COMMAND}`,
+			title: label,
+			arguments: [{ ...base, always: true } satisfies PendingApproval],
+		});
 	}
 
 	/**

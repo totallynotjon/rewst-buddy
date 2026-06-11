@@ -8772,6 +8772,27 @@ export type CreateConversationMessageVoteMutationVariables = Exact<{
 
 export type CreateConversationMessageVoteMutation = { __typename?: 'Mutation', createConversationMessageVote: { __typename?: 'ConversationMessageVote', id: string, vote: VoteType, reason?: VoteReason | null, comment?: string | null, conversationMessageId: string } };
 
+export type RoboRewstyPreferencesFragment = { __typename?: 'UserRoboRewstyPreferences', id: string, alwaysAllowedTools: Array<string>, customInstructions?: string | null };
+
+export type MyRoboRewstyPreferencesQueryVariables = Exact<{ [key: string]: never; }>;
+
+
+export type MyRoboRewstyPreferencesQuery = { __typename?: 'Query', myRoboRewstyPreferences?: { __typename?: 'UserRoboRewstyPreferences', id: string, alwaysAllowedTools: Array<string>, customInstructions?: string | null } | null };
+
+export type AddAllowedToolMutationVariables = Exact<{
+  toolName: Scalars['String']['input'];
+}>;
+
+
+export type AddAllowedToolMutation = { __typename?: 'Mutation', addAllowedTool: { __typename?: 'UserRoboRewstyPreferences', id: string, alwaysAllowedTools: Array<string>, customInstructions?: string | null } };
+
+export type RemoveAllowedToolMutationVariables = Exact<{
+  toolName: Scalars['String']['input'];
+}>;
+
+
+export type RemoveAllowedToolMutation = { __typename?: 'Mutation', removeAllowedTool: { __typename?: 'UserRoboRewstyPreferences', id: string, alwaysAllowedTools: Array<string>, customInstructions?: string | null } };
+
 export type OrgFragment = { __typename?: 'Organization', id?: string | null, name: string };
 
 export type TemplateFragment = { __typename?: 'Template', id: string, name: string, description?: string | null, contentType: string, context?: any | null, language: string, cloneOverrides?: any | null, clonedFromId?: string | null, isShared?: boolean | null, isSynchronized?: boolean | null, orgId: string, unpackedFromId?: string | null, createdAt: string, updatedAt: string, updatedById?: string | null, organization: { __typename?: 'Organization', id?: string | null, name: string }, tags: Array<{ __typename?: 'Tag', id?: string | null, name?: string | null, color?: string | null }>, clonedFrom?: { __typename?: 'Template', id: string, name: string } | null, updatedBy?: { __typename?: 'User', id?: string | null, username?: string | null } | null, unpackedFrom?: { __typename?: 'Crate', id: string, name: string } | null };
@@ -8860,6 +8881,13 @@ export const ConversationMessageFragmentDoc = gql`
   userId
   createdAt
   updatedAt
+}
+    `;
+export const RoboRewstyPreferencesFragmentDoc = gql`
+    fragment roboRewstyPreferences on UserRoboRewstyPreferences {
+  id
+  alwaysAllowedTools
+  customInstructions
 }
     `;
 export const OrgFragmentDoc = gql`
@@ -8969,6 +8997,27 @@ export const CreateConversationMessageVoteDocument = gql`
   }
 }
     `;
+export const MyRoboRewstyPreferencesDocument = gql`
+    query myRoboRewstyPreferences {
+  myRoboRewstyPreferences {
+    ...roboRewstyPreferences
+  }
+}
+    ${RoboRewstyPreferencesFragmentDoc}`;
+export const AddAllowedToolDocument = gql`
+    mutation addAllowedTool($toolName: String!) {
+  addAllowedTool(toolName: $toolName) {
+    ...roboRewstyPreferences
+  }
+}
+    ${RoboRewstyPreferencesFragmentDoc}`;
+export const RemoveAllowedToolDocument = gql`
+    mutation removeAllowedTool($toolName: String!) {
+  removeAllowedTool(toolName: $toolName) {
+    ...roboRewstyPreferences
+  }
+}
+    ${RoboRewstyPreferencesFragmentDoc}`;
 export const ListTemplatesDocument = gql`
     query listTemplates($orgId: ID!) {
   templates(where: {orgId: $orgId}) {
@@ -9049,6 +9098,15 @@ export function getSdk(client: GraphQLClient, withWrapper: SdkFunctionWrapper = 
     },
     createConversationMessageVote(variables: CreateConversationMessageVoteMutationVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<CreateConversationMessageVoteMutation> {
       return withWrapper((wrappedRequestHeaders) => client.request<CreateConversationMessageVoteMutation>({ document: CreateConversationMessageVoteDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'createConversationMessageVote', 'mutation', variables);
+    },
+    myRoboRewstyPreferences(variables?: MyRoboRewstyPreferencesQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<MyRoboRewstyPreferencesQuery> {
+      return withWrapper((wrappedRequestHeaders) => client.request<MyRoboRewstyPreferencesQuery>({ document: MyRoboRewstyPreferencesDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'myRoboRewstyPreferences', 'query', variables);
+    },
+    addAllowedTool(variables: AddAllowedToolMutationVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<AddAllowedToolMutation> {
+      return withWrapper((wrappedRequestHeaders) => client.request<AddAllowedToolMutation>({ document: AddAllowedToolDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'addAllowedTool', 'mutation', variables);
+    },
+    removeAllowedTool(variables: RemoveAllowedToolMutationVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<RemoveAllowedToolMutation> {
+      return withWrapper((wrappedRequestHeaders) => client.request<RemoveAllowedToolMutation>({ document: RemoveAllowedToolDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'removeAllowedTool', 'mutation', variables);
     },
     listTemplates(variables: ListTemplatesQueryVariables, requestHeaders?: GraphQLClientRequestHeaders, signal?: RequestInit['signal']): Promise<ListTemplatesQuery> {
       return withWrapper((wrappedRequestHeaders) => client.request<ListTemplatesQuery>({ document: ListTemplatesDocument, variables, requestHeaders: { ...requestHeaders, ...wrappedRequestHeaders }, signal }), 'listTemplates', 'query', variables);

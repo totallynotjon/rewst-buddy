@@ -114,12 +114,60 @@ suite('Unit: ConversationEventMapper', () => {
 		assert.deepStrictEqual(events, [{ kind: 'error', message: 'The Rewst AI assistant returned an error.' }]);
 	});
 
-	test('maps interrupted, conversation_killed, approval_required to errors', () => {
-		for (const status of ['interrupted', 'conversation_killed', 'approval_required']) {
+	test('maps interrupted and conversation_killed to errors', () => {
+		for (const status of ['interrupted', 'conversation_killed']) {
 			const events = mapper.map({ status });
 			assert.strictEqual(events.length, 1, `expected one event for ${status}`);
 			assert.strictEqual(events[0].kind, 'error');
 		}
+	});
+
+	test('maps approval_required to an approval event with parsed tools', () => {
+		const events = mapper.map({
+			status: 'approval_required',
+			metadata: {
+				requestId: 'req-7',
+				toolCalls: [{ name: 'create_workflow', args: { name: 'Daily' }, id: 'tc-1' }],
+			},
+		});
+		assert.deepStrictEqual(events, [
+			{
+				kind: 'approval',
+				tools: [{ name: 'create_workflow', args: { name: 'Daily' }, id: 'tc-1' }],
+				requestId: 'req-7',
+				raw: {
+					requestId: 'req-7',
+					toolCalls: [{ name: 'create_workflow', args: { name: 'Daily' }, id: 'tc-1' }],
+				},
+			},
+		]);
+	});
+
+	test('approval_required inherits the tool from the preceding TOOL_CALL_IN_PROGRESS', () => {
+		mapper.map({ status: 'request_registered', metadata: { requestId: 'req-9' } });
+		mapper.map({
+			status: 'TOOL_CALL_IN_PROGRESS',
+			metadata: { toolCalls: [{ name: 'listOrgVariable', args: { orgId: 'o1' }, id: 'tc-9' }] },
+		});
+		const events = mapper.map({ status: 'approval_required', metadata: {} });
+		assert.deepStrictEqual(events, [
+			{
+				kind: 'approval',
+				tools: [{ name: 'listOrgVariable', args: { orgId: 'o1' }, id: 'tc-9' }],
+				requestId: 'req-9',
+				raw: {},
+			},
+		]);
+	});
+
+	test('approval_required reuses the requestId from an earlier request_registered', () => {
+		mapper.map({ status: 'request_registered', metadata: { requestId: 'req-earlier' } });
+		const events = mapper.map({ status: 'approval_required', metadata: {} });
+		assert.strictEqual(events.length, 1);
+		const approval = events[0] as Extract<ConversationEvent, { kind: 'approval' }>;
+		assert.strictEqual(approval.requestId, 'req-earlier');
+		assert.deepStrictEqual(approval.tools, []);
+		assert.deepStrictEqual(approval.raw, {});
 	});
 
 	test('handles null/undefined payloads', () => {

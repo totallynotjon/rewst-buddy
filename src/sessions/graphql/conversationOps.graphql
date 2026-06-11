@@ -53,3 +53,27 @@ mutation createConversationMessageVote($vote: ConversationMessageVoteInput!) {
 		conversationMessageId
 	}
 }
+
+fragment roboRewstyPreferences on UserRoboRewstyPreferences {
+	id
+	alwaysAllowedTools
+	customInstructions
+}
+
+query myRoboRewstyPreferences {
+	myRoboRewstyPreferences {
+		...roboRewstyPreferences
+	}
+}
+
+mutation addAllowedTool($toolName: String!) {
+	addAllowedTool(toolName: $toolName) {
+		...roboRewstyPreferences
+	}
+}
+
+mutation removeAllowedTool($toolName: String!) {
+	removeAllowedTool(toolName: $toolName) {
+		...roboRewstyPreferences
+	}
+}

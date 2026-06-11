@@ -103,7 +103,7 @@ subscription ConversationMessageSubscription(
 | `conversationId`   | `null` → server creates a new conversation and auto-titles it. Pass an existing id for multi-turn (verified working).                                                                                                           |
 | `conversationType` | A `String`, not the `ConversationType` enum. Web app sends `"HELP_DOCS"` (default) or `"WORKFLOW_DIAGNOSIS"`. Schema enum also lists `WORKFLOW_AUTO_DOCUMENTATION`.                                                             |
 | `metadata`         | **Must contain `{ orgId }`.** The web app sends `{ ...pageContext, orgId }`. Route/workflow context can be added here to unlock context-aware behavior (e.g. workflow editing tools only activate in Workflow Builder context). |
-| `resumeRequestId`  | `null` for new requests. To reattach after a dropped connection, pass the `requestId` from the `request_registered` event (see resume statuses below).                                                                          |
+| `resumeRequestId`  | `null` for new requests. Pass the `requestId` from the `request_registered` event to reattach after a dropped connection — or to continue a request paused by `approval_required` (see below).                                  |
 
 ### Status event state machine
 
@@ -141,6 +141,52 @@ streaming_thinking, resume_attached, resume_not_found, resume_forbidden
 - `resume_attached` / `resume_not_found` / `resume_forbidden` → responses to a
   `resumeRequestId` reconnect attempt.
 - `conversation_killed` → another client called the `KillConversation` mutation.
+
+### `approval_required` — surfacing and approving the tool
+
+The extension treats `approval_required` as a pause, not a terminal error: it maps
+the payload into an `approval` event carrying the tool(s) awaiting approval, shows the
+user what RoboRewsty wants to run with inline Approve / Always allow buttons, and — on
+approval — allow-lists the tool and re-sends the request so it runs.
+
+Observed live (RoboRewsty gating the `listOrgVariable` tool):
+
+- **The `approval_required` payload carries no `toolCalls` of its own.** It follows
+  immediately after the `TOOL_CALL_IN_PROGRESS` event for the tool being gated, whose
+  `metadata.toolCalls: [{ name, args, id }]` names it. So `ConversationEventMapper`
+  remembers the last `TOOL_CALL_IN_PROGRESS` tools (`lastToolCalls`) and attaches them
+  to the approval event when the approval payload itself has none. Without this the
+  chat showed "an unspecified Rewst action" and suppressed the always-allow button.
+
+- **Approve mechanism (confirmed live).** The tool only executes while it is on the
+  user's Rewst allow-list, and there is no per-request approve mutation. Two approaches
+  were tried against the live API:
+    - `addAllowedTool(toolName)` → resume the paused request with `resumeRequestId` —
+      **does not work**: the resumed subscription returns no further events (the turn ends
+      "incomplete"). Allow-listing changes the global list but doesn't mark the _paused_
+      request approved, so resume finds nothing to drive.
+    - `addAllowedTool(toolName)` → **re-send the original request** as a fresh turn in the
+      same conversation — **works**: a new request re-checks the allow-list when it reaches
+      the tool call, finds it allowed, and runs it. This is what the extension does.
+
+    A one-time **Approve** calls `removeAllowedTool(toolName)` after the turn to restore the
+    prior state (safe because `approval_required` only fires for tools that weren't already
+    allowed); **Always allow** leaves it on the list.
+
+    **UI flow.** A chat participant's `ChatResponseStream` can't be reopened once the turn
+    ends, and the inline-confirmation primitive (`stream.confirmation`) is a proposed API
+    unavailable to published extensions — so the approval is rendered with stable
+    `stream.button()`s. Clicking a button invokes the `ResumeRoboRewstyApproval` command,
+    which stashes the approval context (`pendingApproval`, including the message to re-send)
+    and re-opens the chat with the `/approve` prompt. `handleRequest` detects that follow-up
+    via `consumePendingApproval`, allow-lists the tool(s), re-sends the message, and reverts
+    one-time approvals in its `finally`. See `RewstChatParticipant.renderApprovalRequest` and
+    the approval branch in `handleRequest`. (`resumeRequestId` plumbing remains in
+    `ConversationClient` for reconnect-after-drop, just not for approvals.)
+
+Allow-listing a tool persists server-side in `UserRoboRewstyPreferences.alwaysAllowedTools`
+via the `addAllowedTool(toolName: String!)` mutation (now in the generated SDK; see
+`conversationOps.graphql`). `myRoboRewstyPreferences` reads the current allow-list.
 
 ### Timing observed
 
