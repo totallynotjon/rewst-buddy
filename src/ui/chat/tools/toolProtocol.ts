@@ -1,12 +1,12 @@
 /**
  * Client-side tool protocol for the @rewst chat participant.
  *
- * RoboRewsty's agent runs server-side and knows nothing about VS Code, so the
- * extension teaches it a convention instead: instructions appended to the
- * user's message describe local workspace tools and ask the assistant to
+ * RoboRewsty's agent runs server-side and knows nothing about VS Code or the
+ * user's active Rewst session, so the extension teaches it a convention:
+ * instructions appended to the user's message describe local tools and ask it to
  * request them via fenced ```rewst-tool JSON blocks. The participant parses
  * those blocks out of each answer, executes the tools locally, and sends the
- * results back as the next turn of the same conversation — looping until the
+ * results back as the next turn of the same conversation - looping until the
  * assistant produces an answer with no tool requests.
  */
 
@@ -59,10 +59,17 @@ const FENCE = /```rewst-tool[^\n]*\n([\s\S]*?)```/g;
  * knows the tools exist and how to call them.
  */
 export function buildToolInstructions(specs: ToolSpec[]): string {
-	const lines = specs.map(spec => `- ${spec.name} — args: ${spec.args}. ${spec.description}`);
+	const lines = specs.map(spec => `- ${spec.name} - args: ${spec.args}. ${spec.description}`);
+	const hasGraphqlTools = specs.some(spec => spec.name === 'rewst_graphql');
+	const graphqlNote = hasGraphqlTools
+		? [
+				'',
+				'GraphQL: you have a session-authenticated GraphQL action. Use rewst_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call rewst_graphql with the final operation and variables.',
+			]
+		: [];
 	return [
 		'---',
-		"You can inspect the user's VS Code workspace with local tools. To call one, reply with a fenced code block tagged rewst-tool containing JSON:",
+		"You can use local tools supplied by the user's VS Code extension. To call one, reply with a fenced code block tagged rewst-tool containing JSON:",
 		'',
 		'```rewst-tool',
 		'{"tool": "read_file", "args": {"path": "src/example.jinja"}}',
@@ -70,8 +77,9 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 		'',
 		'Available tools:',
 		...lines,
+		...graphqlNote,
 		'',
-		`Rules: when you need workspace information, reply with ONLY rewst-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Never guess at file contents or structure — use the tools to look. Long results are cut off with a note saying how to continue (e.g. read_file startLine/endLine for the next chunk); never repeat a request you already made — identical repeats are rejected.`,
+		`Rules: when you need tool information, reply with ONLY rewst-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long results are cut off with a note saying how to continue (e.g. read_file startLine/endLine for the next chunk); never repeat a request you already made - identical repeats are rejected.`,
 	].join('\n');
 }
 
@@ -134,7 +142,7 @@ const EDIT_TOOL_NAMES = new Set(['edit_file', 'write_file']);
 /**
  * Guards the tool loop against cycles: duplicate requests within one reply
  * are dropped, and a request identical to one already executed in an earlier
- * round is blocked with a nudge instead of re-run — unless a file edit
+ * round is blocked with a nudge instead of re-run - unless a file edit
  * happened since (the workspace may have changed). Edit tools are never
  * blocked; repeating an identical edit fails naturally ("find" won't match).
  */
@@ -175,7 +183,7 @@ export function blockedRepeatResult(request: ToolRequest): ToolResult {
 		argsLabel,
 		ok: false,
 		output:
-			'You already ran this exact request and received its result. Do not repeat identical calls — ' +
+			'You already ran this exact request and received its result. Do not repeat identical calls - ' +
 			'request a specific line range or a different file, or stop and give your final answer based on what you have.',
 	};
 }

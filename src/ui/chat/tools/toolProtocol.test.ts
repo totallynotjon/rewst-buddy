@@ -83,8 +83,18 @@ suite('Unit: toolProtocol', () => {
 				{ name: 'list_files', args: '{}', description: 'List files.' },
 			]);
 			assert.ok(text.includes('rewst-tool'));
-			assert.ok(text.includes('read_file — args: {"path": string}'));
+			assert.ok(text.includes('read_file - args: {"path": string}'));
 			assert.ok(text.includes('list_files'));
+		});
+
+		test('adds explicit GraphQL guidance when GraphQL tools are available', () => {
+			const text = buildToolInstructions([
+				{ name: 'rewst_graphql_schema', args: '{}', description: 'Inspect schema.' },
+				{ name: 'rewst_graphql', args: '{"query": string}', description: 'Run GraphQL.' },
+			]);
+			assert.ok(text.includes('session-authenticated GraphQL action'));
+			assert.ok(text.includes('Use rewst_graphql_schema first'));
+			assert.ok(text.includes('then call rewst_graphql'));
 		});
 	});
 

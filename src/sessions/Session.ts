@@ -181,6 +181,25 @@ export default class Session {
 		return await Session.getCookies(this.profile.org.id);
 	}
 
+	/**
+	 * Executes an arbitrary GraphQL document against this session's region
+	 * endpoint, authenticated with the stored session cookie. Used by the chat
+	 * rewst_graphql tool; the extension's own operations use the typed SDK.
+	 */
+	public async rawGraphql(
+		query: string,
+		variables?: Record<string, unknown>,
+	): Promise<{ data?: unknown; errors?: unknown }> {
+		const cookie = await this.getCookies();
+		const client = new GraphQLClient(this.profile.region.graphqlUrl, {
+			errorPolicy: 'all',
+			method: 'POST',
+			headers: () => ({ cookie }),
+		});
+		const { data, errors } = await client.rawRequest(query, variables);
+		return { data, errors };
+	}
+
 	async getTemplate(templateId: string) {
 		log.trace('getTemplate: fetching', templateId);
 		const response = await this.sdk?.getTemplate({ id: templateId });

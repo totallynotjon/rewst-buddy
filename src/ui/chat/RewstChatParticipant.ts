@@ -26,6 +26,7 @@ import {
 import { buildWorkspaceOverview, EDIT_TOOL_SPECS, runToolRequests, WORKSPACE_TOOL_SPECS } from './tools/workspaceTools';
 import { WEB_TOOL_SPECS } from './tools/webTools';
 import { COMMAND_TOOL_SPECS } from './tools/commandTool';
+import { createGraphqlDeps, GRAPHQL_TOOL_SPECS } from './tools/graphqlTool';
 
 const PARTICIPANT_ID = 'rewst-buddy.rewst';
 // Command an inline approval button invokes, and the prompt it re-submits so
@@ -143,8 +144,14 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 		}
 
 		const aiConfig = vscode.workspace.getConfiguration(`${extPrefix}.ai`);
-		const toolsEnabled =
+		const workspaceToolsEnabled =
 			aiConfig.get<boolean>('enableWorkspaceTools', true) && (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
+		const graphQlToolEnabled = aiConfig.get<boolean>('enableGraphqlTool', false);
+		const toolsEnabled =
+			workspaceToolsEnabled ||
+			graphQlToolEnabled ||
+			aiConfig.get<boolean>('enableWebTools', false) ||
+			aiConfig.get<boolean>('enableCommandTool', false);
 		// 0 (or less) means unlimited rounds — the loop runs until the
 		// assistant stops requesting tools or the user cancels.
 		const configuredRounds = aiConfig.get<number>('maxToolRounds', 4);
@@ -217,13 +224,16 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 			message = prependInstructions(formatPromptWithReferences(request.prompt, references), customInstructions);
 			if (toolsEnabled) {
 				const specs = [
-					...WORKSPACE_TOOL_SPECS,
-					...(aiConfig.get<boolean>('enableEditTools', true) ? EDIT_TOOL_SPECS : []),
+					...(workspaceToolsEnabled ? WORKSPACE_TOOL_SPECS : []),
+					...(workspaceToolsEnabled && aiConfig.get<boolean>('enableEditTools', true) ? EDIT_TOOL_SPECS : []),
 					...(aiConfig.get<boolean>('enableWebTools', false) ? WEB_TOOL_SPECS : []),
 					...(aiConfig.get<boolean>('enableCommandTool', false) ? COMMAND_TOOL_SPECS : []),
+					...(graphQlToolEnabled ? GRAPHQL_TOOL_SPECS : []),
 				];
-				const overview = await buildWorkspaceOverview();
-				if (overview) message += `\n\nThe user's VS Code workspace:\n${overview}`;
+				if (workspaceToolsEnabled) {
+					const overview = await buildWorkspaceOverview();
+					if (overview) message += `\n\nThe user's VS Code workspace:\n${overview}`;
+				}
 				message += `\n\n${buildToolInstructions(specs)}`;
 			}
 			// Target for apply-suggestion buttons; captured now because the active
@@ -283,7 +293,12 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 				}
 				const results = [
 					...blocked.map(blockedRepeatResult),
-					...(await runToolRequests(run, undefined, label => stream.progress(label))),
+					...(await runToolRequests(
+						run,
+						undefined,
+						label => stream.progress(label),
+						createGraphqlDeps(target.session),
+					)),
 				];
 				this.renderToolActivity(stream, results, referencedFiles);
 				message = formatToolResults(results);
@@ -485,7 +500,7 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 				result.ok && result.change ? ` (${diffStats(result.change.before, result.change.after)})` : '';
 			return `- \`${result.tool}\` ${detail}${stats}${result.ok ? '' : ' — failed'}`;
 		});
-		stream.markdown(`\n\n*Workspace activity:*\n${lines.join('\n')}\n\n`);
+		stream.markdown(`\n\n*Tool activity:*\n${lines.join('\n')}\n\n`);
 
 		for (const uriString of results.flatMap(result => result.fileUriStrings ?? [])) {
 			if (referenced.has(uriString)) continue;
@@ -523,7 +538,7 @@ export const RewstChatParticipant = new (class RewstChatParticipant implements v
 		}
 		if (toolBudgetExhausted) {
 			stream.markdown(
-				'\n\n*RoboRewsty wanted to inspect more of the workspace but hit the tool-round limit (`rewst-buddy.ai.maxToolRounds`). Ask a follow-up to continue.*\n',
+				'\n\n*RoboRewsty wanted to run more tools but hit the tool-round limit (`rewst-buddy.ai.maxToolRounds`). Ask a follow-up to continue.*\n',
 			);
 		}
 	}

@@ -12,6 +12,7 @@ import {
 	type ToolSpec,
 } from './toolProtocol';
 import { isCommandTool, runCommandTool } from './commandTool';
+import { isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
 import { isWebTool, runWebTool } from './webTools';
 
 /**
@@ -433,13 +434,14 @@ export async function runToolRequests(
 	requests: ToolRequest[],
 	deps: WorkspaceToolDeps = defaultDeps,
 	onProgress?: (label: string) => void,
+	graphqlDeps?: GraphqlToolDeps,
 ): Promise<ToolResult[]> {
 	const results: ToolResult[] = [];
 	for (const request of requests) {
 		onProgress?.(`Running ${describeRequest(request)}…`);
 		const argsLabel = JSON.stringify(request.args) === '{}' ? '' : JSON.stringify(request.args);
 		try {
-			const outcome = await runTool(request, deps);
+			const outcome = await runTool(request, deps, graphqlDeps);
 			results.push({ tool: request.tool, argsLabel, ok: true, ...outcome });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -450,7 +452,11 @@ export async function runToolRequests(
 	return results;
 }
 
-async function runTool(request: ToolRequest, deps: WorkspaceToolDeps): Promise<ToolOutcome> {
+async function runTool(
+	request: ToolRequest,
+	deps: WorkspaceToolDeps,
+	graphqlDeps?: GraphqlToolDeps,
+): Promise<ToolOutcome> {
 	switch (request.tool) {
 		case 'list_files':
 			return { output: await listFiles(request.args, deps) };
@@ -477,6 +483,7 @@ async function runTool(request: ToolRequest, deps: WorkspaceToolDeps): Promise<T
 		default: {
 			if (isWebTool(request.tool)) return { output: await runWebTool(request) };
 			if (isCommandTool(request.tool)) return { output: await runCommandTool(request) };
+			if (isGraphqlTool(request.tool)) return { output: await runGraphqlTool(request, graphqlDeps) };
 			const names = [...WORKSPACE_TOOL_SPECS, ...EDIT_TOOL_SPECS].map(s => s.name).join(', ');
 			throw new Error(`Unknown tool "${request.tool}". Available: ${names}.`);
 		}

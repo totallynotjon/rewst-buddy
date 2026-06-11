@@ -3,6 +3,7 @@ import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
 import type { TemplateLink } from '@models';
 import vscode from 'vscode';
+import type { GraphqlToolDeps } from './graphqlTool';
 import { buildWorkspaceOverview, resolveWorkspaceUri, runToolRequests, type WorkspaceToolDeps } from './workspaceTools';
 
 const { suite, test, setup } = Mocha;
@@ -283,6 +284,34 @@ suite('Unit: workspaceTools', () => {
 			assert.strictEqual(result.ok, false);
 			assert.match(result.output, /Unknown tool "delete_everything"/);
 			assert.match(result.output, /read_file/);
+		});
+
+		test('routes rewst_graphql through GraphQL deps', async () => {
+			const calls: { query: string; variables?: Record<string, unknown> }[] = [];
+			const graphqlDeps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					calls.push({ query, variables });
+					return { data: { user: { id: 'u-1' } } };
+				},
+			};
+			const [result] = await runToolRequests(
+				[
+					{
+						tool: 'rewst_graphql',
+						args: { query: 'query U($id: ID!) { user(id: $id) { id } }', variables: { id: 'u-1' } },
+					},
+				],
+				deps(),
+				undefined,
+				graphqlDeps,
+			);
+			assert.strictEqual(result.ok, true);
+			assert.match(result.output, /"u-1"/);
+			assert.deepStrictEqual(calls, [
+				{ query: 'query U($id: ID!) { user(id: $id) { id } }', variables: { id: 'u-1' } },
+			]);
 		});
 
 		test('reports progress per request', async () => {

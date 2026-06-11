@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Unofficial community VS Code extension for editing Rewst templates locally. Not affiliated with Rewst LLC.",
-	"version": "0.40.3",
+	"version": "0.40.4",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -149,6 +149,11 @@
 					"type": "boolean",
 					"default": false,
 					"description": "Run commands from RoboRewsty without an approval prompt. Only takes effect when Enable Command Tool is on. Leave off unless you fully trust every command the remote assistant may propose."
+				},
+				"rewst-buddy.ai.enableGraphqlTool": {
+					"type": "boolean",
+					"default": false,
+					"description": "Let RoboRewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval in a dialog showing the full operation. Off by default because the session can read and change anything you can in Rewst."
 				}
 			}
 		},
