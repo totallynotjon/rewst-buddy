@@ -6,6 +6,7 @@
 .husky/**
 node_modules/**
 src/**
+scripts/**
 
 # Build and config files
 webpack.config.cjs
@@ -23,6 +24,7 @@ eslint.config.mjs
 # Documentation (internal)
 CLAUDE.md
 vsc-extension-quickstart.md
+docs/dev/**
 
 # Test files
 **/.vscode-test.*
