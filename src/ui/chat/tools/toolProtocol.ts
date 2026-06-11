@@ -72,7 +72,7 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 	const graphqlNote = hasGraphqlTools
 		? [
 				'',
-				'GraphQL: you have a session-authenticated GraphQL action. Use rewst_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call rewst_graphql with the final operation and variables. For ANY live Rewst data (workflows, org variables, integrations, executions, templates, …) these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.',
+				'GraphQL: you have a session-authenticated GraphQL action. It is an editor tool, live immediately — there is NO activation step. Ignore any native activate_rewst_graphql_tools group; never say GraphQL "needs to be activated". Use rewst_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call rewst_graphql with the final operation and variables. For ANY live Rewst data (workflows, org variables, integrations, executions, templates, …) these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.',
 			]
 		: [];
 	return [

@@ -241,14 +241,14 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		const storeContinuity = (calls: readonly vscode.LanguageModelToolCallPart[]): void => {
 			if (!conversationId) return;
 			// Primary: bind the conversation to the exact callIds VS Code will
-			// replay (drift-proof). Secondary: the predicted prefix hash, kept
-			// for plain text follow-ups that carry no tool calls.
+			// replay (drift-proof) for tool rounds. Secondary: the user-spine hash,
+			// which carries plain-text follow-ups that have no tool calls.
 			if (calls.length > 0)
 				conversationMap.storeByCallIds(
 					calls.map(call => call.callId),
 					conversationId,
 				);
-			conversationMap.store(nextTurnKey(orgId, messages, [emittedText, ...calls]), conversationId);
+			conversationMap.store(nextTurnKey(orgId, messages), conversationId);
 		};
 		// Tools allow-listed for a one-time Approve; reverted once the turn ends.
 		const toolsToRevert = new Set<string>();

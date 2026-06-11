@@ -10,12 +10,21 @@ import type vscode from 'vscode';
  * PREFIX (everything except the trailing turn) is hashed together with the org
  * id, and the map remembers which backend conversationId that prefix belongs
  * to. When a turn finishes, the entry is re-stored under the key the NEXT
- * request will compute — the current history plus the assistant parts just
- * emitted.
+ * request will compute.
  *
- * Inherent limit of a session-id-less stateless API: two same-org chats with
- * byte-identical histories share one backend conversation until their
- * histories diverge. Distinct orgs or distinct content always isolate.
+ * Only USER messages form the key — the "user spine" of the chat. Assistant
+ * text and tool-call parts are re-serialized by VS Code when it replays history,
+ * and that serialization drifts from the bytes we streamed (whitespace/markdown
+ * normalization, cumulative-resend dedup, large tables). Including assistant
+ * content in the key made a single drifted character spawn a fresh backend
+ * conversation — the chat would forget everything before the drift. User text
+ * and tool-result callIds, by contrast, are preserved verbatim across replays,
+ * so a user-only key is stable for the life of the chat. Tool rounds get an
+ * even stronger, callId-based binding (see storeByCallIds).
+ *
+ * Inherent limit of a session-id-less stateless API: two same-org chats whose
+ * USER messages are byte-identical share one backend conversation until their
+ * user turns diverge. Distinct orgs or distinct user content always isolate.
  */
 
 const MAX_ENTRIES = 200;
@@ -59,29 +68,35 @@ function serializeMessage(role: number, content: readonly unknown[]): string {
 	return out;
 }
 
-/** Canonical serialization of a message sequence, for prefix keying. */
+// LanguageModelChatMessageRole.User — the only role that participates in the key.
+const USER_ROLE = 1;
+
+/**
+ * Canonical serialization of a message sequence's USER spine. Assistant messages
+ * are dropped because VS Code's replay serialization of them drifts from what we
+ * streamed; user messages (typed text and verbatim tool-result callIds) survive
+ * replay byte-for-byte, so they form a stable continuity key.
+ */
 export function serializeHistory(messages: readonly RequestMessage[]): string {
-	return messages.map(message => serializeMessage(message.role, message.content)).join('');
+	return messages
+		.filter(message => message.role === USER_ROLE)
+		.map(message => serializeMessage(message.role, message.content))
+		.join('');
 }
 
-/** Key for a request: org + everything except the trailing turn. */
+/** Key for a request: org + the user spine of everything except the trailing turn. */
 export function prefixKey(orgId: string, messages: readonly RequestMessage[]): string {
 	return getHash(`${orgId}${serializeHistory(messages.slice(0, -1))}`);
 }
 
 /**
- * Key the NEXT request will compute after this turn: org + the full current
- * history + the assistant parts emitted this turn (the next request appends
- * them as an Assistant message before its own trailing turn).
+ * Key the NEXT request will compute after this turn: org + the user spine of the
+ * full current history. The assistant message this turn appends carries no user
+ * content, and the next request's own trailing (user) turn is excluded from its
+ * prefix — so the next prefix's user spine equals this history's user spine.
  */
-export function nextTurnKey(
-	orgId: string,
-	messages: readonly RequestMessage[],
-	emittedParts: readonly unknown[],
-): string {
-	const assistant = serializeMessage(2, emittedParts); // LanguageModelChatMessageRole.Assistant
-	const history = `${serializeHistory(messages)}${assistant}`;
-	return getHash(`${orgId}${history}`);
+export function nextTurnKey(orgId: string, messages: readonly RequestMessage[]): string {
+	return getHash(`${orgId}${serializeHistory(messages)}`);
 }
 
 export class ConversationMap {

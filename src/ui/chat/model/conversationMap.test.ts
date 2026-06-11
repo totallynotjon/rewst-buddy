@@ -20,7 +20,7 @@ suite('Unit: conversationMap', () => {
 		test('consecutive turns of one chat compute matching keys', () => {
 			// Turn 1: [user]. The provider emits "Hello there".
 			const turn1 = [message(User, [text('hi')])];
-			const stored = nextTurnKey('org-1', turn1, ['Hello there']);
+			const stored = nextTurnKey('org-1', turn1);
 
 			// Turn 2 arrives with the assistant reply consolidated into one part.
 			const turn2 = [
@@ -31,17 +31,26 @@ suite('Unit: conversationMap', () => {
 			assert.strictEqual(prefixKey('org-1', turn2), stored);
 		});
 
-		test('chunked emission serializes identically to consolidated text', () => {
-			const turn1 = [message(User, [text('hi')])];
-			const chunked = nextTurnKey('org-1', turn1, ['Hello ', 'there']);
-			const whole = nextTurnKey('org-1', turn1, ['Hello there']);
-			assert.strictEqual(chunked, whole);
+		test('continuity holds when the replayed assistant text drifts from what was emitted', () => {
+			// The bug: turn 1 answered with a large table streamed through internal
+			// tools; VS Code re-serialized the assistant turn with different bytes
+			// than we streamed. A key that includes assistant text would miss here
+			// and spawn a fresh backend conversation, losing the whole chat.
+			const turn1 = [message(User, [text('list the secret org variables')])];
+			const stored = nextTurnKey('org-1', turn1);
+
+			const turn2 = [
+				message(User, [text('list the secret org variables')]),
+				message(Assistant, [text('<<replayed table — different bytes than we streamed>>')]),
+				message(User, [text('use the graphql tool')]),
+			];
+			assert.strictEqual(prefixKey('org-1', turn2), stored);
 		});
 
 		test('tool-call parts key consistently across emission and replay', () => {
 			const call = new vscode.LanguageModelToolCallPart('call-1', 'read_file', { path: 'a.txt' });
 			const turn1 = [message(User, [text('check a.txt')])];
-			const stored = nextTurnKey('org-1', turn1, ['Let me look', call]);
+			const stored = nextTurnKey('org-1', turn1);
 
 			const turn2 = [
 				message(User, [text('check a.txt')]),
@@ -62,10 +71,15 @@ suite('Unit: conversationMap', () => {
 			assert.notStrictEqual(prefixKey('org-1', a), prefixKey('org-1', b));
 		});
 
-		test('serializeHistory separates roles', () => {
-			const a = serializeHistory([message(User, [text('x')]), message(Assistant, [text('y')])]);
-			const b = serializeHistory([message(User, [text('x')]), message(User, [text('y')])]);
-			assert.notStrictEqual(a, b);
+		test('serializeHistory excludes assistant messages from the spine', () => {
+			// Assistant content must not change the key: only the user spine counts.
+			const withAssistant = serializeHistory([message(User, [text('x')]), message(Assistant, [text('y')])]);
+			const userOnly = serializeHistory([message(User, [text('x')])]);
+			assert.strictEqual(withAssistant, userOnly);
+
+			// Differing user turns still produce differing spines.
+			const other = serializeHistory([message(User, [text('x')]), message(User, [text('y')])]);
+			assert.notStrictEqual(withAssistant, other);
 		});
 	});
 
