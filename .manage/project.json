@@ -1,0 +1,23 @@
+{
+	"config": {
+		"builder_model": "opus",
+		"max_active_features": 1,
+		"per_feature_max_parallel": 1,
+		"rollup_tokens": 150000
+	},
+	"features": [
+		{
+			"added": "2026-06-11",
+			"branch": "feat/robo-chat-model",
+			"cost_usd_to_date": 0.0,
+			"dashboard_task_id": null,
+			"kind": "feature",
+			"scope_summary": "RoboRewsty as native chat model via LanguageModelChatProvider; no Copilot account; full parity; participant retired",
+			"slug": "robo-chat-model",
+			"state_dir": "",
+			"status": "done",
+			"supervisor_task_id": null,
+			"worktree_path": "/home/jon/Documents/dev/rewst-buddy-full/rewst-buddy-vscode"
+		}
+	]
+}

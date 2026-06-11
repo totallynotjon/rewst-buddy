@@ -262,6 +262,30 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(harness.captured[1].message.includes('read_file'));
 	});
 
+	test('tool-result continuity survives assistant-text drift (callId path)', async () => {
+		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+		const harness = makeHarness([completeTurn(reply), completeTurn('It says hello.')]);
+
+		const ask1 = [message(User, [text('check a.txt')])];
+		await harness.run(ask1, [READ_FILE_TOOL]);
+		const [call] = callsOf(harness.parts);
+		assert.ok(call);
+
+		// VS Code replays the assistant message with text that does NOT match
+		// what we predicted (split parts, different narration). The prefix hash
+		// misses, but the preserved callId recovers the conversation.
+		await harness.run(
+			[
+				...ask1,
+				message(Assistant, [text('completely'), text(' different narration'), call]),
+				message(User, [new vscode.LanguageModelToolResultPart(call.callId, [text('file contents')])]),
+			],
+			[READ_FILE_TOOL],
+		);
+
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'recovered by callId despite text drift');
+	});
+
 	test('with the approval tool available, an approval pause becomes an in-chat tool call', async () => {
 		const approvalTool: vscode.LanguageModelChatTool = {
 			name: APPROVAL_TOOL_NAME,

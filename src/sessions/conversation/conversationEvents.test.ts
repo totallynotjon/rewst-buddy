@@ -72,6 +72,33 @@ suite('Unit: ConversationEventMapper', () => {
 		assert.deepStrictEqual(events, []);
 	});
 
+	test('suppresses a full resend of an already-streamed segment', () => {
+		// RoboRewsty resets its cumulative base after an internal tool call and
+		// resends a sentence it already streamed; it must not render twice.
+		mapper.map({ status: 'streaming_response', metadata: { partialContent: 'Let me check the schema.' } });
+		const resend = mapper.map({
+			status: 'streaming_response',
+			metadata: { partialContent: 'Let me check the schema.' },
+		});
+		assert.deepStrictEqual(resend, []);
+	});
+
+	test('emits only the non-overlapping remainder when a resent segment then grows', () => {
+		mapper.map({ status: 'streaming_response', metadata: { partialContent: 'The tool returned no count.' } });
+		// New cumulative base repeats the tail, then extends it.
+		const grown = mapper.map({
+			status: 'streaming_response',
+			metadata: { partialContent: 'The tool returned no count. Let me try a larger page.' },
+		});
+		assert.deepStrictEqual(grown, [{ kind: 'chunk', text: ' Let me try a larger page.' }]);
+	});
+
+	test('a genuinely new segment with no overlap still streams', () => {
+		mapper.map({ status: 'streaming_response', metadata: { partialContent: 'First part.' } });
+		const next = mapper.map({ status: 'streaming_response', metadata: { partialContent: 'Totally separate.' } });
+		assert.deepStrictEqual(next, [{ kind: 'chunk', text: 'Totally separate.' }]);
+	});
+
 	test('maps complete with content, sources, conversationId, messageId', () => {
 		mapper.map({ status: 'thinking', conversation_id: 'conv-9' });
 		const events = mapper.map({

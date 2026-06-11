@@ -87,6 +87,14 @@ suite('Unit: conversationMap', () => {
 			assert.strictEqual(map.lookup(chatB), 'conv-B');
 		});
 
+		test('callId binding recovers the conversation regardless of message hash', () => {
+			const map = new ConversationMap();
+			map.storeByCallIds(['call-a', 'call-b'], 'conv-7');
+			assert.strictEqual(map.lookupByCallIds(['call-b']), 'conv-7');
+			assert.strictEqual(map.lookupByCallIds(['unknown', 'call-a']), 'conv-7');
+			assert.strictEqual(map.lookupByCallIds(['nope']), undefined);
+		});
+
 		test('pending resume is one-shot per org', () => {
 			const map = new ConversationMap();
 			map.setPendingResume('org-1', 'conv-9');

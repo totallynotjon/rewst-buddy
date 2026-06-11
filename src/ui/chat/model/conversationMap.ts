@@ -86,6 +86,7 @@ export function nextTurnKey(
 
 export class ConversationMap {
 	private entries = new Map<string, string>();
+	private byCallId = new Map<string, string>();
 	private pendingResume = new Map<string, string>();
 
 	/** The backend conversation a request prefix belongs to, if known. */
@@ -110,6 +111,34 @@ export class ConversationMap {
 	}
 
 	/**
+	 * Bind a backend conversation to the tool calls emitted this turn. VS Code
+	 * preserves a tool call's callId verbatim when it replays the assistant
+	 * message and hands back the result, so recovering the conversation by
+	 * callId is immune to the message-serialization drift that the prefix hash
+	 * is vulnerable to — this is the primary continuity path for tool rounds.
+	 */
+	storeByCallIds(callIds: readonly string[], conversationId: string): void {
+		for (const callId of callIds) {
+			this.byCallId.delete(callId);
+			this.byCallId.set(callId, conversationId);
+		}
+		while (this.byCallId.size > MAX_ENTRIES) {
+			const oldest = this.byCallId.keys().next().value;
+			if (oldest === undefined) break;
+			this.byCallId.delete(oldest);
+		}
+	}
+
+	/** The backend conversation that emitted any of these tool calls, if known. */
+	lookupByCallIds(callIds: readonly string[]): string | undefined {
+		for (const callId of callIds) {
+			const conversationId = this.byCallId.get(callId);
+			if (conversationId !== undefined) return conversationId;
+		}
+		return undefined;
+	}
+
+	/**
 	 * One-shot resume binding: the next FRESH turn (empty history prefix) for
 	 * this org continues the given conversation instead of starting a new one.
 	 */
@@ -127,6 +156,7 @@ export class ConversationMap {
 	/** Clears all state between tests. */
 	_resetForTesting(): void {
 		this.entries.clear();
+		this.byCallId.clear();
 		this.pendingResume.clear();
 	}
 }

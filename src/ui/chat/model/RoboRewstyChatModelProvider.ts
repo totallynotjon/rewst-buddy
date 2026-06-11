@@ -201,7 +201,11 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				// turn — feed them to the same backend conversation.
 				message = formatToolResultsMessage(trailingResults, calls);
 			}
-			conversationId = conversationMap.lookup(key);
+			// Recover the conversation by the tool-call ids VS Code preserved
+			// (robust); fall back to the prefix hash only if that misses.
+			conversationId =
+				conversationMap.lookupByCallIds(trailingResults.map(result => result.callId)) ??
+				conversationMap.lookup(key);
 		} else {
 			const fresh = messages.every(entry => entry.role !== vscode.LanguageModelChatMessageRole.Assistant);
 			message = prependInstructions(this.trailingText(messages), customInstructions);
@@ -236,6 +240,14 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		};
 		const storeContinuity = (calls: readonly vscode.LanguageModelToolCallPart[]): void => {
 			if (!conversationId) return;
+			// Primary: bind the conversation to the exact callIds VS Code will
+			// replay (drift-proof). Secondary: the predicted prefix hash, kept
+			// for plain text follow-ups that carry no tool calls.
+			if (calls.length > 0)
+				conversationMap.storeByCallIds(
+					calls.map(call => call.callId),
+					conversationId,
+				);
 			conversationMap.store(nextTurnKey(orgId, messages, [emittedText, ...calls]), conversationId);
 		};
 		// Tools allow-listed for a one-time Approve; reverted once the turn ends.
