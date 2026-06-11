@@ -81,26 +81,48 @@ Talk to Rewst's AI assistant (the same RoboRewsty that powers the in-app chat) d
 
 **Usage:**
 
-1. Open the Chat view (or run `Rewst Buddy: Ask Rewst AI` from the command palette)
+1. Open the Chat view (or run `Rewst Buddy: Ask Rewst AI` — `Ctrl+Alt+R` / `Cmd+Alt+R`)
 2. Type `@rewst` followed by your question, e.g. `@rewst how do I parse JSON in a Jinja template?`
 3. Watch progress updates (thinking, searching documentation, running tools) while the answer streams in
 
-**Behavior:**
+### Conversations
 
 - **Multi-turn** — follow-up questions in the same chat session continue the same Rewst conversation, with full server-side memory
-- **Resume previous conversations** — type `@rewst /resume` to pick from your recent Rewst conversations (the same history you see in the Rewst web app). The transcript loads into the chat and follow-ups continue that conversation with its full server-side memory. Add a question after `/resume` to pick and ask in one step
-- **Workspace tools** — RoboRewsty can inspect your workspace on its own: list files, read files, search text, see open editors, open files for you, read VS Code diagnostics, search code symbols and file outlines, and list which files are linked to Rewst templates. When it needs information it requests a tool, the extension runs it locally (workspace-scoped, output-capped) and sends the result back, looping until it can answer — each round renders a _Workspace activity_ list with clickable links to every file it touched, and accessed files are attached as references on the response. Your first message also includes a small workspace overview (folder names and top-level entries). Tool results are sent to the Rewst AI assistant; disable with `rewst-buddy.ai.enableWorkspaceTools` if your workspace contains content you don't want shared, and cap the loop with `rewst-buddy.ai.maxToolRounds` (default 4; `0` = unlimited — each round is a full assistant turn, so cancel with the stop button if it wanders)
-- **Edit tools** — RoboRewsty can also act: `edit_file` (targeted find/replace), `write_file` (create or rewrite a file), and `open_file`. Edits to existing files are applied to the buffer but left **unsaved**, so you review them in the editor (and can undo) before saving — sync-on-save can't fire until you save. New files are created directly. Every edit renders an added/removed diff right in the chat (with a `+N −M` summary in the activity list), so you see exactly what changed without leaving the conversation. Disable with `rewst-buddy.ai.enableEditTools`
-- **Web tools (opt-in)** — set `rewst-buddy.ai.enableWebTools` to `true` to let RoboRewsty search the public web (`web_search`) and read pages (`fetch_url`). Off by default because the assistant chooses what to fetch — enabling it lets a remote model direct network requests from your machine. Only http(s) is allowed and private/loopback hosts are always blocked
-- **Command tool (opt-in, approval required)** — set `rewst-buddy.ai.enableCommandTool` to `true` to let RoboRewsty run shell commands in your workspace root (`run_command`) and read their output — e.g. "what ports are listening?", running a script, or checking `git status`. Off by default and, when enabled, **every command pops an approval dialog showing exactly what will run** before it executes; decline and it won't retry. Set `rewst-buddy.ai.autoApproveCommands` to skip the prompt only if you fully trust what the remote assistant may propose. Commands run in the first workspace folder with a 60s timeout and capped output
-- **Attached context** — files attached via the paperclip or `#file`, and editor selections, are included in the question (size-capped; oversized attachments are truncated)
-- **Apply suggestions** — when an answer contains code blocks, an **Apply to <file>** button appears (targeting the attached or active file). It opens a diff of the current file vs the suggestion; confirm to apply. The edit is left unsaved so you can review — sync-on-save only fires when you save
-- **Custom instructions** — set `rewst-buddy.ai.customInstructions` to prepend standing instructions (answer style, environment details) to every question. Sent as part of your message, so it can't override Rewst's own system prompt
+- **Resume** — `@rewst /resume` lists your recent Rewst conversations (the same history as the Rewst web app), loads the picked transcript into the chat, and pins follow-ups to it. Add a question after `/resume` to pick and ask in one step
+- **Lives in Rewst** — every exchange is a real Rewst conversation, also visible in the web app's chat history
+- **Organization** — with one active session, your primary organization is used automatically; with multiple sessions you pick once per chat session
+- **Latency** — full answers typically take 20–40 seconds; progress updates stream while the assistant works. Cancel any time with the stop button
+
+### Workspace tools
+
+RoboRewsty can inspect your workspace on its own: list, read, search, and open files; see open editors; read diagnostics; look up code symbols and file outlines; and list template links. The extension runs each requested tool locally (workspace-scoped, output-capped) and sends the result back, looping until it can answer.
+
+- Each round renders a _Workspace activity_ list with clickable links to every file touched; accessed files are attached as references on the response
+- Your first message includes a small workspace overview (folder names and top-level entries)
+- Tool results are sent to the Rewst AI assistant — disable with `rewst-buddy.ai.enableWorkspaceTools` if your workspace contains content you don't want shared
+- `rewst-buddy.ai.maxToolRounds` caps the loop (default 4; `0` = unlimited — cancel with the stop button if it wanders)
+
+### Edit tools
+
+RoboRewsty can also act on files: `edit_file` (targeted find/replace), `write_file` (create or rewrite), and `open_file`.
+
+- Edits to existing files are left **unsaved** so you can review (and undo) before saving — sync-on-save can't fire until you save. New files are created directly
+- Every edit renders an added/removed diff in the chat with a `+N −M` summary
+- Disable with `rewst-buddy.ai.enableEditTools`
+
+### Opt-in tools
+
+Off by default because they let a remote assistant direct activity on your machine:
+
+- **Web** (`rewst-buddy.ai.enableWebTools`) — `web_search` and `fetch_url` for public pages. Only http(s) is allowed; private/loopback hosts are always blocked
+- **Commands** (`rewst-buddy.ai.enableCommandTool`) — `run_command` runs shell commands in your workspace root (60s timeout, capped output). When enabled, **every command pops an approval dialog showing exactly what will run**; decline and it won't retry. `rewst-buddy.ai.autoApproveCommands` skips the prompt — leave it off unless you fully trust what the assistant may propose
+
+### Context and answers
+
+- **Attached context** — files attached via the paperclip or `#file`, and editor selections, are included in the question (size-capped)
+- **Apply suggestions** — code blocks in answers get an **Apply to <file>** button that opens a diff; confirm to apply, and the edit stays unsaved for review
+- **Custom instructions** — `rewst-buddy.ai.customInstructions` prepends standing instructions to every question (sent as part of your message, so it can't override Rewst's system prompt)
 - **Sources** — documentation citations are attached as references on the response
-- **Organization selection** — with one active session, your primary organization is used automatically; with multiple sessions you pick once per chat session
-- **Conversations live in Rewst** — every exchange is a real Rewst conversation, also visible in the Rewst web app's chat history
-- **Latency** — full answers typically take 20–40 seconds; the assistant runs documentation-search tools mid-stream, so progress updates are normal
-- Cancel any time with the stop button
 
 > Requires VS Code's Chat view (available when a chat provider such as GitHub Copilot is set up). The conversation type can be changed via the `rewst-buddy.ai.conversationType` setting.
 

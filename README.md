@@ -37,7 +37,7 @@ Want to pull in **every template** from an organization at once? See the [Bulk F
 ## Features at a glance
 
 - Auto-sync on save with conflict detection
-- `@rewst` chat participant — ask Rewst's AI assistant (RoboRewsty) questions right in VS Code's Chat view; it can read, search, and edit your workspace files and even browse the web (opt-in) to ground its answers
+- `@rewst` chat participant — ask Rewst's AI assistant (RoboRewsty) right in VS Code's Chat view; it can read, search, and edit your workspace files to ground its answers
 - Auto-fetch on open — picks up remote changes when you open a file
 - `Ctrl+Click` template navigation + hover info on `template('UUID')` calls
 - Template bundles — dependency-based grouping in the Explorer sidebar
