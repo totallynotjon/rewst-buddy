@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { ALL_TOOL_SPECS } from './ui/chat/model/lmTools';
+import { ALL_TOOL_SPECS, APPROVAL_TOOL_SPEC } from './ui/chat/model/lmTools';
 
 const { suite, test } = Mocha;
 
@@ -46,8 +46,9 @@ suite('Unit: package manifest', () => {
 
 	test('declares every tool spec as a languageModelTools entry, name-for-name', () => {
 		const declared = new Map((manifest.contributes.languageModelTools ?? []).map(tool => [tool.name, tool]));
-		assert.strictEqual(declared.size, ALL_TOOL_SPECS.length, 'declaration count matches the spec arrays');
-		for (const spec of ALL_TOOL_SPECS) {
+		const specs = [...ALL_TOOL_SPECS, APPROVAL_TOOL_SPEC];
+		assert.strictEqual(declared.size, specs.length, 'declaration count matches the spec arrays');
+		for (const spec of specs) {
 			const entry = declared.get(spec.name);
 			assert.ok(entry, `package.json declares ${spec.name}`);
 			assert.strictEqual(entry.modelDescription, spec.description, `${spec.name} description in sync`);

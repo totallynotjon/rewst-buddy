@@ -382,6 +382,45 @@
 				}
 			},
 			{
+				"name": "rewst_approval",
+				"displayName": "Approve Rewst Action",
+				"toolReferenceName": "rewstApprove",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Internal: approves a Rewst-side action RoboRewsty paused for. Emitted by the RoboRewsty chat model itself — never request this tool.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"toolNames": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							},
+							"description": "Rewst tool names awaiting approval."
+						},
+						"argsPreview": {
+							"type": "string",
+							"description": "Human-readable preview of the tool arguments."
+						},
+						"orgId": {
+							"type": "string",
+							"description": "Organization the approval applies to."
+						},
+						"resume": {
+							"type": "string",
+							"description": "The original request to re-send once approved."
+						}
+					},
+					"required": [
+						"toolNames",
+						"orgId",
+						"resume"
+					]
+				}
+			},
+			{
 				"name": "rewst_graphql",
 				"displayName": "Run Rewst GraphQL Operation",
 				"toolReferenceName": "rewstGraphql",

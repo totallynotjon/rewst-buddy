@@ -119,7 +119,7 @@ A tool whose setting is off is never offered to the assistant — even if it app
 
 ### Approving Rewst actions
 
-Some of RoboRewsty's own Rewst-side actions require your approval before they run. When one comes up, a dialog shows **what** it wants to run (the tool name and its arguments). **Approve** runs it once and the answer continues; **Always Allow** approves it now and remembers your choice in your Rewst preferences so that tool stops asking. The Rewst web app stays available as a fallback.
+Some of RoboRewsty's own Rewst-side actions require your approval before they run. When one comes up, the chat shows an inline confirmation with **what** it wants to run (the tool name and its arguments) — **Continue** approves it once and the answer picks up where it left off; **Cancel** declines. The one-time approval is reverted after the turn, so the tool asks again next time. (If the chat's tool surface is unavailable, a dialog with **Approve** / **Always Allow** is used instead; the Rewst web app stays available as a fallback.)
 
 ### Context and answers
 

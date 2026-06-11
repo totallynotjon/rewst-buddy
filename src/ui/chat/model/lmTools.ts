@@ -74,6 +74,59 @@ export function isToolPermitted(name: string, settings: AiToolSettings): boolean
 	return governed ? governed.enabled(settings) : true;
 }
 
+/**
+ * The in-chat approval surface: when RoboRewsty's turn pauses for a Rewst-side
+ * action, the provider emits a call to this tool instead of popping a modal.
+ * VS Code renders the confirmation inline in the chat (prepareInvocation
+ * confirmationMessages); confirming allow-lists the tool(s) and the provider
+ * resumes the original request, then reverts the allow-listing after the turn.
+ */
+export const APPROVAL_TOOL_NAME = 'rewst_approval';
+
+export const APPROVAL_TOOL_SPEC: ToolSpec = {
+	name: APPROVAL_TOOL_NAME,
+	description:
+		'Internal: approves a Rewst-side action RoboRewsty paused for. Emitted by the RoboRewsty chat model itself — never request this tool.',
+	args: '{"toolNames": string[], "argsPreview"?: string, "orgId": string, "resume": string}',
+	inputSchema: {
+		type: 'object',
+		properties: {
+			toolNames: {
+				type: 'array',
+				items: { type: 'string' },
+				description: 'Rewst tool names awaiting approval.',
+			},
+			argsPreview: { type: 'string', description: 'Human-readable preview of the tool arguments.' },
+			orgId: { type: 'string', description: 'Organization the approval applies to.' },
+			resume: { type: 'string', description: 'The original request to re-send once approved.' },
+		},
+		required: ['toolNames', 'orgId', 'resume'],
+	},
+};
+
+export interface ApprovalToolInput {
+	toolNames: string[];
+	argsPreview?: string;
+	orgId: string;
+	resume: string;
+}
+
+// Tools approved through the in-chat confirmation, awaiting revert once the
+// resumed turn completes (approve-once semantics; the provider drains this).
+const onceApprovals = new Map<string, Set<string>>();
+
+export function addOnceApprovals(orgId: string, toolNames: readonly string[]): void {
+	const existing = onceApprovals.get(orgId) ?? new Set<string>();
+	for (const name of toolNames) existing.add(name);
+	onceApprovals.set(orgId, existing);
+}
+
+export function takeOnceApprovals(orgId: string): string[] {
+	const names = onceApprovals.get(orgId);
+	onceApprovals.delete(orgId);
+	return names ? [...names] : [];
+}
+
 // The chat model's tool calls are invoked by VS Code without org context, so
 // the provider records which org the current/last turn targeted and the
 // GraphQL tool follows it. Falls back to the single active session.
@@ -126,6 +179,9 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 
 	private sync(): void {
 		const enabled = enabledToolNames(readAiToolSettings());
+		// The approval surface is not settings-gated — it is the extension's own
+		// confirmation channel, not a capability handed to the assistant.
+		enabled.add(APPROVAL_TOOL_NAME);
 		for (const [name, registration] of this.registrations) {
 			if (!enabled.has(name)) {
 				registration.dispose();
@@ -135,7 +191,11 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 		for (const name of enabled) {
 			if (this.registrations.has(name)) continue;
 			try {
-				this.registrations.set(name, vscode.lm.registerTool(name, this.makeTool(name)));
+				const registration =
+					name === APPROVAL_TOOL_NAME
+						? vscode.lm.registerTool(name, this.makeApprovalTool())
+						: vscode.lm.registerTool(name, this.makeTool(name));
+				this.registrations.set(name, registration);
 			} catch (error) {
 				// Registration can only fail for names missing from package.json
 				// languageModelTools; surface loudly instead of silently dropping.
@@ -143,6 +203,33 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 			}
 		}
 		log.debug('LmToolRegistry: synced', [...this.registrations.keys()]);
+	}
+
+	private makeApprovalTool(): vscode.LanguageModelTool<ApprovalToolInput> {
+		return {
+			prepareInvocation: async options => {
+				const names = options.input.toolNames.map(name => `\`${name}\``).join(', ');
+				const preview = options.input.argsPreview ? `\n\n\`\`\`json\n${options.input.argsPreview}\n\`\`\`` : '';
+				return {
+					invocationMessage: 'Approving Rewst action…',
+					confirmationMessages: {
+						title: 'RoboRewsty needs your approval to run a Rewst action',
+						message: new vscode.MarkdownString(`${names}${preview}`),
+					},
+				};
+			},
+			invoke: async options => {
+				const { toolNames, orgId } = options.input;
+				const session = SessionManager.getSessionForOrg(orgId);
+				for (const toolName of toolNames) {
+					await session.sdk?.addAllowedTool({ toolName });
+				}
+				addOnceApprovals(orgId, toolNames);
+				return new vscode.LanguageModelToolResult([
+					new vscode.LanguageModelTextPart('Approved — continuing the request.'),
+				]);
+			},
+		};
 	}
 
 	private makeTool(name: string): vscode.LanguageModelTool<Record<string, unknown>> {

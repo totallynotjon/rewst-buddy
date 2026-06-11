@@ -5,7 +5,7 @@ import type { AskOptions, ConversationEvent, Session } from '@sessions';
 import vscode from 'vscode';
 import { conversationMap } from './conversationMap';
 import { RoboRewstyChatModelProvider, type ProviderDeps } from './RoboRewstyChatModelProvider';
-import type { AiToolSettings } from './lmTools';
+import { addOnceApprovals, APPROVAL_TOOL_NAME, takeOnceApprovals, type AiToolSettings } from './lmTools';
 
 const { suite, test, setup } = Mocha;
 
@@ -249,6 +249,99 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(harness.captured[1].message.includes('Tool results:'));
 		assert.ok(harness.captured[1].message.includes('file contents'));
 		assert.ok(harness.captured[1].message.includes('read_file'));
+	});
+
+	test('with the approval tool available, an approval pause becomes an in-chat tool call', async () => {
+		const approvalTool: vscode.LanguageModelChatTool = {
+			name: APPROVAL_TOOL_NAME,
+			description: 'internal approval surface',
+		};
+		const harness = makeHarness(
+			[
+				[
+					{ kind: 'conversation', conversationId: 'conv-1' },
+					{ kind: 'approval', tools: [{ name: 'send_email', args: { to: 'a@b.c' } }], raw: {} },
+				],
+			],
+			{
+				confirmApproval: async () => {
+					throw new Error('modal must not open when the in-chat surface is available');
+				},
+			},
+		);
+
+		await harness.run([message(User, [text('send the email')])], [approvalTool]);
+
+		const calls = callsOf(harness.parts);
+		assert.strictEqual(calls.length, 1);
+		assert.strictEqual(calls[0].name, APPROVAL_TOOL_NAME);
+		const input = calls[0].input as { toolNames: string[]; orgId: string; resume: string };
+		assert.deepStrictEqual(input.toolNames, ['send_email']);
+		assert.strictEqual(input.orgId, 'org-1');
+		assert.strictEqual(input.resume, harness.captured[0].message, 'resume carries the original request');
+	});
+
+	test('a confirmed in-chat approval resumes the original request in the same conversation', async () => {
+		const approvalTool: vscode.LanguageModelChatTool = {
+			name: APPROVAL_TOOL_NAME,
+			description: 'internal approval surface',
+		};
+		const harness = makeHarness([
+			[
+				{ kind: 'conversation', conversationId: 'conv-1' },
+				{ kind: 'approval', tools: [{ name: 'send_email' }], raw: {} },
+			],
+			completeTurn('Email sent.'),
+		]);
+		harness.wrapper.when('removeAllowedTool', { data: { removeAllowedTool: { id: 'p', alwaysAllowedTools: [] } } });
+
+		const ask1 = [message(User, [text('send the email')])];
+		await harness.run(ask1, [approvalTool]);
+		const [call] = callsOf(harness.parts);
+		assert.ok(call);
+
+		// The user clicked Continue: the approval tool ran (allow-listing +
+		// marking the once-approval), and VS Code hands back the result.
+		addOnceApprovals('org-1', ['send_email']);
+		await harness.run(
+			[
+				...ask1,
+				message(Assistant, [call]),
+				message(User, [new vscode.LanguageModelToolResultPart(call.callId, [text('Approved')])]),
+			],
+			[approvalTool],
+		);
+
+		assert.strictEqual(harness.captured[1].message, harness.captured[0].message, 'original request re-sent');
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-1');
+		assert.ok(textOf(harness.parts).includes('Email sent.'));
+		assert.strictEqual(harness.wrapper.getCallsFor('removeAllowedTool').length, 1, 'once-approval reverted');
+		assert.deepStrictEqual(takeOnceApprovals('org-1'), [], 'revert set drained');
+	});
+
+	test('continuation rounds start on a new paragraph', async () => {
+		const reply = 'Checking.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+		const harness = makeHarness([completeTurn(reply), completeTurn('It says hello.')]);
+
+		const ask1 = [message(User, [text('check a.txt')])];
+		await harness.run(ask1, [READ_FILE_TOOL]);
+		const [call] = callsOf(harness.parts);
+		const firstText = textOf(harness.parts);
+
+		await harness.run(
+			[
+				...ask1,
+				message(Assistant, [text(firstText), call]),
+				message(User, [new vscode.LanguageModelToolResultPart(call.callId, [text('hello')])]),
+			],
+			[READ_FILE_TOOL],
+		);
+
+		const continuation = textOf(harness.parts).slice(firstText.length);
+		assert.ok(
+			continuation.startsWith('\n\n'),
+			`continuation starts with a paragraph break, got: ${JSON.stringify(continuation.slice(0, 10))}`,
+		);
 	});
 
 	test('approval pauses resolve via the modal and re-ask; approve-once reverts', async () => {

@@ -16,7 +16,14 @@ import { buildWorkspaceOverview } from '../tools/workspaceTools';
 import { prependInstructions } from '../promptContext';
 import { conversationMap, nextTurnKey, prefixKey } from './conversationMap';
 import { setLastAiAnswer } from './lastAnswer';
-import { readAiToolSettings, setActiveAiOrg, type AiToolSettings } from './lmTools';
+import {
+	APPROVAL_TOOL_NAME,
+	readAiToolSettings,
+	setActiveAiOrg,
+	takeOnceApprovals,
+	type AiToolSettings,
+	type ApprovalToolInput,
+} from './lmTools';
 import { renderSourcesMarkdown } from './sources';
 import {
 	buildInstructionsForChatTools,
@@ -52,18 +59,17 @@ function truncate(text: string, max: number): string {
 	return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+function safeJson(value: unknown): string {
+	try {
+		return JSON.stringify(value, null, 2) ?? String(value);
+	} catch {
+		return String(value);
+	}
+}
+
 async function confirmApprovalModal(tools: ApprovalTool[]): Promise<ApprovalChoice> {
 	const detail = tools
-		.map(tool => {
-			if (tool.args === undefined) return tool.name;
-			let args: string;
-			try {
-				args = JSON.stringify(tool.args, null, 2) ?? String(tool.args);
-			} catch {
-				args = String(tool.args);
-			}
-			return `${tool.name}\n${truncate(args, 500)}`;
-		})
+		.map(tool => (tool.args === undefined ? tool.name : `${tool.name}\n${truncate(safeJson(tool.args), 500)}`))
 		.join('\n\n');
 	const alwaysLabel = tools.length === 1 ? `Always Allow "${tools[0].name}"` : 'Always Allow These Tools';
 	const choice = await vscode.window.showInformationMessage(
@@ -179,9 +185,21 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		let message: string;
 
 		if (trailingResults) {
-			// VS Code is handing back the outputs of tool calls we emitted last
-			// turn — feed them to the same backend conversation.
-			message = formatToolResultsMessage(trailingResults, collectToolCalls(messages));
+			const calls = collectToolCalls(messages);
+			const approval = trailingResults
+				.map(result => calls.get(result.callId))
+				.find(call => call?.name === APPROVAL_TOOL_NAME);
+			if (approval) {
+				// The user confirmed the in-chat approval, so the tool is now
+				// allow-listed — re-send the original request it interrupted.
+				const input = approval.input as Partial<ApprovalToolInput> | undefined;
+				if (typeof input?.resume !== 'string') throw new Error('Approval call carried no resumable request.');
+				message = input.resume;
+			} else {
+				// VS Code is handing back the outputs of tool calls we emitted last
+				// turn — feed them to the same backend conversation.
+				message = formatToolResultsMessage(trailingResults, calls);
+			}
 			conversationId = conversationMap.lookup(key);
 		} else {
 			const fresh = messages.every(entry => entry.role !== vscode.LanguageModelChatMessageRole.Assistant);
@@ -197,8 +215,15 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 
 		// Everything reported this turn, for predicting the next request's key.
 		let emittedText = '';
+		// Continuation requests render into the same chat bubble as the previous
+		// round's text, so their first text needs a paragraph break.
+		let needsSeparator = trailingResults !== undefined;
 		const emitText = (text: string): void => {
 			if (!text) return;
+			if (needsSeparator) {
+				text = `\n\n${text}`;
+				needsSeparator = false;
+			}
 			progress.report(new vscode.LanguageModelTextPart(text));
 			emittedText += text;
 		};
@@ -253,6 +278,30 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 								storeContinuity([]);
 								return;
 							}
+							if (options.tools?.some(tool => tool.name === APPROVAL_TOOL_NAME)) {
+								// In-chat confirmation: emit a call to the approval tool.
+								// VS Code renders Continue/Cancel inline; confirming
+								// allow-lists the tool(s) and re-enters with the resume
+								// payload, cancelling simply ends the turn.
+								const argsPreview = named
+									.filter(tool => tool.args !== undefined)
+									.map(tool => `${tool.name}: ${truncate(safeJson(tool.args), 500)}`)
+									.join('\n');
+								const input: ApprovalToolInput = {
+									toolNames: named.map(tool => tool.name),
+									orgId,
+									resume: message,
+									...(argsPreview ? { argsPreview } : {}),
+								};
+								const call = new vscode.LanguageModelToolCallPart(
+									`rewst-approval-${Date.now().toString(36)}`,
+									APPROVAL_TOOL_NAME,
+									input,
+								);
+								progress.report(call);
+								storeContinuity([call]);
+								return;
+							}
 							const choice = await this.deps.confirmApproval(named);
 							if (choice === 'cancel') {
 								emitText(
@@ -271,6 +320,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 									);
 								}
 							}
+							needsSeparator = emittedText.length > 0;
 							continue turns;
 						}
 						case 'error':
@@ -306,8 +356,9 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				return;
 			}
 		} finally {
-			// Undo one-time approvals now that the tool has already run server-side.
-			for (const toolName of toolsToRevert) {
+			// Undo one-time approvals now that the tool has already run server-side
+			// (modal Approve and in-chat confirmations alike).
+			for (const toolName of new Set([...toolsToRevert, ...takeOnceApprovals(orgId)])) {
 				try {
 					await session.sdk?.removeAllowedTool({ toolName });
 				} catch (error) {
