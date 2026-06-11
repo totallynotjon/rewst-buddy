@@ -72,22 +72,28 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 	const graphqlNote = hasGraphqlTools
 		? [
 				'',
-				'GraphQL: you have a session-authenticated GraphQL action. Use rewst_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call rewst_graphql with the final operation and variables.',
+				'GraphQL: you have a session-authenticated GraphQL action. Use rewst_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call rewst_graphql with the final operation and variables. For ANY live Rewst data (workflows, org variables, integrations, executions, templates, …) these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.',
 			]
 		: [];
 	return [
 		'---',
-		"You can use local tools supplied by the user's VS Code extension. To call one, reply with a fenced code block tagged rewst-tool containing JSON:",
+		"You can use local tools supplied by the user's VS Code extension. These editor tools are NOT in your platform function-calling registry — invoking them as native tool calls will fail with an unknown-tool error. The ONLY way to call one is to write a fenced code block tagged rewst-tool in your reply text:",
 		'',
 		'```rewst-tool',
 		'{"tool": "read_file", "args": {"path": "src/example.jinja"}}',
 		'```',
 		'',
+		'If a native invocation of one of these names ever errors, write the rewst-tool block instead — do not fall back to a different tool.',
+		'',
 		'Available tools:',
 		...lines,
 		...graphqlNote,
 		'',
-		`Rules: when you need tool information, reply with ONLY rewst-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long results are cut off with a note saying how to continue (e.g. read_file startLine/endLine for the next chunk); never repeat a request you already made — identical repeats are rejected.`,
+		`Rules: when you need tool information, reply with ONLY rewst-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long results are cut off with a note saying how to continue (e.g. read_file startLine/endLine for the next chunk); never repeat a request you already made — identical repeats are rejected.${
+			hasGraphqlTools
+				? ' IMPORTANT: for live Rewst platform data (workflows, org variables, integrations, executions, templates, …) your FIRST action must be a rewst_graphql_schema or rewst_graphql block — do NOT run built-in platform tools like listOrgVariables, listWorkflow, or searchWorkflows before GraphQL has been tried.'
+				: ''
+		}`,
 	].join('\n');
 }
 

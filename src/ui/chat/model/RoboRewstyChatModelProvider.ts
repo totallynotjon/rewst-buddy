@@ -15,6 +15,7 @@ import { stripToolRequestBlocks } from '../tools/toolProtocol';
 import { buildWorkspaceOverview } from '../tools/workspaceTools';
 import { prependInstructions } from '../promptContext';
 import { conversationMap, nextTurnKey, prefixKey } from './conversationMap';
+import { ENGINEERING_DIRECTIVE } from './engineeringDirective';
 import { setLastAiAnswer } from './lastAnswer';
 import {
 	APPROVAL_TOOL_NAME,
@@ -211,6 +212,11 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			if (tools.length > 0) message += `\n\n${buildInstructionsForChatTools(tools)}`;
 			conversationId =
 				(fresh ? conversationMap.takePendingResume(orgId) : undefined) ?? conversationMap.lookup(key);
+			if (conversationId === undefined) {
+				// The opening message of a new backend conversation carries the
+				// hidden steering preamble (never rendered in the chat UI).
+				message = `${ENGINEERING_DIRECTIVE}\n\n${message}`;
+			}
 		}
 
 		// Everything reported this turn, for predicting the next request's key.

@@ -213,7 +213,8 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			toolSettings: () => ({ ...allSettings, enableWorkspaceTools: false }),
 		});
 		await harness.run([message(User, [text('check a.txt')])], [READ_FILE_TOOL]);
-		assert.ok(!harness.captured[0].message.includes('read_file'), 'withheld from instructions');
+		// The tool-instructions block advertises tools as "- <name> — args:".
+		assert.ok(!harness.captured[0].message.includes('- read_file —'), 'withheld from instructions');
 	});
 
 	test('an out-of-set tool request becomes text, never a stalled call', async () => {
@@ -416,11 +417,31 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		await assert.rejects(() => harness.run([message(User, [text('hi')])]), /boom/);
 	});
 
+	test('new conversations open with the hidden engineering directive; continuations do not repeat it', async () => {
+		const harness = makeHarness([completeTurn('Hello'), completeTurn('Again')]);
+		await harness.run([message(User, [text('hi')])]);
+		assert.ok(
+			harness.captured[0].message.startsWith('<engineering_layer_directive>'),
+			'opening message carries the directive',
+		);
+
+		await harness.run([
+			message(User, [text('hi')]),
+			message(Assistant, [text('Hello')]),
+			message(User, [text('next')]),
+		]);
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-1');
+		assert.ok(
+			!harness.captured[1].message.includes('<engineering_layer_directive>'),
+			'continuing the conversation does not repeat the directive',
+		);
+	});
+
 	test('custom instructions are prepended to the outgoing message', async () => {
 		const harness = makeHarness([completeTurn('ok')], {
 			aiConfig: () => ({ customInstructions: 'answer in haiku', conversationType: 'HELP_DOCS' }),
 		});
 		await harness.run([message(User, [text('hi')])]);
-		assert.ok(harness.captured[0].message.startsWith("User's standing instructions: answer in haiku"));
+		assert.ok(harness.captured[0].message.includes("User's standing instructions: answer in haiku"));
 	});
 });
