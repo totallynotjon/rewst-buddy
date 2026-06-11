@@ -15,7 +15,7 @@ import { stripToolRequestBlocks } from '../tools/toolProtocol';
 import { buildWorkspaceOverview } from '../tools/workspaceTools';
 import { prependInstructions } from '../promptContext';
 import { conversationMap, nextTurnKey, prefixKey } from './conversationMap';
-import { ENGINEERING_DIRECTIVE } from './engineeringDirective';
+import { buildEngineeringDirective } from './engineeringDirective';
 import { setLastAiAnswer } from './lastAnswer';
 import {
 	APPROVAL_TOOL_NAME,
@@ -214,8 +214,9 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				(fresh ? conversationMap.takePendingResume(orgId) : undefined) ?? conversationMap.lookup(key);
 			if (conversationId === undefined) {
 				// The opening message of a new backend conversation carries the
-				// hidden steering preamble (never rendered in the chat UI).
-				message = `${ENGINEERING_DIRECTIVE}\n\n${message}`;
+				// hidden steering preamble (never rendered in the chat UI), built
+				// from the tools actually available this turn.
+				message = `${buildEngineeringDirective(permittedNames)}\n\n${message}`;
 			}
 		}
 
@@ -341,10 +342,10 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				const remainder =
 					gate.streamedAny || gate.blocked ? gate.flush() : stripToolRequestBlocks(completeContent);
 
-				const { calls, rejectedNames } =
-					tools.length > 0
-						? translateToolRequests(completeContent, permittedNames)
-						: { calls: [], rejectedNames: [] };
+				// Always translate, even with no tools passed: a request for an
+				// unavailable tool must surface as the rejection note instead of
+				// being silently stripped by the chunk gate.
+				const { calls, rejectedNames } = translateToolRequests(completeContent, permittedNames);
 
 				if (calls.length > 0) {
 					emitText(remainder);

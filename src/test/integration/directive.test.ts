@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { askRewstAi, Session } from '@sessions';
 import { clearCachedSession, getTestSession, getTestToken, hasTestToken, initTestEnvironment } from '@test';
-import { ENGINEERING_DIRECTIVE } from '../../ui/chat/model/engineeringDirective';
+import { buildEngineeringDirective } from '../../ui/chat/model/engineeringDirective';
 import { ALL_TOOL_SPECS } from '../../ui/chat/model/lmTools';
 import { buildToolInstructions, parseToolRequests, type ToolRequest } from '../../ui/chat/tools/toolProtocol';
 
@@ -37,7 +37,8 @@ suite('Integration: engineering directive steering', function () {
 	});
 
 	async function turn(question: string, attempt = 1): Promise<{ content: string; requests: ToolRequest[] }> {
-		const message = `${ENGINEERING_DIRECTIVE}\n\n${question}\n\n${buildToolInstructions(ALL_TOOL_SPECS)}`;
+		const directive = buildEngineeringDirective(new Set(ALL_TOOL_SPECS.map(spec => spec.name)));
+		const message = `${directive}\n\n${question}\n\n${buildToolInstructions(ALL_TOOL_SPECS)}`;
 		let content = '';
 		const statuses: string[] = [];
 		for await (const event of askRewstAi({

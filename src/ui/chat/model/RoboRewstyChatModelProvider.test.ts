@@ -217,6 +217,16 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(!harness.captured[0].message.includes('- read_file —'), 'withheld from instructions');
 	});
 
+	test('a tool request with no tools available surfaces the rejection note', async () => {
+		const reply = '```rewst-tool\n{"tool": "rewst_graphql", "args": {"query": "{ workflows { id } }"}}\n```';
+		const harness = makeHarness([completeTurn(reply)]);
+		await harness.run([message(User, [text('list workflows')])]);
+
+		assert.strictEqual(callsOf(harness.parts).length, 0);
+		assert.ok(textOf(harness.parts).includes('rewst_graphql'), 'rejection note names the tool');
+		assert.ok(textOf(harness.parts).includes('rewst-buddy.ai'), 'note points at the settings');
+	});
+
 	test('an out-of-set tool request becomes text, never a stalled call', async () => {
 		const reply = '```rewst-tool\n{"tool": "run_command", "args": {"command": "ls"}}\n```';
 		const harness = makeHarness([completeTurn(reply)]);
