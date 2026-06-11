@@ -23,6 +23,7 @@ function deps(over: Partial<WorkspaceToolDeps> = {}): WorkspaceToolDeps {
 		templateLinks: () => [],
 		workspaceSymbols: async () => [],
 		documentSymbols: async () => [],
+		workspaceToolsEnabled: () => true,
 		editToolsEnabled: () => true,
 		getDocument: async () => fakeDocument(''),
 		applyEdit: async () => true,
@@ -237,6 +238,20 @@ suite('Unit: workspaceTools', () => {
 			);
 			assert.match(results[0].output, /not found/);
 			assert.match(results[1].output, /more than once/);
+		});
+
+		test('workspace and edit tools respect the enableWorkspaceTools setting', async () => {
+			const d = deps({ workspaceToolsEnabled: () => false });
+			const results = await runToolRequests(
+				[
+					{ tool: 'list_files', args: {} },
+					{ tool: 'read_file', args: { path: 'a.jinja' } },
+					{ tool: 'write_file', args: { path: 'a.jinja', content: 'x' } },
+				],
+				d,
+			);
+			assert.ok(results.every(r => !r.ok));
+			assert.ok(results.every(r => r.output.includes('enableWorkspaceTools')));
 		});
 
 		test('edit tools respect the enableEditTools setting', async () => {

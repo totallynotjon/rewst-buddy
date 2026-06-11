@@ -50,6 +50,7 @@ export interface WorkspaceToolDeps {
 	templateLinks(): TemplateLink[];
 	workspaceSymbols(query: string): Thenable<vscode.SymbolInformation[] | undefined>;
 	documentSymbols(uri: vscode.Uri): Thenable<(vscode.SymbolInformation | vscode.DocumentSymbol)[] | undefined>;
+	workspaceToolsEnabled(): boolean;
 	editToolsEnabled(): boolean;
 	getDocument(uri: vscode.Uri): Thenable<vscode.TextDocument>;
 	applyEdit(edit: vscode.WorkspaceEdit): Thenable<boolean>;
@@ -79,6 +80,8 @@ export const defaultDeps: WorkspaceToolDeps = {
 			'vscode.executeDocumentSymbolProvider',
 			uri,
 		),
+	workspaceToolsEnabled: () =>
+		vscode.workspace.getConfiguration(`${extPrefix}.ai`).get<boolean>('enableWorkspaceTools', true),
 	editToolsEnabled: () => vscode.workspace.getConfiguration(`${extPrefix}.ai`).get<boolean>('enableEditTools', true),
 	getDocument: uri => vscode.workspace.openTextDocument(uri),
 	applyEdit: edit => vscode.workspace.applyEdit(edit),
@@ -364,6 +367,18 @@ function requireEditTools(deps: WorkspaceToolDeps): void {
 	}
 }
 
+// Enforced at execution time, not just by omitting specs from the prompt: the
+// assistant is remote and may request tools it was never offered.
+const LOCAL_TOOL_NAMES = new Set([...WORKSPACE_TOOL_SPECS, ...EDIT_TOOL_SPECS].map(spec => spec.name));
+
+function requireWorkspaceTools(deps: WorkspaceToolDeps): void {
+	if (!deps.workspaceToolsEnabled()) {
+		throw new Error(
+			'Workspace tools are disabled. The user can enable them with the rewst-buddy.ai.enableWorkspaceTools setting.',
+		);
+	}
+}
+
 async function editFileTool(args: Record<string, unknown>, deps: WorkspaceToolDeps): Promise<ToolOutcome> {
 	requireEditTools(deps);
 	const uri = requireWorkspaceUri(args, 'edit_file', deps);
@@ -457,6 +472,7 @@ async function runTool(
 	deps: WorkspaceToolDeps,
 	graphqlDeps?: GraphqlToolDeps,
 ): Promise<ToolOutcome> {
+	if (LOCAL_TOOL_NAMES.has(request.tool)) requireWorkspaceTools(deps);
 	switch (request.tool) {
 		case 'list_files':
 			return { output: await listFiles(request.args, deps) };

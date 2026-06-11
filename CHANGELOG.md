@@ -6,6 +6,10 @@
 
 - **RoboRewsty GraphQL Tool (opt-in, mutation-approval-gated)** - `rewst_graphql` lets RoboRewsty compose and run GraphQL operations against your Rewst instance using your existing session, with `rewst_graphql_schema` for exploring the available schema. Queries run directly; mutations always show an approval dialog with the full operation before running. Disabled by default (`rewst-buddy.ai.enableGraphqlTool`) because the session can read and change anything you can in Rewst
 
+### Fixed
+
+- **Workspace tools are now enforced at execution time** - `rewst-buddy.ai.enableWorkspaceTools` (and `enableEditTools`) are checked when a tool request runs, not just when tools are offered to the assistant. Previously, enabling only another tool family (e.g. the GraphQL tool) while workspace tools were disabled would still execute workspace tool requests if the remote assistant sent them
+
 ## [0.40.3] - 2026-06-11
 
 ### Added
