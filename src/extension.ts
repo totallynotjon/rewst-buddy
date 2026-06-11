@@ -6,9 +6,10 @@ import { Server } from '@server';
 import { SessionManager } from '@sessions';
 import {
 	BundleTreeDataProvider,
+	LmToolRegistry,
 	ProposedContentProvider,
-	RewstChatParticipant,
 	RewstViewProvider,
+	RoboRewstyChatModelProvider,
 	SessionTreeDataProvider,
 	StatusBar,
 } from '@ui';
@@ -60,7 +61,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(TemplateBundleManager.init());
 	context.subscriptions.push(Server.init());
-	context.subscriptions.push(RewstChatParticipant.init());
+	context.subscriptions.push(new RoboRewstyChatModelProvider().init());
+	context.subscriptions.push(LmToolRegistry.init());
 	context.subscriptions.push(ProposedContentProvider.init());
 	context.subscriptions.push(new StatusBar());
 

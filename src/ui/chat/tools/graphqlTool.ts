@@ -25,12 +25,28 @@ export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
 		args: '{"typeName"?: string, "search"?: string, "includeDeprecated"?: boolean}',
 		description:
 			'Inspect the Rewst GraphQL schema with the user session before composing operations. With no args, lists root Query/Mutation/Subscription fields. Use typeName to inspect fields/input fields/enum values for one type. Use search to find matching type names and root operation fields.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				typeName: { type: 'string', description: 'Inspect one named GraphQL type.' },
+				search: { type: 'string', description: 'Find matching type names and root operation fields.' },
+				includeDeprecated: { type: 'boolean', description: 'Include deprecated fields/values.' },
+			},
+		},
 	},
 	{
 		name: 'rewst_graphql',
 		args: '{"query": string, "variables"?: object}',
 		description:
 			"Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval before running, so keep them minimal and explain what you intend to change. Subscriptions are not supported.",
+		inputSchema: {
+			type: 'object',
+			properties: {
+				query: { type: 'string', description: 'GraphQL operation text.' },
+				variables: { type: 'object', description: 'Operation variables.' },
+			},
+			required: ['query'],
+		},
 	},
 ];
 

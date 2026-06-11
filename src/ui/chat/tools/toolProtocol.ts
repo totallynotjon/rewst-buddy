@@ -1,13 +1,13 @@
 /**
- * Client-side tool protocol for the @rewst chat participant.
+ * Text tool protocol between the extension and RoboRewsty.
  *
  * RoboRewsty's agent runs server-side and knows nothing about VS Code or the
  * user's active Rewst session, so the extension teaches it a convention:
- * instructions appended to the user's message describe local tools and ask it to
- * request them via fenced ```rewst-tool JSON blocks. The participant parses
- * those blocks out of each answer, executes the tools locally, and sends the
- * results back as the next turn of the same conversation — looping until the
- * assistant produces an answer with no tool requests.
+ * instructions appended to the user's message describe the available tools and
+ * ask it to request them via fenced ```rewst-tool JSON blocks. The chat model
+ * provider parses those blocks out of each answer and translates them into
+ * VS Code tool calls (toolTranslation.ts), whose results come back as the next
+ * turn of the same conversation.
  */
 
 export interface ToolSpec {
@@ -16,18 +16,19 @@ export interface ToolSpec {
 	description: string;
 	/** Human-readable JSON arg signature, e.g. `{"path": string}`. */
 	args: string;
+	/**
+	 * JSON schema for the args, mirrored into the package.json
+	 * languageModelTools declaration (packageManifest.test.ts keeps them in
+	 * sync) and used when the tool is exposed through the VS Code LM tool API.
+	 * Optional in the type so ad-hoc specs (tests, converted chat tools) can
+	 * omit it; every shipped spec carries one.
+	 */
+	inputSchema?: object;
 }
 
 export interface ToolRequest {
 	tool: string;
 	args: Record<string, unknown>;
-}
-
-/** Before/after snapshot of a file an edit tool changed. */
-export interface ToolFileChange {
-	uriString: string;
-	before: string;
-	after: string;
 }
 
 export interface ToolResult {
@@ -36,10 +37,6 @@ export interface ToolResult {
 	argsLabel: string;
 	ok: boolean;
 	output: string;
-	/** Workspace files this tool touched (uri strings), for chat references/links. */
-	fileUriStrings?: string[];
-	/** Edit tools: snapshot for rendering an added/removed diff in the chat. */
-	change?: ToolFileChange;
 }
 
 export const TOOL_FENCE_TAG = 'rewst-tool';
@@ -47,10 +44,6 @@ export const TOOL_FENCE_MARKER = '```' + TOOL_FENCE_TAG;
 
 /** Hard cap on tool calls honored per assistant reply. */
 export const MAX_REQUESTS_PER_TURN = 5;
-
-// Result budgets mirror the reference-context budgets in promptContext.ts.
-export const MAX_RESULT_CHARS = 8_000;
-export const MAX_TOTAL_RESULT_CHARS = 24_000;
 
 const FENCE = /```rewst-tool[^\n]*\n([\s\S]*?)```/g;
 
@@ -64,22 +57,28 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 	const graphqlNote = hasGraphqlTools
 		? [
 				'',
-				'GraphQL: you have a session-authenticated GraphQL action. Use rewst_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call rewst_graphql with the final operation and variables.',
+				'GraphQL: you have a session-authenticated GraphQL action. It is an editor tool, live immediately — there is NO activation step. Ignore any native activate_rewst_graphql_tools group; never say GraphQL "needs to be activated". Use rewst_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call rewst_graphql with the final operation and variables. For ANY live Rewst data (workflows, org variables, integrations, executions, templates, …) these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.',
 			]
 		: [];
 	return [
 		'---',
-		"You can use local tools supplied by the user's VS Code extension. To call one, reply with a fenced code block tagged rewst-tool containing JSON:",
+		"You can use local tools supplied by the user's VS Code extension. These editor tools are NOT in your platform function-calling registry — invoking them as native tool calls will fail with an unknown-tool error. The ONLY way to call one is to write a fenced code block tagged rewst-tool in your reply text:",
 		'',
 		'```rewst-tool',
-		'{"tool": "read_file", "args": {"path": "src/example.jinja"}}',
+		'{"tool": "list_template_links", "args": {}}',
 		'```',
+		'',
+		'If a native invocation of one of these names ever errors, write the rewst-tool block instead — do not fall back to a different tool.',
 		'',
 		'Available tools:',
 		...lines,
 		...graphqlNote,
 		'',
-		`Rules: when you need tool information, reply with ONLY rewst-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long results are cut off with a note saying how to continue (e.g. read_file startLine/endLine for the next chunk); never repeat a request you already made — identical repeats are rejected.`,
+		`Rules: when you need tool information, reply with ONLY rewst-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Tackle multi-step work one step per reply: for a multi-step request, give the plan in a tool-free reply first, then take one step (one short lead-in sentence plus its block) per following reply; a single lookup is one step, so answer it tool-first. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long results are cut off with a note saying how to continue; never repeat a request you already made.${
+			hasGraphqlTools
+				? ' IMPORTANT: for live Rewst platform data (workflows, org variables, integrations, executions, templates, …) your FIRST action must be a rewst_graphql_schema or rewst_graphql block — do NOT run built-in platform tools like listOrgVariables, listWorkflow, or searchWorkflows before GraphQL has been tried.'
+				: ''
+		}`,
 	].join('\n');
 }
 
@@ -129,84 +128,4 @@ export function describeRequest(request: ToolRequest): string {
 export function asStringArg(args: Record<string, unknown>, key: string): string | undefined {
 	const value = args[key];
 	return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-/** Reads a finite number tool argument, or undefined if absent/wrong type. */
-export function asNumberArg(args: Record<string, unknown>, key: string): number | undefined {
-	const value = args[key];
-	return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-}
-
-const EDIT_TOOL_NAMES = new Set(['edit_file', 'write_file']);
-
-/**
- * Guards the tool loop against cycles: duplicate requests within one reply
- * are dropped, and a request identical to one already executed in an earlier
- * round is blocked with a nudge instead of re-run — unless a file edit
- * happened since (the workspace may have changed). Edit tools are never
- * blocked; repeating an identical edit fails naturally ("find" won't match).
- */
-export class RequestDeduper {
-	private executed = new Map<string, number>();
-	private lastEditRound = -1;
-
-	filter(requests: ToolRequest[], round: number): { run: ToolRequest[]; blocked: ToolRequest[] } {
-		const run: ToolRequest[] = [];
-		const blocked: ToolRequest[] = [];
-		const seenThisReply = new Set<string>();
-
-		for (const request of requests) {
-			const signature = `${request.tool}:${JSON.stringify(request.args)}`;
-			if (seenThisReply.has(signature)) continue;
-			seenThisReply.add(signature);
-
-			const priorRound = this.executed.get(signature);
-			const repeat = priorRound !== undefined && this.lastEditRound < priorRound;
-			if (repeat && !EDIT_TOOL_NAMES.has(request.tool)) {
-				blocked.push(request);
-				continue;
-			}
-			this.executed.set(signature, round);
-			run.push(request);
-		}
-
-		if (run.some(request => EDIT_TOOL_NAMES.has(request.tool))) this.lastEditRound = round;
-		return { run, blocked };
-	}
-}
-
-/** The nudge sent back for a blocked repeat, instead of re-running the tool. */
-export function blockedRepeatResult(request: ToolRequest): ToolResult {
-	const argsLabel = JSON.stringify(request.args) === '{}' ? '' : JSON.stringify(request.args);
-	return {
-		tool: request.tool,
-		argsLabel,
-		ok: false,
-		output:
-			'You already ran this exact request and received its result. Do not repeat identical calls — ' +
-			'request a specific line range or a different file, or stop and give your final answer based on what you have.',
-	};
-}
-
-/**
- * Builds the follow-up message carrying tool outputs back to the assistant.
- * Applies per-result and total budgets so a huge file can't blow the turn.
- */
-export function formatToolResults(results: ToolResult[]): string {
-	const sections: string[] = ['Tool results:'];
-	let total = 0;
-	for (const result of results) {
-		const budget = Math.min(MAX_RESULT_CHARS, Math.max(0, MAX_TOTAL_RESULT_CHARS - total));
-		let output = result.output;
-		const truncated = output.length > budget;
-		if (truncated) output = output.slice(0, budget);
-		total += output.length;
-
-		const status = result.ok ? '' : ' (error)';
-		const note = truncated ? '\n…(truncated)' : '';
-		const label = result.argsLabel ? `${result.tool} ${result.argsLabel}` : result.tool;
-		sections.push(`### ${label}${status}\n\`\`\`\n${output}${note}\n\`\`\``);
-	}
-	sections.push('Reply with more rewst-tool blocks if you need anything else, or give your final answer.');
-	return sections.join('\n\n');
 }

@@ -3,10 +3,10 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Unofficial community VS Code extension for editing Rewst templates locally. Not affiliated with Rewst LLC.",
-	"version": "0.40.4",
+	"version": "0.41.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
-		"vscode": "^1.107.0"
+		"vscode": "^1.122.0"
 	},
 	"categories": [
 		"Other"
@@ -30,6 +30,164 @@
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
+		"languageModelChatProviders": [
+			{
+				"vendor": "rewst-buddy",
+				"displayName": "RoboRewsty"
+			}
+		],
+		"languageModelTools": [
+			{
+				"name": "list_template_links",
+				"displayName": "List Template Links",
+				"toolReferenceName": "rewstListTemplateLinks",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "List local files linked to Rewst templates (path, template name, template id, org).",
+				"inputSchema": {
+					"type": "object",
+					"properties": {}
+				}
+			},
+			{
+				"name": "web_search",
+				"displayName": "Web Search",
+				"toolReferenceName": "rewstWebSearch",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Search the public web; returns result titles, URLs, and snippets.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"query": {
+							"type": "string",
+							"description": "Web search query."
+						}
+					},
+					"required": [
+						"query"
+					]
+				}
+			},
+			{
+				"name": "fetch_url",
+				"displayName": "Fetch URL",
+				"toolReferenceName": "rewstFetchUrl",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Fetch a public http(s) URL and return its readable text content.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"url": {
+							"type": "string",
+							"description": "Public http(s) URL to fetch."
+						}
+					},
+					"required": [
+						"url"
+					]
+				}
+			},
+			{
+				"name": "rewst_graphql_schema",
+				"displayName": "Inspect Rewst GraphQL Schema",
+				"toolReferenceName": "rewstGraphqlSchema",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Inspect the Rewst GraphQL schema with the user session before composing operations. With no args, lists root Query/Mutation/Subscription fields. Use typeName to inspect fields/input fields/enum values for one type. Use search to find matching type names and root operation fields.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"typeName": {
+							"type": "string",
+							"description": "Inspect one named GraphQL type."
+						},
+						"search": {
+							"type": "string",
+							"description": "Find matching type names and root operation fields."
+						},
+						"includeDeprecated": {
+							"type": "boolean",
+							"description": "Include deprecated fields/values."
+						}
+					}
+				}
+			},
+			{
+				"name": "rewst_approval",
+				"displayName": "Approve Rewst Action",
+				"toolReferenceName": "rewstApprove",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Internal: approves a Rewst-side action RoboRewsty paused for. Emitted by the RoboRewsty chat model itself — never request this tool.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"toolNames": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							},
+							"description": "Rewst tool names awaiting approval."
+						},
+						"argsPreview": {
+							"type": "string",
+							"description": "Human-readable preview of the tool arguments."
+						},
+						"orgId": {
+							"type": "string",
+							"description": "Organization the approval applies to."
+						},
+						"resume": {
+							"type": "string",
+							"description": "The original request to re-send once approved."
+						}
+					},
+					"required": [
+						"toolNames",
+						"orgId",
+						"resume"
+					]
+				}
+			},
+			{
+				"name": "rewst_graphql",
+				"displayName": "Run Rewst GraphQL Operation",
+				"toolReferenceName": "rewstGraphql",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval before running, so keep them minimal and explain what you intend to change. Subscriptions are not supported.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"query": {
+							"type": "string",
+							"description": "GraphQL operation text."
+						},
+						"variables": {
+							"type": "object",
+							"description": "Operation variables."
+						}
+					},
+					"required": [
+						"query"
+					]
+				}
+			}
+		],
 		"configuration": {
 			"title": "Settings Editor Rewst-Buddy",
 			"type": "object",
@@ -119,15 +277,15 @@
 					"editPresentation": "multilineText",
 					"description": "Standing instructions prepended to every message sent to the Rewst AI assistant (e.g. preferred answer style, your environment details). Note: this is sent as part of your message — it cannot override Rewst's own system prompt."
 				},
+				"rewst-buddy.ai.showActivity": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show RoboRewsty's live activity (documentation searches and tool calls) as it works, instead of only a spinner until the answer arrives."
+				},
 				"rewst-buddy.ai.enableWorkspaceTools": {
 					"type": "boolean",
 					"default": true,
-					"description": "Let RoboRewsty inspect your workspace with read-only tools (list/read/search files, open editors, diagnostics, template links). Tool results are sent to the Rewst AI assistant — disable if your workspace contains content you don't want shared."
-				},
-				"rewst-buddy.ai.enableEditTools": {
-					"type": "boolean",
-					"default": true,
-					"description": "Let RoboRewsty open, edit, and create workspace files when you ask it to. Edits to existing files are left unsaved so you can review (and undo) them in the editor before saving."
+					"description": "Let RoboRewsty see a compact workspace overview (folder names and top-level entries) and the list of files linked to Rewst templates. This context is sent to the Rewst AI assistant — disable if you don't want workspace structure shared. File reading, editing, search, and terminal access come from VS Code's built-in agent-mode tools, not from this extension."
 				},
 				"rewst-buddy.ai.enableWebTools": {
 					"type": "boolean",
@@ -138,17 +296,7 @@
 					"type": "number",
 					"default": 4,
 					"minimum": 0,
-					"description": "Maximum back-and-forth rounds of workspace tool calls RoboRewsty may use per question before it must answer. Set 0 for unlimited rounds (the loop runs until the assistant answers or you cancel with the stop button)."
-				},
-				"rewst-buddy.ai.enableCommandTool": {
-					"type": "boolean",
-					"default": false,
-					"description": "Let RoboRewsty run shell commands on your machine (e.g. list processes, run scripts) and read their output. The remote Rewst AI proposes the commands and receives their output, so this is off by default and — unless you also enable Auto Approve Commands — every command requires your approval before it runs."
-				},
-				"rewst-buddy.ai.autoApproveCommands": {
-					"type": "boolean",
-					"default": false,
-					"description": "Run commands from RoboRewsty without an approval prompt. Only takes effect when Enable Command Tool is on. Leave off unless you fully trust every command the remote assistant may propose."
+					"description": "Legacy — no effect since RoboRewsty became a chat model: VS Code's chat runs the tool loop and owns its limits. Kept so existing settings files don't warn."
 				},
 				"rewst-buddy.ai.enableGraphqlTool": {
 					"type": "boolean",
@@ -317,21 +465,16 @@
 				"command": "rewst-buddy.prefix.AskRewstAI",
 				"title": "Rewst Buddy: Ask Rewst AI",
 				"icon": "$(comment-discussion)"
-			}
-		],
-		"chatParticipants": [
+			},
 			{
-				"id": "rewst-buddy.rewst",
-				"name": "rewst",
-				"fullName": "RoboRewsty",
-				"description": "Ask Rewst's AI assistant about workflows, docs, and Jinja",
-				"isSticky": true,
-				"commands": [
-					{
-						"name": "resume",
-						"description": "Resume a previous Rewst AI conversation (loads its transcript into the chat)"
-					}
-				]
+				"command": "rewst-buddy.prefix.ResumeRewstAiConversation",
+				"title": "Rewst Buddy: Resume Rewst AI Conversation",
+				"icon": "$(history)"
+			},
+			{
+				"command": "rewst-buddy.prefix.ApplyRewstAiEdit",
+				"title": "Rewst Buddy: Apply Rewst AI Suggestion",
+				"icon": "$(git-pull-request-go-to-changes)"
 			}
 		],
 		"keybindings": [
@@ -665,7 +808,7 @@
 		"@types/glob": "^8.1.0",
 		"@types/mocha": "^10.0.10",
 		"@types/node": "^25.0.3",
-		"@types/vscode": "^1.107.0",
+		"@types/vscode": "^1.120.0",
 		"@types/ws": "^8.18.1",
 		"@typescript-eslint/eslint-plugin": "^8.50.0",
 		"@typescript-eslint/parser": "^8.50.0",

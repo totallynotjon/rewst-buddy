@@ -21,7 +21,9 @@ export interface ApprovalTool {
 export type ConversationEvent =
 	| { kind: 'registered'; requestId: string }
 	| { kind: 'conversation'; conversationId: string }
-	| { kind: 'status'; label: string }
+	// `activity: true` marks a substantive step (a tool call or a search) worth
+	// surfacing; housekeeping statuses (thinking, summarizing) omit it.
+	| { kind: 'status'; label: string; activity?: boolean }
 	| { kind: 'chunk'; text: string }
 	| {
 			kind: 'complete';
@@ -57,6 +59,9 @@ const STATUS_LABELS: Record<string, string> = {
 	summarizing: 'Summarizing conversation…',
 	searching: 'Searching documentation…',
 };
+
+// Statuses that represent real work (vs. housekeeping like thinking/summarizing).
+const ACTIVITY_STATUSES = new Set(['searching']);
 
 // Statuses with no UI mapping (context_usage, summarization_complete,
 // search_complete, TOOL_CALL_COMPLETE, TOOL_SPECIFIC_EVENT, resume_*) fall
@@ -159,7 +164,7 @@ export class ConversationEventMapper {
 			case 'TOOL_CALL_IN_PROGRESS': {
 				const tools = parseApprovalTools(metadata);
 				if (tools.length > 0) this.lastToolCalls = tools;
-				events.push({ kind: 'status', label: `Running tool: ${tools[0]?.name ?? 'unknown'}…` });
+				events.push({ kind: 'status', label: `Running tool: ${tools[0]?.name ?? 'unknown'}…`, activity: true });
 				break;
 			}
 			case 'complete': {
@@ -183,7 +188,13 @@ export class ConversationEventMapper {
 					break;
 				}
 				const label = STATUS_LABELS[status];
-				if (label) events.push({ kind: 'status', label });
+				if (label) {
+					events.push(
+						ACTIVITY_STATUSES.has(status)
+							? { kind: 'status', label, activity: true }
+							: { kind: 'status', label },
+					);
+				}
 				// Unknown / ignored statuses are dropped (forward-compatible)
 				break;
 			}
@@ -192,14 +203,45 @@ export class ConversationEventMapper {
 		return events;
 	}
 
+	/**
+	 * Turns a streamed partialContent payload into the new text to display.
+	 *
+	 * RoboRewsty's server-side agent streams cumulative content, but when it
+	 * runs its OWN internal tools mid-answer it resets the cumulative base and
+	 * often resends a segment that was already streamed. Treating those resends
+	 * as fresh text duplicated whole planning sentences in the chat. So instead
+	 * of a simple prefix check, this maintains a high-water mark of everything
+	 * emitted and only releases genuine forward progress:
+	 *  - a cumulative extension → emit the new suffix;
+	 *  - a full resend already contained at the tail → emit nothing;
+	 *  - a new segment that overlaps the tail → emit only the non-overlapping part.
+	 */
 	private normalizeChunk(partialContent: string | undefined): string | undefined {
 		if (!partialContent) return undefined;
-		// Cumulative payloads repeat everything streamed so far; emit only the suffix.
-		if (this.streamedText && partialContent.startsWith(this.streamedText)) {
+
+		// Cumulative extension of everything so far.
+		if (partialContent.startsWith(this.streamedText)) {
 			const delta = partialContent.slice(this.streamedText.length);
 			this.streamedText = partialContent;
 			return delta.length > 0 ? delta : undefined;
 		}
+
+		// A shorter-or-equal payload already covered by the high-water mark is a
+		// resend with nothing new.
+		if (this.streamedText.endsWith(partialContent)) return undefined;
+
+		// Otherwise merge on the largest overlap between the tail of what we have
+		// streamed and the head of this payload, emitting only the remainder.
+		const overlap = Math.min(this.streamedText.length, partialContent.length);
+		for (let len = overlap; len > 0; len--) {
+			if (this.streamedText.endsWith(partialContent.slice(0, len))) {
+				const delta = partialContent.slice(len);
+				this.streamedText += delta;
+				return delta.length > 0 ? delta : undefined;
+			}
+		}
+
+		// No overlap: a genuinely new segment.
 		this.streamedText += partialContent;
 		return partialContent;
 	}

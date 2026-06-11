@@ -1,0 +1,12 @@
+{
+	"branch": "feat/robo-chat-model",
+	"codex_total_seconds": 0,
+	"codex_total_tokens": 0,
+	"current_task": "002",
+	"feature": "robo-chat-model",
+	"last_verified_commit": "c387c17",
+	"max_parallel": 1,
+	"phase": "build",
+	"status": "active",
+	"worktree_path": "/home/jon/Documents/dev/rewst-buddy-full/rewst-buddy-vscode/.worktrees/robo-chat-model"
+}
