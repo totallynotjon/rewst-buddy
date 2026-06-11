@@ -102,46 +102,91 @@ export const WORKSPACE_TOOL_SPECS: ToolSpec[] = [
 		name: 'list_files',
 		args: '{"glob"?: string, "maxResults"?: number}',
 		description: 'List workspace files (glob like "src/**/*.jinja"; defaults to all files).',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				glob: { type: 'string', description: 'Glob pattern, e.g. "src/**/*.jinja". Defaults to all files.' },
+				maxResults: { type: 'number', description: 'Maximum files to list.' },
+			},
+		},
 	},
 	{
 		name: 'read_file',
 		args: '{"path": string, "startLine"?: number, "endLine"?: number}',
 		description: 'Read a workspace file by relative path (1-based inclusive line range).',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				path: { type: 'string', description: 'Workspace-relative file path.' },
+				startLine: { type: 'number', description: '1-based first line to read.' },
+				endLine: { type: 'number', description: '1-based last line to read (inclusive).' },
+			},
+			required: ['path'],
+		},
 	},
 	{
 		name: 'search_files',
 		args: '{"query": string, "glob"?: string}',
 		description: 'Case-insensitive text search across workspace files; returns path:line matches.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				query: { type: 'string', description: 'Text to search for (case-insensitive).' },
+				glob: { type: 'string', description: 'Glob restricting which files are searched.' },
+			},
+			required: ['query'],
+		},
 	},
 	{
 		name: 'list_open_files',
 		args: '{}',
 		description: 'List files open in the editor, marking the active one.',
+		inputSchema: { type: 'object', properties: {} },
 	},
 	{
 		name: 'open_file',
 		args: '{"path": string}',
 		description: "Open a workspace file in the user's editor.",
+		inputSchema: {
+			type: 'object',
+			properties: { path: { type: 'string', description: 'Workspace-relative file path.' } },
+			required: ['path'],
+		},
 	},
 	{
 		name: 'get_diagnostics',
 		args: '{"path"?: string}',
 		description: 'List errors/warnings VS Code currently reports, optionally for one file.',
+		inputSchema: {
+			type: 'object',
+			properties: { path: { type: 'string', description: 'Workspace-relative file path to filter by.' } },
+		},
 	},
 	{
 		name: 'find_symbols',
 		args: '{"query": string}',
 		description: 'Search code symbols (functions, classes, variables) across the workspace by name.',
+		inputSchema: {
+			type: 'object',
+			properties: { query: { type: 'string', description: 'Symbol name to search for.' } },
+			required: ['query'],
+		},
 	},
 	{
 		name: 'get_file_outline',
 		args: '{"path": string}',
 		description: 'Get the symbol outline (functions, classes, sections) of one file.',
+		inputSchema: {
+			type: 'object',
+			properties: { path: { type: 'string', description: 'Workspace-relative file path.' } },
+			required: ['path'],
+		},
 	},
 	{
 		name: 'list_template_links',
 		args: '{}',
 		description: 'List local files linked to Rewst templates (path, template name, template id, org).',
+		inputSchema: { type: 'object', properties: {} },
 	},
 ];
 
@@ -151,12 +196,29 @@ export const EDIT_TOOL_SPECS: ToolSpec[] = [
 		args: '{"path": string, "find": string, "replace": string}',
 		description:
 			'Replace one exact occurrence of "find" with "replace" in a workspace file. Fails if the text is missing or ambiguous — include enough surrounding context to match uniquely. The change is left unsaved for the user to review.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				path: { type: 'string', description: 'Workspace-relative file path.' },
+				find: { type: 'string', description: 'Exact text to replace (must match uniquely).' },
+				replace: { type: 'string', description: 'Replacement text (may be empty).' },
+			},
+			required: ['path', 'find', 'replace'],
+		},
 	},
 	{
 		name: 'write_file',
 		args: '{"path": string, "content": string}',
 		description:
 			'Create a new workspace file, or replace the full contents of an existing one (replacement is left unsaved for the user to review). Prefer edit_file for small changes.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				path: { type: 'string', description: 'Workspace-relative file path.' },
+				content: { type: 'string', description: 'Full file contents to write.' },
+			},
+			required: ['path', 'content'],
+		},
 	},
 ];
 

@@ -5,5 +5,6 @@ export { CopyRelativePath } from './CopyRelativePath';
 export { FocusSidebar } from './FocusSidebar';
 export { OpenInIntegratedTerminal } from './OpenInIntegratedTerminal';
 export { OpenToTheSide } from './OpenToTheSide';
+export { ResumeRewstAiConversation } from './ResumeRewstAiConversation';
 export { RevealInExplorer } from './RevealInExplorer';
 export { RevealInOS } from './RevealInOS';

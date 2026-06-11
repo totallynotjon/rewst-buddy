@@ -78,7 +78,9 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 
 **AI Assistant**
 
-- `Ask Rewst AI` — Open the Chat view with `@rewst` ready to answer questions via Rewst's AI assistant (`Ctrl+Alt+R` / `Cmd+Alt+R`)
+- `Ask Rewst AI` — Open the Chat view; pick **RoboRewsty** in the model picker to talk to Rewst's AI assistant (`Ctrl+Alt+R` / `Cmd+Alt+R`)
+- `Resume Rewst AI Conversation` — Pick a previous Rewst conversation, open its transcript, and continue it with your next RoboRewsty chat message
+- `Apply Rewst AI Suggestion` — Apply a code block from the latest RoboRewsty answer to the active file behind a diff preview
 
 **Server**
 
@@ -101,7 +103,7 @@ All settings live under the `rewst-buddy.*` namespace. Edit via VS Code Settings
 | `rewst-buddy.ai.enableWorkspaceTools` | `boolean` | `true`                                                      | Let RoboRewsty inspect your workspace with read-only tools (list/read/search files, open editors, diagnostics, template links). Tool results are sent to the Rewst AI assistant — disable if your workspace contains content you don't want shared. |
 | `rewst-buddy.ai.enableEditTools`      | `boolean` | `true`                                                      | Let RoboRewsty open, edit, and create workspace files when asked. Edits to existing files are left unsaved so you can review (and undo) them before saving.                                                                                         |
 | `rewst-buddy.ai.enableWebTools`       | `boolean` | `false`                                                     | Let RoboRewsty search the public web and fetch http(s) pages. The assistant directs the requests, so this is opt-in; private/loopback hosts are always blocked.                                                                                     |
-| `rewst-buddy.ai.maxToolRounds`        | `number`  | `4`                                                         | Maximum back-and-forth rounds of workspace tool calls RoboRewsty may use per question before it must answer. `0` = unlimited (cancel any time with the stop button).                                                                                |
+| `rewst-buddy.ai.maxToolRounds`        | `number`  | `4`                                                         | Legacy — no effect since RoboRewsty became a chat model: VS Code's chat now runs the tool loop and owns its limits. Kept so existing settings files don't warn.                                                                                     |
 | `rewst-buddy.ai.enableCommandTool`    | `boolean` | `false`                                                     | Let RoboRewsty run shell commands in the workspace root and read their output. Off by default; when on, each command needs your approval unless Auto Approve is set.                                                                                |
 | `rewst-buddy.ai.autoApproveCommands`  | `boolean` | `false`                                                     | Run RoboRewsty's commands without an approval prompt (only when Enable Command Tool is on). Leave off unless you fully trust every command the remote assistant proposes.                                                                           |
 | `rewst-buddy.ai.enableGraphqlTool`    | `boolean` | `false`                                                     | Let RoboRewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval in a dialog showing the full operation.                                              |

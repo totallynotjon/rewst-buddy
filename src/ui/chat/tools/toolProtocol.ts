@@ -16,6 +16,14 @@ export interface ToolSpec {
 	description: string;
 	/** Human-readable JSON arg signature, e.g. `{"path": string}`. */
 	args: string;
+	/**
+	 * JSON schema for the args, mirrored into the package.json
+	 * languageModelTools declaration (packageManifest.test.ts keeps them in
+	 * sync) and used when the tool is exposed through the VS Code LM tool API.
+	 * Optional in the type so ad-hoc specs (tests, converted chat tools) can
+	 * omit it; every shipped spec carries one.
+	 */
+	inputSchema?: object;
 }
 
 export interface ToolRequest {

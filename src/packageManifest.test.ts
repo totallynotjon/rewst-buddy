@@ -1,7 +1,14 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { ALL_TOOL_SPECS } from './ui/chat/model/lmTools';
 
 const { suite, test } = Mocha;
+
+interface ManifestTool {
+	name: string;
+	modelDescription: string;
+	inputSchema: object;
+}
 
 interface PackageManifest {
 	engines: {
@@ -13,6 +20,9 @@ interface PackageManifest {
 			vendor: string;
 			displayName: string;
 		}[];
+		languageModelTools?: ManifestTool[];
+		chatParticipants?: unknown[];
+		commands: { command: string; title: string }[];
 	};
 }
 
@@ -32,5 +42,26 @@ suite('Unit: package manifest', () => {
 				displayName: 'RoboRewsty',
 			},
 		]);
+	});
+
+	test('declares every tool spec as a languageModelTools entry, name-for-name', () => {
+		const declared = new Map((manifest.contributes.languageModelTools ?? []).map(tool => [tool.name, tool]));
+		assert.strictEqual(declared.size, ALL_TOOL_SPECS.length, 'declaration count matches the spec arrays');
+		for (const spec of ALL_TOOL_SPECS) {
+			const entry = declared.get(spec.name);
+			assert.ok(entry, `package.json declares ${spec.name}`);
+			assert.strictEqual(entry.modelDescription, spec.description, `${spec.name} description in sync`);
+			assert.deepStrictEqual(entry.inputSchema, spec.inputSchema, `${spec.name} inputSchema in sync`);
+		}
+	});
+
+	test('the @rewst chat participant is retired', () => {
+		assert.strictEqual(manifest.contributes.chatParticipants, undefined);
+	});
+
+	test('resume and apply commands are contributed for the palette', () => {
+		const ids = manifest.contributes.commands.map(entry => entry.command);
+		assert.ok(ids.includes('rewst-buddy.prefix.ResumeRewstAiConversation'));
+		assert.ok(ids.includes('rewst-buddy.prefix.ApplyRewstAiEdit'));
 	});
 });

@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Unofficial community VS Code extension for editing Rewst templates locally. Not affiliated with Rewst LLC.",
-	"version": "0.40.4",
+	"version": "0.41.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.122.0"
@@ -34,6 +34,378 @@
 			{
 				"vendor": "rewst-buddy",
 				"displayName": "RoboRewsty"
+			}
+		],
+		"languageModelTools": [
+			{
+				"name": "list_files",
+				"displayName": "List Workspace Files",
+				"toolReferenceName": "rewstListFiles",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "List workspace files (glob like \"src/**/*.jinja\"; defaults to all files).",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"glob": {
+							"type": "string",
+							"description": "Glob pattern, e.g. \"src/**/*.jinja\". Defaults to all files."
+						},
+						"maxResults": {
+							"type": "number",
+							"description": "Maximum files to list."
+						}
+					}
+				}
+			},
+			{
+				"name": "read_file",
+				"displayName": "Read Workspace File",
+				"toolReferenceName": "rewstReadFile",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Read a workspace file by relative path (1-based inclusive line range).",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"path": {
+							"type": "string",
+							"description": "Workspace-relative file path."
+						},
+						"startLine": {
+							"type": "number",
+							"description": "1-based first line to read."
+						},
+						"endLine": {
+							"type": "number",
+							"description": "1-based last line to read (inclusive)."
+						}
+					},
+					"required": [
+						"path"
+					]
+				}
+			},
+			{
+				"name": "search_files",
+				"displayName": "Search Workspace Files",
+				"toolReferenceName": "rewstSearchFiles",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Case-insensitive text search across workspace files; returns path:line matches.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"query": {
+							"type": "string",
+							"description": "Text to search for (case-insensitive)."
+						},
+						"glob": {
+							"type": "string",
+							"description": "Glob restricting which files are searched."
+						}
+					},
+					"required": [
+						"query"
+					]
+				}
+			},
+			{
+				"name": "list_open_files",
+				"displayName": "List Open Files",
+				"toolReferenceName": "rewstListOpenFiles",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "List files open in the editor, marking the active one.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {}
+				}
+			},
+			{
+				"name": "open_file",
+				"displayName": "Open File in Editor",
+				"toolReferenceName": "rewstOpenFile",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Open a workspace file in the user's editor.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"path": {
+							"type": "string",
+							"description": "Workspace-relative file path."
+						}
+					},
+					"required": [
+						"path"
+					]
+				}
+			},
+			{
+				"name": "get_diagnostics",
+				"displayName": "Get Diagnostics",
+				"toolReferenceName": "rewstGetDiagnostics",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "List errors/warnings VS Code currently reports, optionally for one file.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"path": {
+							"type": "string",
+							"description": "Workspace-relative file path to filter by."
+						}
+					}
+				}
+			},
+			{
+				"name": "find_symbols",
+				"displayName": "Find Symbols",
+				"toolReferenceName": "rewstFindSymbols",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Search code symbols (functions, classes, variables) across the workspace by name.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"query": {
+							"type": "string",
+							"description": "Symbol name to search for."
+						}
+					},
+					"required": [
+						"query"
+					]
+				}
+			},
+			{
+				"name": "get_file_outline",
+				"displayName": "Get File Outline",
+				"toolReferenceName": "rewstGetFileOutline",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Get the symbol outline (functions, classes, sections) of one file.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"path": {
+							"type": "string",
+							"description": "Workspace-relative file path."
+						}
+					},
+					"required": [
+						"path"
+					]
+				}
+			},
+			{
+				"name": "list_template_links",
+				"displayName": "List Template Links",
+				"toolReferenceName": "rewstListTemplateLinks",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "List local files linked to Rewst templates (path, template name, template id, org).",
+				"inputSchema": {
+					"type": "object",
+					"properties": {}
+				}
+			},
+			{
+				"name": "edit_file",
+				"displayName": "Edit Workspace File",
+				"toolReferenceName": "rewstEditFile",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Replace one exact occurrence of \"find\" with \"replace\" in a workspace file. Fails if the text is missing or ambiguous — include enough surrounding context to match uniquely. The change is left unsaved for the user to review.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"path": {
+							"type": "string",
+							"description": "Workspace-relative file path."
+						},
+						"find": {
+							"type": "string",
+							"description": "Exact text to replace (must match uniquely)."
+						},
+						"replace": {
+							"type": "string",
+							"description": "Replacement text (may be empty)."
+						}
+					},
+					"required": [
+						"path",
+						"find",
+						"replace"
+					]
+				}
+			},
+			{
+				"name": "write_file",
+				"displayName": "Write Workspace File",
+				"toolReferenceName": "rewstWriteFile",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Create a new workspace file, or replace the full contents of an existing one (replacement is left unsaved for the user to review). Prefer edit_file for small changes.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"path": {
+							"type": "string",
+							"description": "Workspace-relative file path."
+						},
+						"content": {
+							"type": "string",
+							"description": "Full file contents to write."
+						}
+					},
+					"required": [
+						"path",
+						"content"
+					]
+				}
+			},
+			{
+				"name": "web_search",
+				"displayName": "Web Search",
+				"toolReferenceName": "rewstWebSearch",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Search the public web; returns result titles, URLs, and snippets.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"query": {
+							"type": "string",
+							"description": "Web search query."
+						}
+					},
+					"required": [
+						"query"
+					]
+				}
+			},
+			{
+				"name": "fetch_url",
+				"displayName": "Fetch URL",
+				"toolReferenceName": "rewstFetchUrl",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Fetch a public http(s) URL and return its readable text content.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"url": {
+							"type": "string",
+							"description": "Public http(s) URL to fetch."
+						}
+					},
+					"required": [
+						"url"
+					]
+				}
+			},
+			{
+				"name": "run_command",
+				"displayName": "Run Shell Command",
+				"toolReferenceName": "rewstRunCommand",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Run a shell command in the workspace root and return its combined stdout/stderr and exit code. The user must approve each command before it runs, so explain what you intend to run.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"command": {
+							"type": "string",
+							"description": "Shell command to run in the workspace root."
+						}
+					},
+					"required": [
+						"command"
+					]
+				}
+			},
+			{
+				"name": "rewst_graphql_schema",
+				"displayName": "Inspect Rewst GraphQL Schema",
+				"toolReferenceName": "rewstGraphqlSchema",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Inspect the Rewst GraphQL schema with the user session before composing operations. With no args, lists root Query/Mutation/Subscription fields. Use typeName to inspect fields/input fields/enum values for one type. Use search to find matching type names and root operation fields.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"typeName": {
+							"type": "string",
+							"description": "Inspect one named GraphQL type."
+						},
+						"search": {
+							"type": "string",
+							"description": "Find matching type names and root operation fields."
+						},
+						"includeDeprecated": {
+							"type": "boolean",
+							"description": "Include deprecated fields/values."
+						}
+					}
+				}
+			},
+			{
+				"name": "rewst_graphql",
+				"displayName": "Run Rewst GraphQL Operation",
+				"toolReferenceName": "rewstGraphql",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval before running, so keep them minimal and explain what you intend to change. Subscriptions are not supported.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"query": {
+							"type": "string",
+							"description": "GraphQL operation text."
+						},
+						"variables": {
+							"type": "object",
+							"description": "Operation variables."
+						}
+					},
+					"required": [
+						"query"
+					]
+				}
 			}
 		],
 		"configuration": {
@@ -144,7 +516,7 @@
 					"type": "number",
 					"default": 4,
 					"minimum": 0,
-					"description": "Maximum back-and-forth rounds of workspace tool calls RoboRewsty may use per question before it must answer. Set 0 for unlimited rounds (the loop runs until the assistant answers or you cancel with the stop button)."
+					"description": "Legacy — no effect since RoboRewsty became a chat model: VS Code's chat runs the tool loop and owns its limits. Kept so existing settings files don't warn."
 				},
 				"rewst-buddy.ai.enableCommandTool": {
 					"type": "boolean",
@@ -323,21 +695,16 @@
 				"command": "rewst-buddy.prefix.AskRewstAI",
 				"title": "Rewst Buddy: Ask Rewst AI",
 				"icon": "$(comment-discussion)"
-			}
-		],
-		"chatParticipants": [
+			},
 			{
-				"id": "rewst-buddy.rewst",
-				"name": "rewst",
-				"fullName": "RoboRewsty",
-				"description": "Ask Rewst's AI assistant about workflows, docs, and Jinja",
-				"isSticky": true,
-				"commands": [
-					{
-						"name": "resume",
-						"description": "Resume a previous Rewst AI conversation (loads its transcript into the chat)"
-					}
-				]
+				"command": "rewst-buddy.prefix.ResumeRewstAiConversation",
+				"title": "Rewst Buddy: Resume Rewst AI Conversation",
+				"icon": "$(history)"
+			},
+			{
+				"command": "rewst-buddy.prefix.ApplyRewstAiEdit",
+				"title": "Rewst Buddy: Apply Rewst AI Suggestion",
+				"icon": "$(git-pull-request-go-to-changes)"
 			}
 		],
 		"keybindings": [

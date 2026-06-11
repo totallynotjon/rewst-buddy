@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.41.0] - 2026-06-11
+
+### Changed
+
+- **RoboRewsty is now its own chat model — no Copilot account required** - Rewst's AI assistant appears directly in VS Code's chat model picker (one model per active Rewst session organization) via the Language Model Chat Provider API. Chatting with RoboRewsty needs **no GitHub sign-in and no Copilot plan** (VS Code 1.122+). The `@rewst` chat participant is retired; pick the RoboRewsty model instead
+- **Tools are native chat tools** - All 16 RoboRewsty tools (workspace read, edit, web, command, GraphQL) are registered VS Code language-model tools, so the chat runs them with its native tool UI. The same `rewst-buddy.ai.*` settings govern them, enforced both at registration and per request — a disabled tool is never offered to the assistant, even if it appears in the chat's tool picker
+- **Approvals moved to a dialog** - Rewst-side action approvals (Approve once / Always Allow) now use a modal dialog instead of inline chat buttons; the answer continues automatically after approving
+- **Resume is a command** - `Rewst Buddy: Resume Rewst AI Conversation` replaces `@rewst /resume`: it opens the picked transcript and binds your next RoboRewsty chat message to continue that conversation
+- **Apply suggestions is a command** - `Rewst Buddy: Apply Rewst AI Suggestion` applies a code block from the latest answer to the active file behind the same diff preview as before
+- **`rewst-buddy.ai.maxToolRounds` is legacy** - VS Code's chat now owns the tool loop, so the setting has no effect; it remains declared so existing settings files don't warn
+- **Minimum VS Code is 1.122** - the version where extension-contributed chat models work without a GitHub account
+
+### Added
+
+- **Conversation continuity & isolation** - consecutive chat turns continue the same Rewst conversation; separate chat sessions and organizations always map to distinct Rewst conversations
+
 ## [0.40.4] - 2026-06-11
 
 ### Added

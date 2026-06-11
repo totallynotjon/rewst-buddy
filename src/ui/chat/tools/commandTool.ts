@@ -32,6 +32,11 @@ export const COMMAND_TOOL_SPECS: ToolSpec[] = [
 		args: '{"command": string}',
 		description:
 			'Run a shell command in the workspace root and return its combined stdout/stderr and exit code. The user must approve each command before it runs, so explain what you intend to run.',
+		inputSchema: {
+			type: 'object',
+			properties: { command: { type: 'string', description: 'Shell command to run in the workspace root.' } },
+			required: ['command'],
+		},
 	},
 ];
 

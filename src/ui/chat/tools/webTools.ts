@@ -23,11 +23,21 @@ export const WEB_TOOL_SPECS: ToolSpec[] = [
 		name: 'web_search',
 		args: '{"query": string}',
 		description: 'Search the public web; returns result titles, URLs, and snippets.',
+		inputSchema: {
+			type: 'object',
+			properties: { query: { type: 'string', description: 'Web search query.' } },
+			required: ['query'],
+		},
 	},
 	{
 		name: 'fetch_url',
 		args: '{"url": string}',
 		description: 'Fetch a public http(s) URL and return its readable text content.',
+		inputSchema: {
+			type: 'object',
+			properties: { url: { type: 'string', description: 'Public http(s) URL to fetch.' } },
+			required: ['url'],
+		},
 	},
 ];
 
