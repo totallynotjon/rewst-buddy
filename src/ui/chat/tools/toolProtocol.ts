@@ -117,6 +117,18 @@ export function describeRequest(request: ToolRequest): string {
 	return json === '{}' ? request.tool : `${request.tool} ${json}`;
 }
 
+/** Reads a non-empty string tool argument, or undefined if absent/wrong type. */
+export function asStringArg(args: Record<string, unknown>, key: string): string | undefined {
+	const value = args[key];
+	return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** Reads a finite number tool argument, or undefined if absent/wrong type. */
+export function asNumberArg(args: Record<string, unknown>, key: string): number | undefined {
+	const value = args[key];
+	return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
 const EDIT_TOOL_NAMES = new Set(['edit_file', 'write_file']);
 
 /**

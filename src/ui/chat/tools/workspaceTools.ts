@@ -2,7 +2,15 @@ import { extPrefix } from '@global';
 import { LinkManager, type TemplateLink } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { describeRequest, type ToolFileChange, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
+import {
+	asNumberArg,
+	asStringArg,
+	describeRequest,
+	type ToolFileChange,
+	type ToolRequest,
+	type ToolResult,
+	type ToolSpec,
+} from './toolProtocol';
 import { isCommandTool, runCommandTool } from './commandTool';
 import { isWebTool, runWebTool } from './webTools';
 
@@ -164,16 +172,6 @@ export function resolveWorkspaceUri(path: string, folders: readonly vscode.Works
 		if (candidate.path.startsWith(folder.uri.path + '/')) return candidate;
 	}
 	return undefined;
-}
-
-function asStringArg(args: Record<string, unknown>, key: string): string | undefined {
-	const value = args[key];
-	return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-function asNumberArg(args: Record<string, unknown>, key: string): number | undefined {
-	const value = args[key];
-	return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function requireWorkspaceUri(args: Record<string, unknown>, tool: string, deps: WorkspaceToolDeps): vscode.Uri {

@@ -1,6 +1,6 @@
 import { extPrefix } from '@global';
 import vscode from 'vscode';
-import type { ToolRequest, ToolSpec } from './toolProtocol';
+import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
 
 /**
  * Web tools for the rewst-tool protocol. The Rewst AI assistant has no
@@ -153,11 +153,6 @@ export function parseDuckDuckGoResults(html: string): SearchResult[] {
 		results.push({ title, url, snippet: htmlToText(snippets[i]?.[1] ?? '') });
 	}
 	return results;
-}
-
-function asStringArg(args: Record<string, unknown>, key: string): string | undefined {
-	const value = args[key];
-	return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 export async function runWebTool(request: ToolRequest, deps: WebToolDeps = defaultWebDeps): Promise<string> {

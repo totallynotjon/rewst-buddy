@@ -11,14 +11,8 @@ export interface DiffRenderOptions {
 	maxLines?: number;
 }
 
-export function renderUnifiedDiff(before: string, after: string, options: DiffRenderOptions = {}): string {
-	if (before === after) return '';
-	const context = options.context ?? 2;
-	const maxLines = options.maxLines ?? 60;
-
-	const a = before === '' ? [] : before.split('\n');
-	const b = after === '' ? [] : after.split('\n');
-
+/** Counts the lines common to the start and end of both sides. */
+function trimCommon(a: string[], b: string[]): { prefix: number; suffix: number } {
 	let prefix = 0;
 	while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix++;
 	let suffix = 0;
@@ -29,6 +23,18 @@ export function renderUnifiedDiff(before: string, after: string, options: DiffRe
 	) {
 		suffix++;
 	}
+	return { prefix, suffix };
+}
+
+export function renderUnifiedDiff(before: string, after: string, options: DiffRenderOptions = {}): string {
+	if (before === after) return '';
+	const context = options.context ?? 2;
+	const maxLines = options.maxLines ?? 60;
+
+	const a = before === '' ? [] : before.split('\n');
+	const b = after === '' ? [] : after.split('\n');
+
+	const { prefix, suffix } = trimCommon(a, b);
 
 	const removed = a.slice(prefix, a.length - suffix);
 	const added = b.slice(prefix, b.length - suffix);
@@ -56,15 +62,6 @@ export function renderUnifiedDiff(before: string, after: string, options: DiffRe
 export function diffStats(before: string, after: string): string {
 	const a = before === '' ? [] : before.split('\n');
 	const b = after === '' ? [] : after.split('\n');
-	let prefix = 0;
-	while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix++;
-	let suffix = 0;
-	while (
-		suffix < a.length - prefix &&
-		suffix < b.length - prefix &&
-		a[a.length - 1 - suffix] === b[b.length - 1 - suffix]
-	) {
-		suffix++;
-	}
+	const { prefix, suffix } = trimCommon(a, b);
 	return `+${b.length - prefix - suffix} −${a.length - prefix - suffix}`;
 }

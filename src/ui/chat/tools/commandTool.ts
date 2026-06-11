@@ -2,7 +2,7 @@ import { extPrefix } from '@global';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import vscode from 'vscode';
-import type { ToolRequest, ToolSpec } from './toolProtocol';
+import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
 
 /**
  * run_command lets RoboRewsty execute a shell command on the user's machine
@@ -89,11 +89,6 @@ export const defaultCommandDeps: CommandToolDeps = {
 		}
 	},
 };
-
-function asStringArg(args: Record<string, unknown>, key: string): string | undefined {
-	const value = args[key];
-	return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
 
 function formatResult(result: ExecResult): string {
 	const sections: string[] = [`Exit code: ${result.code}`];
