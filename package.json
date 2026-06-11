@@ -6,7 +6,7 @@
 	"version": "0.40.4",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
-		"vscode": "^1.107.0"
+		"vscode": "^1.122.0"
 	},
 	"categories": [
 		"Other"
@@ -30,6 +30,12 @@
 	],
 	"main": "./dist/extension.js",
 	"contributes": {
+		"languageModelChatProviders": [
+			{
+				"vendor": "rewst-buddy",
+				"displayName": "RoboRewsty"
+			}
+		],
 		"configuration": {
 			"title": "Settings Editor Rewst-Buddy",
 			"type": "object",
@@ -665,7 +671,7 @@
 		"@types/glob": "^8.1.0",
 		"@types/mocha": "^10.0.10",
 		"@types/node": "^25.0.3",
-		"@types/vscode": "^1.107.0",
+		"@types/vscode": "^1.120.0",
 		"@types/ws": "^8.18.1",
 		"@typescript-eslint/eslint-plugin": "^8.50.0",
 		"@typescript-eslint/parser": "^8.50.0",
