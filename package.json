@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Unofficial community VS Code extension for editing Rewst templates locally. Not affiliated with Rewst LLC.",
-	"version": "0.40.1",
+	"version": "0.40.2",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.107.0"
@@ -118,6 +118,37 @@
 					"default": "",
 					"editPresentation": "multilineText",
 					"description": "Standing instructions prepended to every message sent to the Rewst AI assistant (e.g. preferred answer style, your environment details). Note: this is sent as part of your message — it cannot override Rewst's own system prompt."
+				},
+				"rewst-buddy.ai.enableWorkspaceTools": {
+					"type": "boolean",
+					"default": true,
+					"description": "Let RoboRewsty inspect your workspace with read-only tools (list/read/search files, open editors, diagnostics, template links). Tool results are sent to the Rewst AI assistant — disable if your workspace contains content you don't want shared."
+				},
+				"rewst-buddy.ai.enableEditTools": {
+					"type": "boolean",
+					"default": true,
+					"description": "Let RoboRewsty open, edit, and create workspace files when you ask it to. Edits to existing files are left unsaved so you can review (and undo) them in the editor before saving."
+				},
+				"rewst-buddy.ai.enableWebTools": {
+					"type": "boolean",
+					"default": false,
+					"description": "Let RoboRewsty search the public web and fetch http(s) pages. The assistant chooses what to search and fetch, so enabling this allows it to direct network requests from your machine (private/loopback hosts are always blocked)."
+				},
+				"rewst-buddy.ai.maxToolRounds": {
+					"type": "number",
+					"default": 4,
+					"minimum": 0,
+					"description": "Maximum back-and-forth rounds of workspace tool calls RoboRewsty may use per question before it must answer. Set 0 for unlimited rounds (the loop runs until the assistant answers or you cancel with the stop button)."
+				},
+				"rewst-buddy.ai.enableCommandTool": {
+					"type": "boolean",
+					"default": false,
+					"description": "Let RoboRewsty run shell commands on your machine (e.g. list processes, run scripts) and read their output. The remote Rewst AI proposes the commands and receives their output, so this is off by default and — unless you also enable Auto Approve Commands — every command requires your approval before it runs."
+				},
+				"rewst-buddy.ai.autoApproveCommands": {
+					"type": "boolean",
+					"default": false,
+					"description": "Run commands from RoboRewsty without an approval prompt. Only takes effect when Enable Command Tool is on. Leave off unless you fully trust every command the remote assistant may propose."
 				}
 			}
 		},
@@ -289,7 +320,20 @@
 				"name": "rewst",
 				"fullName": "RoboRewsty",
 				"description": "Ask Rewst's AI assistant about workflows, docs, and Jinja",
-				"isSticky": true
+				"isSticky": true,
+				"commands": [
+					{
+						"name": "resume",
+						"description": "Resume a previous Rewst AI conversation (loads its transcript into the chat)"
+					}
+				]
+			}
+		],
+		"keybindings": [
+			{
+				"command": "rewst-buddy.prefix.AskRewstAI",
+				"key": "ctrl+alt+r",
+				"mac": "cmd+alt+r"
 			}
 		],
 		"viewsContainers": {

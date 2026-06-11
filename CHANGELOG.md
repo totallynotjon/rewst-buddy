@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.40.2] - 2026-06-10
+
+### Added
+
+- **RoboRewsty Workspace Tools** - The `@rewst` chat participant can now inspect your workspace on its own: when an answer needs local context, RoboRewsty requests tools (`list_files`, `read_file`, `search_files`, `list_open_files`, `open_file`, `get_diagnostics`, `find_symbols`, `get_file_outline`, `list_template_links`), the extension runs them locally and feeds the results back into the conversation, looping until it can answer. Responses show _Looked at workspace: …_ notes for each round, and the first message includes a compact workspace overview. All tools are workspace-scoped and output-capped; path traversal outside the workspace is rejected. New settings: `rewst-buddy.ai.enableWorkspaceTools` (default `true`) and `rewst-buddy.ai.maxToolRounds` (default `4`)
+- **RoboRewsty Edit Tools** - RoboRewsty can also act on the workspace: `edit_file` (exact find/replace, fails on missing or ambiguous matches), `write_file` (create or rewrite), and `open_file`. Edits to existing files are applied to the buffer but left unsaved for review — sync-on-save cannot fire until you save. Gated by `rewst-buddy.ai.enableEditTools` (default `true`)
+- **RoboRewsty Command Tool (opt-in, approval-gated)** - `run_command` lets RoboRewsty run shell commands in the workspace root and read their output (list processes/ports, run scripts, check git, etc.). Disabled by default (`rewst-buddy.ai.enableCommandTool`); when enabled, every command shows an approval modal with the exact command before running, declines don't retry, and there's a 60s timeout and output cap. `rewst-buddy.ai.autoApproveCommands` skips the prompt for users who want it
+- **RoboRewsty Web Tools (opt-in)** - `web_search` and `fetch_url` give RoboRewsty public web access executed by the extension. Disabled by default (`rewst-buddy.ai.enableWebTools`); http(s) only, private/loopback hosts and unsafe redirects are blocked, responses are size-capped
+- **Ask Rewst AI keybinding** - `Ctrl+Alt+R` (`Cmd+Alt+R` on macOS) opens the Chat view with `@rewst` pre-filled
+- **Unlimited tool rounds** - `rewst-buddy.ai.maxToolRounds: 0` now means unlimited: the tool loop runs until the assistant answers or you cancel with the stop button. The 10-round ceiling on the setting is removed (default remains 4)
+- **Resume conversations** - `@rewst /resume` lists your previous Rewst conversations (same history as the Rewst web app), loads the picked transcript into the chat, and pins follow-ups to that conversation — including its conversation type. A prompt after `/resume` asks immediately after picking
+- **Tool loop cycle guard** - `read_file` now returns explicit chunks ("showing lines 1-250 of 540; continue with startLine 251") instead of silently truncating, duplicate requests within one reply are dropped, identical repeats across rounds are rejected with a nudge (re-reads are allowed again after an edit), and two consecutive all-repeat rounds stop the loop. Fixes the assistant re-reading the same large file forever
+- **Tool activity rendering** - Each tool round renders a _Workspace activity_ list with clickable links to every file RoboRewsty accessed; accessed files are attached as references on the response; and every `edit_file`/`write_file` renders an added/removed unified diff in the chat with a `+N −M` summary
+
 ## [0.40.1] - 2026-06-10
 
 ### Fixed
