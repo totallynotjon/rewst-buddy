@@ -29,7 +29,7 @@ suite('Unit: ConversationEventMapper', () => {
 
 	test('maps known progress statuses to labels', () => {
 		const searching = mapper.map({ status: 'searching', metadata: { queries: ['a'] } });
-		assert.deepStrictEqual(searching, [{ kind: 'status', label: 'Searching documentation…' }]);
+		assert.deepStrictEqual(searching, [{ kind: 'status', label: 'Searching documentation…', activity: true }]);
 
 		const streamingThinking = mapper.map({ status: 'streaming_thinking' });
 		assert.deepStrictEqual(streamingThinking, [{ kind: 'status', label: 'Thinking…' }]);
@@ -40,7 +40,7 @@ suite('Unit: ConversationEventMapper', () => {
 			status: 'TOOL_CALL_IN_PROGRESS',
 			metadata: { toolCalls: [{ name: 'gitbook_retriever', id: 't1' }] },
 		});
-		assert.deepStrictEqual(events, [{ kind: 'status', label: 'Running tool: gitbook_retriever…' }]);
+		assert.deepStrictEqual(events, [{ kind: 'status', label: 'Running tool: gitbook_retriever…', activity: true }]);
 	});
 
 	test('ignores bookkeeping statuses', () => {

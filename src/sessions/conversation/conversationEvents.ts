@@ -21,7 +21,9 @@ export interface ApprovalTool {
 export type ConversationEvent =
 	| { kind: 'registered'; requestId: string }
 	| { kind: 'conversation'; conversationId: string }
-	| { kind: 'status'; label: string }
+	// `activity: true` marks a substantive step (a tool call or a search) worth
+	// surfacing; housekeeping statuses (thinking, summarizing) omit it.
+	| { kind: 'status'; label: string; activity?: boolean }
 	| { kind: 'chunk'; text: string }
 	| {
 			kind: 'complete';
@@ -57,6 +59,9 @@ const STATUS_LABELS: Record<string, string> = {
 	summarizing: 'Summarizing conversation…',
 	searching: 'Searching documentation…',
 };
+
+// Statuses that represent real work (vs. housekeeping like thinking/summarizing).
+const ACTIVITY_STATUSES = new Set(['searching']);
 
 // Statuses with no UI mapping (context_usage, summarization_complete,
 // search_complete, TOOL_CALL_COMPLETE, TOOL_SPECIFIC_EVENT, resume_*) fall
@@ -159,7 +164,7 @@ export class ConversationEventMapper {
 			case 'TOOL_CALL_IN_PROGRESS': {
 				const tools = parseApprovalTools(metadata);
 				if (tools.length > 0) this.lastToolCalls = tools;
-				events.push({ kind: 'status', label: `Running tool: ${tools[0]?.name ?? 'unknown'}…` });
+				events.push({ kind: 'status', label: `Running tool: ${tools[0]?.name ?? 'unknown'}…`, activity: true });
 				break;
 			}
 			case 'complete': {
@@ -183,7 +188,13 @@ export class ConversationEventMapper {
 					break;
 				}
 				const label = STATUS_LABELS[status];
-				if (label) events.push({ kind: 'status', label });
+				if (label) {
+					events.push(
+						ACTIVITY_STATUSES.has(status)
+							? { kind: 'status', label, activity: true }
+							: { kind: 'status', label },
+					);
+				}
 				// Unknown / ignored statuses are dropped (forward-compatible)
 				break;
 			}

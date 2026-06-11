@@ -52,7 +52,8 @@ export interface ProviderDeps {
 	sessionForOrg(orgId: string): Session;
 	confirmApproval(tools: ApprovalTool[]): Promise<ApprovalChoice>;
 	workspaceOverview(): Promise<string | undefined>;
-	aiConfig(): { customInstructions: string; conversationType: string };
+	workspaceRoot(): string | undefined;
+	aiConfig(): { customInstructions: string; conversationType: string; showActivity: boolean };
 	toolSettings(): AiToolSettings;
 }
 
@@ -90,11 +91,13 @@ export const defaultProviderDeps: ProviderDeps = {
 	sessionForOrg: orgId => SessionManager.getSessionForOrg(orgId),
 	confirmApproval: confirmApprovalModal,
 	workspaceOverview: () => buildWorkspaceOverview(),
+	workspaceRoot: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
 	aiConfig: () => {
 		const config = vscode.workspace.getConfiguration(`${extPrefix}.ai`);
 		return {
 			customInstructions: config.get<string>('customInstructions', ''),
 			conversationType: config.get<string>('conversationType', 'HELP_DOCS'),
+			showActivity: config.get<boolean>('showActivity', true),
 		};
 	},
 	toolSettings: readAiToolSettings,
@@ -178,7 +181,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		const settings = this.deps.toolSettings();
 		const tools = filterToolsBySettings(options.tools, settings);
 		const permittedNames = new Set(tools.map(tool => tool.name));
-		const { customInstructions, conversationType } = this.deps.aiConfig();
+		const { customInstructions, conversationType, showActivity } = this.deps.aiConfig();
 
 		const key = prefixKey(orgId, messages);
 		const trailingResults = extractTrailingToolResults(messages);
@@ -212,6 +215,11 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			if (settings.enableWorkspaceTools && permittedNames.size > 0) {
 				const overview = await this.deps.workspaceOverview();
 				if (overview) message += `\n\nThe user's VS Code workspace:\n${overview}`;
+			} else {
+				// No file listing in this mode, but the working directory is cheap
+				// context the model should always have.
+				const root = this.deps.workspaceRoot();
+				if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
 			}
 			if (tools.length > 0) message += `\n\n${buildInstructionsForChatTools(tools)}`;
 			conversationId =
@@ -229,6 +237,8 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		// Continuation requests render into the same chat bubble as the previous
 		// round's text, so their first text needs a paragraph break.
 		let needsSeparator = trailingResults !== undefined;
+		// The last activity label shown, to collapse exact back-to-back repeats.
+		let lastStatusLabel: string | undefined;
 		const emitText = (text: string): void => {
 			if (!text) return;
 			if (needsSeparator) {
@@ -237,6 +247,20 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			}
 			progress.report(new vscode.LanguageModelTextPart(text));
 			emittedText += text;
+		};
+		// Surfaces substantive activity (searches, native tool calls) as unobtrusive
+		// blockquote lines so a multi-step turn is legible. Housekeeping statuses
+		// (thinking, summarizing) are filtered out by the caller (event.activity).
+		const emitStatus = (label: string, gate: ChunkGate): void => {
+			if (!showActivity || label === lastStatusLabel) return;
+			lastStatusLabel = label;
+			// Drain the gate's already-safe answer text first so the activity line
+			// stays ordered after it (gate.push('') keeps any partial fence held).
+			emitText(gate.push(''));
+			// Activity lines are meta, not answer text: report directly so they
+			// never enter emittedText (continuity and saved-answer stay clean).
+			progress.report(new vscode.LanguageModelTextPart(`\n\n> _${label}_\n`));
+			needsSeparator = true;
 		};
 		const storeContinuity = (calls: readonly vscode.LanguageModelToolCallPart[]): void => {
 			if (!conversationId) return;
@@ -274,7 +298,10 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 					if (token.isCancellationRequested) return;
 					switch (event.kind) {
 						case 'registered':
+							break;
 						case 'status':
+							// Only surface real steps; skip thinking/summarizing churn.
+							if (event.activity) emitStatus(event.label, gate);
 							break;
 						case 'conversation':
 							conversationId = event.conversationId;
