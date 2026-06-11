@@ -116,6 +116,7 @@ Off by default because they let a remote assistant direct activity on your machi
 
 - **Web** (`rewst-buddy.ai.enableWebTools`) — `web_search` and `fetch_url` for public pages. Only http(s) is allowed; private/loopback hosts are always blocked
 - **Commands** (`rewst-buddy.ai.enableCommandTool`) — `run_command` runs shell commands in your workspace root (60s timeout, capped output). When enabled, **every command pops an approval dialog showing exactly what will run**; decline and it won't retry. `rewst-buddy.ai.autoApproveCommands` skips the prompt — leave it off unless you fully trust what the assistant may propose
+- **GraphQL** (`rewst-buddy.ai.enableGraphqlTool`) — `rewst_graphql` composes and runs GraphQL operations against your Rewst instance using your session, with `rewst_graphql_schema` for exploring the schema. Queries run directly; **mutations always pop an approval dialog showing the full operation**. Off by default because the session can read and change anything you can in Rewst
 
 ### Approving Rewst actions
 

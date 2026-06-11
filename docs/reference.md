@@ -104,6 +104,7 @@ All settings live under the `rewst-buddy.*` namespace. Edit via VS Code Settings
 | `rewst-buddy.ai.maxToolRounds`        | `number`  | `4`                                                         | Maximum back-and-forth rounds of workspace tool calls RoboRewsty may use per question before it must answer. `0` = unlimited (cancel any time with the stop button).                                                                                |
 | `rewst-buddy.ai.enableCommandTool`    | `boolean` | `false`                                                     | Let RoboRewsty run shell commands in the workspace root and read their output. Off by default; when on, each command needs your approval unless Auto Approve is set.                                                                                |
 | `rewst-buddy.ai.autoApproveCommands`  | `boolean` | `false`                                                     | Run RoboRewsty's commands without an approval prompt (only when Enable Command Tool is on). Leave off unless you fully trust every command the remote assistant proposes.                                                                           |
+| `rewst-buddy.ai.enableGraphqlTool`    | `boolean` | `false`                                                     | Let RoboRewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval in a dialog showing the full operation.                                              |
 
 ## Multi-Region Setup
 

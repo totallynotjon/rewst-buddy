@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.40.4] - 2026-06-11
+
+### Added
+
+- **RoboRewsty GraphQL Tool (opt-in, mutation-approval-gated)** - `rewst_graphql` lets RoboRewsty compose and run GraphQL operations against your Rewst instance using your existing session, with `rewst_graphql_schema` for exploring the available schema. Queries run directly; mutations always show an approval dialog with the full operation before running. Disabled by default (`rewst-buddy.ai.enableGraphqlTool`) because the session can read and change anything you can in Rewst
+
 ## [0.40.3] - 2026-06-11
 
 ### Added
