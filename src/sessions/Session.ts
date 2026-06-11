@@ -19,17 +19,18 @@ export default class Session {
 		this.secrets = context.secrets;
 	}
 
+	private static createClient(graphqlUrl: string, cookie: string): GraphQLClient {
+		return new GraphQLClient(graphqlUrl, {
+			errorPolicy: 'all',
+			method: 'POST',
+			headers: () => ({ cookie }),
+		});
+	}
+
 	private static newSdkAtRegion(cookieString: CookieString, config: RegionConfig): Sdk {
 		log.trace('newSdkAtRegion: creating SDK', { region: config.name, url: config.graphqlUrl });
 
-		const client = new GraphQLClient(config.graphqlUrl, {
-			errorPolicy: 'all',
-			method: 'POST',
-			headers: () => ({
-				cookie: cookieString.value,
-			}),
-		});
-
+		const client = Session.createClient(config.graphqlUrl, cookieString.value);
 		const wrapper = Session.getWrapper();
 		const sdk = getSdk(client, wrapper);
 		return sdk;
@@ -191,12 +192,9 @@ export default class Session {
 		variables?: Record<string, unknown>,
 	): Promise<{ data?: unknown; errors?: unknown }> {
 		const cookie = await this.getCookies();
-		const client = new GraphQLClient(this.profile.region.graphqlUrl, {
-			errorPolicy: 'all',
-			method: 'POST',
-			headers: () => ({ cookie }),
-		});
-		const { data, errors } = await client.rawRequest(query, variables);
+		const client = Session.createClient(this.profile.region.graphqlUrl, cookie);
+		const wrapper = createRetryWrapper();
+		const { data, errors } = await wrapper(() => client.rawRequest(query, variables), 'rawGraphql');
 		return { data, errors };
 	}
 

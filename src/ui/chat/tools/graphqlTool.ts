@@ -228,7 +228,7 @@ function formatResult(result: { data?: unknown; errors?: unknown }): string {
 	if (result.data !== undefined && result.data !== null) body.data = result.data;
 	if (Array.isArray(result.errors) ? result.errors.length > 0 : result.errors != null) body.errors = result.errors;
 	const text = Object.keys(body).length > 0 ? JSON.stringify(body, null, 1) : '(empty response)';
-	return text.length > MAX_OUTPUT_CHARS ? text.slice(0, MAX_OUTPUT_CHARS) + '\n…(output truncated)' : text;
+	return formatResultText(text);
 }
 
 function unwrapType(type: GraphqlTypeRef | null | undefined): string {

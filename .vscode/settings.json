@@ -44,6 +44,5 @@
 	"prettier.requireConfig": true,
 	"git.allowNoVerifyCommit": true,
 	"chat.extensionUnification.enabled": false,
-	"chat.disableAIFeatures": true,
-	"rewst-buddy.ai.enableGraphqlTool": true
+	"chat.disableAIFeatures": true
 }

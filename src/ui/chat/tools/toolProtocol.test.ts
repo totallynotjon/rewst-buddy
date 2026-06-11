@@ -83,7 +83,7 @@ suite('Unit: toolProtocol', () => {
 				{ name: 'list_files', args: '{}', description: 'List files.' },
 			]);
 			assert.ok(text.includes('rewst-tool'));
-			assert.ok(text.includes('read_file - args: {"path": string}'));
+			assert.ok(text.includes('read_file — args: {"path": string}'));
 			assert.ok(text.includes('list_files'));
 		});
 
