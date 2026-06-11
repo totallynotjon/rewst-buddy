@@ -5,7 +5,8 @@
 ### Changed
 
 - **RoboRewsty is now its own chat model — no Copilot account required** - Rewst's AI assistant appears directly in VS Code's chat model picker (one model per active Rewst session organization) via the Language Model Chat Provider API. Chatting with RoboRewsty needs **no GitHub sign-in and no Copilot plan** (VS Code 1.122+). The `@rewst` chat participant is retired; pick the RoboRewsty model instead
-- **Tools are native chat tools** - All 16 RoboRewsty tools (workspace read, edit, web, command, GraphQL) are registered VS Code language-model tools, so the chat runs them with its native tool UI. The same `rewst-buddy.ai.*` settings govern them, enforced both at registration and per request — a disabled tool is never offered to the assistant, even if it appears in the chat's tool picker
+- **Tools are native chat tools** - RoboRewsty's tools (template links, web, GraphQL) are registered VS Code language-model tools, so the chat runs them with its native tool UI. The same `rewst-buddy.ai.*` settings govern them, enforced both at registration and per request — a disabled tool is never offered to the assistant, even if it appears in the chat's tool picker
+- **File and terminal work uses VS Code's built-in tools** - In agent mode, the chat passes its built-in tools (read, search, edit, terminal, diagnostics) to RoboRewsty like any other model, with VS Code's own approval and review UI. The extension's custom equivalents are removed: `list_files`, `read_file`, `search_files`, `list_open_files`, `open_file`, `get_diagnostics`, `find_symbols`, `get_file_outline`, `edit_file`, `write_file`, and `run_command`, along with the settings `rewst-buddy.ai.enableEditTools`, `enableCommandTool`, and `autoApproveCommands`. `rewst-buddy.ai.enableWorkspaceTools` now gates only the Rewst-specific workspace context (the first-message workspace overview and `list_template_links`)
 - **Approvals stay in the chat** - Rewst-side action approvals render as VS Code's native inline tool confirmation (Continue / Cancel) showing the tool name and arguments; approving continues the answer automatically and the one-time allow-listing is reverted after the turn. A modal dialog (Approve / Always Allow) remains as the fallback when the chat's tool surface is unavailable
 - **Resume is a command** - `Rewst Buddy: Resume Rewst AI Conversation` replaces `@rewst /resume`: it opens the picked transcript and binds your next RoboRewsty chat message to continue that conversation
 - **Apply suggestions is a command** - `Rewst Buddy: Apply Rewst AI Suggestion` applies a code block from the latest answer to the active file behind the same diff preview as before
@@ -15,6 +16,14 @@
 ### Added
 
 - **Conversation continuity & isolation** - consecutive chat turns continue the same Rewst conversation; separate chat sessions and organizations always map to distinct Rewst conversations
+- **Live activity display** - while RoboRewsty works, the substantive steps it takes (documentation searches and each tool call) stream into the chat as compact lines instead of a bare spinner; thinking/summarizing churn is filtered out. Toggle with `rewst-buddy.ai.showActivity` (on by default)
+- **Working-directory context** - RoboRewsty is now told your workspace root path, including in modes where the full workspace overview isn't sent
+- **Step-by-step working method** - the model is steered to lay out a short plan and then take one step per reply on multi-step requests, so its (now visible) activity reads as a coherent sequence
+
+### Fixed
+
+- **Cross-turn memory loss** - chat continuity is keyed on the user-message spine instead of the full history, so a large or reformatted prior answer no longer drifts the key and silently starts a fresh backend conversation (which made the chat forget earlier turns)
+- **GraphQL tool steering** - RoboRewsty no longer treats the editor GraphQL tools as a native group needing "activation," and no longer refuses or lectures when asked to run an authorized read; masked tool output (e.g. secret org variables) is shown as returned
 
 ## [0.40.4] - 2026-06-11
 

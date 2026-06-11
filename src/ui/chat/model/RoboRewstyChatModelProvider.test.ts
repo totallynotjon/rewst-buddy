@@ -13,9 +13,7 @@ const { User, Assistant } = vscode.LanguageModelChatMessageRole;
 
 const allSettings: AiToolSettings = {
 	enableWorkspaceTools: true,
-	enableEditTools: true,
 	enableWebTools: true,
-	enableCommandTool: true,
 	enableGraphqlTool: true,
 };
 
@@ -68,7 +66,8 @@ function makeHarness(turns: ConversationEvent[][], overrides: Partial<ProviderDe
 		sessionForOrg: () => session,
 		confirmApproval: async () => 'approve',
 		workspaceOverview: async () => undefined,
-		aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS' }),
+		workspaceRoot: () => undefined,
+		aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: true }),
 		toolSettings: () => allSettings,
 		...overrides,
 	};
@@ -112,9 +111,16 @@ function callsOf(parts: vscode.LanguageModelResponsePart[]): vscode.LanguageMode
 	);
 }
 
+// Models a built-in/external tool the chat passes through options.tools.
 const READ_FILE_TOOL: vscode.LanguageModelChatTool = {
 	name: 'read_file',
 	description: 'read a file',
+	inputSchema: { type: 'object' },
+};
+
+const TEMPLATE_LINKS_TOOL: vscode.LanguageModelChatTool = {
+	name: 'list_template_links',
+	description: 'list template links',
 	inputSchema: { type: 'object' },
 };
 
@@ -212,9 +218,9 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		const harness = makeHarness([completeTurn('plain answer')], {
 			toolSettings: () => ({ ...allSettings, enableWorkspaceTools: false }),
 		});
-		await harness.run([message(User, [text('check a.txt')])], [READ_FILE_TOOL]);
+		await harness.run([message(User, [text('what files are linked?')])], [TEMPLATE_LINKS_TOOL]);
 		// The tool-instructions block advertises tools as "- <name> — args:".
-		assert.ok(!harness.captured[0].message.includes('- read_file —'), 'withheld from instructions');
+		assert.ok(!harness.captured[0].message.includes('- list_template_links —'), 'withheld from instructions');
 	});
 
 	test('a tool request with no tools available surfaces the rejection note', async () => {
@@ -473,9 +479,60 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 
 	test('custom instructions are prepended to the outgoing message', async () => {
 		const harness = makeHarness([completeTurn('ok')], {
-			aiConfig: () => ({ customInstructions: 'answer in haiku', conversationType: 'HELP_DOCS' }),
+			aiConfig: () => ({
+				customInstructions: 'answer in haiku',
+				conversationType: 'HELP_DOCS',
+				showActivity: true,
+			}),
 		});
 		await harness.run([message(User, [text('hi')])]);
 		assert.ok(harness.captured[0].message.includes("User's standing instructions: answer in haiku"));
+	});
+
+	const activityTurn: ConversationEvent[] = [
+		{ kind: 'conversation', conversationId: 'conv-1' },
+		{ kind: 'status', label: 'Thinking…' }, // housekeeping (no activity flag) → hidden
+		{ kind: 'status', label: 'Summarizing conversation…' }, // housekeeping → hidden
+		{ kind: 'status', label: 'Searching documentation…', activity: true },
+		{ kind: 'status', label: 'Running tool: listOrgVariable…', activity: true },
+		{ kind: 'status', label: 'Running tool: listOrgVariable…', activity: true }, // back-to-back dup → collapsed
+		{ kind: 'chunk', text: 'the answer' },
+		{ kind: 'complete', content: 'the answer', sources: [], conversationId: 'conv-1' },
+	];
+
+	test('shows only substantive activity, hiding thinking/summarizing churn', async () => {
+		const harness = makeHarness([activityTurn]);
+		await harness.run([message(User, [text('hi')])]);
+		const out = textOf(harness.parts);
+
+		assert.ok(!out.includes('Thinking…'), 'housekeeping thinking is not shown');
+		assert.ok(!out.includes('Summarizing'), 'housekeeping summarizing is not shown');
+		assert.ok(out.includes('> _Searching documentation…_'), 'searches are surfaced');
+		assert.strictEqual(
+			out.split('> _Running tool: listOrgVariable…_').length - 1,
+			1,
+			'a repeated tool label collapses to one line',
+		);
+		assert.ok(out.includes('the answer'), 'the answer still streams');
+	});
+
+	test('suppresses activity lines when showActivity is off', async () => {
+		const harness = makeHarness([activityTurn], {
+			aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: false }),
+		});
+		await harness.run([message(User, [text('hi')])]);
+		const out = textOf(harness.parts);
+
+		assert.ok(!out.includes('Searching documentation') && !out.includes('Running tool'), 'no activity lines');
+		assert.ok(out.includes('the answer'), 'the answer still streams');
+	});
+
+	test('includes the working directory in context when the full overview is not sent', async () => {
+		const harness = makeHarness([completeTurn('ok')], {
+			workspaceRoot: () => '/work/dir',
+		});
+		// No tools passed → permittedNames empty → working-directory line is added.
+		await harness.run([message(User, [text('hi')])]);
+		assert.ok(harness.captured[0].message.includes('working directory: /work/dir'));
 	});
 });

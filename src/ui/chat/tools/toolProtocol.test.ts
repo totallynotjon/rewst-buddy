@@ -2,17 +2,11 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
 import {
-	blockedRepeatResult,
 	buildToolInstructions,
 	describeRequest,
-	formatToolResults,
 	MAX_REQUESTS_PER_TURN,
-	MAX_RESULT_CHARS,
-	MAX_TOTAL_RESULT_CHARS,
 	parseToolRequests,
-	RequestDeduper,
 	stripToolRequestBlocks,
-	type ToolResult,
 } from './toolProtocol';
 
 const { suite, test, setup } = Mocha;
@@ -102,100 +96,6 @@ suite('Unit: toolProtocol', () => {
 		test('omits empty args and includes non-empty args', () => {
 			assert.strictEqual(describeRequest({ tool: 'list_files', args: {} }), 'list_files');
 			assert.strictEqual(describeRequest({ tool: 'read_file', args: { path: 'a' } }), 'read_file {"path":"a"}');
-		});
-	});
-
-	suite('RequestDeduper', () => {
-		const read = (path: string) => ({ tool: 'read_file', args: { path } });
-		const edit = (path: string) => ({ tool: 'edit_file', args: { path, find: 'a', replace: 'b' } });
-
-		test('drops duplicate requests within one reply', () => {
-			const { run, blocked } = new RequestDeduper().filter([read('a.ts'), read('a.ts'), read('b.ts')], 0);
-			assert.deepStrictEqual(
-				run.map(r => r.args.path),
-				['a.ts', 'b.ts'],
-			);
-			assert.strictEqual(blocked.length, 0);
-		});
-
-		test('blocks identical repeats across rounds', () => {
-			const deduper = new RequestDeduper();
-			assert.strictEqual(deduper.filter([read('a.ts')], 0).run.length, 1);
-			const { run, blocked } = deduper.filter([read('a.ts'), read('b.ts')], 1);
-			assert.deepStrictEqual(
-				run.map(r => r.args.path),
-				['b.ts'],
-			);
-			assert.deepStrictEqual(
-				blocked.map(r => r.args.path),
-				['a.ts'],
-			);
-		});
-
-		test('different args are not repeats', () => {
-			const deduper = new RequestDeduper();
-			deduper.filter([{ tool: 'read_file', args: { path: 'a.ts' } }], 0);
-			const { run } = deduper.filter([{ tool: 'read_file', args: { path: 'a.ts', startLine: 250 } }], 1);
-			assert.strictEqual(run.length, 1);
-		});
-
-		test('allows re-reads after an edit changed the workspace', () => {
-			const deduper = new RequestDeduper();
-			deduper.filter([read('a.ts')], 0);
-			deduper.filter([edit('a.ts')], 1);
-			const { run, blocked } = deduper.filter([read('a.ts')], 2);
-			assert.strictEqual(run.length, 1);
-			assert.strictEqual(blocked.length, 0);
-		});
-
-		test('never blocks edit tools', () => {
-			const deduper = new RequestDeduper();
-			deduper.filter([edit('a.ts')], 0);
-			const { run, blocked } = deduper.filter([edit('a.ts')], 1);
-			assert.strictEqual(run.length, 1);
-			assert.strictEqual(blocked.length, 0);
-		});
-
-		test('blockedRepeatResult nudges instead of re-running', () => {
-			const result = blockedRepeatResult(read('a.ts'));
-			assert.strictEqual(result.ok, false);
-			assert.match(result.output, /Do not repeat identical calls/);
-		});
-	});
-
-	suite('formatToolResults()', () => {
-		const result = (over: Partial<ToolResult>): ToolResult => ({
-			tool: 'read_file',
-			argsLabel: '{"path":"a"}',
-			ok: true,
-			output: 'body',
-			...over,
-		});
-
-		test('labels results and marks errors', () => {
-			const text = formatToolResults([
-				result({}),
-				result({ tool: 'list_files', argsLabel: '', ok: false, output: 'boom' }),
-			]);
-			assert.ok(text.startsWith('Tool results:'));
-			assert.ok(text.includes('### read_file {"path":"a"}\n```\nbody\n```'));
-			assert.ok(text.includes('### list_files (error)\n```\nboom\n```'));
-			assert.ok(text.includes('final answer'));
-		});
-
-		test('truncates per-result and total budgets', () => {
-			const big = 'x'.repeat(MAX_RESULT_CHARS + 1000);
-			const text = formatToolResults([
-				result({ output: big }),
-				result({ output: big }),
-				result({ output: big }),
-				result({ output: big }),
-			]);
-			assert.ok(text.includes('…(truncated)'));
-			assert.ok(
-				text.length < MAX_TOTAL_RESULT_CHARS + 2_000,
-				`formatted length ${text.length} should stay near total budget`,
-			);
 		});
 	});
 });

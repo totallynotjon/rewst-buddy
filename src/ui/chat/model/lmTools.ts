@@ -2,10 +2,9 @@ import { extPrefix } from '@global';
 import { SessionManager, type Session } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { COMMAND_TOOL_SPECS } from '../tools/commandTool';
 import { createGraphqlDeps, GRAPHQL_TOOL_SPECS } from '../tools/graphqlTool';
 import type { ToolSpec } from '../tools/toolProtocol';
-import { EDIT_TOOL_SPECS, runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
+import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
 import { WEB_TOOL_SPECS } from '../tools/webTools';
 
 /**
@@ -20,9 +19,7 @@ import { WEB_TOOL_SPECS } from '../tools/webTools';
 /** Snapshot of the rewst-buddy.ai.* switches that govern tool availability. */
 export interface AiToolSettings {
 	enableWorkspaceTools: boolean;
-	enableEditTools: boolean;
 	enableWebTools: boolean;
-	enableCommandTool: boolean;
 	enableGraphqlTool: boolean;
 }
 
@@ -34,12 +31,7 @@ interface GovernedSpec {
 /** Every tool with the settings predicate that governs it. */
 export const GOVERNED_TOOL_SPECS: GovernedSpec[] = [
 	...WORKSPACE_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkspaceTools })),
-	...EDIT_TOOL_SPECS.map(spec => ({
-		spec,
-		enabled: (s: AiToolSettings) => s.enableWorkspaceTools && s.enableEditTools,
-	})),
 	...WEB_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWebTools })),
-	...COMMAND_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableCommandTool })),
 	...GRAPHQL_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableGraphqlTool })),
 ];
 
@@ -52,9 +44,7 @@ export function readAiToolSettings(): AiToolSettings {
 	return {
 		enableWorkspaceTools:
 			config.get<boolean>('enableWorkspaceTools', true) && (vscode.workspace.workspaceFolders?.length ?? 0) > 0,
-		enableEditTools: config.get<boolean>('enableEditTools', true),
 		enableWebTools: config.get<boolean>('enableWebTools', false),
-		enableCommandTool: config.get<boolean>('enableCommandTool', false),
 		enableGraphqlTool: config.get<boolean>('enableGraphqlTool', false),
 	};
 }

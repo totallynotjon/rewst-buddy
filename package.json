@@ -38,184 +38,6 @@
 		],
 		"languageModelTools": [
 			{
-				"name": "list_files",
-				"displayName": "List Workspace Files",
-				"toolReferenceName": "rewstListFiles",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "List workspace files (glob like \"src/**/*.jinja\"; defaults to all files).",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"glob": {
-							"type": "string",
-							"description": "Glob pattern, e.g. \"src/**/*.jinja\". Defaults to all files."
-						},
-						"maxResults": {
-							"type": "number",
-							"description": "Maximum files to list."
-						}
-					}
-				}
-			},
-			{
-				"name": "read_file",
-				"displayName": "Read Workspace File",
-				"toolReferenceName": "rewstReadFile",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "Read a workspace file by relative path (1-based inclusive line range).",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"path": {
-							"type": "string",
-							"description": "Workspace-relative file path."
-						},
-						"startLine": {
-							"type": "number",
-							"description": "1-based first line to read."
-						},
-						"endLine": {
-							"type": "number",
-							"description": "1-based last line to read (inclusive)."
-						}
-					},
-					"required": [
-						"path"
-					]
-				}
-			},
-			{
-				"name": "search_files",
-				"displayName": "Search Workspace Files",
-				"toolReferenceName": "rewstSearchFiles",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "Case-insensitive text search across workspace files; returns path:line matches.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"query": {
-							"type": "string",
-							"description": "Text to search for (case-insensitive)."
-						},
-						"glob": {
-							"type": "string",
-							"description": "Glob restricting which files are searched."
-						}
-					},
-					"required": [
-						"query"
-					]
-				}
-			},
-			{
-				"name": "list_open_files",
-				"displayName": "List Open Files",
-				"toolReferenceName": "rewstListOpenFiles",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "List files open in the editor, marking the active one.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {}
-				}
-			},
-			{
-				"name": "open_file",
-				"displayName": "Open File in Editor",
-				"toolReferenceName": "rewstOpenFile",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "Open a workspace file in the user's editor.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"path": {
-							"type": "string",
-							"description": "Workspace-relative file path."
-						}
-					},
-					"required": [
-						"path"
-					]
-				}
-			},
-			{
-				"name": "get_diagnostics",
-				"displayName": "Get Diagnostics",
-				"toolReferenceName": "rewstGetDiagnostics",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "List errors/warnings VS Code currently reports, optionally for one file.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"path": {
-							"type": "string",
-							"description": "Workspace-relative file path to filter by."
-						}
-					}
-				}
-			},
-			{
-				"name": "find_symbols",
-				"displayName": "Find Symbols",
-				"toolReferenceName": "rewstFindSymbols",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "Search code symbols (functions, classes, variables) across the workspace by name.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"query": {
-							"type": "string",
-							"description": "Symbol name to search for."
-						}
-					},
-					"required": [
-						"query"
-					]
-				}
-			},
-			{
-				"name": "get_file_outline",
-				"displayName": "Get File Outline",
-				"toolReferenceName": "rewstGetFileOutline",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "Get the symbol outline (functions, classes, sections) of one file.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"path": {
-							"type": "string",
-							"description": "Workspace-relative file path."
-						}
-					},
-					"required": [
-						"path"
-					]
-				}
-			},
-			{
 				"name": "list_template_links",
 				"displayName": "List Template Links",
 				"toolReferenceName": "rewstListTemplateLinks",
@@ -227,65 +49,6 @@
 				"inputSchema": {
 					"type": "object",
 					"properties": {}
-				}
-			},
-			{
-				"name": "edit_file",
-				"displayName": "Edit Workspace File",
-				"toolReferenceName": "rewstEditFile",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "Replace one exact occurrence of \"find\" with \"replace\" in a workspace file. Fails if the text is missing or ambiguous — include enough surrounding context to match uniquely. The change is left unsaved for the user to review.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"path": {
-							"type": "string",
-							"description": "Workspace-relative file path."
-						},
-						"find": {
-							"type": "string",
-							"description": "Exact text to replace (must match uniquely)."
-						},
-						"replace": {
-							"type": "string",
-							"description": "Replacement text (may be empty)."
-						}
-					},
-					"required": [
-						"path",
-						"find",
-						"replace"
-					]
-				}
-			},
-			{
-				"name": "write_file",
-				"displayName": "Write Workspace File",
-				"toolReferenceName": "rewstWriteFile",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "Create a new workspace file, or replace the full contents of an existing one (replacement is left unsaved for the user to review). Prefer edit_file for small changes.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"path": {
-							"type": "string",
-							"description": "Workspace-relative file path."
-						},
-						"content": {
-							"type": "string",
-							"description": "Full file contents to write."
-						}
-					},
-					"required": [
-						"path",
-						"content"
-					]
 				}
 			},
 			{
@@ -329,28 +92,6 @@
 					},
 					"required": [
 						"url"
-					]
-				}
-			},
-			{
-				"name": "run_command",
-				"displayName": "Run Shell Command",
-				"toolReferenceName": "rewstRunCommand",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "Run a shell command in the workspace root and return its combined stdout/stderr and exit code. The user must approve each command before it runs, so explain what you intend to run.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"command": {
-							"type": "string",
-							"description": "Shell command to run in the workspace root."
-						}
-					},
-					"required": [
-						"command"
 					]
 				}
 			},
@@ -536,15 +277,15 @@
 					"editPresentation": "multilineText",
 					"description": "Standing instructions prepended to every message sent to the Rewst AI assistant (e.g. preferred answer style, your environment details). Note: this is sent as part of your message — it cannot override Rewst's own system prompt."
 				},
+				"rewst-buddy.ai.showActivity": {
+					"type": "boolean",
+					"default": true,
+					"description": "Show RoboRewsty's live activity (documentation searches and tool calls) as it works, instead of only a spinner until the answer arrives."
+				},
 				"rewst-buddy.ai.enableWorkspaceTools": {
 					"type": "boolean",
 					"default": true,
-					"description": "Let RoboRewsty inspect your workspace with read-only tools (list/read/search files, open editors, diagnostics, template links). Tool results are sent to the Rewst AI assistant — disable if your workspace contains content you don't want shared."
-				},
-				"rewst-buddy.ai.enableEditTools": {
-					"type": "boolean",
-					"default": true,
-					"description": "Let RoboRewsty open, edit, and create workspace files when you ask it to. Edits to existing files are left unsaved so you can review (and undo) them in the editor before saving."
+					"description": "Let RoboRewsty see a compact workspace overview (folder names and top-level entries) and the list of files linked to Rewst templates. This context is sent to the Rewst AI assistant — disable if you don't want workspace structure shared. File reading, editing, search, and terminal access come from VS Code's built-in agent-mode tools, not from this extension."
 				},
 				"rewst-buddy.ai.enableWebTools": {
 					"type": "boolean",
@@ -556,16 +297,6 @@
 					"default": 4,
 					"minimum": 0,
 					"description": "Legacy — no effect since RoboRewsty became a chat model: VS Code's chat runs the tool loop and owns its limits. Kept so existing settings files don't warn."
-				},
-				"rewst-buddy.ai.enableCommandTool": {
-					"type": "boolean",
-					"default": false,
-					"description": "Let RoboRewsty run shell commands on your machine (e.g. list processes, run scripts) and read their output. The remote Rewst AI proposes the commands and receives their output, so this is off by default and — unless you also enable Auto Approve Commands — every command requires your approval before it runs."
-				},
-				"rewst-buddy.ai.autoApproveCommands": {
-					"type": "boolean",
-					"default": false,
-					"description": "Run commands from RoboRewsty without an approval prompt. Only takes effect when Enable Command Tool is on. Leave off unless you fully trust every command the remote assistant may propose."
 				},
 				"rewst-buddy.ai.enableGraphqlTool": {
 					"type": "boolean",

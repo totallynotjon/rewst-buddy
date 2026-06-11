@@ -19,9 +19,7 @@ const { User, Assistant } = vscode.LanguageModelChatMessageRole;
 function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
 	return {
 		enableWorkspaceTools: false,
-		enableEditTools: false,
 		enableWebTools: false,
-		enableCommandTool: false,
 		enableGraphqlTool: false,
 		...overrides,
 	};
@@ -38,7 +36,7 @@ function fence(request: object): string {
 suite('Unit: toolTranslation', () => {
 	suite('filterToolsBySettings()', () => {
 		test('withholds a rewst tool whose setting is disabled, even when VS Code passes it', () => {
-			const tools = [chatTool('read_file'), chatTool('web_search')];
+			const tools = [chatTool('list_template_links'), chatTool('web_search')];
 			const filtered = filterToolsBySettings(tools, settings({ enableWebTools: true }));
 			assert.deepStrictEqual(
 				filtered.map(tool => tool.name),
@@ -46,9 +44,9 @@ suite('Unit: toolTranslation', () => {
 			);
 		});
 
-		test('passes non-rewst tools through untouched', () => {
-			const filtered = filterToolsBySettings([chatTool('other_ext_tool')], settings());
-			assert.strictEqual(filtered.length, 1);
+		test("passes non-rewst tools through untouched (e.g. the chat's built-in file tools)", () => {
+			const filtered = filterToolsBySettings([chatTool('other_ext_tool'), chatTool('read_file')], settings());
+			assert.strictEqual(filtered.length, 2);
 		});
 
 		test('handles missing options.tools', () => {
@@ -57,10 +55,13 @@ suite('Unit: toolTranslation', () => {
 	});
 
 	suite('buildInstructionsForChatTools()', () => {
-		test('advertises known tools with their protocol arg signatures', () => {
-			const instructions = buildInstructionsForChatTools([chatTool('read_file')]);
-			assert.ok(instructions.includes('read_file'));
-			assert.ok(instructions.includes('"path": string'), 'known tools keep their curated signature');
+		test('advertises known tools with their curated descriptions', () => {
+			const instructions = buildInstructionsForChatTools([chatTool('list_template_links')]);
+			assert.ok(instructions.includes('list_template_links'));
+			assert.ok(
+				instructions.includes('List local files linked to Rewst templates'),
+				'known tools keep their curated description',
+			);
 		});
 
 		test('advertises unknown tools with their schema', () => {

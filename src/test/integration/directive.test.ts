@@ -90,15 +90,6 @@ suite('Integration: engineering directive steering', function () {
 		);
 	});
 
-	test('workspace question routes to editor file tools', async () => {
-		const { requests } = await turn('What files are in my workspace right now?');
-		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
-		assert.ok(
-			requests.some(request => request.tool === 'list_files' || request.tool === 'list_open_files'),
-			`expected workspace tools, got: ${requests.map(r => r.tool).join(', ')}`,
-		);
-	});
-
 	test('workflow listing routes to GraphQL, not native platform tools', async () => {
 		const { requests } = await turn('List the workflows in this org.');
 		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');

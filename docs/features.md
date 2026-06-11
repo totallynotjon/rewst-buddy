@@ -95,24 +95,17 @@ Talk to Rewst's AI assistant (the same RoboRewsty that powers the in-app chat) d
 
 ### Workspace tools
 
-RoboRewsty can inspect your workspace on its own: list, read, search, and open files; see open editors; read diagnostics; look up code symbols and file outlines; and list template links. Every tool is a native VS Code chat tool — the chat runs each call locally (workspace-scoped, output-capped) and shows its activity inline, looping until RoboRewsty can answer.
+File and workspace work comes from VS Code itself: in agent mode, the chat passes its built-in tools (read, search, edit, terminal, diagnostics) to RoboRewsty like any other model, with VS Code's own approval and review UI. The extension adds the Rewst-specific context VS Code can't know:
 
-- Your first message includes a small workspace overview (folder names and top-level entries)
-- Tool results are sent to the Rewst AI assistant — disable with `rewst-buddy.ai.enableWorkspaceTools` if your workspace contains content you don't want shared
-
-### Edit tools
-
-RoboRewsty can also act on files: `edit_file` (targeted find/replace), `write_file` (create or rewrite), and `open_file`.
-
-- Edits to existing files are left **unsaved** so you can review (and undo) before saving — sync-on-save can't fire until you save. New files are created directly
-- Disable with `rewst-buddy.ai.enableEditTools`
+- `list_template_links` — lists the local files linked to Rewst templates (path, template name, template id, org)
+- Your first message includes a small workspace overview (the workspace root path, folder names, and top-level entries). Even with workspace tools off, RoboRewsty is still told your working directory
+- This context is sent to the Rewst AI assistant — disable with `rewst-buddy.ai.enableWorkspaceTools` if you don't want workspace structure shared
 
 ### Opt-in tools
 
 Off by default because they let a remote assistant direct activity on your machine:
 
 - **Web** (`rewst-buddy.ai.enableWebTools`) — `web_search` and `fetch_url` for public pages. Only http(s) is allowed; private/loopback hosts are always blocked
-- **Commands** (`rewst-buddy.ai.enableCommandTool`) — `run_command` runs shell commands in your workspace root (60s timeout, capped output). When enabled, **every command pops an approval dialog showing exactly what will run**; decline and it won't retry. `rewst-buddy.ai.autoApproveCommands` skips the prompt — leave it off unless you fully trust what the assistant may propose
 - **GraphQL** (`rewst-buddy.ai.enableGraphqlTool`) — `rewst_graphql` composes and runs GraphQL operations against your Rewst instance using your session, with `rewst_graphql_schema` for exploring the schema. Queries run directly; **mutations always pop an approval dialog showing the full operation**. Off by default because the session can read and change anything you can in Rewst
 
 A tool whose setting is off is never offered to the assistant — even if it appears in the chat's tool picker.
@@ -126,6 +119,7 @@ Some of RoboRewsty's own Rewst-side actions require your approval before they ru
 - **Attached context** — files attached via the paperclip or `#file`, and editor selections, are included by the chat itself
 - **Apply suggestions** — `Rewst Buddy: Apply Rewst AI Suggestion` (command palette) applies a code block from the latest answer to your active file behind a diff preview; confirm to apply, and the edit stays unsaved for review
 - **Custom instructions** — `rewst-buddy.ai.customInstructions` prepends standing instructions to every question (sent as part of your message, so it can't override Rewst's system prompt)
+- **Live activity** — while RoboRewsty works, the substantive steps it takes (documentation searches and each tool call) stream into the chat as compact lines so you can see what it's doing rather than waiting on a bare spinner. Turn it off with `rewst-buddy.ai.showActivity`
 - **Sources** — documentation citations are rendered at the end of the answer
 
 > The chat UI is provided by VS Code's built-in chat (the free, open-source Copilot Chat extension) — no GitHub sign-in or Copilot subscription is needed to chat with RoboRewsty. The conversation type can be changed via the `rewst-buddy.ai.conversationType` setting.
