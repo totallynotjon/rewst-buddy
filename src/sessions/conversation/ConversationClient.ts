@@ -6,7 +6,7 @@ import { getSubscriptionsUrl, RegionConfig } from '../RegionConfig';
 import type Session from '../Session';
 import { ConversationEventMapper, type ConversationEvent, type RawConversationPayload } from './conversationEvents';
 
-const DEFAULT_INACTIVITY_TIMEOUT_MS = 120_000;
+const DEFAULT_INACTIVITY_TIMEOUT_MS = 240_000;
 
 // Live-verified document (docs/dev/rewst-ai-api.md). $resumeRequestId is the
 // web app's reattach/continue handle — passed to resume a paused request (e.g.

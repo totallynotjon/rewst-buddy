@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.41.1] - 2026-06-11
+
+### Changed
+
+- **Longer patience for slow answers** - the default conversation inactivity timeout is doubled from 2 to 4 minutes, so RoboRewsty turns with long backend silences (deep tool work, large answers) no longer abort early with a timeout error
+
 ## [0.41.0] - 2026-06-11
 
 ### Changed
