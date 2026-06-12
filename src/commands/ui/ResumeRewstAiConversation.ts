@@ -52,6 +52,6 @@ export class ResumeRewstAiConversation extends GenericCommand {
 		await vscode.window.showTextDocument(document, { preview: true });
 
 		conversationMap.setPendingResume(orgId, conversation.id);
-		log.notifyInfo('Your next RoboRewsty chat message will continue this conversation.');
+		log.notifyInfo('Your next Cage-Free Rewsty chat message will continue this conversation.');
 	}
 }

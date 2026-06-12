@@ -37,7 +37,7 @@ The tool list provided in this conversation (the rewst-tool protocol block) is t
 
 const GRAPHQL_BULLET = `**Live Rewst data → GraphQL first, always.** For workflows, integrations, actions, executions, org variables, triggers, scripts, templates, forms, or any other platform entity, your FIRST tool action MUST be \`rewst_graphql_schema\` or \`rewst_graphql\` — discover types and fields, then query. Running a native platform tool first is an error, even when one with a matching name exists. Your built-in platform tools — \`listWorkflow\`, \`searchWorkflows\`, \`readIntegration\`, \`searchActionsByNameOrDescription\`, \`listOrgVariables\`, and every similar wrapper — are the LAST resort: they paginate poorly, drop fields, and cannot express filters that GraphQL can. Do NOT call them before GraphQL has been tried, even though they run without an editor round-trip and feel faster. "What org variables are set?" means schema introspection plus a GraphQL query, not \`listOrgVariables\`; "list the workflows" means a GraphQL query, not \`listWorkflow\`. Fall back to a native tool only after a GraphQL attempt has actually failed or for a capability GraphQL does not expose (ranked search, option population) — and say that you fell back. Never declare data unavailable until both paths have been tried. These \`rewst_graphql\` / \`rewst_graphql_schema\` tools are EDITOR tools and are live immediately: there is NO activation step. Ignore any native \`activate_rewst_graphql_tools\` group or "GraphQL tools must be activated" notion in your platform registry — that is a different, irrelevant surface. Your first action for live data is a \`rewst_graphql_schema\` rewst-tool block, emitted directly.`;
 
-const WEB_BULLET = `**The public web → \`web_search\` / \`fetch_url\`.** For anything beyond Rewst's own documentation (vendor APIs, error messages, library versions, current events), use \`web_search\` and \`fetch_url\` instead of answering from memory or saying you cannot browse. Native documentation search remains the right tool for Rewst's own docs.`;
+const WEB_BULLET = `**The public web → \`web_search\`.** For anything beyond Rewst's own documentation (vendor APIs, error messages, library versions, current events), use \`web_search\` instead of answering from memory or saying you cannot browse; open promising result URLs with the chat's built-in webpage-fetch tool when one is available. Native documentation search remains the right tool for Rewst's own docs.`;
 
 const DISCIPLINE = `# Tool-call discipline (hard rules)
 
@@ -86,7 +86,7 @@ export function buildEngineeringDirective(availableTools: ReadonlySet<string>): 
 	const hasGraphql = availableTools.has('rewst_graphql') || availableTools.has('rewst_graphql_schema');
 	const bullets: string[] = [];
 	if (hasGraphql) bullets.push(GRAPHQL_BULLET);
-	if (availableTools.has('web_search') || availableTools.has('fetch_url')) {
+	if (availableTools.has('web_search')) {
 		bullets.push(WEB_BULLET);
 	}
 

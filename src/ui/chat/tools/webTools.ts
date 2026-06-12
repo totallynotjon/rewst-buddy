@@ -4,17 +4,17 @@ import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
 
 /**
  * Web tools for the rewst-tool protocol. The Rewst AI assistant has no
- * internet access of its own beyond Rewst's documentation search, so these
- * let it search the public web and read pages — executed by the extension.
+ * internet access of its own beyond Rewst's documentation search, so this
+ * lets it search the public web — executed by the extension. Opening result
+ * pages is left to VS Code's built-in fetch tool in agent mode.
  *
  * Off by default (rewst-buddy.ai.enableWebTools): the assistant chooses the
- * URLs, so enabling this lets a remote model direct local network requests.
+ * queries, so enabling this lets a remote model direct local network requests.
  * Mitigations: http(s) only, private/loopback hosts rejected, redirects
- * re-validated hop by hop, responses size-capped.
+ * re-validated hop by hop.
  */
 
 const FETCH_TIMEOUT_MS = 15_000;
-const MAX_PAGE_CHARS = 8_000;
 const MAX_SEARCH_RESULTS = 8;
 const MAX_REDIRECTS = 5;
 
@@ -27,16 +27,6 @@ export const WEB_TOOL_SPECS: ToolSpec[] = [
 			type: 'object',
 			properties: { query: { type: 'string', description: 'Web search query.' } },
 			required: ['query'],
-		},
-	},
-	{
-		name: 'fetch_url',
-		args: '{"url": string}',
-		description: 'Fetch a public http(s) URL and return its readable text content.',
-		inputSchema: {
-			type: 'object',
-			properties: { url: { type: 'string', description: 'Public http(s) URL to fetch.' } },
-			required: ['url'],
 		},
 	},
 ];
@@ -180,12 +170,6 @@ export async function runWebTool(request: ToolRequest, deps: WebToolDeps = defau
 			const results = parseDuckDuckGoResults(html);
 			if (results.length === 0) return `No results for "${query}".`;
 			return results.map(r => `${r.title}\n${r.url}${r.snippet ? `\n${r.snippet}` : ''}`).join('\n\n');
-		}
-		case 'fetch_url': {
-			const url = asStringArg(request.args, 'url');
-			if (!url) throw new Error('fetch_url requires a "url" argument.');
-			const text = htmlToText(await fetchValidated(url, deps));
-			return text.length > MAX_PAGE_CHARS ? text.slice(0, MAX_PAGE_CHARS) + '\n…(truncated)' : text;
 		}
 		default:
 			throw new Error(`Unknown web tool "${request.tool}".`);

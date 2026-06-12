@@ -29,7 +29,7 @@ suite('Unit: engineeringDirective', () => {
 	});
 
 	test('web tools add their priority bullet', () => {
-		const directive = buildEngineeringDirective(new Set(['web_search', 'fetch_url']));
+		const directive = buildEngineeringDirective(new Set(['web_search']));
 		assert.ok(directive.includes('# Tool selection'));
 		assert.ok(directive.includes('web_search'));
 		assert.ok(!directive.includes('activate_rewst_graphql_tools'));

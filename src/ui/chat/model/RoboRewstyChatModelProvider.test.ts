@@ -164,6 +164,37 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.strictEqual(harness.captured[1].conversationId, 'conv-1');
 	});
 
+	test('a rewound transcript forks a fresh conversation seeded with a replay', async () => {
+		const harness = makeHarness([
+			completeTurn('Hello', 'conv-1'),
+			completeTurn('Again', 'conv-1'),
+			completeTurn('Forked', 'conv-2'),
+		]);
+		await harness.run([message(User, [text('hi')])]);
+		await harness.run([
+			message(User, [text('hi')]),
+			message(Assistant, [text('Hello')]),
+			message(User, [text('next')]),
+		]);
+
+		// Restore Checkpoint rolled the transcript back to after turn 1; the
+		// user asks something new. The backend conversation still contains
+		// turn 2, so re-attaching would leak the rolled-back exchange.
+		await harness.run([
+			message(User, [text('hi')]),
+			message(Assistant, [text('Hello')]),
+			message(User, [text('a different question')]),
+		]);
+
+		assert.strictEqual(harness.captured.length, 3);
+		assert.strictEqual(harness.captured[2].conversationId, undefined, 'fork starts a new conversation');
+		assert.match(harness.captured[2].message, /<chat_transcript_replay>/);
+		assert.match(harness.captured[2].message, /USER: hi/);
+		assert.match(harness.captured[2].message, /ASSISTANT: Hello/);
+		assert.match(harness.captured[2].message, /a different question/);
+		assert.ok(!harness.captured[2].message.includes('Again'), 'rolled-back turn is not replayed');
+	});
+
 	test('independent chats and orgs keep distinct conversations', async () => {
 		const harness = makeHarness([completeTurn('Hello', 'conv-A'), completeTurn('World', 'conv-B')]);
 		await harness.run([message(User, [text('chat A opener')])]);

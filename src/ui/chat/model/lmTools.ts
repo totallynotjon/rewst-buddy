@@ -76,7 +76,7 @@ export const APPROVAL_TOOL_NAME = 'rewst_approval';
 export const APPROVAL_TOOL_SPEC: ToolSpec = {
 	name: APPROVAL_TOOL_NAME,
 	description:
-		'Internal: approves a Rewst-side action RoboRewsty paused for. Emitted by the RoboRewsty chat model itself — never request this tool.',
+		'Internal: approves a Rewst-side action Cage-Free Rewsty paused for. Emitted by the Cage-Free Rewsty chat model itself — never request this tool.',
 	args: '{"toolNames": string[], "argsPreview"?: string, "orgId": string, "resume": string}',
 	inputSchema: {
 		type: 'object',
@@ -203,7 +203,7 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 				return {
 					invocationMessage: 'Approving Rewst action…',
 					confirmationMessages: {
-						title: 'RoboRewsty needs your approval to run a Rewst action',
+						title: 'Cage-Free Rewsty needs your approval to run a Rewst action',
 						message: new vscode.MarkdownString(`${names}${preview}`),
 					},
 				};
