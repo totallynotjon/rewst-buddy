@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
-import { ConversationMap, nextTurnKey, prefixKey, serializeHistory, spineDepth } from './conversationMap';
+import { ConversationMap, MAX_ENTRIES, nextTurnKey, prefixKey, serializeHistory, spineDepth } from './conversationMap';
 
 const { suite, test } = Mocha;
 
@@ -124,6 +124,40 @@ suite('Unit: conversationMap', () => {
 			// The old conversation's TIP still re-attaches: at that spine the
 			// backend holds exactly those turns, so continuing it is correct.
 			assert.strictEqual(map.lookup('key-turn-2'), 'conv-1');
+		});
+
+		test('a rewound miss does not keep the dead entry alive at the expense of live ones', () => {
+			const map = new ConversationMap();
+			map.store('rewound', 'conv-1', 1);
+			map.store('tip', 'conv-1', 2);
+			// Fill the cache to capacity, then trigger one eviction. The rewound
+			// entry can never re-attach, so the miss must not refresh it — the
+			// eviction should take it, not the live tip entry.
+			for (let i = 0; i < MAX_ENTRIES - 2; i++) {
+				map.store(`filler-${i}`, `conv-filler-${i}`, 1);
+			}
+			assert.strictEqual(map.lookup('rewound'), undefined, 'rewound prefix still misses');
+			map.store('one-more', 'conv-one-more', 1);
+			assert.strictEqual(map.lookup('tip'), 'conv-1', 'live tip entry survives the eviction');
+		});
+
+		test('a replayed behind-tip store keeps rewind detection alive under cache pressure', () => {
+			const map = new ConversationMap();
+			map.store('rewound', 'conv-1', 1);
+			map.store('tip', 'conv-1', 2);
+			for (let i = 0; i < 100; i++) {
+				map.store(`filler-${i}`, `conv-filler-${i}`, 1);
+			}
+			// VS Code replays the turn-1 request: the provider re-stores the same
+			// key at its old depth. That refreshes the entry's recency, so the
+			// conversation's tip record must stay at least as recent — otherwise
+			// the tip evicts first and the stale entry re-attaches to a backend
+			// conversation that still holds the rolled-back turn 2.
+			map.store('rewound', 'conv-1', 1);
+			for (let i = 100; i < MAX_ENTRIES + 1; i++) {
+				map.store(`filler-${i}`, `conv-filler-${i}`, 1);
+			}
+			assert.strictEqual(map.lookup('rewound'), undefined, 'rewound prefix still forks');
 		});
 
 		test('spineDepth counts only user turns', () => {

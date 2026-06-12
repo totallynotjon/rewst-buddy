@@ -24,7 +24,10 @@ import type vscode from 'vscode';
  *
  * Inherent limit of a session-id-less stateless API: two same-org chats whose
  * USER messages are byte-identical share one backend conversation until their
- * user turns diverge. Distinct orgs or distinct user content always isolate.
+ * user turns diverge — and once one of them advances the shared conversation's
+ * tip, the other's next turn reads as behind-tip and forks (see below) rather
+ * than silently re-attaching. Distinct orgs or distinct user content always
+ * isolate.
  *
  * Rewind handling: the backend conversation is append-only (the API has no
  * message deletion), so when VS Code rewinds the transcript — Restore
@@ -35,7 +38,7 @@ import type vscode from 'vscode';
  * caller forks a fresh backend conversation seeded from the editor transcript.
  */
 
-const MAX_ENTRIES = 200;
+export const MAX_ENTRIES = 200;
 
 /** The provider-message subset that matters for identity. */
 type RequestMessage = Pick<vscode.LanguageModelChatRequestMessage, 'role' | 'content'>;
@@ -137,11 +140,14 @@ export class ConversationMap {
 	lookup(key: string): string | undefined {
 		const entry = this.entries.get(key);
 		if (entry === undefined) return undefined;
+		const tip = this.tipDepth.get(entry.conversationId) ?? entry.depth;
+		// A rewound prefix can never re-attach — let it age out of the LRU
+		// rather than refreshing it at the expense of live entries.
+		if (entry.depth < tip) return undefined;
 		// Refresh LRU position.
 		this.entries.delete(key);
 		this.entries.set(key, entry);
-		const tip = this.tipDepth.get(entry.conversationId) ?? entry.depth;
-		return entry.depth < tip ? undefined : entry.conversationId;
+		return entry.conversationId;
 	}
 
 	store(key: string, conversationId: string, depth: number): void {
@@ -152,16 +158,17 @@ export class ConversationMap {
 			if (oldest === undefined) break;
 			this.entries.delete(oldest);
 		}
+		// The tip record must stay at least as recent as every entry that
+		// references its conversation (a replayed turn re-stores a behind-tip
+		// key): if the tip evicted first, the surviving entry's fallback would
+		// re-attach to a conversation that still holds rolled-back turns.
 		const tip = this.tipDepth.get(conversationId);
-		if (tip === undefined || depth > tip) {
-			// Re-insert to refresh LRU position.
-			this.tipDepth.delete(conversationId);
-			this.tipDepth.set(conversationId, depth);
-			while (this.tipDepth.size > MAX_ENTRIES) {
-				const oldest = this.tipDepth.keys().next().value;
-				if (oldest === undefined) break;
-				this.tipDepth.delete(oldest);
-			}
+		this.tipDepth.delete(conversationId);
+		this.tipDepth.set(conversationId, tip === undefined || depth > tip ? depth : tip);
+		while (this.tipDepth.size > MAX_ENTRIES) {
+			const oldest = this.tipDepth.keys().next().value;
+			if (oldest === undefined) break;
+			this.tipDepth.delete(oldest);
 		}
 	}
 
