@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+# CodeRabbit submits a Request Changes review while it has unresolved comments
+# and approves once they're resolved. Paired with the main-branch ruleset
+# (1 required approval + conversation resolution), this makes CodeRabbit's
+# approval a merge requirement.
+reviews:
+  request_changes_workflow: true
