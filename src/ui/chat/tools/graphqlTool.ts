@@ -204,7 +204,7 @@ export function createGraphqlDeps(session: Session): GraphqlToolDeps {
 		isEnabled: () => vscode.workspace.getConfiguration(`${extPrefix}.ai`).get<boolean>('enableGraphqlTool', false),
 		confirmMutation: async operation => {
 			const choice = await vscode.window.showWarningMessage(
-				'RoboRewsty wants to run a GraphQL mutation on your Rewst instance:',
+				'Cage-Free Rewsty wants to run a GraphQL mutation on your Rewst instance:',
 				{ modal: true, detail: operation },
 				'Run',
 			);

@@ -85,8 +85,8 @@ suite('Integration: engineering directive steering', function () {
 		);
 		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
 		assert.ok(
-			requests.some(request => request.tool === 'web_search' || request.tool === 'fetch_url'),
-			`expected web tools, got: ${requests.map(r => r.tool).join(', ')}`,
+			requests.some(request => request.tool === 'web_search'),
+			`expected web_search, got: ${requests.map(r => r.tool).join(', ')}`,
 		);
 	});
 

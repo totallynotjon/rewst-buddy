@@ -20,7 +20,7 @@ const defaultApplyDeps: ApplyEditDeps = {
 	showDiff: (target, proposed, title) => vscode.commands.executeCommand('vscode.diff', target, proposed, title),
 	confirm: async fileName => {
 		const choice = await vscode.window.showInformationMessage(
-			`Apply RoboRewsty's suggestion to ${fileName}?`,
+			`Apply Cage-Free Rewsty's suggestion to ${fileName}?`,
 			{ modal: true },
 			'Apply',
 		);
@@ -49,7 +49,7 @@ export async function applyWithPreview(
 	const fileName = target.path.split('/').pop() ?? target.path;
 	const proposed = ProposedContentProvider.put(target, content);
 	try {
-		await deps.showDiff(target, proposed, `${fileName}: current ↔ RoboRewsty suggestion`);
+		await deps.showDiff(target, proposed, `${fileName}: current ↔ Cage-Free Rewsty suggestion`);
 		if (!(await deps.confirm(fileName))) {
 			log.trace('applyWithPreview: user declined');
 			return false;
@@ -87,7 +87,7 @@ export class ApplyRewstAiEdit extends GenericCommand {
 		const document = await vscode.workspace.openTextDocument(resolved.target);
 		await vscode.window.showTextDocument(document, { preview: false });
 		const fileName = resolved.target.path.split('/').pop() ?? resolved.target.path;
-		log.notifyInfo(`Applied RoboRewsty's suggestion to ${fileName} — review and save to persist`);
+		log.notifyInfo(`Applied Cage-Free Rewsty's suggestion to ${fileName} — review and save to persist`);
 	}
 
 	/** Palette invocation: active file + a code block from the last answer. */
@@ -100,7 +100,7 @@ export class ApplyRewstAiEdit extends GenericCommand {
 
 		const blocks = extractCodeBlocks(getLastAiAnswer() ?? '');
 		if (blocks.length === 0) {
-			log.notifyError('No code blocks found in the most recent RoboRewsty answer.');
+			log.notifyError('No code blocks found in the most recent Cage-Free Rewsty answer.');
 			return undefined;
 		}
 		if (blocks.length === 1) return { target, content: blocks[0].content };

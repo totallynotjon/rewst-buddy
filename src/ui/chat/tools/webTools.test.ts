@@ -106,32 +106,30 @@ suite('Unit: webTools', () => {
 			assert.match(output, /Jinja & Templates\nhttps:\/\/docs\.rewst\.help\/jinja\nHow to use Jinja in Rewst\./);
 		});
 
-		test('fetch_url follows redirects but blocks private destinations', async () => {
+		test('web_search follows redirects but blocks private destinations', async () => {
 			const d = deps({
 				fetchRaw: async url =>
-					url === 'https://example.com/'
+					url.startsWith('https://html.duckduckgo.com/')
 						? { status: 302, location: 'http://127.0.0.1/secret', body: '' }
-						: { status: 200, body: 'x' },
+						: { status: 200, body: RESULT_HTML },
 			});
-			await assert.rejects(
-				runWebTool({ tool: 'fetch_url', args: { url: 'https://example.com/' } }, d),
-				/private\/loopback/,
-			);
+			await assert.rejects(runWebTool({ tool: 'web_search', args: { query: 'x' } }, d), /private\/loopback/);
 		});
 
-		test('fetch_url returns readable text and surfaces HTTP errors', async () => {
-			const ok = await runWebTool(
-				{ tool: 'fetch_url', args: { url: 'https://example.com/page' } },
-				deps({ fetchRaw: async () => ({ status: 200, body: '<p>Some <b>docs</b></p>' }) }),
-			);
-			assert.strictEqual(ok, 'Some docs');
-
+		test('web_search surfaces HTTP errors', async () => {
 			await assert.rejects(
 				runWebTool(
-					{ tool: 'fetch_url', args: { url: 'https://example.com/missing' } },
+					{ tool: 'web_search', args: { query: 'x' } },
 					deps({ fetchRaw: async () => ({ status: 404, body: '' }) }),
 				),
 				/HTTP 404/,
+			);
+		});
+
+		test('removed fetch_url tool is rejected as unknown', async () => {
+			await assert.rejects(
+				runWebTool({ tool: 'fetch_url', args: { url: 'https://example.com/' } }, deps()),
+				/Unknown web tool/,
 			);
 		});
 	});

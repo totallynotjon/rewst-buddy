@@ -147,7 +147,7 @@ export function formatToolResultsMessage(
 /** Note appended when the model asked for tools that cannot be invoked. */
 export function rejectedToolsNote(names: readonly string[]): string {
 	const unique = [...new Set(names)];
-	return `\n\n*RoboRewsty requested ${unique.length === 1 ? 'a tool' : 'tools'} not available in this chat (${unique
+	return `\n\n*Cage-Free Rewsty requested ${unique.length === 1 ? 'a tool' : 'tools'} not available in this chat (${unique
 		.map(name => `\`${name}\``)
 		.join(
 			', ',

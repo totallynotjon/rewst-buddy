@@ -25,6 +25,14 @@ import type vscode from 'vscode';
  * Inherent limit of a session-id-less stateless API: two same-org chats whose
  * USER messages are byte-identical share one backend conversation until their
  * user turns diverge. Distinct orgs or distinct user content always isolate.
+ *
+ * Rewind handling: the backend conversation is append-only (the API has no
+ * message deletion), so when VS Code rewinds the transcript — Restore
+ * Checkpoint, or editing an earlier message — re-attaching to the same
+ * conversation would give the model memory of the rolled-back turns. Each
+ * entry therefore records the user-turn DEPTH of its spine, and a lookup that
+ * lands behind the conversation's deepest known turn reads as a miss: the
+ * caller forks a fresh backend conversation seeded from the editor transcript.
  */
 
 const MAX_ENTRIES = 200;
@@ -99,29 +107,61 @@ export function nextTurnKey(orgId: string, messages: readonly RequestMessage[]):
 	return getHash(`${orgId}${serializeHistory(messages)}`);
 }
 
+/**
+ * User-turn count of the given message list — the depth of its spine. Pass the
+ * same slice the key was built from (full history for nextTurnKey, all but the
+ * trailing turn for prefixKey).
+ */
+export function spineDepth(messages: readonly RequestMessage[]): number {
+	return messages.filter(message => message.role === USER_ROLE).length;
+}
+
+interface Entry {
+	conversationId: string;
+	/** User-turn count of the spine this key was built from. */
+	depth: number;
+}
+
 export class ConversationMap {
-	private entries = new Map<string, string>();
+	private entries = new Map<string, Entry>();
+	/** Deepest stored spine per conversation — the conversation's tip. */
+	private tipDepth = new Map<string, number>();
 	private byCallId = new Map<string, string>();
 	private pendingResume = new Map<string, string>();
 
-	/** The backend conversation a request prefix belongs to, if known. */
+	/**
+	 * The backend conversation a request prefix belongs to, if known — unless
+	 * the prefix sits BEHIND the conversation's tip (the transcript was
+	 * rewound), which reads as a miss so the caller forks instead.
+	 */
 	lookup(key: string): string | undefined {
-		const conversationId = this.entries.get(key);
-		if (conversationId !== undefined) {
-			// Refresh LRU position.
-			this.entries.delete(key);
-			this.entries.set(key, conversationId);
-		}
-		return conversationId;
+		const entry = this.entries.get(key);
+		if (entry === undefined) return undefined;
+		// Refresh LRU position.
+		this.entries.delete(key);
+		this.entries.set(key, entry);
+		const tip = this.tipDepth.get(entry.conversationId) ?? entry.depth;
+		return entry.depth < tip ? undefined : entry.conversationId;
 	}
 
-	store(key: string, conversationId: string): void {
+	store(key: string, conversationId: string, depth: number): void {
 		this.entries.delete(key);
-		this.entries.set(key, conversationId);
+		this.entries.set(key, { conversationId, depth });
 		while (this.entries.size > MAX_ENTRIES) {
 			const oldest = this.entries.keys().next().value;
 			if (oldest === undefined) break;
 			this.entries.delete(oldest);
+		}
+		const tip = this.tipDepth.get(conversationId);
+		if (tip === undefined || depth > tip) {
+			// Re-insert to refresh LRU position.
+			this.tipDepth.delete(conversationId);
+			this.tipDepth.set(conversationId, depth);
+			while (this.tipDepth.size > MAX_ENTRIES) {
+				const oldest = this.tipDepth.keys().next().value;
+				if (oldest === undefined) break;
+				this.tipDepth.delete(oldest);
+			}
 		}
 	}
 
@@ -171,6 +211,7 @@ export class ConversationMap {
 	/** Clears all state between tests. */
 	_resetForTesting(): void {
 		this.entries.clear();
+		this.tipDepth.clear();
 		this.byCallId.clear();
 		this.pendingResume.clear();
 	}

@@ -14,7 +14,8 @@ import { ChunkGate } from '../tools/chunkGate';
 import { stripToolRequestBlocks } from '../tools/toolProtocol';
 import { buildWorkspaceOverview } from '../tools/workspaceTools';
 import { prependInstructions } from '../promptContext';
-import { conversationMap, nextTurnKey, prefixKey } from './conversationMap';
+import { conversationMap, nextTurnKey, prefixKey, spineDepth } from './conversationMap';
+import { buildHistoryReplay } from './historyReplay';
 import { buildEngineeringDirective } from './engineeringDirective';
 import { setLastAiAnswer } from './lastAnswer';
 import {
@@ -141,7 +142,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		const sessions = this.deps.sessions();
 		return sessions.map(session => ({
 			id: session.profile.org.id,
-			name: sessions.length === 1 ? 'RoboRewsty' : `RoboRewsty (${session.profile.org.name})`,
+			name: sessions.length === 1 ? 'Cage-Free Rewsty' : `Cage-Free Rewsty (${session.profile.org.name})`,
 			family: FAMILY,
 			version: '1.0.0',
 			detail: session.profile.org.name,
@@ -227,8 +228,12 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			if (conversationId === undefined) {
 				// The opening message of a new backend conversation carries the
 				// hidden steering preamble (never rendered in the chat UI), built
-				// from the tools actually available this turn.
-				message = `${buildEngineeringDirective(permittedNames)}\n\n${message}`;
+				// from the tools actually available this turn. When the editor
+				// holds history the backend doesn't — a reloaded window, or a
+				// rewound transcript whose append-only conversation had to be
+				// forked — a compact transcript replay restores that context.
+				const replay = fresh ? '' : buildHistoryReplay(messages.slice(0, -1));
+				message = [buildEngineeringDirective(permittedNames), replay, message].filter(Boolean).join('\n\n');
 			}
 		}
 
@@ -272,7 +277,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 					calls.map(call => call.callId),
 					conversationId,
 				);
-			conversationMap.store(nextTurnKey(orgId, messages), conversationId);
+			conversationMap.store(nextTurnKey(orgId, messages), conversationId, spineDepth(messages));
 		};
 		// Tools allow-listed for a one-time Approve; reverted once the turn ends.
 		const toolsToRevert = new Set<string>();

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.42.0] - 2026-06-12
+
+### Changed
+
+- **The chat agent is now "Cage-Free Rewsty"** - the model picker, approval prompts, notifications, and docs drop the RoboRewsty name in favor of one that says what this is: Rewst's assistant, out of its cage, roaming your editor. Internal ids (`vendor: rewst-buddy`, `family: roborewsty`) are unchanged, so existing model picks and settings keep working
+
+- **`fetch_url` removed in favor of VS Code's built-in fetch tool** - agent mode already provides a webpage-fetch tool to RoboRewsty, so the extension's duplicate is gone. `web_search` stays (VS Code has no built-in web search) and `rewst-buddy.ai.enableWebTools` now gates it alone; the assistant is steered to open search results with the chat's built-in fetch tool
+
+### Fixed
+
+- **Restore Checkpoint now actually rewinds RoboRewsty's memory** - Rewst conversations are append-only server-side, so rolling the chat back (Restore Checkpoint, or editing an earlier message and resending) used to silently re-attach to the old conversation and the assistant still remembered everything "rolled back". A rewound transcript now forks a fresh backend conversation, seeded with a compact replay of the turns that remain visible in the chat
+- **Chat context survives window reloads** - when the chat carries history but its backend conversation binding was lost (the continuity map is in-memory), the new conversation is seeded with the same transcript replay instead of starting blank
+
 ## [0.41.1] - 2026-06-11
 
 ### Changed

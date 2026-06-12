@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
-import { ConversationMap, nextTurnKey, prefixKey, serializeHistory } from './conversationMap';
+import { ConversationMap, nextTurnKey, prefixKey, serializeHistory, spineDepth } from './conversationMap';
 
 const { suite, test } = Mocha;
 
@@ -86,7 +86,7 @@ suite('Unit: conversationMap', () => {
 	suite('ConversationMap', () => {
 		test('stores and looks up conversation ids', () => {
 			const map = new ConversationMap();
-			map.store('key-1', 'conv-1');
+			map.store('key-1', 'conv-1', 1);
 			assert.strictEqual(map.lookup('key-1'), 'conv-1');
 			assert.strictEqual(map.lookup('key-2'), undefined);
 		});
@@ -95,10 +95,43 @@ suite('Unit: conversationMap', () => {
 			const map = new ConversationMap();
 			const chatA = prefixKey('org-1', [message(User, [text('A history')]), message(User, [text('q')])]);
 			const chatB = prefixKey('org-1', [message(User, [text('B history')]), message(User, [text('q')])]);
-			map.store(chatA, 'conv-A');
-			map.store(chatB, 'conv-B');
+			map.store(chatA, 'conv-A', 1);
+			map.store(chatB, 'conv-B', 1);
 			assert.strictEqual(map.lookup(chatA), 'conv-A');
 			assert.strictEqual(map.lookup(chatB), 'conv-B');
+		});
+
+		test('a prefix behind the conversation tip reads as a miss (rewind fork)', () => {
+			const map = new ConversationMap();
+			// Turn 1 and turn 2 of one chat advance the same conversation.
+			map.store('key-turn-1', 'conv-1', 1);
+			map.store('key-turn-2', 'conv-1', 2);
+			assert.strictEqual(map.lookup('key-turn-2'), 'conv-1', 'tip prefix re-attaches');
+			// Restore Checkpoint replays the turn-1 prefix: the backend
+			// conversation still holds turn 2, so re-attaching is a miss.
+			assert.strictEqual(map.lookup('key-turn-1'), undefined, 'rewound prefix forks');
+		});
+
+		test('the forked conversation tracks its own tip independently', () => {
+			const map = new ConversationMap();
+			map.store('key-turn-1', 'conv-1', 1);
+			map.store('key-turn-2', 'conv-1', 2);
+			// After the fork, the same depth-1 spine continues conv-2.
+			map.store('key-turn-1b', 'conv-2', 1);
+			assert.strictEqual(map.lookup('key-turn-1b'), 'conv-2', 'fork is at its own tip');
+			map.store('key-turn-2b', 'conv-2', 2);
+			assert.strictEqual(map.lookup('key-turn-1b'), undefined, 'rewinding the fork forks again');
+			// The old conversation's TIP still re-attaches: at that spine the
+			// backend holds exactly those turns, so continuing it is correct.
+			assert.strictEqual(map.lookup('key-turn-2'), 'conv-1');
+		});
+
+		test('spineDepth counts only user turns', () => {
+			assert.strictEqual(spineDepth([]), 0);
+			assert.strictEqual(
+				spineDepth([message(User, [text('a')]), message(Assistant, [text('b')]), message(User, [text('c')])]),
+				2,
+			);
 		});
 
 		test('callId binding recovers the conversation regardless of message hash', () => {

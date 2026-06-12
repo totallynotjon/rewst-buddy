@@ -14,8 +14,8 @@ function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
 }
 
 suite('Unit: lmTools', () => {
-	test('exposes all 5 protocol tools with input schemas', () => {
-		assert.strictEqual(ALL_TOOL_SPECS.length, 5);
+	test('exposes all 4 protocol tools with input schemas', () => {
+		assert.strictEqual(ALL_TOOL_SPECS.length, 4);
 		for (const spec of ALL_TOOL_SPECS) {
 			assert.ok(spec.inputSchema, `${spec.name} carries an inputSchema`);
 		}
@@ -31,17 +31,14 @@ suite('Unit: lmTools', () => {
 				[...enabledToolNames(settings({ enableWorkspaceTools: true }))],
 				['list_template_links'],
 			);
-			assert.deepStrictEqual([...enabledToolNames(settings({ enableWebTools: true }))].sort(), [
-				'fetch_url',
-				'web_search',
-			]);
+			assert.deepStrictEqual([...enabledToolNames(settings({ enableWebTools: true }))].sort(), ['web_search']);
 			assert.deepStrictEqual([...enabledToolNames(settings({ enableGraphqlTool: true }))].sort(), [
 				'rewst_graphql',
 				'rewst_graphql_schema',
 			]);
 		});
 
-		test('everything enabled yields all 5', () => {
+		test('everything enabled yields all 4', () => {
 			const names = enabledToolNames(
 				settings({
 					enableWorkspaceTools: true,
@@ -49,7 +46,7 @@ suite('Unit: lmTools', () => {
 					enableGraphqlTool: true,
 				}),
 			);
-			assert.strictEqual(names.size, 5);
+			assert.strictEqual(names.size, 4);
 		});
 	});
 

@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Unofficial community VS Code extension for editing Rewst templates locally. Not affiliated with Rewst LLC.",
-	"version": "0.41.1",
+	"version": "0.42.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.122.0"
@@ -33,7 +33,7 @@
 		"languageModelChatProviders": [
 			{
 				"vendor": "rewst-buddy",
-				"displayName": "RoboRewsty"
+				"displayName": "Cage-Free Rewsty"
 			}
 		],
 		"languageModelTools": [
@@ -74,28 +74,6 @@
 				}
 			},
 			{
-				"name": "fetch_url",
-				"displayName": "Fetch URL",
-				"toolReferenceName": "rewstFetchUrl",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "Fetch a public http(s) URL and return its readable text content.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"url": {
-							"type": "string",
-							"description": "Public http(s) URL to fetch."
-						}
-					},
-					"required": [
-						"url"
-					]
-				}
-			},
-			{
 				"name": "rewst_graphql_schema",
 				"displayName": "Inspect Rewst GraphQL Schema",
 				"toolReferenceName": "rewstGraphqlSchema",
@@ -130,7 +108,7 @@
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Internal: approves a Rewst-side action RoboRewsty paused for. Emitted by the RoboRewsty chat model itself — never request this tool.",
+				"modelDescription": "Internal: approves a Rewst-side action Cage-Free Rewsty paused for. Emitted by the Cage-Free Rewsty chat model itself — never request this tool.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -280,28 +258,28 @@
 				"rewst-buddy.ai.showActivity": {
 					"type": "boolean",
 					"default": true,
-					"description": "Show RoboRewsty's live activity (documentation searches and tool calls) as it works, instead of only a spinner until the answer arrives."
+					"description": "Show Cage-Free Rewsty's live activity (documentation searches and tool calls) as it works, instead of only a spinner until the answer arrives."
 				},
 				"rewst-buddy.ai.enableWorkspaceTools": {
 					"type": "boolean",
 					"default": true,
-					"description": "Let RoboRewsty see a compact workspace overview (folder names and top-level entries) and the list of files linked to Rewst templates. This context is sent to the Rewst AI assistant — disable if you don't want workspace structure shared. File reading, editing, search, and terminal access come from VS Code's built-in agent-mode tools, not from this extension."
+					"description": "Let Cage-Free Rewsty see a compact workspace overview (folder names and top-level entries) and the list of files linked to Rewst templates. This context is sent to the Rewst AI assistant — disable if you don't want workspace structure shared. File reading, editing, search, and terminal access come from VS Code's built-in agent-mode tools, not from this extension."
 				},
 				"rewst-buddy.ai.enableWebTools": {
 					"type": "boolean",
 					"default": false,
-					"description": "Let RoboRewsty search the public web and fetch http(s) pages. The assistant chooses what to search and fetch, so enabling this allows it to direct network requests from your machine (private/loopback hosts are always blocked)."
+					"description": "Let Cage-Free Rewsty search the public web. The assistant chooses what to search, so enabling this allows it to direct network requests from your machine (private/loopback hosts are always blocked). Opening result pages uses VS Code's built-in fetch tool."
 				},
 				"rewst-buddy.ai.maxToolRounds": {
 					"type": "number",
 					"default": 4,
 					"minimum": 0,
-					"description": "Legacy — no effect since RoboRewsty became a chat model: VS Code's chat runs the tool loop and owns its limits. Kept so existing settings files don't warn."
+					"description": "Legacy — no effect since Cage-Free Rewsty became a chat model: VS Code's chat runs the tool loop and owns its limits. Kept so existing settings files don't warn."
 				},
 				"rewst-buddy.ai.enableGraphqlTool": {
 					"type": "boolean",
 					"default": false,
-					"description": "Let RoboRewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval in a dialog showing the full operation. Off by default because the session can read and change anything you can in Rewst."
+					"description": "Let Cage-Free Rewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval in a dialog showing the full operation. Off by default because the session can read and change anything you can in Rewst."
 				}
 			}
 		},

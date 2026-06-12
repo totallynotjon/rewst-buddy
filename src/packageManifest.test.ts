@@ -39,7 +39,7 @@ suite('Unit: package manifest', () => {
 		assert.deepStrictEqual(manifest.contributes.languageModelChatProviders, [
 			{
 				vendor: 'rewst-buddy',
-				displayName: 'RoboRewsty',
+				displayName: 'Cage-Free Rewsty',
 			},
 		]);
 	});
