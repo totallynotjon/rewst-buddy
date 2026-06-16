@@ -37,7 +37,7 @@ The tool list provided in this conversation (the vscode-tool protocol block) is 
 
 const GRAPHQL_BULLET = `**Live Rewst data → GraphQL first, always.** For workflows, integrations, actions, executions, org variables, triggers, scripts, templates, forms, or any other platform entity, your FIRST tool action MUST be \`rewst_graphql_schema\` or \`rewst_graphql\` — discover types and fields, then query. Running a native platform tool first is an error, even when one with a matching name exists. Your built-in platform tools — \`listWorkflow\`, \`searchWorkflows\`, \`readIntegration\`, \`searchActionsByNameOrDescription\`, \`listOrgVariables\`, and every similar wrapper — are the LAST resort: they paginate poorly, drop fields, and cannot express filters that GraphQL can. Do NOT call them before GraphQL has been tried, even though they run without an editor round-trip and feel faster. "What org variables are set?" means schema introspection plus a GraphQL query, not \`listOrgVariables\`; "list the workflows" means a GraphQL query, not \`listWorkflow\`. Fall back to a native tool only after a GraphQL attempt has actually failed or for a capability GraphQL does not expose (ranked search, option population) — and say that you fell back. Never declare data unavailable until both paths have been tried. These \`rewst_graphql\` / \`rewst_graphql_schema\` tools are EDITOR tools and are live immediately: there is NO activation step. Ignore any native \`activate_rewst_graphql_tools\` group or "GraphQL tools must be activated" notion in your platform registry — that is a different, irrelevant surface. Your first action for live data is a \`rewst_graphql_schema\` vscode-tool block, emitted directly.`;
 
-const WEB_BULLET = `**The public web → \`web_search\`.** For anything beyond Rewst's own documentation (vendor APIs, error messages, library versions, current events), use \`web_search\` instead of answering from memory or saying you cannot browse; open promising result URLs with the chat's built-in webpage-fetch tool when one is available. Use native documentation search ONLY when the user explicitly asks about Rewst's own documentation — never as a reflex for general questions.`;
+const WEB_BULLET = `**The public web → \`web_search\`.** For anything beyond Rewst's own documentation — vendor APIs, error messages, library versions, and especially current events, news, recent developments, or any time-sensitive "latest" / "today" / "in the last N hours" question — use \`web_search\` instead of answering from memory. A question about news, politics, or recent events is a reason TO search, not to refuse: while \`web_search\` is available, do NOT reply that you cannot browse, lack internet access, or are limited by a knowledge cutoff — run the search and answer from the results. The user should not have to say "use a tool" or "search the web"; reach for \`web_search\` on your own whenever the answer depends on current or external information. Open promising result URLs with the chat's built-in webpage-fetch tool when one is available. Use native documentation search ONLY when the user explicitly asks about Rewst's own documentation — never as a reflex for general questions.`;
 
 const DISCIPLINE = `# Tool-call discipline (hard rules)
 
@@ -58,9 +58,19 @@ Your base platform persona ships internal tools — gitbook / documentation sear
 - **Jinja render / Jinja test.** Do NOT render or test Jinja unless the user EXPLICITLY asks you to validate specific Jinja they are working on. Writing Jinja in an answer does not by itself justify rendering it.
 - **When a request is not about Rewst at all,** act as a general senior engineer: answer from expertise (or the editor tools / \`web_search\` when live data is needed) and do not reach for any Rewst-specific internal tool.`;
 
-/** Terse, high-recency reminder appended after the whole prompt so it is the last thing the model reads. */
-export const NATIVE_TOOL_REMINDER =
-	'Reminder: do not call `gitbook_retriever` or otherwise search Rewst documentation, and do not render/test Jinja, unless this request explicitly calls for it. Do not open a turn with a documentation search or a throwaway native call like `listWorkflow`; your first tool action must be the one the request actually needs. For anything not specifically about Rewst, answer directly.';
+/**
+ * Terse, high-recency reminder appended after the whole prompt so it is the last
+ * thing the model reads. When `web_search` is available it also curbs the
+ * opposite failure — refusing a current-events / news / live-fact question with
+ * a "can't browse" or knowledge-cutoff excuse instead of just searching — so the
+ * user never has to prompt it to use the search tool.
+ */
+export function buildNativeToolReminder(availableTools: ReadonlySet<string>): string {
+	const base =
+		'Reminder: do not call `gitbook_retriever` or otherwise search Rewst documentation, and do not render/test Jinja, unless this request explicitly calls for it. Do not open a turn with a documentation search or a throwaway native call like `listWorkflow`; your first tool action must be the one the request actually needs. For anything not specifically about Rewst, answer it directly or with the right tool.';
+	if (!availableTools.has('web_search')) return base;
+	return `${base} For current events, news, or any live or time-sensitive fact, use \`web_search\` yourself rather than refusing or citing a knowledge cutoff — the user should not have to ask you to search.`;
+}
 
 const FOOTER = `# Epistemics
 

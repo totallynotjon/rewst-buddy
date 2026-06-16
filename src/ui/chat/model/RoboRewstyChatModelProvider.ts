@@ -14,7 +14,7 @@ import { ChunkGate } from '../tools/chunkGate';
 import { stripToolRequestBlocks } from '../tools/toolProtocol';
 import { buildWorkspaceOverview } from '../tools/workspaceTools';
 import { prependInstructions } from '../promptContext';
-import { buildEngineeringDirective, NATIVE_TOOL_REMINDER } from './engineeringDirective';
+import { buildEngineeringDirective, buildNativeToolReminder } from './engineeringDirective';
 import { conversationMap, nextTurnKey, prefixKey, spineDepth } from './conversationMap';
 import { formatBreadcrumb, parseLatestBreadcrumb } from './breadcrumb';
 import { setLastAiAnswer } from './lastAnswer';
@@ -551,7 +551,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
 		}
 		if (tools.length > 0) message += `\n\n${buildInstructionsForChatTools(tools)}`;
-		message += `\n\n${NATIVE_TOOL_REMINDER}`;
+		message += `\n\n${buildNativeToolReminder(permittedNames)}`;
 		return message;
 	}
 
@@ -585,7 +585,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		message = [buildEngineeringDirective(permittedNames), message].filter(Boolean).join('\n\n');
 		// Highest-recency line: the directive sits far above the latest user turn
 		// (buried in the transcript), so repeat the native-tool curb last.
-		message += `\n\n${NATIVE_TOOL_REMINDER}`;
+		message += `\n\n${buildNativeToolReminder(permittedNames)}`;
 		return message;
 	}
 }

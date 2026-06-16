@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { buildEngineeringDirective } from './engineeringDirective';
+import { buildEngineeringDirective, buildNativeToolReminder } from './engineeringDirective';
 
 const { suite, test } = Mocha;
 
@@ -48,5 +48,39 @@ suite('Unit: engineeringDirective', () => {
 		assert.ok(directive.includes('# Tool selection'));
 		assert.ok(directive.includes('web_search'));
 		assert.ok(!directive.includes('activate_rewst_graphql_tools'));
+	});
+
+	test('web bullet steers current events to web_search and forbids a cannot-browse refusal', () => {
+		const directive = buildEngineeringDirective(new Set(['web_search']));
+		assert.ok(/current events/i.test(directive), 'names current events');
+		assert.ok(/news/i.test(directive), 'names news');
+		assert.ok(/knowledge cutoff/i.test(directive), 'forbids a knowledge-cutoff excuse');
+		assert.ok(/cannot browse|can ?not browse/i.test(directive), 'forbids a cannot-browse refusal');
+	});
+});
+
+suite('Unit: buildNativeToolReminder', () => {
+	test('always curbs reflexive doc search and a throwaway native call', () => {
+		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['web_search'])]) {
+			const reminder = buildNativeToolReminder(tools);
+			assert.ok(reminder.includes('gitbook_retriever'), 'names the gitbook tool');
+			assert.ok(reminder.includes('listWorkflow'), 'names the throwaway native call to suppress');
+		}
+	});
+
+	test('does not push memory-only answers for non-Rewst questions', () => {
+		const reminder = buildNativeToolReminder(new Set());
+		// The old wording said "answer directly", which steered the model into
+		// refusing live-info questions from memory; it now allows reaching for a tool.
+		assert.ok(/answer it directly or with the right tool/i.test(reminder));
+	});
+
+	test('adds the web carve-out only when web_search is available', () => {
+		const withWeb = buildNativeToolReminder(new Set(['web_search']));
+		assert.ok(/web_search/.test(withWeb), 'names web_search when available');
+		assert.ok(/knowledge cutoff/i.test(withWeb), 'forbids a knowledge-cutoff excuse');
+
+		const withoutWeb = buildNativeToolReminder(new Set(['read_file']));
+		assert.ok(!withoutWeb.includes('web_search'), 'never advertises a tool the chat cannot run');
 	});
 });
