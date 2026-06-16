@@ -171,10 +171,20 @@ suite('Integration: engineering directive steering', function () {
 			args: '{"todos": string[]}',
 			description: 'Record and update an ordered todo list for the current task.',
 		};
-		const { content, requests } = await turn(
+		const { content, requests, statuses } = await turn(
 			'Build a Rewst workflow that ingests new-user CSVs from SharePoint, validates each row, creates the users via the Microsoft Graph integration, and posts a summary to Slack. Plan the whole thing out before doing anything.',
 			1,
 			[todoSpec],
+		);
+		// The todo tool is editor-supplied: it must come back as a vscode-tool block
+		// (parsed into requests), never as a native call (which surfaces as a
+		// "Running tool: …" status and would fail with an unknown-tool error).
+		const nativeTodoCall = statuses.some(
+			label => label.startsWith('Running tool:') && /manage_todo_list/i.test(label),
+		);
+		assert.ok(
+			!nativeTodoCall,
+			`manage_todo_list must be a vscode-tool block, not a native call; statuses: ${statuses.join(', ')}`,
 		);
 		const calledTodo = requests.some(request => request.tool === 'manage_todo_list');
 		// A tool-free plan reply instead: an ordered/bulleted list of multiple steps.

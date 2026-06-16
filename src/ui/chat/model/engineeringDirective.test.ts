@@ -24,6 +24,12 @@ suite('Unit: engineeringDirective', () => {
 			assert.ok(/todo-list tool/i.test(directive), 'prefers a todo-list tool when present');
 			assert.ok(/agent/i.test(directive), 'tells the model to delegate to agents');
 			assert.ok(/on your own initiative/i.test(directive), 'no need to be asked to use todos/agents');
+			// The todo/agent tools collide with native tool names; the steering must
+			// keep them on the vscode-tool protocol, not native function calls.
+			assert.ok(
+				/never as a native function call/i.test(directive),
+				'keeps todo/agent tools on the vscode-tool protocol, not native calls',
+			);
 		}
 	});
 
