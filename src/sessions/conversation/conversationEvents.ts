@@ -112,6 +112,26 @@ function parseApprovalTools(metadata: Record<string, unknown> | undefined): Appr
 }
 
 /**
+ * Compact, single-line preview of a native tool's arguments for the activity
+ * label, so the chat shows WHAT the tool is accessing — the query, org, path —
+ * not just its name (#22). Returns a leading-space-prefixed string, or '' when
+ * there is nothing useful to show.
+ */
+function formatToolArgs(args: unknown): string {
+	if (args === undefined || args === null) return '';
+	let text: string;
+	try {
+		text = typeof args === 'string' ? args : JSON.stringify(args);
+	} catch {
+		return '';
+	}
+	const oneLine = text.replace(/\s+/g, ' ').trim();
+	if (oneLine === '' || oneLine === '{}' || oneLine === '""') return '';
+	const MAX = 100;
+	return ` ${oneLine.length > MAX ? `${oneLine.slice(0, MAX - 1)}…` : oneLine}`;
+}
+
+/**
  * Stateful mapper: de-duplicates conversation_id announcements and normalizes
  * streaming chunks regardless of whether the server sends deltas or cumulative
  * partial content.
@@ -164,7 +184,12 @@ export class ConversationEventMapper {
 			case 'TOOL_CALL_IN_PROGRESS': {
 				const tools = parseApprovalTools(metadata);
 				if (tools.length > 0) this.lastToolCalls = tools;
-				events.push({ kind: 'status', label: `Running tool: ${tools[0]?.name ?? 'unknown'}…`, activity: true });
+				const call = tools[0];
+				events.push({
+					kind: 'status',
+					label: `Running Rewst tool: ${call?.name ?? 'unknown'}${formatToolArgs(call?.args)}…`,
+					activity: true,
+				});
 				break;
 			}
 			case 'complete': {

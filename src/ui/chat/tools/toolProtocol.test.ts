@@ -4,6 +4,7 @@ import { initTestEnvironment } from '@test';
 import {
 	buildToolInstructions,
 	describeRequest,
+	describeRequestBrief,
 	MAX_REQUESTS_PER_TURN,
 	parseToolRequests,
 	stripToolRequestBlocks,
@@ -98,6 +99,22 @@ suite('Unit: toolProtocol', () => {
 		test('omits empty args and includes non-empty args', () => {
 			assert.strictEqual(describeRequest({ tool: 'list_files', args: {} }), 'list_files');
 			assert.strictEqual(describeRequest({ tool: 'read_file', args: { path: 'a' } }), 'read_file {"path":"a"}');
+		});
+	});
+
+	suite('describeRequestBrief()', () => {
+		test('passes short labels through unchanged', () => {
+			assert.strictEqual(
+				describeRequestBrief({ tool: 'read_file', args: { path: 'a' } }),
+				'read_file {"path":"a"}',
+			);
+		});
+
+		test('truncates labels past the cap with an ellipsis', () => {
+			const brief = describeRequestBrief({ tool: 'rewst_graphql', args: { query: 'q'.repeat(300) } }, 40);
+			assert.strictEqual(brief.length, 40);
+			assert.ok(brief.startsWith('rewst_graphql {"query":"qqq'));
+			assert.ok(brief.endsWith('…'));
 		});
 	});
 });
