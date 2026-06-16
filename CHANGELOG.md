@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **Cage-Free Rewsty breaks complex work into todos and delegates to agents on its own** - the steering now tells the assistant to aggressively decompose any non-trivial problem into an explicit, ordered todo list before executing and to drive that list to completion. When the chat exposes a task/todo-list tool or sub-agent ("agent") tools, it is steered to record the plan through the todo tool and to hand self-contained sub-tasks to an agent whenever that is cleaner — on its own initiative, without being asked. Genuinely trivial requests are still answered directly. (#27)
+
 ### Fixed
 
 - **Cage-Free Rewsty searches the web for current events instead of refusing** - a news, politics, or "latest in the last N hours" question used to get a "can't browse / no realtime access / knowledge cutoff" refusal with no tool call, unless you prefixed something like "use agents to search". The steering now treats a current, time-sensitive, or external-information question as a reason to reach for `web_search` on its own, and the highest-recency reminder no longer pushes a memory-only "answer directly" that turned into those refusals (the web carve-out only appears when `web_search` is actually enabled). (#27)

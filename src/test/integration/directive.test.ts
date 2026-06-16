@@ -4,7 +4,12 @@ import { askRewstAi, Session } from '@sessions';
 import { clearCachedSession, getTestSession, getTestToken, hasTestToken, initTestEnvironment } from '@test';
 import { buildEngineeringDirective } from '../../ui/chat/model/engineeringDirective';
 import { ALL_TOOL_SPECS } from '../../ui/chat/model/lmTools';
-import { buildToolInstructions, parseToolRequests, type ToolRequest } from '../../ui/chat/tools/toolProtocol';
+import {
+	buildToolInstructions,
+	parseToolRequests,
+	type ToolRequest,
+	type ToolSpec,
+} from '../../ui/chat/tools/toolProtocol';
 
 const { suite, test, suiteSetup, suiteTeardown } = Mocha;
 
@@ -39,9 +44,11 @@ suite('Integration: engineering directive steering', function () {
 	async function turn(
 		question: string,
 		attempt = 1,
+		extraSpecs: ToolSpec[] = [],
 	): Promise<{ content: string; requests: ToolRequest[]; statuses: string[] }> {
-		const directive = buildEngineeringDirective(new Set(ALL_TOOL_SPECS.map(spec => spec.name)));
-		const message = `${directive}\n\n${question}\n\n${buildToolInstructions(ALL_TOOL_SPECS)}`;
+		const specs = [...ALL_TOOL_SPECS, ...extraSpecs];
+		const directive = buildEngineeringDirective(new Set(specs.map(spec => spec.name)));
+		const message = `${directive}\n\n${question}\n\n${buildToolInstructions(specs)}`;
 		let content = '';
 		const statuses: string[] = [];
 		for await (const event of askRewstAi({
@@ -57,7 +64,7 @@ suite('Integration: engineering directive steering', function () {
 				if (event.message.includes('interrupted') && attempt < 3) {
 					console.log(`(interrupted — retrying, attempt ${attempt + 1})`);
 					await new Promise(resolve => setTimeout(resolve, 15_000));
-					return turn(question, attempt + 1);
+					return turn(question, attempt + 1, extraSpecs);
 				}
 				throw new Error(event.message);
 			}
@@ -153,6 +160,30 @@ suite('Integration: engineering directive steering', function () {
 			nativeCalls,
 			[],
 			`expected no native tool calls before the editor tool, got: ${nativeCalls.join(', ') || '(none)'}`,
+		);
+	});
+
+	test('a complex multi-step task is decomposed into a todo plan', async () => {
+		// #27: complex problems should be broken into an explicit todo list and use
+		// a todo tool when one is exposed, instead of diving straight into one step.
+		const todoSpec: ToolSpec = {
+			name: 'manage_todo_list',
+			args: '{"todos": string[]}',
+			description: 'Record and update an ordered todo list for the current task.',
+		};
+		const { content, requests } = await turn(
+			'Build a Rewst workflow that ingests new-user CSVs from SharePoint, validates each row, creates the users via the Microsoft Graph integration, and posts a summary to Slack. Plan the whole thing out before doing anything.',
+			1,
+			[todoSpec],
+		);
+		const calledTodo = requests.some(request => request.tool === 'manage_todo_list');
+		// A tool-free plan reply instead: an ordered/bulleted list of multiple steps.
+		const listItems = content.match(/^\s*(?:[-*]|\d+[.)])\s+\S/gm) ?? [];
+		assert.ok(
+			calledTodo || listItems.length >= 3,
+			`expected a manage_todo_list call or a multi-step plan, got requests [${requests
+				.map(r => r.tool)
+				.join(', ')}] and content: ${content.slice(0, 300)}`,
 		);
 	});
 

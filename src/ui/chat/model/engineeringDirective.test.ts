@@ -14,6 +14,19 @@ suite('Unit: engineeringDirective', () => {
 		assert.ok(directive.includes('# Native internal tools: off by default'));
 	});
 
+	test('always steers complex work into todos and agent delegation', () => {
+		// The Working method section ships unconditionally, so the decomposition /
+		// todo / agent steering is present regardless of the editor tool surface.
+		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['rewst_graphql', 'web_search'])]) {
+			const directive = buildEngineeringDirective(tools);
+			assert.ok(/decompose by default/i.test(directive), 'tells the model to decompose');
+			assert.ok(/list of todos/i.test(directive), 'frames the plan as a todo list');
+			assert.ok(/todo-list tool/i.test(directive), 'prefers a todo-list tool when present');
+			assert.ok(/agent/i.test(directive), 'tells the model to delegate to agents');
+			assert.ok(/on your own initiative/i.test(directive), 'no need to be asked to use todos/agents');
+		}
+	});
+
 	test('always curbs reflexive documentation search and Jinja rendering', () => {
 		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['rewst_graphql', 'web_search'])]) {
 			const directive = buildEngineeringDirective(tools);
