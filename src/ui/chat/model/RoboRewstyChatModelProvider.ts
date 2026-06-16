@@ -71,6 +71,21 @@ function safeJson(value: unknown): string {
 	}
 }
 
+/**
+ * Native Rewst tools run server-side, so they can't be true VS Code tool cards
+ * (no invocation round-trip). A tool status renders as a compact card-like
+ * blockquote — tool name, then its args on a second line — to read as close to
+ * VS Code's native tool pills as plain markdown allows; other activity (a doc
+ * search) stays a plain italic line (#22).
+ */
+function formatActivityLine(status: { label: string; tool?: { name: string; args?: string } }): string {
+	if (status.tool) {
+		const args = status.tool.args ? `\n> \`${status.tool.args}\`` : '';
+		return `\n\n> 🔧 **Rewst tool** · \`${status.tool.name}\`${args}\n`;
+	}
+	return `\n\n> _${status.label}_\n`;
+}
+
 async function confirmApprovalModal(tools: ApprovalTool[]): Promise<ApprovalChoice> {
 	const detail = tools
 		.map(tool => (tool.args === undefined ? tool.name : `${tool.name}\n${truncate(safeJson(tool.args), 500)}`))
@@ -234,15 +249,18 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		// Surfaces substantive activity (searches, native tool calls) as unobtrusive
 		// blockquote lines so a multi-step turn is legible. Housekeeping statuses
 		// (thinking, summarizing) are filtered out by the caller (event.activity).
-		const emitStatus = (label: string, gate: ChunkGate): void => {
-			if (!showActivity || label === lastStatusLabel) return;
-			lastStatusLabel = label;
+		const emitStatus = (
+			status: { label: string; tool?: { name: string; args?: string } },
+			gate: ChunkGate,
+		): void => {
+			if (!showActivity || status.label === lastStatusLabel) return;
+			lastStatusLabel = status.label;
 			// Drain the gate's already-safe answer text first so the activity line
 			// stays ordered after it (gate.push('') keeps any partial fence held).
 			emitText(gate.push(''));
 			// Activity lines are meta, not answer text: report directly so they
 			// never enter emittedText (continuity and saved-answer stay clean).
-			progress.report(new vscode.LanguageModelTextPart(`\n\n> _${label}_\n`));
+			progress.report(new vscode.LanguageModelTextPart(formatActivityLine(status)));
 			needsSeparator = true;
 		};
 		const storeContinuity = (calls: readonly vscode.LanguageModelToolCallPart[]): void => {
@@ -314,7 +332,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 								break;
 							case 'status':
 								// Only surface real steps; skip thinking/summarizing churn.
-								if (event.activity) emitStatus(event.label, gate);
+								if (event.activity) emitStatus(event, gate);
 								break;
 							case 'conversation':
 								conversationId = event.conversationId;

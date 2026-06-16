@@ -124,6 +124,18 @@ export function describeRequest(request: ToolRequest): string {
 	return json === '{}' ? request.tool : `${request.tool} ${json}`;
 }
 
+/**
+ * Length-capped {@link describeRequest} for the chat's tool-invocation label, so
+ * the user sees what an editor tool is accessing without an unbounded args dump (#22).
+ */
+export function describeRequestBrief(request: ToolRequest, maxLength = 140): string {
+	const full = describeRequest(request);
+	if (maxLength <= 0) return '';
+	if (full.length <= maxLength) return full;
+	if (maxLength === 1) return '…';
+	return `${full.slice(0, maxLength - 1)}…`;
+}
+
 /** Reads a non-empty string tool argument, or undefined if absent/wrong type. */
 export function asStringArg(args: Record<string, unknown>, key: string): string | undefined {
 	const value = args[key];

@@ -23,7 +23,10 @@ export type ConversationEvent =
 	| { kind: 'conversation'; conversationId: string }
 	// `activity: true` marks a substantive step (a tool call or a search) worth
 	// surfacing; housekeeping statuses (thinking, summarizing) omit it.
-	| { kind: 'status'; label: string; activity?: boolean }
+	// `tool` carries the native Rewst tool name + compact args so the chat can
+	// render it as a card-like line; `label` stays as the plain-text fallback
+	// and the dedupe key for collapsing back-to-back repeats.
+	| { kind: 'status'; label: string; activity?: boolean; tool?: { name: string; args?: string } }
 	| { kind: 'chunk'; text: string }
 	| {
 			kind: 'complete';
@@ -112,6 +115,25 @@ function parseApprovalTools(metadata: Record<string, unknown> | undefined): Appr
 }
 
 /**
+ * Compact, single-line preview of a native tool's arguments, so the chat shows
+ * WHAT the tool is accessing — the query, org, path — not just its name (#22).
+ * Returns the bare compact string, or '' when there is nothing useful to show.
+ */
+function compactToolArgs(args: unknown): string {
+	if (args === undefined || args === null) return '';
+	let text: string;
+	try {
+		text = typeof args === 'string' ? args : JSON.stringify(args);
+	} catch {
+		return '';
+	}
+	const oneLine = text.replace(/\s+/g, ' ').trim();
+	if (oneLine === '' || oneLine === '{}' || oneLine === '""') return '';
+	const MAX = 100;
+	return oneLine.length > MAX ? `${oneLine.slice(0, MAX - 1)}…` : oneLine;
+}
+
+/**
  * Stateful mapper: de-duplicates conversation_id announcements and normalizes
  * streaming chunks regardless of whether the server sends deltas or cumulative
  * partial content.
@@ -164,7 +186,14 @@ export class ConversationEventMapper {
 			case 'TOOL_CALL_IN_PROGRESS': {
 				const tools = parseApprovalTools(metadata);
 				if (tools.length > 0) this.lastToolCalls = tools;
-				events.push({ kind: 'status', label: `Running tool: ${tools[0]?.name ?? 'unknown'}…`, activity: true });
+				const name = tools[0]?.name ?? 'unknown';
+				const args = compactToolArgs(tools[0]?.args);
+				events.push({
+					kind: 'status',
+					label: `Running Rewst tool: ${name}${args ? ` ${args}` : ''}…`,
+					activity: true,
+					tool: args ? { name, args } : { name },
+				});
 				break;
 			}
 			case 'complete': {

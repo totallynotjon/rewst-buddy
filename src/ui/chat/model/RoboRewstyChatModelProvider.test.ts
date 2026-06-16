@@ -622,8 +622,19 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		{ kind: 'status', label: 'Thinking…' }, // housekeeping (no activity flag) → hidden
 		{ kind: 'status', label: 'Summarizing conversation…' }, // housekeeping → hidden
 		{ kind: 'status', label: 'Searching documentation…', activity: true },
-		{ kind: 'status', label: 'Running tool: listOrgVariable…', activity: true },
-		{ kind: 'status', label: 'Running tool: listOrgVariable…', activity: true }, // back-to-back dup → collapsed
+		{
+			kind: 'status',
+			label: 'Running Rewst tool: listOrgVariable…',
+			activity: true,
+			tool: { name: 'listOrgVariable' },
+		},
+		// back-to-back dup → collapsed
+		{
+			kind: 'status',
+			label: 'Running Rewst tool: listOrgVariable…',
+			activity: true,
+			tool: { name: 'listOrgVariable' },
+		},
 		{ kind: 'chunk', text: 'the answer' },
 		{ kind: 'complete', content: 'the answer', sources: [], conversationId: 'conv-1' },
 	];
@@ -636,8 +647,9 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(!out.includes('Thinking…'), 'housekeeping thinking is not shown');
 		assert.ok(!out.includes('Summarizing'), 'housekeeping summarizing is not shown');
 		assert.ok(out.includes('> _Searching documentation…_'), 'searches are surfaced');
+		assert.ok(out.includes('🔧 **Rewst tool** · `listOrgVariable`'), 'native tool renders card-like');
 		assert.strictEqual(
-			out.split('> _Running tool: listOrgVariable…_').length - 1,
+			out.split('🔧 **Rewst tool** · `listOrgVariable`').length - 1,
 			1,
 			'a repeated tool label collapses to one line',
 		);

@@ -40,7 +40,40 @@ suite('Unit: ConversationEventMapper', () => {
 			status: 'TOOL_CALL_IN_PROGRESS',
 			metadata: { toolCalls: [{ name: 'gitbook_retriever', id: 't1' }] },
 		});
-		assert.deepStrictEqual(events, [{ kind: 'status', label: 'Running tool: gitbook_retriever…', activity: true }]);
+		assert.deepStrictEqual(events, [
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: gitbook_retriever…',
+				activity: true,
+				tool: { name: 'gitbook_retriever' },
+			},
+		]);
+	});
+
+	test('TOOL_CALL_IN_PROGRESS shows a compact preview of the tool args', () => {
+		const events = mapper.map({
+			status: 'TOOL_CALL_IN_PROGRESS',
+			metadata: { toolCalls: [{ name: 'gitbook_retriever', args: { query: 'noop tasks' }, id: 't2' }] },
+		});
+		assert.deepStrictEqual(events, [
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: gitbook_retriever {"query":"noop tasks"}…',
+				activity: true,
+				tool: { name: 'gitbook_retriever', args: '{"query":"noop tasks"}' },
+			},
+		]);
+	});
+
+	test('TOOL_CALL_IN_PROGRESS truncates oversized args', () => {
+		const events = mapper.map({
+			status: 'TOOL_CALL_IN_PROGRESS',
+			metadata: { toolCalls: [{ name: 'rewst_graphql', args: { query: 'q'.repeat(500) }, id: 't3' }] },
+		});
+		const label = events[0].kind === 'status' ? events[0].label : '';
+		assert.ok(label.startsWith('Running Rewst tool: rewst_graphql {"query":"qqq'), 'keeps the head of the args');
+		assert.ok(label.endsWith('…'), 'ends with the truncation marker');
+		assert.ok(label.length < 140, `label is bounded, got ${label.length}`);
 	});
 
 	test('ignores bookkeeping statuses', () => {
