@@ -7,12 +7,14 @@ import {
 	MAX_REQUESTS_PER_TURN,
 	parseToolRequests,
 	stripToolRequestBlocks,
+	TOOL_FENCE_MARKER,
+	TOOL_FENCE_TAG,
 } from './toolProtocol';
 
 const { suite, test, setup } = Mocha;
 
 function fence(body: string): string {
-	return '```rewst-tool\n' + body + '\n```';
+	return TOOL_FENCE_MARKER + '\n' + body + '\n```';
 }
 
 suite('Unit: toolProtocol', () => {
@@ -66,7 +68,7 @@ suite('Unit: toolProtocol', () => {
 			const stripped = stripToolRequestBlocks(content);
 			assert.ok(stripped.includes('Checking.'));
 			assert.ok(stripped.includes('{{ x }}'));
-			assert.ok(!stripped.includes('rewst-tool'));
+			assert.ok(!stripped.includes(TOOL_FENCE_TAG));
 		});
 	});
 
@@ -76,7 +78,7 @@ suite('Unit: toolProtocol', () => {
 				{ name: 'read_file', args: '{"path": string}', description: 'Read a file.' },
 				{ name: 'list_files', args: '{}', description: 'List files.' },
 			]);
-			assert.ok(text.includes('rewst-tool'));
+			assert.ok(text.includes(TOOL_FENCE_TAG));
 			assert.ok(text.includes('read_file — args: {"path": string}'));
 			assert.ok(text.includes('list_files'));
 		});

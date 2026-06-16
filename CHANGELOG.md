@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.1] - 2026-06-16
+
+### Changed
+
+- **Editor tool-call blocks are tagged `vscode-tool` instead of `rewst-tool`** - Cage-Free Rewsty was conflating the extension's fenced tool-call protocol with its own native Rewst tool registry and trying to invoke editor tools (`list_dir`, `read_file`, …) as native calls. The fence tag is now environment-specific so the assistant recognizes those tools as editor-supplied rather than part of its platform registry. (#20)
+- **Stronger curb on reflexive native tool calls at the start of a chat** - the always-on steering now names `gitbook_retriever` and forbids opening a conversation with a documentation search, and forbids firing a throwaway native platform wrapper (e.g. `listWorkflow`) as a warm-up before the tool the request actually needs. This reduces both the "Searching documentation…" loop and the stray native call that fired at the start of chats. (#20)
+
 ## [0.43.0] - 2026-06-16
 
 ### Changed

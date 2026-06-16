@@ -8,7 +8,7 @@ import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
 import { WEB_TOOL_SPECS } from '../tools/webTools';
 
 /**
- * Exposes every rewst-tool protocol tool as a registered VS Code language
+ * Exposes every vscode-tool protocol tool as a registered VS Code language
  * model tool, so they are invocable when the RoboRewsty chat model emits tool
  * calls (and visible to agent mode like any extension tool). The spec arrays
  * remain the single source of truth: registration iterates them, so registered

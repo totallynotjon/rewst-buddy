@@ -29,7 +29,7 @@ function chatTool(name: string, description = `${name} tool`): vscode.LanguageMo
 }
 
 function fence(request: object): string {
-	return '```rewst-tool\n' + JSON.stringify(request) + '\n```';
+	return '```vscode-tool\n' + JSON.stringify(request) + '\n```';
 }
 
 suite('Unit: toolTranslation', () => {

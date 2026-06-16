@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { ChunkGate } from './chunkGate';
-import { TOOL_FENCE_MARKER } from './toolProtocol';
+import { TOOL_FENCE_MARKER, TOOL_FENCE_TAG } from './toolProtocol';
 
 const { suite, test } = Mocha;
 
@@ -33,7 +33,13 @@ suite('Unit: ChunkGate', () => {
 
 	test('detects a fence marker split across chunks', () => {
 		const gate = new ChunkGate();
-		const streamed = drive(gate, ['Prose ', '``', '`rewst', '-tool\n{"tool":"x"}']);
+		// Marker arrives in pieces: the backtick run splits, then the tag splits mid-token.
+		const streamed = drive(gate, [
+			'Prose ',
+			'``',
+			'`' + TOOL_FENCE_TAG.slice(0, 4),
+			TOOL_FENCE_TAG.slice(4) + '\n{"tool":"x"}',
+		]);
 		assert.strictEqual(streamed, 'Prose ');
 		assert.strictEqual(gate.blocked, true);
 	});

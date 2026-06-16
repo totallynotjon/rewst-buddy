@@ -19,6 +19,10 @@ suite('Unit: engineeringDirective', () => {
 			const directive = buildEngineeringDirective(tools);
 			assert.ok(directive.includes('# Native internal tools: off by default'), 'native-tool policy present');
 			assert.ok(/documentation .*search/i.test(directive), 'names documentation search');
+			assert.ok(directive.includes('gitbook_retriever'), 'names the gitbook tool exactly');
+			assert.ok(/FIRST action in a new chat is NEVER/i.test(directive), 'forbids opening with a doc search');
+			assert.ok(/warm-up or throwaway/i.test(directive), 'forbids a speculative warm-up call');
+			assert.ok(directive.includes('listWorkflow'), 'names the native wrapper to suppress');
 			assert.ok(/Jinja render/i.test(directive), 'names Jinja render/test');
 		}
 	});

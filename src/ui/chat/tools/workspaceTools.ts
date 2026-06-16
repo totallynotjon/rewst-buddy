@@ -11,7 +11,7 @@ import { isWebTool, runWebTool, WEB_TOOL_SPECS } from './webTools';
  * linked to Rewst templates, plus the first-message workspace overview.
  * Generic file/search/edit/terminal work is NOT provided here — VS Code's
  * chat (agent mode) passes its built-in tools through options.tools and the
- * provider advertises them via the rewst-tool protocol.
+ * provider advertises them via the vscode-tool protocol.
  */
 
 /** Seams for unit testing; production code uses defaultDeps. */
