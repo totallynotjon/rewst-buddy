@@ -81,6 +81,26 @@ suite('Unit: toolProtocol', () => {
 			]);
 		});
 
+		test('parses the real captured reply that edits a file with a ``` block (#16)', () => {
+			// Verbatim assistant reply from a live session (issue #16): "update the
+			// readme with a code block in backticks". The replace_string_in_file call
+			// is one physical line of valid JSON whose newString value embeds a literal
+			// ```bash fenced block. The old ```-delimited matcher cut the block at that
+			// inner fence, so the call never parsed and the edit never ran.
+			const content = [
+				'',
+				'```vscode-tool',
+				'{"tool": "replace_string_in_file", "args": {"filePath": "/home/jon/Downloads/snake/readme.md", "oldString": "**Build & Run**\\n\\n    cd rust-snake\\n    cargo run --release\\n\\nRequires a Rust toolchain. Install via rustup.rs if needed.", "newString": "**Build & Run**\\n\\n```bash\\ncd rust-snake\\ncargo run --release\\n```\\n\\nRequires a Rust toolchain. Install via rustup.rs if needed."}}',
+				'```',
+			].join('\n');
+			const requests = parseToolRequests(content);
+			assert.strictEqual(requests.length, 1);
+			assert.strictEqual(requests[0].tool, 'replace_string_in_file');
+			const newString = requests[0].args.newString;
+			assert.ok(typeof newString === 'string' && newString.includes('```bash'), 'keeps the inner fence');
+			assert.ok(stripToolRequestBlocks(content) === '', 'leaves no leaked fragment behind');
+		});
+
 		test('lifts sibling keys into args when the model omits the args wrapper (#16)', () => {
 			// RoboRewsty sometimes writes the arguments flat, alongside `tool`, with no
 			// `args` object — the query was dropped and the call ran with empty args.
