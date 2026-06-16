@@ -1,9 +1,10 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { initTestEnvironment } from '@test';
 import vscode from 'vscode';
 import { formatBreadcrumb, parseLatestBreadcrumb } from './breadcrumb';
 
-const { suite, test } = Mocha;
+const { suite, test, setup } = Mocha;
 
 const { User, Assistant } = vscode.LanguageModelChatMessageRole;
 
@@ -16,6 +17,10 @@ function text(value: string): vscode.LanguageModelTextPart {
 }
 
 suite('Unit: breadcrumb', () => {
+	setup(() => {
+		initTestEnvironment();
+	});
+
 	test('encodes the payload entirely in invisible zero-width characters', () => {
 		const zeroWidth = new RegExp(`[${String.fromCharCode(0x200b, 0x200c, 0x2060)}]`, 'g');
 		const marker = formatBreadcrumb('conv-1', 3, 'abc123');

@@ -40,10 +40,15 @@ const FENCE = String.fromCharCode(0x2060); // WORD JOINER — brackets our encod
 // Unit separator: splits payload fields without colliding with ids/hashes.
 const FIELD_SEP = String.fromCharCode(0x1f);
 
+// The payload is ASCII by construction (a Rewst conversation id, a digit depth,
+// a hex spine hash, and the 0x1F separator), so 8 bits per char is sufficient.
+// A code point above 0xFF would corrupt the run, but recovery re-validates the
+// decoded spine hash against the current prefix, so a corrupt breadcrumb is
+// simply ignored and the spine-hash backbone takes over.
 function encode(payload: string): string {
 	let bits = '';
 	for (let i = 0; i < payload.length; i++) {
-		bits += payload.charCodeAt(i).toString(2).padStart(8, '0');
+		bits += (payload.charCodeAt(i) & 0xff).toString(2).padStart(8, '0');
 	}
 	let run = FENCE;
 	for (const bit of bits) run += bit === '1' ? BIT_1 : BIT_0;

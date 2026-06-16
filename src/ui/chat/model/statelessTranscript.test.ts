@@ -1,9 +1,10 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { initTestEnvironment } from '@test';
 import vscode from 'vscode';
 import { serializeVisibleChat } from './statelessTranscript';
 
-const { suite, test } = Mocha;
+const { suite, test, setup } = Mocha;
 const { User, Assistant } = vscode.LanguageModelChatMessageRole;
 
 function message(role: vscode.LanguageModelChatMessageRole, content: unknown[]) {
@@ -15,6 +16,10 @@ function text(value: string): vscode.LanguageModelTextPart {
 }
 
 suite('Unit: statelessTranscript', () => {
+	setup(() => {
+		initTestEnvironment();
+	});
+
 	test('serializes visible user and assistant text in order', () => {
 		const transcript = serializeVisibleChat([
 			message(User, [text('what is a trigger?')]),

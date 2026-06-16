@@ -1,9 +1,10 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { initTestEnvironment } from '@test';
 import vscode from 'vscode';
 import { ConversationMap, MAX_ENTRIES, nextTurnKey, prefixKey, serializeHistory, spineDepth } from './conversationMap';
 
-const { suite, test } = Mocha;
+const { suite, test, setup } = Mocha;
 
 const { User, Assistant } = vscode.LanguageModelChatMessageRole;
 
@@ -16,6 +17,10 @@ function text(value: string): vscode.LanguageModelTextPart {
 }
 
 suite('Unit: conversationMap', () => {
+	setup(() => {
+		initTestEnvironment();
+	});
+
 	suite('keying', () => {
 		test('consecutive turns of one chat compute matching keys', () => {
 			const turn1 = [message(User, [text('hi')])];

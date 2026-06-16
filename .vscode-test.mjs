@@ -14,8 +14,13 @@ function loadDotEnv() {
 	let raw;
 	try {
 		raw = readFileSync(path, 'utf8');
-	} catch {
-		return env; // no .env file — fine
+	} catch (error) {
+		// A missing .env is fine; surface anything else (e.g. permission denied)
+		// rather than silently reporting REWST_TEST_TOKEN as absent.
+		if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+			return env;
+		}
+		throw error;
 	}
 	for (const line of raw.split('\n')) {
 		const trimmed = line.trim();
@@ -33,11 +38,21 @@ function loadDotEnv() {
 	return env;
 }
 
+/**
+ * Only feed the .env token to integration runs. `test:unit` must stay offline
+ * and fast: without a token the integration suites skip themselves, so unit runs
+ * never make network calls regardless of how mocha's --grep filter is applied.
+ */
+function wantsIntegration() {
+	if (process.env.npm_lifecycle_event === 'test:integration') return true;
+	return process.argv.some(arg => arg.includes('Integration'));
+}
+
 export default defineConfig({
 	files: 'dist/test/**/*.test.js',
 	version: 'stable',
 	// Forwarded to the extension host as extensionTestsEnv, merged over process.env.
-	env: loadDotEnv(),
+	env: wantsIntegration() ? loadDotEnv() : {},
 	mocha: {
 		ui: 'bdd',
 		timeout: 60000,

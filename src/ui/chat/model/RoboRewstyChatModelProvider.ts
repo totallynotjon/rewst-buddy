@@ -500,8 +500,13 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		permittedNames: ReadonlySet<string>,
 		tools: readonly vscode.LanguageModelChatTool[],
 	): Promise<string> {
-		if (!stateless && approvalResume !== undefined) return approvalResume;
+		// Stateless is checked first on purpose: a downgrade rebuilds the full
+		// transcript even for an approval re-send. The paused message may be a lean
+		// reuse message, which would lose context on a fresh conversation; the
+		// transcript carries the original request, so the allow-listed action still
+		// replays correctly. When reusing, the approval re-send wins (exact replay).
 		if (stateless) return this.buildStatelessMessage(messages, customInstructions, settings, permittedNames, tools);
+		if (approvalResume !== undefined) return approvalResume;
 		if (trailingResults) return formatToolResultsMessage(trailingResults, toolCalls ?? new Map());
 		return this.buildReuseMessage(messages, customInstructions, settings, permittedNames, tools);
 	}

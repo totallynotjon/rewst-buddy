@@ -12,7 +12,8 @@ import GenericCommand from '../GenericCommand';
 export class ResumeRewstAiConversation extends GenericCommand {
 	commandName = 'ResumeRewstAiConversation';
 
-	async execute(): Promise<void> {
+	async execute(...args: unknown[]): Promise<void> {
+		void args; // palette-only invocation; signature kept consistent with other commands
 		const sessions = SessionManager.getActiveSessions();
 		const session = sessions.length === 1 ? sessions[0] : await pickSession();
 		if (!session) return;
