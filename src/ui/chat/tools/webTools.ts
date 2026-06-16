@@ -3,7 +3,7 @@ import vscode from 'vscode';
 import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
 
 /**
- * Web tools for the rewst-tool protocol. The Rewst AI assistant has no
+ * Web tools for the vscode-tool protocol. The Rewst AI assistant has no
  * internet access of its own beyond Rewst's documentation search, so this
  * lets it search the public web — executed by the extension. Opening result
  * pages is left to VS Code's built-in fetch tool in agent mode.

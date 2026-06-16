@@ -229,8 +229,8 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.strictEqual(harness.captured[1].conversationId, undefined);
 	});
 
-	test('advertises permitted tools and emits tool calls from rewst-tool fences', async () => {
-		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+	test('advertises permitted tools and emits tool calls from vscode-tool fences', async () => {
+		const reply = 'Let me check.\n```vscode-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
 		const harness = makeHarness([completeTurn(reply)]);
 		await harness.run([message(User, [text('check a.txt')])], [READ_FILE_TOOL]);
 
@@ -239,7 +239,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.strictEqual(calls.length, 1);
 		assert.strictEqual(calls[0].name, 'read_file');
 		assert.deepStrictEqual(calls[0].input, { path: 'a.txt' });
-		assert.ok(!textOf(harness.parts).includes('rewst-tool'), 'fence never renders');
+		assert.ok(!textOf(harness.parts).includes('vscode-tool'), 'fence never renders');
 	});
 
 	test('a disabled setting withholds the tool even when VS Code passes it', async () => {
@@ -252,7 +252,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 	});
 
 	test('a tool request with no tools available surfaces the rejection note', async () => {
-		const reply = '```rewst-tool\n{"tool": "rewst_graphql", "args": {"query": "{ workflows { id } }"}}\n```';
+		const reply = '```vscode-tool\n{"tool": "rewst_graphql", "args": {"query": "{ workflows { id } }"}}\n```';
 		const harness = makeHarness([completeTurn(reply)]);
 		await harness.run([message(User, [text('list workflows')])]);
 
@@ -262,7 +262,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 	});
 
 	test('an out-of-set tool request becomes text, never a stalled call', async () => {
-		const reply = '```rewst-tool\n{"tool": "run_command", "args": {"command": "ls"}}\n```';
+		const reply = '```vscode-tool\n{"tool": "run_command", "args": {"command": "ls"}}\n```';
 		const harness = makeHarness([completeTurn(reply)]);
 		await harness.run([message(User, [text('list files')])], [READ_FILE_TOOL]);
 
@@ -271,7 +271,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 	});
 
 	test('a tool result reuses the conversation by callId with a compact message', async () => {
-		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+		const reply = 'Let me check.\n```vscode-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
 		const harness = makeHarness([
 			completeTurn(reply, 'conv-tool-call'),
 			completeTurn('It says hello.', 'conv-tool-call'),
@@ -309,7 +309,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 	});
 
 	test('a full tool round reuses one conversation end to end and deletes nothing', async () => {
-		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+		const reply = 'Let me check.\n```vscode-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
 		const harness = makeHarness([
 			completeTurn('Hello', 'conv-1'),
 			completeTurn(reply, 'conv-1'),
@@ -416,7 +416,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 	});
 
 	test('continuation rounds start on a new paragraph', async () => {
-		const reply = 'Checking.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+		const reply = 'Checking.\n```vscode-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
 		const harness = makeHarness([completeTurn(reply), completeTurn('It says hello.')]);
 
 		const ask1 = [message(User, [text('check a.txt')])];

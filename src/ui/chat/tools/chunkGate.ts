@@ -1,9 +1,9 @@
 import { TOOL_FENCE_MARKER } from './toolProtocol';
 
 /**
- * Gates streamed answer chunks so rewst-tool request JSON never renders in
+ * Gates streamed answer chunks so vscode-tool request JSON never renders in
  * the chat. Chunks flow through nearly live, but the gate holds back any
- * trailing text that could be the start of a ```rewst-tool fence; once the
+ * trailing text that could be the start of a ```vscode-tool fence; once the
  * full marker appears, everything from the fence onward is suppressed.
  */
 export class ChunkGate {

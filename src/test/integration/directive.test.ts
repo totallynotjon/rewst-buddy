@@ -118,6 +118,16 @@ suite('Integration: engineering directive steering', function () {
 		);
 	});
 
+	test('a plain opening turn does not reflexively search documentation', async () => {
+		// The reported failure: a new chat opens with a gitbook_retriever doc search
+		// for no reason. A benign first turn must answer directly, no search.
+		const { statuses } = await turn('Hey — can you help me work on this codebase?');
+		assert.ok(
+			!searchedDocs(statuses),
+			`expected no documentation search on a plain opening turn, got statuses: ${statuses.join(', ') || '(none)'}`,
+		);
+	});
+
 	test('an explicit Rewst-docs request is still allowed to search', async () => {
 		// Negative control: the curb must not over-suppress when the user actually
 		// asks about Rewst's own documentation.

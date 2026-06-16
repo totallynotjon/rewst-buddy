@@ -6,7 +6,7 @@ import { ALL_TOOL_SPECS, isToolPermitted, type AiToolSettings } from './lmTools'
  * Translates between VS Code's language-model tool-calling contract and
  * RoboRewsty's text tool protocol. The backend model knows nothing about
  * LanguageModelChatTool: tools are advertised as instruction text, and the
- * model's fenced rewst-tool requests are converted into tool-call parts that
+ * model's fenced vscode-tool requests are converted into tool-call parts that
  * VS Code executes and answers with tool-result parts.
  */
 
@@ -48,7 +48,7 @@ export interface TranslatedToolCalls {
 let callCounter = 0;
 
 /**
- * Converts the rewst-tool requests in a completed answer into tool-call parts.
+ * Converts the vscode-tool requests in a completed answer into tool-call parts.
  * A request whose tool is not in the permitted set is never emitted as a call
  * (VS Code could not invoke it) — it is reported back so the caller can answer
  * with plain text instead of a stalled call.
@@ -142,7 +142,7 @@ export function formatToolResultsMessage(
 		const output = result.content.map(partText).filter(Boolean).join('\n');
 		sections.push(`### ${name}${argsLabel}\n\`\`\`\n${output}\n\`\`\``);
 	}
-	sections.push('Reply with more rewst-tool blocks if you need anything else, or give your final answer.');
+	sections.push('Reply with more vscode-tool blocks if you need anything else, or give your final answer.');
 	return sections.join('\n\n');
 }
 

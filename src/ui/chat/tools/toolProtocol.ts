@@ -4,7 +4,7 @@
  * RoboRewsty's agent runs server-side and knows nothing about VS Code or the
  * user's active Rewst session, so the extension teaches it a convention:
  * instructions appended to the user's message describe the available tools and
- * ask it to request them via fenced ```rewst-tool JSON blocks. The chat model
+ * ask it to request them via fenced ```vscode-tool JSON blocks. The chat model
  * provider parses those blocks out of each answer and translates them into
  * VS Code tool calls (toolTranslation.ts), whose results come back as the next
  * turn of the same conversation.
@@ -39,13 +39,13 @@ export interface ToolResult {
 	output: string;
 }
 
-export const TOOL_FENCE_TAG = 'rewst-tool';
+export const TOOL_FENCE_TAG = 'vscode-tool';
 export const TOOL_FENCE_MARKER = '```' + TOOL_FENCE_TAG;
 
 /** Hard cap on tool calls honored per assistant reply. */
 export const MAX_REQUESTS_PER_TURN = 5;
 
-const FENCE = /```rewst-tool[^\n]*\n([\s\S]*?)```/g;
+const FENCE = new RegExp('```' + TOOL_FENCE_TAG + '[^\\n]*\\n([\\s\\S]*?)```', 'g');
 
 /**
  * Instructions appended to the first message of a request so the assistant
@@ -62,19 +62,19 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 		: [];
 	return [
 		'---',
-		"You can use local tools supplied by the user's VS Code extension. These editor tools are NOT in your platform function-calling registry — invoking them as native tool calls will fail with an unknown-tool error. The ONLY way to call one is to write a fenced code block tagged rewst-tool in your reply text:",
+		"You can use local tools supplied by the user's VS Code extension. These editor tools are NOT in your platform function-calling registry — invoking them as native tool calls will fail with an unknown-tool error. The ONLY way to call one is to write a fenced code block tagged vscode-tool in your reply text:",
 		'',
-		'```rewst-tool',
+		TOOL_FENCE_MARKER,
 		'{"tool": "list_template_links", "args": {}}',
 		'```',
 		'',
-		'If a native invocation of one of these names ever errors, write the rewst-tool block instead — do not fall back to a different tool.',
+		'If a native invocation of one of these names ever errors, write the vscode-tool block instead — do not fall back to a different tool.',
 		'',
 		'Available tools:',
 		...lines,
 		...graphqlNote,
 		'',
-		`Rules: when you need tool information, reply with ONLY rewst-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Tackle multi-step work one step per reply: for a multi-step request, give the plan in a tool-free reply first, then take one step (one short lead-in sentence plus its block) per following reply; a single lookup is one step, so answer it tool-first. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long results are cut off with a note saying how to continue; never repeat a request you already made.${
+		`Rules: when you need tool information, reply with ONLY vscode-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Tackle multi-step work one step per reply: for a multi-step request, give the plan in a tool-free reply first, then take one step (one short lead-in sentence plus its block) per following reply; a single lookup is one step, so answer it tool-first. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long results are cut off with a note saying how to continue; never repeat a request you already made.${
 			hasGraphqlTools
 				? ' IMPORTANT: for live Rewst platform data (workflows, org variables, integrations, executions, templates, …) your FIRST action must be a rewst_graphql_schema or rewst_graphql block — do NOT run built-in platform tools like listOrgVariables, listWorkflow, or searchWorkflows before GraphQL has been tried.'
 				: ''
@@ -83,7 +83,7 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 }
 
 /**
- * Extracts tool requests from an assistant reply. Each rewst-tool fence may
+ * Extracts tool requests from an assistant reply. Each vscode-tool fence may
  * hold a single request object or an array of them; malformed blocks are
  * ignored. Returns at most MAX_REQUESTS_PER_TURN requests.
  */
@@ -113,7 +113,7 @@ function asToolRequest(value: unknown): ToolRequest | undefined {
 	return { tool, args: (args as Record<string, unknown>) ?? {} };
 }
 
-/** Removes rewst-tool fences so surrounding prose can still be rendered. */
+/** Removes vscode-tool fences so surrounding prose can still be rendered. */
 export function stripToolRequestBlocks(content: string): string {
 	return content.replace(FENCE, '').trim();
 }
