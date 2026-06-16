@@ -116,5 +116,11 @@ suite('Unit: toolProtocol', () => {
 			assert.ok(brief.startsWith('rewst_graphql {"query":"qqq'));
 			assert.ok(brief.endsWith('…'));
 		});
+
+		test('never exceeds a non-positive or tiny cap', () => {
+			assert.strictEqual(describeRequestBrief({ tool: 'read_file', args: { path: 'a' } }, 0), '');
+			assert.strictEqual(describeRequestBrief({ tool: 'read_file', args: { path: 'a' } }, -5), '');
+			assert.strictEqual(describeRequestBrief({ tool: 'read_file', args: { path: 'a' } }, 1), '…');
+		});
 	});
 });

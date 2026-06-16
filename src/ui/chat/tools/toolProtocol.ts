@@ -130,7 +130,10 @@ export function describeRequest(request: ToolRequest): string {
  */
 export function describeRequestBrief(request: ToolRequest, maxLength = 140): string {
 	const full = describeRequest(request);
-	return full.length > maxLength ? `${full.slice(0, maxLength - 1)}…` : full;
+	if (maxLength <= 0) return '';
+	if (full.length <= maxLength) return full;
+	if (maxLength === 1) return '…';
+	return `${full.slice(0, maxLength - 1)}…`;
 }
 
 /** Reads a non-empty string tool argument, or undefined if absent/wrong type. */
