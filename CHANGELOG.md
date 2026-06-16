@@ -4,7 +4,7 @@
 
 ### Changed
 
-- **Tool activity in the chat now shows what each tool is accessing** - the running indicator includes a compact preview of the call's arguments (the search query, org, file path, GraphQL operation, …) instead of just the bare tool name, for both editor tools and native Rewst tools. Native tools are also labeled "Running Rewst tool: …" to set them apart from the editor's own tools. (#22)
+- **Tool activity in the chat now shows what each tool is accessing** - the running indicator includes a compact preview of the call's arguments (the search query, org, file path, GraphQL operation, …) instead of just the bare tool name. Editor tools surface this through VS Code's native tool UI; native Rewst tools render as a compact, card-like line (🔧 **Rewst tool** · `name`, with the args beneath) that sets them apart from the editor's own tools. (#22)
 
 ## [0.43.1] - 2026-06-16
 

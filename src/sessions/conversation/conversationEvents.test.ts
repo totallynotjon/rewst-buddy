@@ -41,7 +41,12 @@ suite('Unit: ConversationEventMapper', () => {
 			metadata: { toolCalls: [{ name: 'gitbook_retriever', id: 't1' }] },
 		});
 		assert.deepStrictEqual(events, [
-			{ kind: 'status', label: 'Running Rewst tool: gitbook_retriever…', activity: true },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: gitbook_retriever…',
+				activity: true,
+				tool: { name: 'gitbook_retriever' },
+			},
 		]);
 	});
 
@@ -51,7 +56,12 @@ suite('Unit: ConversationEventMapper', () => {
 			metadata: { toolCalls: [{ name: 'gitbook_retriever', args: { query: 'noop tasks' }, id: 't2' }] },
 		});
 		assert.deepStrictEqual(events, [
-			{ kind: 'status', label: 'Running Rewst tool: gitbook_retriever {"query":"noop tasks"}…', activity: true },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: gitbook_retriever {"query":"noop tasks"}…',
+				activity: true,
+				tool: { name: 'gitbook_retriever', args: '{"query":"noop tasks"}' },
+			},
 		]);
 	});
 
