@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { Session } from '@sessions';
-import { hasTestToken, getTestSession, getTestSdk, clearCachedSession } from '@test';
+import { hasTestToken, getTestSession, getTestSdk, clearCachedSession, initTestEnvironment } from '@test';
 
 const { suite, test, suiteSetup, suiteTeardown } = Mocha;
 
@@ -13,6 +13,9 @@ suite('Integration: Session', function () {
 		if (!hasTestToken()) {
 			this.skip();
 		}
+		// Session.newSdk logs through the extension's log channel; initialize it
+		// (and the mock context/globals) so those calls don't crash.
+		initTestEnvironment();
 	});
 
 	suiteTeardown(() => {

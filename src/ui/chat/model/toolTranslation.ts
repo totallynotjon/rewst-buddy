@@ -125,8 +125,10 @@ function partText(part: unknown): string {
 }
 
 /**
- * Builds the follow-up text-protocol message carrying tool outputs back to
- * RoboRewsty, labeled with the original tool names/args from the history.
+ * Compact message feeding tool outputs back into the same backend conversation
+ * that emitted the calls (the reuse path). The conversation already holds the
+ * question and prior context, so only the results — labeled by tool name and
+ * args — are sent, not the whole transcript.
  */
 export function formatToolResultsMessage(
 	results: readonly ToolResultPartLike[],

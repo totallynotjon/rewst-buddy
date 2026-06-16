@@ -4,6 +4,7 @@ import { createMockSession, initTestEnvironment } from '@test';
 import type { AskOptions, ConversationEvent, Session } from '@sessions';
 import vscode from 'vscode';
 import { conversationMap } from './conversationMap';
+import { parseLatestBreadcrumb } from './breadcrumb';
 import { RoboRewstyChatModelProvider, type ProviderDeps } from './RoboRewstyChatModelProvider';
 import { addOnceApprovals, APPROVAL_TOOL_NAME, takeOnceApprovals, type AiToolSettings } from './lmTools';
 
@@ -105,6 +106,12 @@ function textOf(parts: vscode.LanguageModelResponsePart[]): string {
 		.join('');
 }
 
+// What the user actually sees: the streamed text minus the hidden zero-width breadcrumb.
+const ZERO_WIDTH = new RegExp(`[${String.fromCharCode(0x200b, 0x200c, 0x2060)}]`, 'g');
+function visibleText(parts: vscode.LanguageModelResponsePart[]): string {
+	return textOf(parts).replace(ZERO_WIDTH, '').trimEnd();
+}
+
 function callsOf(parts: vscode.LanguageModelResponsePart[]): vscode.LanguageModelToolCallPart[] {
 	return parts.filter(
 		(part): part is vscode.LanguageModelToolCallPart => part instanceof vscode.LanguageModelToolCallPart,
@@ -144,16 +151,19 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 	test('streams the answer text through to progress', async () => {
 		const harness = makeHarness([completeTurn('Hello there')]);
 		await harness.run([message(User, [text('hi')])]);
-		assert.strictEqual(textOf(harness.parts), 'Hello there');
+		// Only the answer is visible; the appended breadcrumb is all zero-width.
+		assert.strictEqual(visibleText(harness.parts), 'Hello there', 'answer streams, breadcrumb invisible');
 		assert.strictEqual(harness.captured[0].conversationId, undefined, 'first turn starts a new conversation');
 		assert.strictEqual(harness.captured[0].orgId, 'org-1');
 	});
 
-	test('consecutive turns continue the same backend conversation', async () => {
-		const harness = makeHarness([completeTurn('Hello'), completeTurn('Again')]);
+	test('an append turn reuses the warm conversation with a lean incremental message', async () => {
+		const harness = makeHarness([completeTurn('Hello', 'conv-1'), completeTurn('Again', 'conv-1')]);
 		await harness.run([message(User, [text('hi')])]);
+		assert.strictEqual(harness.captured[0].conversationId, undefined, 'opener starts a new conversation');
 
-		// VS Code replays the emitted text as a consolidated assistant message.
+		// VS Code replays the emitted text as a consolidated assistant message;
+		// the next turn is a pure append onto the same chat.
 		await harness.run([
 			message(User, [text('hi')]),
 			message(Assistant, [text('Hello')]),
@@ -161,25 +171,32 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		]);
 
 		assert.strictEqual(harness.captured.length, 2);
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-1');
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'append reuses the warm conversation');
+		// Reuse sends only the new turn — not the whole transcript or the directive.
+		assert.ok(!harness.captured[1].message.includes('<visible_chat_transcript>'), 'no transcript re-sent');
+		assert.ok(!harness.captured[1].message.includes('<engineering_layer_directive>'), 'no directive re-sent');
+		assert.match(harness.captured[1].message, /next/);
 	});
 
-	test('a rewound transcript forks a fresh conversation seeded with a replay', async () => {
+	test('a rewound transcript forks fresh and deletes the rolled-back conversation', async () => {
 		const harness = makeHarness([
 			completeTurn('Hello', 'conv-1'),
 			completeTurn('Again', 'conv-1'),
 			completeTurn('Forked', 'conv-2'),
 		]);
+		harness.wrapper.when('deleteConversation', { data: { deleteConversation: 'conv-1' } });
+
 		await harness.run([message(User, [text('hi')])]);
 		await harness.run([
 			message(User, [text('hi')]),
 			message(Assistant, [text('Hello')]),
 			message(User, [text('next')]),
 		]);
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'turn 2 appended to conv-1');
 
 		// Restore Checkpoint rolled the transcript back to after turn 1; the
-		// user asks something new. The backend conversation still contains
-		// turn 2, so re-attaching would leak the rolled-back exchange.
+		// user asks something new. conv-1 still contains turn 2, so re-attaching
+		// would leak the rolled-back exchange — it forks and deletes conv-1.
 		await harness.run([
 			message(User, [text('hi')]),
 			message(Assistant, [text('Hello')]),
@@ -188,11 +205,15 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 
 		assert.strictEqual(harness.captured.length, 3);
 		assert.strictEqual(harness.captured[2].conversationId, undefined, 'fork starts a new conversation');
-		assert.match(harness.captured[2].message, /<chat_transcript_replay>/);
+		assert.match(harness.captured[2].message, /<visible_chat_transcript>/);
 		assert.match(harness.captured[2].message, /USER: hi/);
-		assert.match(harness.captured[2].message, /ASSISTANT: Hello/);
 		assert.match(harness.captured[2].message, /a different question/);
 		assert.ok(!harness.captured[2].message.includes('Again'), 'rolled-back turn is not replayed');
+		assert.deepStrictEqual(
+			harness.wrapper.getCallsFor('deleteConversation').map(call => call.variables),
+			[{ id: 'conv-1' }],
+			'the rewound branch is deleted',
+		);
 	});
 
 	test('independent chats and orgs keep distinct conversations', async () => {
@@ -206,30 +227,6 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		]);
 		// The second request's prefix matches nothing stored — fresh conversation.
 		assert.strictEqual(harness.captured[1].conversationId, undefined);
-	});
-
-	test('pending resume binds the next fresh turn, exactly once', async () => {
-		conversationMap.setPendingResume('org-1', 'conv-resumed');
-		const harness = makeHarness([completeTurn('Continuing', 'conv-resumed'), completeTurn('New topic', 'conv-2')]);
-
-		await harness.run([message(User, [text('where were we?')])]);
-		assert.strictEqual(harness.captured[0].conversationId, 'conv-resumed', 'fresh turn consumes the binding');
-
-		await harness.run([message(User, [text('entirely new question')])]);
-		assert.strictEqual(harness.captured[1].conversationId, undefined, 'binding does not repeat');
-	});
-
-	test('post-resume turns continue the resumed conversation', async () => {
-		conversationMap.setPendingResume('org-1', 'conv-resumed');
-		const harness = makeHarness([completeTurn('Continuing', 'conv-resumed'), completeTurn('More', 'conv-resumed')]);
-
-		await harness.run([message(User, [text('where were we?')])]);
-		await harness.run([
-			message(User, [text('where were we?')]),
-			message(Assistant, [text('Continuing')]),
-			message(User, [text('go on')]),
-		]);
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-resumed');
 	});
 
 	test('advertises permitted tools and emits tool calls from rewst-tool fences', async () => {
@@ -273,44 +270,23 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(textOf(harness.parts).includes('run_command'), 'rejection note names the tool');
 	});
 
-	test('tool results round-trip into the same conversation', async () => {
+	test('a tool result reuses the conversation by callId with a compact message', async () => {
 		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
-		const harness = makeHarness([completeTurn(reply), completeTurn('It says hello.')]);
+		const harness = makeHarness([
+			completeTurn(reply, 'conv-tool-call'),
+			completeTurn('It says hello.', 'conv-tool-call'),
+		]);
+		harness.wrapper.when('deleteConversation', { data: { deleteConversation: 'conv-tool-call' } });
 
 		const ask1 = [message(User, [text('check a.txt')])];
 		await harness.run(ask1, [READ_FILE_TOOL]);
 		const [call] = callsOf(harness.parts);
 		assert.ok(call);
 
-		// VS Code's follow-up: emitted assistant parts + the tool result.
-		const askText = textOf(harness.parts);
-		await harness.run(
-			[
-				...ask1,
-				message(Assistant, [text(askText), call]),
-				message(User, [new vscode.LanguageModelToolResultPart(call.callId, [text('file contents')])]),
-			],
-			[READ_FILE_TOOL],
-		);
-
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'tool round stays in the conversation');
-		assert.ok(harness.captured[1].message.includes('Tool results:'));
-		assert.ok(harness.captured[1].message.includes('file contents'));
-		assert.ok(harness.captured[1].message.includes('read_file'));
-	});
-
-	test('tool-result continuity survives assistant-text drift (callId path)', async () => {
-		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
-		const harness = makeHarness([completeTurn(reply), completeTurn('It says hello.')]);
-
-		const ask1 = [message(User, [text('check a.txt')])];
-		await harness.run(ask1, [READ_FILE_TOOL]);
-		const [call] = callsOf(harness.parts);
-		assert.ok(call);
-
-		// VS Code replays the assistant message with text that does NOT match
-		// what we predicted (split parts, different narration). The prefix hash
-		// misses, but the preserved callId recovers the conversation.
+		// VS Code replays the assistant message with text that does NOT match what
+		// we streamed (split parts, different narration). The prefix hash drifts,
+		// but the preserved callId recovers the same backend conversation, and the
+		// results are fed back compactly — not the whole transcript.
 		await harness.run(
 			[
 				...ask1,
@@ -320,7 +296,55 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			[READ_FILE_TOOL],
 		);
 
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'recovered by callId despite text drift');
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-tool-call', 'tool result reuses by callId');
+		assert.ok(!harness.captured[1].message.includes('<visible_chat_transcript>'), 'no transcript re-sent');
+		assert.ok(harness.captured[1].message.includes('Tool results:'), 'compact tool-result message');
+		assert.ok(harness.captured[1].message.includes('file contents'), 'tool output fed back');
+		assert.ok(harness.captured[1].message.includes('read_file'));
+		assert.strictEqual(
+			harness.wrapper.getCallsFor('deleteConversation').length,
+			0,
+			'a reused conversation is not deleted',
+		);
+	});
+
+	test('a full tool round reuses one conversation end to end and deletes nothing', async () => {
+		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+		const harness = makeHarness([
+			completeTurn('Hello', 'conv-1'),
+			completeTurn(reply, 'conv-1'),
+			completeTurn('It says hello.', 'conv-1'),
+		]);
+		harness.wrapper.when('deleteConversation', { data: { deleteConversation: 'deleted' } });
+
+		await harness.run([message(User, [text('hi')])]);
+		await harness.run(
+			[message(User, [text('hi')]), message(Assistant, [text('Hello')]), message(User, [text('check a.txt')])],
+			[READ_FILE_TOOL],
+		);
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'the tool-call turn appends to conv-1');
+
+		const [call] = callsOf(harness.parts);
+		assert.ok(call);
+
+		const askText = textOf(harness.parts);
+		await harness.run(
+			[
+				message(User, [text('hi')]),
+				message(Assistant, [text('Hello')]),
+				message(User, [text('check a.txt')]),
+				message(Assistant, [text(askText), call]),
+				message(User, [new vscode.LanguageModelToolResultPart(call.callId, [text('file contents')])]),
+			],
+			[READ_FILE_TOOL],
+		);
+
+		assert.strictEqual(harness.captured[2].conversationId, 'conv-1', 'the tool result stays on conv-1');
+		assert.strictEqual(
+			harness.wrapper.getCallsFor('deleteConversation').length,
+			0,
+			'the happy path never deletes a conversation',
+		);
 	});
 
 	test('with the approval tool available, an approval pause becomes an in-chat tool call', async () => {
@@ -488,8 +512,8 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		await assert.rejects(() => harness.run([message(User, [text('hi')])]), /boom/);
 	});
 
-	test('new conversations open with the hidden engineering directive; continuations do not repeat it', async () => {
-		const harness = makeHarness([completeTurn('Hello'), completeTurn('Again')]);
+	test('the opening stateless message carries the directive; reuse turns omit it', async () => {
+		const harness = makeHarness([completeTurn('Hello', 'conv-1'), completeTurn('Again', 'conv-1')]);
 		await harness.run([message(User, [text('hi')])]);
 		assert.ok(
 			harness.captured[0].message.startsWith('<engineering_layer_directive>'),
@@ -501,11 +525,84 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			message(Assistant, [text('Hello')]),
 			message(User, [text('next')]),
 		]);
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-1');
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'append reuses the conversation');
 		assert.ok(
 			!harness.captured[1].message.includes('<engineering_layer_directive>'),
-			'continuing the conversation does not repeat the directive',
+			'a reused turn does not re-send the directive (the conversation already has it)',
 		);
+	});
+
+	test('the breadcrumb disambiguates two chats with byte-identical user spines', async () => {
+		// Both chats open with the same user text, so the spine hash collides and
+		// the second opener overwrites the first under the shared key. The hidden
+		// breadcrumb carries each chat's own conversationId, so an append in chat A
+		// re-attaches to conv-A, not the colliding conv-B.
+		const harness = makeHarness([
+			completeTurn('Hi from A', 'conv-A'),
+			completeTurn('Hi from B', 'conv-B'),
+			completeTurn('A again', 'conv-A'),
+		]);
+
+		await harness.run([message(User, [text('hi')])]);
+		const chatAAssistant = textOf(harness.parts);
+		assert.ok(parseLatestBreadcrumb([message(Assistant, [text(chatAAssistant)])]), 'chat A emitted a breadcrumb');
+
+		// A separate chat, identical opener — overwrites the shared spine key.
+		await harness.run([message(User, [text('hi')])]);
+
+		// Chat A appends, replaying chat A's breadcrumb-bearing assistant turn.
+		await harness.run([
+			message(User, [text('hi')]),
+			message(Assistant, [text(chatAAssistant)]),
+			message(User, [text('next')]),
+		]);
+		assert.strictEqual(harness.captured[2].conversationId, 'conv-A', 'breadcrumb re-attaches chat A to conv-A');
+	});
+
+	test('a reuse turn the backend cannot follow downgrades to a fresh stateless turn', async () => {
+		const harness = makeHarness([
+			completeTurn('Hello', 'conv-1'),
+			[{ kind: 'error', message: 'conversation not found' }],
+			completeTurn('Recovered', 'conv-2'),
+		]);
+		harness.wrapper.when('deleteConversation', { data: { deleteConversation: 'conv-1' } });
+
+		await harness.run([message(User, [text('hi')])]);
+		await harness.run([
+			message(User, [text('hi')]),
+			message(Assistant, [text('Hello')]),
+			message(User, [text('next')]),
+		]);
+
+		// First the reuse attempt (conv-1), which errors before output; then the
+		// downgraded stateless retry with no conversation id.
+		assert.strictEqual(harness.captured.length, 3);
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'reuse attempt first');
+		assert.strictEqual(harness.captured[2].conversationId, undefined, 'downgraded stateless retry');
+		assert.ok(harness.captured[2].message.includes('<visible_chat_transcript>'), 'retry seeds from the transcript');
+		assert.ok(textOf(harness.parts).includes('Recovered'), 'the retry answer streams');
+		assert.deepStrictEqual(
+			harness.wrapper.getCallsFor('deleteConversation').map(call => call.variables),
+			[{ id: 'conv-1' }],
+			'the unfollowable conversation is deleted',
+		);
+	});
+
+	test('a successful append deletes nothing and is not blocked by cleanup', async () => {
+		const harness = makeHarness([completeTurn('Hello', 'conv-1'), completeTurn('Again', 'conv-1')]);
+		harness.wrapper.when('deleteConversation', () => new Promise<never>(() => {}));
+
+		await harness.run([message(User, [text('hi')])]);
+		const result = await Promise.race([
+			harness
+				.run([message(User, [text('hi')]), message(Assistant, [text('Hello')]), message(User, [text('next')])])
+				.then(() => 'resolved'),
+			new Promise(resolve => setTimeout(() => resolve('blocked'), 25)),
+		]);
+
+		assert.strictEqual(result, 'resolved');
+		await new Promise(resolve => setImmediate(resolve));
+		assert.strictEqual(harness.wrapper.getCallsFor('deleteConversation').length, 0, 'the happy path never deletes');
 	});
 
 	test('custom instructions are prepended to the outgoing message', async () => {

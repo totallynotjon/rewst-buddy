@@ -1,19 +1,19 @@
 import { SessionManager } from '@sessions';
-import { conversationLabel, conversationMap, formatConversationTranscript, pickSession } from '@ui';
+import { conversationLabel, formatConversationTranscript, pickSession } from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
 
 /**
- * Lists the org's stored Rewst AI conversations, opens the picked transcript
- * as a markdown document, and binds the conversation so the next RoboRewsty
- * chat message continues it (model providers have no slash commands, so
- * resume lives in the command palette).
+ * Lists the org's stored Rewst AI conversations and opens the picked transcript
+ * as a markdown document. Follow-up binding is intentionally deferred until the
+ * stateless chat model has a transcript-import resume flow.
  */
 export class ResumeRewstAiConversation extends GenericCommand {
 	commandName = 'ResumeRewstAiConversation';
 
-	async execute(): Promise<void> {
+	async execute(...args: unknown[]): Promise<void> {
+		void args; // palette-only invocation; signature kept consistent with other commands
 		const sessions = SessionManager.getActiveSessions();
 		const session = sessions.length === 1 ? sessions[0] : await pickSession();
 		if (!session) return;
@@ -51,7 +51,6 @@ export class ResumeRewstAiConversation extends GenericCommand {
 		const document = await vscode.workspace.openTextDocument({ language: 'markdown', content: transcript });
 		await vscode.window.showTextDocument(document, { preview: true });
 
-		conversationMap.setPendingResume(orgId, conversation.id);
-		log.notifyInfo('Your next Cage-Free Rewsty chat message will continue this conversation.');
+		log.notifyInfo('Conversation transcript opened.');
 	}
 }

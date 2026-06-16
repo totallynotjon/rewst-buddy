@@ -5,11 +5,22 @@ import { buildEngineeringDirective } from './engineeringDirective';
 const { suite, test } = Mocha;
 
 suite('Unit: engineeringDirective', () => {
-	test('no tools yields header and footer only', () => {
+	test('no tools yields header, native-tool policy, and footer', () => {
 		const directive = buildEngineeringDirective(new Set());
 		assert.ok(directive.includes('<engineering_layer_directive>'));
 		assert.ok(!directive.includes('# Tool-call discipline'));
 		assert.ok(!directive.includes('# Tool selection'));
+		// The native-tool curb ships even with no editor tools.
+		assert.ok(directive.includes('# Native internal tools: off by default'));
+	});
+
+	test('always curbs reflexive documentation search and Jinja rendering', () => {
+		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['rewst_graphql', 'web_search'])]) {
+			const directive = buildEngineeringDirective(tools);
+			assert.ok(directive.includes('# Native internal tools: off by default'), 'native-tool policy present');
+			assert.ok(/documentation .*search/i.test(directive), 'names documentation search');
+			assert.ok(/Jinja render/i.test(directive), 'names Jinja render/test');
+		}
 	});
 
 	test('built-in-only tools still get the discipline rules, without the GraphQL activation rule', () => {

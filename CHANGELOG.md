@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.43.0] - 2026-06-16
+
+### Changed
+
+- **Cage-Free Rewsty reuses the backend conversation across turns, and falls back to the visible transcript when it can't** - an append turn continues the warm Rewst conversation and sends only the new message, which is markedly faster and stops the native documentation-search loop from re-firing every turn. When a turn can't follow that conversation — a fresh chat, an edited or rewound transcript, a window reload, or a conversation the backend has dropped — it forks a fresh, stateless conversation seeded from the visible VS Code chat history. Continuity is content-derived (the user-message spine plus a hidden per-chat breadcrumb), since VS Code's chat API exposes no session id; a rewound conversation is deleted as it's forked away from.
+- **Resume now opens transcripts only** - `Rewst Buddy: Resume Rewst AI Conversation` still lists stored Rewst conversations and opens the selected transcript, but binding a future VS Code message to that Rewst conversation is deferred to a transcript-import resume flow.
+- **Cage-Free Rewsty no longer reflexively searches Rewst docs or renders Jinja** - the steering directive now keeps the assistant's native internal tools (documentation search, Jinja render/test) off by default, so general engineering questions are answered directly. It still searches Rewst's documentation or validates Jinja when you explicitly ask.
+
 ## [0.42.0] - 2026-06-12
 
 ### Changed

@@ -3,7 +3,9 @@ import type vscode from 'vscode';
 
 /**
  * Maps the stateless LanguageModelChatProvider request shape onto RoboRewsty's
- * stateful backend conversations.
+ * stateful backend conversations so a chat can REUSE one warm conversation
+ * instead of opening a fresh one (and re-shipping the whole transcript) every
+ * turn.
  *
  * The provider API sends the full message history on every request and exposes
  * no chat-session id, so continuity is content-derived: each request's history
@@ -13,29 +15,23 @@ import type vscode from 'vscode';
  * request will compute.
  *
  * Only USER messages form the key — the "user spine" of the chat. Assistant
- * text and tool-call parts are re-serialized by VS Code when it replays history,
- * and that serialization drifts from the bytes we streamed (whitespace/markdown
- * normalization, cumulative-resend dedup, large tables). Including assistant
- * content in the key made a single drifted character spawn a fresh backend
- * conversation — the chat would forget everything before the drift. User text
- * and tool-result callIds, by contrast, are preserved verbatim across replays,
- * so a user-only key is stable for the life of the chat. Tool rounds get an
- * even stronger, callId-based binding (see storeByCallIds).
+ * text re-serializes with drift across replays (whitespace/markdown
+ * normalization, cumulative-resend dedup); user text and tool-result callIds
+ * survive verbatim. Including assistant content would let one drifted character
+ * spawn a fresh conversation and forget everything before the drift. Tool rounds
+ * get an even stronger, callId-based binding (storeByCallIds).
  *
- * Inherent limit of a session-id-less stateless API: two same-org chats whose
- * USER messages are byte-identical share one backend conversation until their
- * user turns diverge — and once one of them advances the shared conversation's
- * tip, the other's next turn reads as behind-tip and forks (see below) rather
- * than silently re-attaching. Distinct orgs or distinct user content always
- * isolate.
+ * Inherent limit of a session-id-less API: two same-org chats whose USER
+ * messages are byte-identical share one backend conversation until their user
+ * turns diverge. The breadcrumb (see breadcrumb.ts) disambiguates that case by
+ * carrying the exact per-chat conversationId in the transcript itself.
  *
- * Rewind handling: the backend conversation is append-only (the API has no
- * message deletion), so when VS Code rewinds the transcript — Restore
- * Checkpoint, or editing an earlier message — re-attaching to the same
- * conversation would give the model memory of the rolled-back turns. Each
- * entry therefore records the user-turn DEPTH of its spine, and a lookup that
- * lands behind the conversation's deepest known turn reads as a miss: the
- * caller forks a fresh backend conversation seeded from the editor transcript.
+ * Rewind handling: the backend conversation is append-only (no message
+ * deletion), so when VS Code rewinds the transcript — Restore Checkpoint, or
+ * editing an earlier message — re-attaching would give the model memory of the
+ * rolled-back turns. Each entry records the user-turn DEPTH of its spine, and a
+ * lookup that lands behind the conversation's deepest known turn reads as
+ * unfollowable: the caller forks a fresh conversation (and deletes the stale one).
  */
 
 export const MAX_ENTRIES = 200;
@@ -92,12 +88,12 @@ export function serializeHistory(messages: readonly RequestMessage[]): string {
 	return messages
 		.filter(message => message.role === USER_ROLE)
 		.map(message => serializeMessage(message.role, message.content))
-		.join('');
+		.join('');
 }
 
 /** Key for a request: org + the user spine of everything except the trailing turn. */
 export function prefixKey(orgId: string, messages: readonly RequestMessage[]): string {
-	return getHash(`${orgId}${serializeHistory(messages.slice(0, -1))}`);
+	return getHash(`${orgId}${serializeHistory(messages.slice(0, -1))}`);
 }
 
 /**
@@ -107,14 +103,10 @@ export function prefixKey(orgId: string, messages: readonly RequestMessage[]): s
  * prefix — so the next prefix's user spine equals this history's user spine.
  */
 export function nextTurnKey(orgId: string, messages: readonly RequestMessage[]): string {
-	return getHash(`${orgId}${serializeHistory(messages)}`);
+	return getHash(`${orgId}${serializeHistory(messages)}`);
 }
 
-/**
- * User-turn count of the given message list — the depth of its spine. Pass the
- * same slice the key was built from (full history for nextTurnKey, all but the
- * trailing turn for prefixKey).
- */
+/** User-turn count of the given message list — the depth of its spine. */
 export function spineDepth(messages: readonly RequestMessage[]): number {
 	return messages.filter(message => message.role === USER_ROLE).length;
 }
@@ -125,29 +117,45 @@ interface Entry {
 	depth: number;
 }
 
+/** Result of a spine-hash lookup: the matched conversation and whether it is still followable. */
+export interface ConversationMatch {
+	conversationId: string;
+	/** False when the prefix sits behind the conversation's tip — the transcript was rewound. */
+	followable: boolean;
+}
+
 export class ConversationMap {
 	private entries = new Map<string, Entry>();
 	/** Deepest stored spine per conversation — the conversation's tip. */
 	private tipDepth = new Map<string, number>();
 	private byCallId = new Map<string, string>();
-	private pendingResume = new Map<string, string>();
 
 	/**
-	 * The backend conversation a request prefix belongs to, if known — unless
-	 * the prefix sits BEHIND the conversation's tip (the transcript was
-	 * rewound), which reads as a miss so the caller forks instead.
+	 * The backend conversation a request prefix belongs to, if known, plus
+	 * whether it is followable. A prefix BEHIND the conversation's tip (the
+	 * transcript was rewound) is reported as unfollowable so the caller forks.
 	 */
-	lookup(key: string): string | undefined {
+	lookup(key: string): ConversationMatch | undefined {
 		const entry = this.entries.get(key);
 		if (entry === undefined) return undefined;
 		const tip = this.tipDepth.get(entry.conversationId) ?? entry.depth;
-		// A rewound prefix can never re-attach — let it age out of the LRU
-		// rather than refreshing it at the expense of live entries.
-		if (entry.depth < tip) return undefined;
-		// Refresh LRU position.
+		if (entry.depth < tip) return { conversationId: entry.conversationId, followable: false };
+		// Refresh LRU position for live branches.
 		this.entries.delete(key);
 		this.entries.set(key, entry);
-		return entry.conversationId;
+		return { conversationId: entry.conversationId, followable: true };
+	}
+
+	/**
+	 * Whether a breadcrumb-named conversation at the given depth is still
+	 * followable: known to us and not behind its tip (not rewound). Unknown
+	 * conversations (evicted / window reloaded) cannot be tip-checked, so they
+	 * are rejected — the caller falls back to the spine hash, then stateless.
+	 */
+	breadcrumbFollowable(conversationId: string, depth: number): boolean {
+		const tip = this.tipDepth.get(conversationId);
+		if (tip === undefined) return false;
+		return depth >= tip;
 	}
 
 	store(key: string, conversationId: string, depth: number): void {
@@ -158,10 +166,9 @@ export class ConversationMap {
 			if (oldest === undefined) break;
 			this.entries.delete(oldest);
 		}
-		// The tip record must stay at least as recent as every entry that
-		// references its conversation (a replayed turn re-stores a behind-tip
-		// key): if the tip evicted first, the surviving entry's fallback would
-		// re-attach to a conversation that still holds rolled-back turns.
+		// The tip must stay at least as recent as every entry referencing its
+		// conversation: if the tip evicted first, a surviving behind-tip entry
+		// would wrongly read as followable.
 		const tip = this.tipDepth.get(conversationId);
 		this.tipDepth.delete(conversationId);
 		this.tipDepth.set(conversationId, tip === undefined || depth > tip ? depth : tip);
@@ -175,9 +182,9 @@ export class ConversationMap {
 	/**
 	 * Bind a backend conversation to the tool calls emitted this turn. VS Code
 	 * preserves a tool call's callId verbatim when it replays the assistant
-	 * message and hands back the result, so recovering the conversation by
-	 * callId is immune to the message-serialization drift that the prefix hash
-	 * is vulnerable to — this is the primary continuity path for tool rounds.
+	 * message and hands back the result, so recovering by callId is immune to
+	 * the serialization drift the prefix hash is vulnerable to — the primary
+	 * continuity path for tool rounds.
 	 */
 	storeByCallIds(callIds: readonly string[], conversationId: string): void {
 		for (const callId of callIds) {
@@ -201,18 +208,18 @@ export class ConversationMap {
 	}
 
 	/**
-	 * One-shot resume binding: the next FRESH turn (empty history prefix) for
-	 * this org continues the given conversation instead of starting a new one.
+	 * Drop every trace of a conversation — used when we fork away from it
+	 * (rewind / an unfollowable reuse) so later lookups never re-attach to the
+	 * backend conversation we are deleting.
 	 */
-	setPendingResume(orgId: string, conversationId: string): void {
-		this.pendingResume.set(orgId, conversationId);
-	}
-
-	/** Consumes the binding; later fresh turns start new conversations again. */
-	takePendingResume(orgId: string): string | undefined {
-		const conversationId = this.pendingResume.get(orgId);
-		this.pendingResume.delete(orgId);
-		return conversationId;
+	forget(conversationId: string): void {
+		for (const [key, entry] of this.entries) {
+			if (entry.conversationId === conversationId) this.entries.delete(key);
+		}
+		this.tipDepth.delete(conversationId);
+		for (const [callId, id] of this.byCallId) {
+			if (id === conversationId) this.byCallId.delete(callId);
+		}
 	}
 
 	/** Clears all state between tests. */
@@ -220,9 +227,8 @@ export class ConversationMap {
 		this.entries.clear();
 		this.tipDepth.clear();
 		this.byCallId.clear();
-		this.pendingResume.clear();
 	}
 }
 
-/** Shared instance used by the provider and the resume command. */
+/** Shared instance used by the provider. */
 export const conversationMap = new ConversationMap();

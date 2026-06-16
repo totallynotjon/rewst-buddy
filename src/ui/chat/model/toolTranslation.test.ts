@@ -6,7 +6,6 @@ import {
 	collectToolCalls,
 	extractTrailingToolResults,
 	filterToolsBySettings,
-	formatToolResultsMessage,
 	rejectedToolsNote,
 	translateToolRequests,
 } from './toolTranslation';
@@ -98,7 +97,7 @@ suite('Unit: toolTranslation', () => {
 	});
 
 	suite('tool result round-trip', () => {
-		test('collects calls from history and formats trailing results', () => {
+		test('collects calls from history and extracts trailing results', () => {
 			const call = new vscode.LanguageModelToolCallPart('call-7', 'read_file', { path: 'a.txt' });
 			const result = new vscode.LanguageModelToolResultPart('call-7', [
 				new vscode.LanguageModelTextPart('file contents here'),
@@ -112,12 +111,10 @@ suite('Unit: toolTranslation', () => {
 			const trailing = extractTrailingToolResults(messages);
 			assert.ok(trailing);
 			assert.strictEqual(trailing.length, 1);
+			assert.strictEqual(trailing[0].callId, 'call-7');
 
 			const calls = collectToolCalls(messages);
-			const formatted = formatToolResultsMessage(trailing, calls);
-			assert.ok(formatted.includes('### read_file'));
-			assert.ok(formatted.includes('file contents here'));
-			assert.ok(formatted.includes('Tool results:'));
+			assert.strictEqual(calls.get('call-7')?.name, 'read_file');
 		});
 
 		test('ordinary user turns are not tool results', () => {
