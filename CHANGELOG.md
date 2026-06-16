@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **Editor tool requests survive Markdown fences inside their arguments** - `vscode-tool` parsing now treats only a closing fence on its own line as the end of the tool block, so edit requests that insert fenced code blocks (for example README updates with triple backticks) still become VS Code tool calls instead of silently stopping the conversation. (#27)
+
 ## [0.43.3] - 2026-06-16
 
 ### Changed

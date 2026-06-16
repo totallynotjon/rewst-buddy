@@ -41,6 +41,28 @@ suite('Unit: toolProtocol', () => {
 			]);
 		});
 
+		test('parses request args containing markdown code fences', () => {
+			const content = fence(
+				JSON.stringify({
+					tool: 'replace_string_in_file',
+					args: {
+						filePath: '/tmp/readme.md',
+						newString: '```bash\\nnpm test\\n```',
+					},
+				}),
+			);
+
+			assert.deepStrictEqual(parseToolRequests(content), [
+				{
+					tool: 'replace_string_in_file',
+					args: {
+						filePath: '/tmp/readme.md',
+						newString: '```bash\\nnpm test\\n```',
+					},
+				},
+			]);
+		});
+
 		test('ignores malformed JSON, missing tool names, and bad args', () => {
 			const content = [
 				fence('not json'),
@@ -70,6 +92,17 @@ suite('Unit: toolProtocol', () => {
 			assert.ok(stripped.includes('Checking.'));
 			assert.ok(stripped.includes('{{ x }}'));
 			assert.ok(!stripped.includes(TOOL_FENCE_TAG));
+		});
+
+		test('removes a tool block whose args contain markdown code fences', () => {
+			const content = `Checking.\n${fence(
+				JSON.stringify({
+					tool: 'replace_string_in_file',
+					args: { newString: '```bash\\nnpm test\\n```' },
+				}),
+			)}\nDone.`;
+			const stripped = stripToolRequestBlocks(content);
+			assert.strictEqual(stripped, 'Checking.\n\nDone.');
 		});
 	});
 

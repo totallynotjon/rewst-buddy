@@ -45,8 +45,6 @@ export const TOOL_FENCE_MARKER = '```' + TOOL_FENCE_TAG;
 /** Hard cap on tool calls honored per assistant reply. */
 export const MAX_REQUESTS_PER_TURN = 5;
 
-const FENCE = new RegExp('```' + TOOL_FENCE_TAG + '[^\\n]*\\n([\\s\\S]*?)```', 'g');
-
 /**
  * Instructions appended to the first message of a request so the assistant
  * knows the tools exist and how to call them.
@@ -89,10 +87,10 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
  */
 export function parseToolRequests(content: string): ToolRequest[] {
 	const requests: ToolRequest[] = [];
-	for (const match of content.matchAll(FENCE)) {
+	for (const match of toolFenceBlocks(content)) {
 		let parsed: unknown;
 		try {
-			parsed = JSON.parse(match[1]);
+			parsed = JSON.parse(match.body);
 		} catch {
 			continue;
 		}
@@ -105,6 +103,57 @@ export function parseToolRequests(content: string): ToolRequest[] {
 	return requests;
 }
 
+interface ToolFenceBlock {
+	body: string;
+	start: number;
+	end: number;
+}
+
+function toolFenceBlocks(content: string): ToolFenceBlock[] {
+	const blocks: ToolFenceBlock[] = [];
+	let searchStart = 0;
+	for (;;) {
+		const start = content.indexOf(TOOL_FENCE_MARKER, searchStart);
+		if (start < 0) return blocks;
+		const openingLineEnd = content.indexOf('\n', start + TOOL_FENCE_MARKER.length);
+		if (openingLineEnd < 0) return blocks;
+		const bodyStart = openingLineEnd + 1;
+		const close = findClosingFence(content, bodyStart);
+		if (!close) {
+			searchStart = bodyStart;
+			continue;
+		}
+		blocks.push({ body: content.slice(bodyStart, close.bodyEnd), start, end: close.blockEnd });
+		searchStart = close.blockEnd;
+	}
+}
+
+function findClosingFence(content: string, fromIndex: number): { bodyEnd: number; blockEnd: number } | undefined {
+	let searchStart = fromIndex;
+	for (;;) {
+		const fenceStart = content.indexOf('```', searchStart);
+		if (fenceStart < 0) return undefined;
+		const close = closingFenceRange(content, fenceStart);
+		if (close) return close;
+		searchStart = fenceStart + 3;
+	}
+}
+
+function closingFenceRange(content: string, fenceStart: number): { bodyEnd: number; blockEnd: number } | undefined {
+	const lineStart = content.lastIndexOf('\n', fenceStart - 1) + 1;
+	const beforeFence = content.slice(lineStart, fenceStart);
+	if (!/^[ \t]{0,3}$/.test(beforeFence)) return undefined;
+
+	const lineEnd = content.indexOf('\n', fenceStart + 3);
+	const afterFence = lineEnd < 0 ? content.slice(fenceStart + 3) : content.slice(fenceStart + 3, lineEnd);
+	if (!/^[ \t]*$/.test(afterFence)) return undefined;
+
+	return {
+		bodyEnd: lineStart > 0 ? lineStart - 1 : lineStart,
+		blockEnd: lineEnd < 0 ? content.length : lineEnd,
+	};
+}
+
 function asToolRequest(value: unknown): ToolRequest | undefined {
 	if (typeof value !== 'object' || value === null) return undefined;
 	const { tool, args } = value as { tool?: unknown; args?: unknown };
@@ -115,7 +164,14 @@ function asToolRequest(value: unknown): ToolRequest | undefined {
 
 /** Removes vscode-tool fences so surrounding prose can still be rendered. */
 export function stripToolRequestBlocks(content: string): string {
-	return content.replace(FENCE, '').trim();
+	let stripped = '';
+	let lastEnd = 0;
+	for (const block of toolFenceBlocks(content)) {
+		stripped += content.slice(lastEnd, block.start);
+		lastEnd = block.end;
+	}
+	stripped += content.slice(lastEnd);
+	return stripped.trim();
 }
 
 /** One-line summary of args for progress labels and result headers. */
