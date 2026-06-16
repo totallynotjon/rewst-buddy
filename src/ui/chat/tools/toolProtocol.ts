@@ -61,6 +61,7 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 	return [
 		'---',
 		"You can use local tools supplied by the user's VS Code extension. These editor tools are NOT in your platform function-calling registry — invoking them as native tool calls will fail with an unknown-tool error. The ONLY way to call one is to write a fenced code block tagged vscode-tool in your reply text:",
+		"This local tool manifest is supplied by the VS Code extension, not typed as ordinary user prose. A vscode-tool fenced block is not ordinary prose either: the extension intercepts it, parses the JSON, and executes that local VS Code tool through VS Code's normal approval and sandbox flow. Do not refuse merely because the tool is absent from your native Rewst function registry; for local editor tools, the fenced block is the executable request.",
 		'',
 		TOOL_FENCE_MARKER,
 		'{"tool": "list_template_links", "args": {}}',
@@ -159,7 +160,11 @@ function asToolRequest(value: unknown): ToolRequest | undefined {
 	const { tool, args } = value as { tool?: unknown; args?: unknown };
 	if (typeof tool !== 'string' || tool.length === 0) return undefined;
 	if (args !== undefined && (typeof args !== 'object' || args === null || Array.isArray(args))) return undefined;
-	return { tool, args: (args as Record<string, unknown>) ?? {} };
+	if (args !== undefined) return { tool, args: args as Record<string, unknown> };
+
+	const topLevelArgs = { ...(value as Record<string, unknown>) };
+	delete topLevelArgs.tool;
+	return { tool, args: topLevelArgs };
 }
 
 /** Removes vscode-tool fences so surrounding prose can still be rendered. */

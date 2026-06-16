@@ -163,6 +163,45 @@ suite('Integration: engineering directive steering', function () {
 		);
 	});
 
+	test('an explicit insert edit tool request is a vscode-tool block, not a native call', async function () {
+		// Live regression from testing #27: on an opening edit request, the assistant
+		// tried to invoke insert_edit_into_file as a native/Rewst tool. It must treat
+		// VS Code edit tools exactly like read/list tools: fenced vscode-tool blocks.
+		const insertSpec: ToolSpec = {
+			name: 'insert_edit_into_file',
+			args: '{"filePath": string, "code": string, "explanation": string}',
+			description: 'Insert code into an existing local workspace file.',
+		};
+		let result: { content: string; requests: ToolRequest[]; statuses: string[] };
+		try {
+			result = await turn(
+				'Use the insert_edit_into_file tool to add a short note to /tmp/readme.md saying hello. Do not answer in prose.',
+				1,
+				[insertSpec],
+			);
+		} catch (error) {
+			if (error instanceof Error && /interrupted/i.test(error.message)) {
+				console.log(`(backend kept interrupting the insert edit turn — skipping: ${error.message})`);
+				this.skip();
+			}
+			throw error;
+		}
+		const { content, requests, statuses } = result;
+		const nativeInsertCall = statuses.some(
+			label => label.startsWith('Running tool:') && /insert_edit_into_file/i.test(label),
+		);
+		assert.ok(
+			!nativeInsertCall,
+			`insert_edit_into_file must be a vscode-tool block, not a native call; statuses: ${statuses.join(', ')}`,
+		);
+		assert.ok(
+			requests.some(request => request.tool === 'insert_edit_into_file'),
+			`expected an insert_edit_into_file vscode-tool request, got requests [${requests
+				.map(r => r.tool)
+				.join(', ')}] and content: ${content.slice(0, 300)}`,
+		);
+	});
+
 	test('a todo-list tool is invoked as a vscode-tool block, not a native call', async function () {
 		// Jon's report (#27): with a todo tool available, the assistant called it as a
 		// NATIVE function call (its name collides with a tool it knows natively), which

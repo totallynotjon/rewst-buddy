@@ -45,6 +45,7 @@ function loadDotEnv() {
  */
 function wantsIntegration() {
 	if (process.env.npm_lifecycle_event === 'test:integration') return true;
+	if (process.env.REWST_TEST_INTEGRATION === '1') return true;
 	return process.argv.some(arg => arg.includes('Integration'));
 }
 

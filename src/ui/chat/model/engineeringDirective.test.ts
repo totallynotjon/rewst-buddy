@@ -7,7 +7,9 @@ const { suite, test } = Mocha;
 suite('Unit: engineeringDirective', () => {
 	test('no tools yields header, native-tool policy, and footer', () => {
 		const directive = buildEngineeringDirective(new Set());
-		assert.ok(directive.includes('<engineering_layer_directive>'));
+		assert.ok(directive.includes('# Rewst Buddy VS Code Context'));
+		assert.ok(!directive.includes('<engineering_layer_directive>'));
+		assert.ok(!/supersedes/i.test(directive));
 		assert.ok(!directive.includes('# Tool-call discipline'));
 		assert.ok(!directive.includes('# Tool selection'));
 		// The native-tool curb ships even with no editor tools.
@@ -57,6 +59,17 @@ suite('Unit: engineeringDirective', () => {
 		assert.ok(!directive.includes('activate_rewst_graphql_tools'), 'graphql rule withheld');
 	});
 
+	test('edit tools are explicitly steered away from native Rewst tool calls', () => {
+		const directive = buildEngineeringDirective(
+			new Set(['insert_edit_into_file', 'replace_string_in_file', 'create_file', 'run_in_terminal']),
+		);
+		assert.ok(directive.includes('insert_edit_into_file'), 'names the insert edit tool');
+		assert.ok(directive.includes('replace_string_in_file'), 'names the replace edit tool');
+		assert.ok(directive.includes('create_file'), 'names the create file tool');
+		assert.ok(/native\/Rewst function/i.test(directive), 'forbids native/Rewst invocation path');
+		assert.ok(/vscode-tool block/i.test(directive), 'requires the vscode-tool protocol');
+	});
+
 	test('graphql tools add the priority bullet and the activation rule', () => {
 		const directive = buildEngineeringDirective(new Set(['rewst_graphql', 'rewst_graphql_schema']));
 		assert.ok(directive.includes('# Tool selection'));
@@ -88,6 +101,13 @@ suite('Unit: buildNativeToolReminder', () => {
 			assert.ok(reminder.includes('gitbook_retriever'), 'names the gitbook tool');
 			assert.ok(reminder.includes('listWorkflow'), 'names the throwaway native call to suppress');
 		}
+	});
+
+	test('calls out editor edit tools as vscode-tool only when present', () => {
+		const reminder = buildNativeToolReminder(new Set(['insert_edit_into_file']));
+		assert.ok(reminder.includes('insert_edit_into_file'), 'names the insert edit tool');
+		assert.ok(/vscode-tool block/i.test(reminder), 'requires the vscode-tool protocol');
+		assert.ok(/native\/Rewst function/i.test(reminder), 'forbids native/Rewst invocation path');
 	});
 
 	test('does not push memory-only answers for non-Rewst questions', () => {

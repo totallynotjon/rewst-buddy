@@ -63,6 +63,26 @@ suite('Unit: toolProtocol', () => {
 			]);
 		});
 
+		test('uses top-level request fields as args when the args wrapper is omitted', () => {
+			const content = fence(
+				JSON.stringify({
+					tool: 'rewst_graphql',
+					query: 'query CurrentUser { currentUser { id } }',
+					variables: { includeDisabled: false },
+				}),
+			);
+
+			assert.deepStrictEqual(parseToolRequests(content), [
+				{
+					tool: 'rewst_graphql',
+					args: {
+						query: 'query CurrentUser { currentUser { id } }',
+						variables: { includeDisabled: false },
+					},
+				},
+			]);
+		});
+
 		test('ignores malformed JSON, missing tool names, and bad args', () => {
 			const content = [
 				fence('not json'),
@@ -125,6 +145,24 @@ suite('Unit: toolProtocol', () => {
 			assert.ok(text.includes('session-authenticated GraphQL action'));
 			assert.ok(text.includes('Use rewst_graphql_schema first'));
 			assert.ok(text.includes('then call rewst_graphql'));
+		});
+
+		test('states vscode-tool blocks are extension-executed requests, including edit tools', () => {
+			const text = buildToolInstructions([
+				{
+					name: 'insert_edit_into_file',
+					args: '{"filePath": string, "code": string, "explanation": string}',
+					description: 'Insert code into an existing local workspace file.',
+				},
+			]);
+			assert.ok(
+				/local tool manifest is supplied by the VS Code extension/i.test(text),
+				'identifies the extension-supplied tool manifest',
+			);
+			assert.ok(/extension intercepts/i.test(text), 'states the extension intercepts the block');
+			assert.ok(/executes that local VS Code tool/i.test(text), 'states the block executes a local tool request');
+			assert.ok(/not ordinary prose/i.test(text), 'forbids treating the block as just text');
+			assert.ok(text.includes('insert_edit_into_file'), 'keeps the edit tool in the concrete list');
 		});
 	});
 
