@@ -105,7 +105,7 @@ File and workspace work comes from VS Code itself: in agent mode, the chat passe
 
 Off by default because they let a remote assistant direct activity on your machine:
 
-- **Web** (`rewst-buddy.ai.enableWebTools`) — `web_search` searches the public web and returns result titles, URLs, and snippets. Only http(s) is allowed; private/loopback hosts are always blocked. Opening result pages uses VS Code's built-in fetch tool in agent mode
+- **Web** (`rewst-buddy.ai.enableWebTools`) — `web_search` searches the public web and returns result titles, URLs, and snippets. Once enabled, Cage-Free Rewsty reaches for it on its own whenever an answer depends on current or external information (news, recent events, latest versions) rather than refusing with a knowledge-cutoff excuse — you don't have to tell it to search. Only http(s) is allowed; private/loopback hosts are always blocked. Opening result pages uses VS Code's built-in fetch tool in agent mode
 - **GraphQL** (`rewst-buddy.ai.enableGraphqlTool`) — `rewst_graphql` composes and runs GraphQL operations against your Rewst instance using your session, with `rewst_graphql_schema` for exploring the schema. Queries run directly; **mutations always pop an approval dialog showing the full operation**. Off by default because the session can read and change anything you can in Rewst
 
 A tool whose setting is off is never offered to the assistant — even if it appears in the chat's tool picker.
@@ -119,6 +119,7 @@ Some of Cage-Free Rewsty's own Rewst-side actions require your approval before t
 - **Attached context** — files attached via the paperclip or `#file`, and editor selections, are included by the chat itself
 - **Apply suggestions** — `Rewst Buddy: Apply Rewst AI Suggestion` (command palette) applies a code block from the latest answer to your active file behind a diff preview; confirm to apply, and the edit stays unsaved for review
 - **Custom instructions** — `rewst-buddy.ai.customInstructions` prepends standing instructions to every question (sent as part of your message, so it can't override Rewst's system prompt)
+- **Plans and todos** — for anything with real complexity, Cage-Free Rewsty breaks the work into an ordered todo list before executing and works it to completion. In agent mode, where VS Code exposes a todo-list tool and sub-agents, it records the plan through the todo tool and hands off self-contained sub-tasks to an agent on its own — you don't have to ask it to
 - **Live activity** — while Cage-Free Rewsty works, the substantive steps it takes (documentation searches and each tool call) stream into the chat as compact lines so you can see what it's doing rather than waiting on a bare spinner. Turn it off with `rewst-buddy.ai.showActivity`
 - **Sources** — documentation citations are rendered at the end of the answer
 

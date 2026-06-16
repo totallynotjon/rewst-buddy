@@ -4,7 +4,12 @@ import { askRewstAi, Session } from '@sessions';
 import { clearCachedSession, getTestSession, getTestToken, hasTestToken, initTestEnvironment } from '@test';
 import { buildEngineeringDirective } from '../../ui/chat/model/engineeringDirective';
 import { ALL_TOOL_SPECS } from '../../ui/chat/model/lmTools';
-import { buildToolInstructions, parseToolRequests, type ToolRequest } from '../../ui/chat/tools/toolProtocol';
+import {
+	buildToolInstructions,
+	parseToolRequests,
+	type ToolRequest,
+	type ToolSpec,
+} from '../../ui/chat/tools/toolProtocol';
 
 const { suite, test, suiteSetup, suiteTeardown } = Mocha;
 
@@ -16,7 +21,7 @@ const { suite, test, suiteSetup, suiteTeardown } = Mocha;
  * signal. Logs every full reply so directive revisions can be evaluated.
  */
 suite('Integration: engineering directive steering', function () {
-	this.timeout(180_000);
+	this.timeout(240_000);
 
 	let session: Session;
 
@@ -39,9 +44,11 @@ suite('Integration: engineering directive steering', function () {
 	async function turn(
 		question: string,
 		attempt = 1,
+		extraSpecs: ToolSpec[] = [],
 	): Promise<{ content: string; requests: ToolRequest[]; statuses: string[] }> {
-		const directive = buildEngineeringDirective(new Set(ALL_TOOL_SPECS.map(spec => spec.name)));
-		const message = `${directive}\n\n${question}\n\n${buildToolInstructions(ALL_TOOL_SPECS)}`;
+		const specs = [...ALL_TOOL_SPECS, ...extraSpecs];
+		const directive = buildEngineeringDirective(new Set(specs.map(spec => spec.name)));
+		const message = `${directive}\n\n${question}\n\n${buildToolInstructions(specs)}`;
 		let content = '';
 		const statuses: string[] = [];
 		for await (const event of askRewstAi({
@@ -57,7 +64,7 @@ suite('Integration: engineering directive steering', function () {
 				if (event.message.includes('interrupted') && attempt < 3) {
 					console.log(`(interrupted — retrying, attempt ${attempt + 1})`);
 					await new Promise(resolve => setTimeout(resolve, 15_000));
-					return turn(question, attempt + 1);
+					return turn(question, attempt + 1, extraSpecs);
 				}
 				throw new Error(event.message);
 			}
@@ -92,6 +99,18 @@ suite('Integration: engineering directive steering', function () {
 			'Search the web for the current latest stable version of the "graphql-ws" npm package and tell me what it is.',
 		);
 		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
+		assert.ok(
+			requests.some(request => request.tool === 'web_search'),
+			`expected web_search, got: ${requests.map(r => r.tool).join(', ')}`,
+		);
+	});
+
+	test('a current-events question searches the web instead of refusing', async () => {
+		// The reported failure (#27): a news / "latest in the last N hours" question
+		// gets a "can't browse / no realtime access" refusal with no tool call,
+		// unless the user prefixes "use agents to search". It must search on its own.
+		const { requests } = await turn('What is the latest news out of the Democratic Party in the last 24 hours?');
+		assert.ok(requests.length > 0, 'expected a web_search request, got a prose refusal');
 		assert.ok(
 			requests.some(request => request.tool === 'web_search'),
 			`expected web_search, got: ${requests.map(r => r.tool).join(', ')}`,
@@ -141,6 +160,51 @@ suite('Integration: engineering directive steering', function () {
 			nativeCalls,
 			[],
 			`expected no native tool calls before the editor tool, got: ${nativeCalls.join(', ') || '(none)'}`,
+		);
+	});
+
+	test('a todo-list tool is invoked as a vscode-tool block, not a native call', async function () {
+		// Jon's report (#27): with a todo tool available, the assistant called it as a
+		// NATIVE function call (its name collides with a tool it knows natively), which
+		// never reaches VS Code and fails with an unknown-tool error. It must come back
+		// as a vscode-tool block instead. Asking it outright to use the tool keeps the
+		// reply a short tool block — the backend interrupts longer planning turns.
+		const todoSpec: ToolSpec = {
+			name: 'manage_todo_list',
+			args: '{"todos": string[]}',
+			description: 'Record and update an ordered todo list for the current task.',
+		};
+		let result: { content: string; requests: ToolRequest[]; statuses: string[] };
+		try {
+			result = await turn(
+				'Use the manage_todo_list tool to record an ordered todo list for this multi-step task: read a CSV of new users, validate each row, create each user via an external API, then post a summary to Slack.',
+				1,
+				[todoSpec],
+			);
+		} catch (error) {
+			// A persistent backend interruption is not a steering signal; turn() already
+			// retries it. Don't let it fail the suite.
+			if (error instanceof Error && /interrupted/i.test(error.message)) {
+				console.log(`(backend kept interrupting the todo turn — skipping: ${error.message})`);
+				this.skip();
+			}
+			throw error;
+		}
+		const { content, requests, statuses } = result;
+		// A native call surfaces as a "Running tool: …" status; an editor-tool request
+		// is parsed out of a vscode-tool block into requests. We want the latter.
+		const nativeTodoCall = statuses.some(
+			label => label.startsWith('Running tool:') && /manage_todo_list/i.test(label),
+		);
+		assert.ok(
+			!nativeTodoCall,
+			`manage_todo_list must be a vscode-tool block, not a native call; statuses: ${statuses.join(', ')}`,
+		);
+		assert.ok(
+			requests.some(request => request.tool === 'manage_todo_list'),
+			`expected a manage_todo_list vscode-tool request, got requests [${requests
+				.map(r => r.tool)
+				.join(', ')}] and content: ${content.slice(0, 300)}`,
 		);
 	});
 
