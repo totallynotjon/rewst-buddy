@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **Backtick code blocks in tool calls no longer break the chat** - the editor tool protocol delimits both the assistant's tool requests and the results fed back to it with ` ``` ` fences, so backtick content on either side corrupted the round-trip. A `vscode-tool` request whose JSON arguments held a fenced code block (e.g. a template body) was split at the first inner fence — the request became two blocks, failed to parse, and the call was silently dropped so the chat surfaced nothing — and a tool result that itself contained a code block closed its wrapper early, segmenting what the assistant read back. Tool-request parsing now scans the JSON payload bracket-by-bracket, ignoring backticks and tolerating the literal newlines a multi-line code block introduces, instead of reading to the next fence; and tool output is wrapped in a fence longer than any backtick run it contains. The parser also accepts a tool call that lists its arguments alongside `tool` with no `args` wrapper (e.g. a flat `{"tool": "rewst_graphql", "query": …}`), which previously ran with its arguments silently dropped. (#16)
+
 ## [0.43.3] - 2026-06-16
 
 ### Changed

@@ -45,7 +45,121 @@ export const TOOL_FENCE_MARKER = '```' + TOOL_FENCE_TAG;
 /** Hard cap on tool calls honored per assistant reply. */
 export const MAX_REQUESTS_PER_TURN = 5;
 
-const FENCE = new RegExp('```' + TOOL_FENCE_TAG + '[^\\n]*\\n([\\s\\S]*?)```', 'g');
+interface ToolBlock {
+	/** Offset of the opening fence marker. */
+	start: number;
+	/** Offset just past the closing fence. */
+	end: number;
+	/** The block's JSON payload, exactly as written. */
+	json: string;
+}
+
+/**
+ * Locates each vscode-tool block by scanning its JSON payload bracket-by-bracket
+ * rather than to the next ```` ``` ````. The payload routinely carries a fenced
+ * code block (a template body, a snippet), and a ```-delimited match truncated it
+ * at the first inner fence — the request was dropped and the rest leaked as stray
+ * text (#16). String literals (and their escapes) are honored so backticks, braces
+ * and newlines inside a value never end the block early.
+ */
+function findToolBlocks(content: string): ToolBlock[] {
+	const blocks: ToolBlock[] = [];
+	let from = 0;
+	for (;;) {
+		const marker = content.indexOf(TOOL_FENCE_MARKER, from);
+		if (marker < 0) break;
+		const lineEnd = content.indexOf('\n', marker + TOOL_FENCE_MARKER.length);
+		if (lineEnd < 0) break;
+		const value = scanJsonValue(content, lineEnd + 1);
+		if (!value) {
+			from = lineEnd + 1;
+			continue;
+		}
+		const close = content.indexOf('```', value.end);
+		blocks.push({ start: marker, end: close < 0 ? value.end : close + 3, json: value.text });
+		from = blocks[blocks.length - 1].end;
+	}
+	return blocks;
+}
+
+/** Spans the balanced JSON object/array starting at the first `{`/`[` from `start`. */
+function scanJsonValue(content: string, start: number): { text: string; end: number } | undefined {
+	let i = start;
+	while (i < content.length && /\s/.test(content[i])) i++;
+	const open = content[i];
+	if (open !== '{' && open !== '[') return undefined;
+	const close = open === '{' ? '}' : ']';
+	let depth = 0;
+	let inString = false;
+	for (let j = i; j < content.length; j++) {
+		const ch = content[j];
+		if (inString) {
+			if (ch === '\\') j++;
+			else if (ch === '"') inString = false;
+			continue;
+		}
+		if (ch === '"') inString = true;
+		else if (ch === open) depth++;
+		else if (ch === close && --depth === 0) return { text: content.slice(i, j + 1), end: j + 1 };
+	}
+	return undefined;
+}
+
+/**
+ * Parses a tool block's JSON, retrying once with literal control characters inside
+ * string values escaped — the assistant often writes a multi-line code block as a
+ * raw value with real newlines, which is invalid JSON until they are escaped (#16).
+ */
+function tryParseJson(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		try {
+			return JSON.parse(escapeStringControlChars(text));
+		} catch {
+			return undefined;
+		}
+	}
+}
+
+/** Escapes raw control characters that appear inside JSON string literals. */
+function escapeStringControlChars(text: string): string {
+	const escapes: Record<string, string> = { '\n': '\\n', '\r': '\\r', '\t': '\\t', '\f': '\\f', '\b': '\\b' };
+	let out = '';
+	let inString = false;
+	for (let i = 0; i < text.length; i++) {
+		const ch = text[i];
+		if (inString && ch === '\\') {
+			out += ch + (text[i + 1] ?? '');
+			i++;
+			continue;
+		}
+		if (ch === '"') inString = !inString;
+		if (inString && ch < ' ') out += escapes[ch] ?? '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0');
+		else out += ch;
+	}
+	return out;
+}
+
+/** Longest run of consecutive backticks in {@link text}. */
+function longestBacktickRun(text: string): number {
+	let max = 0;
+	let run = 0;
+	for (const ch of text) {
+		run = ch === '`' ? run + 1 : 0;
+		if (run > max) max = run;
+	}
+	return max;
+}
+
+/**
+ * Wraps text in a code fence longer than any backtick run it contains, so output
+ * that itself holds ``` blocks can't close the fence early (#16).
+ */
+export function codeFence(text: string): string {
+	const fence = '`'.repeat(Math.max(3, longestBacktickRun(text) + 1));
+	return `${fence}\n${text}\n${fence}`;
+}
 
 /**
  * Instructions appended to the first message of a request so the assistant
@@ -89,13 +203,9 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
  */
 export function parseToolRequests(content: string): ToolRequest[] {
 	const requests: ToolRequest[] = [];
-	for (const match of content.matchAll(FENCE)) {
-		let parsed: unknown;
-		try {
-			parsed = JSON.parse(match[1]);
-		} catch {
-			continue;
-		}
+	for (const block of findToolBlocks(content)) {
+		const parsed = tryParseJson(block.json);
+		if (parsed === undefined) continue;
 		for (const entry of Array.isArray(parsed) ? parsed : [parsed]) {
 			const request = asToolRequest(entry);
 			if (request) requests.push(request);
@@ -107,15 +217,33 @@ export function parseToolRequests(content: string): ToolRequest[] {
 
 function asToolRequest(value: unknown): ToolRequest | undefined {
 	if (typeof value !== 'object' || value === null) return undefined;
-	const { tool, args } = value as { tool?: unknown; args?: unknown };
+	const record = value as Record<string, unknown>;
+	const tool = record.tool;
 	if (typeof tool !== 'string' || tool.length === 0) return undefined;
-	if (args !== undefined && (typeof args !== 'object' || args === null || Array.isArray(args))) return undefined;
-	return { tool, args: (args as Record<string, unknown>) ?? {} };
+	const args = record.args;
+	if (args !== undefined) {
+		if (typeof args !== 'object' || args === null || Array.isArray(args)) return undefined;
+		return { tool, args: args as Record<string, unknown> };
+	}
+	// No `args` wrapper: the model put the arguments as siblings of `tool`, e.g.
+	// {"tool": "rewst_graphql", "query": …, "variables": …}. Lift them into args so
+	// the call isn't run with the arguments silently dropped (#16).
+	const lifted: Record<string, unknown> = {};
+	for (const key of Object.keys(record)) if (key !== 'tool') lifted[key] = record[key];
+	return { tool, args: lifted };
 }
 
-/** Removes vscode-tool fences so surrounding prose can still be rendered. */
+/** Removes vscode-tool blocks whole so surrounding prose can still be rendered. */
 export function stripToolRequestBlocks(content: string): string {
-	return content.replace(FENCE, '').trim();
+	const blocks = findToolBlocks(content);
+	if (blocks.length === 0) return content.trim();
+	let out = '';
+	let last = 0;
+	for (const block of blocks) {
+		out += content.slice(last, block.start);
+		last = block.end;
+	}
+	return (out + content.slice(last)).trim();
 }
 
 /** One-line summary of args for progress labels and result headers. */

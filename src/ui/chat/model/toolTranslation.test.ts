@@ -6,6 +6,7 @@ import {
 	collectToolCalls,
 	extractTrailingToolResults,
 	filterToolsBySettings,
+	formatToolResultsMessage,
 	rejectedToolsNote,
 	translateToolRequests,
 } from './toolTranslation';
@@ -93,6 +94,46 @@ suite('Unit: toolTranslation', () => {
 			const { calls } = translateToolRequests(content, new Set(['read_file']));
 			assert.strictEqual(calls.length, 2);
 			assert.notStrictEqual(calls[0].callId, calls[1].callId);
+		});
+
+		test('emits a call for a request whose args carry a ``` code block (#16)', () => {
+			const request = { tool: 'update_template_body', args: { body: '```jinja\n{{ x }}\n```' } };
+			const content = `Saving.\n${fence(request)}`;
+			const { calls } = translateToolRequests(content, new Set(['update_template_body']));
+			assert.strictEqual(calls.length, 1);
+			assert.deepStrictEqual(calls[0].input, request.args);
+		});
+	});
+
+	suite('formatToolResultsMessage()', () => {
+		test('fences output containing ``` so it cannot close the block early (#16)', () => {
+			const output = 'Body:\n```jinja\n{{ x }}\n```\nend';
+			const results = [{ callId: 'c1', content: [new vscode.LanguageModelTextPart(output)] }];
+			const calls = new Map([['c1', { name: 'read_file', input: { path: 'a.jinja' } }]]);
+			const message = formatToolResultsMessage(results, calls);
+			assert.ok(message.includes('### read_file {"path":"a.jinja"}'));
+			assert.ok(message.includes('````\n' + output + '\n````'), 'output wrapped in a four-backtick fence');
+		});
+
+		test('uses a plain triple-backtick fence for backtick-free output', () => {
+			const results = [{ callId: 'c1', content: [new vscode.LanguageModelTextPart('plain output')] }];
+			const calls = new Map([['c1', { name: 'list_files', input: undefined }]]);
+			assert.ok(formatToolResultsMessage(results, calls).includes('```\nplain output\n```'));
+		});
+
+		test('keeps multiple ``` blocks from separate web_search results intact (#16)', () => {
+			// web_search joins results with blank lines; a scraped snippet can carry its own ``` block.
+			const output = [
+				'Loop in Jinja\nhttps://ex.com/a\nUse a for loop:\n```jinja\n{% for x in xs %}{{ x }}{% endfor %}\n```',
+				'Filter a list\nhttps://ex.com/b\nTry:\n```python\n[x for x in xs if x]\n```',
+			].join('\n\n');
+			const results = [{ callId: 'c1', content: [new vscode.LanguageModelTextPart(output)] }];
+			const calls = new Map([['c1', { name: 'web_search', input: { query: 'jinja loop' } }]]);
+			const message = formatToolResultsMessage(results, calls);
+			// One outer fence, longer than the inner runs, so neither result's block closes it early.
+			assert.ok(message.includes('````\n' + output + '\n````'), 'whole result wrapped in a four-backtick fence');
+			assert.ok(message.includes('```jinja\n{% for x in xs %}{{ x }}{% endfor %}\n```'), 'first block survives');
+			assert.ok(message.includes('```python\n[x for x in xs if x]\n```'), 'second block survives');
 		});
 	});
 

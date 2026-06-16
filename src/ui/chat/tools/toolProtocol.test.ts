@@ -3,6 +3,7 @@ import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
 import {
 	buildToolInstructions,
+	codeFence,
 	describeRequest,
 	describeRequestBrief,
 	MAX_REQUESTS_PER_TURN,
@@ -56,6 +57,41 @@ suite('Unit: toolProtocol', () => {
 			assert.deepStrictEqual(parseToolRequests('Use `template()` like this:\n```jinja\n{{ x }}\n```'), []);
 		});
 
+		test('parses a request whose args carry a ``` code block (#16)', () => {
+			const request = { tool: 'update_template_body', args: { body: '# Title\n```jinja\n{{ x }}\n```\n' } };
+			const content = `Saving the template.\n${fence(JSON.stringify(request))}`;
+			assert.deepStrictEqual(parseToolRequests(content), [request]);
+		});
+
+		test('parses a tool call written with a raw multi-line ``` code block (#16)', () => {
+			// RoboRewsty writes the body as a real multi-line fenced block: literal
+			// newlines inside the JSON string, fence on its own lines. That is invalid
+			// JSON and used to split the call in two, dropping it.
+			const content = [
+				'```vscode-tool',
+				'{"tool": "update_template_body", "args": {"body": "# Title',
+				'```jinja',
+				'{{ x }}',
+				'```',
+				'"}}',
+				'```',
+			].join('\n');
+			assert.deepStrictEqual(parseToolRequests(content), [
+				{ tool: 'update_template_body', args: { body: '# Title\n```jinja\n{{ x }}\n```\n' } },
+			]);
+		});
+
+		test('lifts sibling keys into args when the model omits the args wrapper (#16)', () => {
+			// RoboRewsty sometimes writes the arguments flat, alongside `tool`, with no
+			// `args` object — the query was dropped and the call ran with empty args.
+			const content = fence(
+				'{"tool": "rewst_graphql", "query": "{ workflows { id } }", "variables": {"orgId": "o1"}}',
+			);
+			assert.deepStrictEqual(parseToolRequests(content), [
+				{ tool: 'rewst_graphql', args: { query: '{ workflows { id } }', variables: { orgId: 'o1' } } },
+			]);
+		});
+
 		test('caps requests per turn', () => {
 			const many = Array.from({ length: MAX_REQUESTS_PER_TURN + 3 }, () => '{"tool": "list_files"}');
 			const content = fence(`[${many.join(',')}]`);
@@ -70,6 +106,34 @@ suite('Unit: toolProtocol', () => {
 			assert.ok(stripped.includes('Checking.'));
 			assert.ok(stripped.includes('{{ x }}'));
 			assert.ok(!stripped.includes(TOOL_FENCE_TAG));
+		});
+
+		test('removes a backtick-carrying tool block whole, leaking no fragments (#16)', () => {
+			const request = { tool: 'update_template_body', args: { body: '```jinja\n{{ x }}\n```' } };
+			const content = `Saving.\n${fence(JSON.stringify(request))}\nDone.`;
+			const stripped = stripToolRequestBlocks(content);
+			assert.ok(stripped.includes('Saving.'));
+			assert.ok(stripped.includes('Done.'));
+			assert.ok(!stripped.includes(TOOL_FENCE_TAG));
+			assert.ok(!stripped.includes('jinja'));
+		});
+	});
+
+	suite('codeFence()', () => {
+		test('wraps plain text in a triple-backtick fence', () => {
+			assert.strictEqual(codeFence('hello'), '```\nhello\n```');
+		});
+
+		test('uses a longer fence than a ``` block inside the text', () => {
+			const wrapped = codeFence('before\n```\ncode\n```\nafter');
+			assert.ok(wrapped.startsWith('````\n'), 'opens with four backticks');
+			assert.ok(wrapped.endsWith('\n````'), 'closes with four backticks');
+			assert.ok(wrapped.includes('```\ncode\n```'), 'keeps the inner block verbatim');
+		});
+
+		test('grows the fence to outrun the longest backtick run', () => {
+			const wrapped = codeFence('a ````` b');
+			assert.ok(wrapped.startsWith('``````\n'), 'six backticks outrun a run of five');
 		});
 	});
 

@@ -1,5 +1,11 @@
 import vscode from 'vscode';
-import { buildToolInstructions, parseToolRequests, type ToolRequest, type ToolSpec } from '../tools/toolProtocol';
+import {
+	buildToolInstructions,
+	codeFence,
+	parseToolRequests,
+	type ToolRequest,
+	type ToolSpec,
+} from '../tools/toolProtocol';
 import { ALL_TOOL_SPECS, isToolPermitted, type AiToolSettings } from './lmTools';
 
 /**
@@ -140,7 +146,7 @@ export function formatToolResultsMessage(
 		const name = call?.name ?? 'tool';
 		const argsLabel = call?.input === undefined ? '' : ` ${JSON.stringify(call.input)}`;
 		const output = result.content.map(partText).filter(Boolean).join('\n');
-		sections.push(`### ${name}${argsLabel}\n\`\`\`\n${output}\n\`\`\``);
+		sections.push(`### ${name}${argsLabel}\n${codeFence(output)}`);
 	}
 	sections.push('Reply with more vscode-tool blocks if you need anything else, or give your final answer.');
 	return sections.join('\n\n');
