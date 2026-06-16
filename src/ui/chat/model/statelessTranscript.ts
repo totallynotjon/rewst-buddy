@@ -1,4 +1,3 @@
-import { getHash } from '@utils';
 import vscode from 'vscode';
 
 const MAX_ENTRY_CHARS = 8_000;
@@ -116,27 +115,4 @@ The user is talking from VS Code. Treat this visible transcript as the authorita
 
 ${entries.join('\n\n')}
 </visible_chat_transcript>`;
-}
-
-/** Key used only to identify the latest retained transient Rewst conversation for this visible chat branch. */
-export function visibleChatKey(orgId: string, messages: readonly RequestMessage[]): string {
-	const userSpine = messages
-		.filter(message => message.role === vscode.LanguageModelChatMessageRole.User)
-		.map(message =>
-			message.content
-				.map(part => {
-					const candidate = part as PartLike;
-					if (typeof part === 'string') return part;
-					if (typeof candidate?.value === 'string') return candidate.value;
-					if (typeof candidate?.callId === 'string') return `:${candidate.callId}:`;
-					return '';
-				})
-				.join(''),
-		)
-		.join('\u0001');
-	return getHash(`${orgId}\u0001${userSpine}`);
-}
-
-export function visibleChatPrefixKey(orgId: string, messages: readonly RequestMessage[]): string {
-	return visibleChatKey(orgId, messages.slice(0, -1));
 }

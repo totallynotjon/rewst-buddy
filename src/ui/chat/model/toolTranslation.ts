@@ -118,6 +118,34 @@ export function extractTrailingToolResults(
 	return results.length > 0 ? results : undefined;
 }
 
+function partText(part: unknown): string {
+	if (typeof part === 'string') return part;
+	const candidate = part as { value?: unknown };
+	return typeof candidate?.value === 'string' ? candidate.value : '';
+}
+
+/**
+ * Compact message feeding tool outputs back into the same backend conversation
+ * that emitted the calls (the reuse path). The conversation already holds the
+ * question and prior context, so only the results — labeled by tool name and
+ * args — are sent, not the whole transcript.
+ */
+export function formatToolResultsMessage(
+	results: readonly ToolResultPartLike[],
+	calls: ReadonlyMap<string, ToolCallInfo>,
+): string {
+	const sections: string[] = ['Tool results:'];
+	for (const result of results) {
+		const call = calls.get(result.callId);
+		const name = call?.name ?? 'tool';
+		const argsLabel = call?.input === undefined ? '' : ` ${JSON.stringify(call.input)}`;
+		const output = result.content.map(partText).filter(Boolean).join('\n');
+		sections.push(`### ${name}${argsLabel}\n\`\`\`\n${output}\n\`\`\``);
+	}
+	sections.push('Reply with more rewst-tool blocks if you need anything else, or give your final answer.');
+	return sections.join('\n\n');
+}
+
 /** Note appended when the model asked for tools that cannot be invoked. */
 export function rejectedToolsNote(names: readonly string[]): string {
 	const unique = [...new Set(names)];

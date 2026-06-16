@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
-import { serializeVisibleChat, visibleChatKey, visibleChatPrefixKey } from './statelessTranscript';
+import { serializeVisibleChat } from './statelessTranscript';
 
 const { suite, test } = Mocha;
 const { User, Assistant } = vscode.LanguageModelChatMessageRole;
@@ -50,17 +50,5 @@ suite('Unit: statelessTranscript', () => {
 
 		assert.match(transcript, /Before\s+After/);
 		assert.ok(!transcript.includes('Searching documentation'));
-	});
-
-	test('prefix key matches the prior full key for the next turn', () => {
-		const first = [message(User, [text('hi')])];
-		const second = [
-			message(User, [text('hi')]),
-			message(Assistant, [text('hello')]),
-			message(User, [text('next')]),
-		];
-
-		assert.strictEqual(visibleChatPrefixKey('org-1', second), visibleChatKey('org-1', first));
-		assert.notStrictEqual(visibleChatPrefixKey('org-2', second), visibleChatKey('org-1', first));
 	});
 });
