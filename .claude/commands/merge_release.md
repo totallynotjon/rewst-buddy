@@ -228,12 +228,20 @@ Release vX.X.X: [Brief description of key changes]
 
 ```
 
-Please review these updates. Once you've applied them, committed the release, and pushed to the target branch, let me know and I'll create the GitHub release (Phase 3).
+Please review these updates. Once they're applied and committed on the PR branch, let me know and I'll squash-merge the release PR into the target branch and create the GitHub release (Phase 3).
 ```
 
 # Phase 3: GitHub Release
 
-Only proceed after the user confirms the release commit (version bump + changelog + any README updates) has been committed **and pushed** to the target branch on the remote.
+The release reaches the target branch by **squash-merging the release PR** — this repo is configured squash-only, and every PR merges that way (never a merge commit or rebase). With the version bump + changelog committed on the PR branch and the PR review-clean, land it with:
+
+```bash
+gh pr merge <PR> --squash --subject "Release vX.X.X: <brief description>"
+```
+
+then `git checkout main && git pull` so the local target branch matches the remote. Only after that release commit is on the remote target branch do you create the GitHub release below.
+
+Only proceed after the release commit (version bump + changelog + any README updates) has been squash-merged and is **on the remote** target branch.
 
 ## Step 1: Verify Prerequisites
 
