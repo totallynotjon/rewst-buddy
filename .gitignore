@@ -5,6 +5,11 @@ node_modules
 *.vsix
 tsconfig.tsbuildinfo
 
+# Local secrets — keep .env out, but track the template
+.env
+.env.local
+!.env.example
+
 # Claude Code local files
 .claude/settings.*
 .claudeignore

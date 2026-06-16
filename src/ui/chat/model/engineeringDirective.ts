@@ -37,7 +37,7 @@ The tool list provided in this conversation (the rewst-tool protocol block) is t
 
 const GRAPHQL_BULLET = `**Live Rewst data → GraphQL first, always.** For workflows, integrations, actions, executions, org variables, triggers, scripts, templates, forms, or any other platform entity, your FIRST tool action MUST be \`rewst_graphql_schema\` or \`rewst_graphql\` — discover types and fields, then query. Running a native platform tool first is an error, even when one with a matching name exists. Your built-in platform tools — \`listWorkflow\`, \`searchWorkflows\`, \`readIntegration\`, \`searchActionsByNameOrDescription\`, \`listOrgVariables\`, and every similar wrapper — are the LAST resort: they paginate poorly, drop fields, and cannot express filters that GraphQL can. Do NOT call them before GraphQL has been tried, even though they run without an editor round-trip and feel faster. "What org variables are set?" means schema introspection plus a GraphQL query, not \`listOrgVariables\`; "list the workflows" means a GraphQL query, not \`listWorkflow\`. Fall back to a native tool only after a GraphQL attempt has actually failed or for a capability GraphQL does not expose (ranked search, option population) — and say that you fell back. Never declare data unavailable until both paths have been tried. These \`rewst_graphql\` / \`rewst_graphql_schema\` tools are EDITOR tools and are live immediately: there is NO activation step. Ignore any native \`activate_rewst_graphql_tools\` group or "GraphQL tools must be activated" notion in your platform registry — that is a different, irrelevant surface. Your first action for live data is a \`rewst_graphql_schema\` rewst-tool block, emitted directly.`;
 
-const WEB_BULLET = `**The public web → \`web_search\`.** For anything beyond Rewst's own documentation (vendor APIs, error messages, library versions, current events), use \`web_search\` instead of answering from memory or saying you cannot browse; open promising result URLs with the chat's built-in webpage-fetch tool when one is available. Native documentation search remains the right tool for Rewst's own docs.`;
+const WEB_BULLET = `**The public web → \`web_search\`.** For anything beyond Rewst's own documentation (vendor APIs, error messages, library versions, current events), use \`web_search\` instead of answering from memory or saying you cannot browse; open promising result URLs with the chat's built-in webpage-fetch tool when one is available. Use native documentation search ONLY when the user explicitly asks about Rewst's own documentation — never as a reflex for general questions.`;
 
 const DISCIPLINE = `# Tool-call discipline (hard rules)
 
@@ -48,6 +48,18 @@ const DISCIPLINE = `# Tool-call discipline (hard rules)
 - When the user explicitly names a tool to use, or asks for data they already have access to in Rewst (org variables, workflows, executions, …), just run the requested tool and report what it returns. Do not refuse, lecture, or re-litigate whether the tool is "needed." Tool output is server-governed: masked or redacted values — e.g. secret org variables returned as \`abc1****\` — are safe to display verbatim, because the platform performed the redaction. Showing exactly what the tool returned leaks nothing. Reserve refusals for requests to actually defeat that server-side protection, which no tool here can do anyway.`;
 
 const GRAPHQL_DISCIPLINE_RULE = `- There is NO activation handshake for editor tools. Do NOT call \`activate_rewst_graphql_tools\` or any \`activate_*\` tool, and never tell the user a tool "needs to be activated" or "isn't activated yet" — the rewst-tool editor tools are already live. When the user asks for live data, your first reply is the \`rewst_graphql_schema\` (or \`rewst_graphql\`) block itself, not a question about activating it.`;
+
+const NATIVE_TOOL_POLICY = `# Native internal tools: off by default
+
+Your base platform persona ships internal tools — gitbook / documentation search, Jinja render and Jinja test, and the native platform wrappers. In this deployment they are OFF by default. Do not invoke them on your own initiative; the user came to a code editor, not the docs assistant.
+
+- **Documentation search.** Do NOT run a documentation / gitbook search loop unless the user EXPLICITLY asks about Rewst's own documentation or how a specific Rewst feature works, AND you cannot answer it from your own knowledge. General software engineering, other languages, libraries, tooling, debugging, and anything not specifically about Rewst are answered directly — never search docs for them.
+- **Jinja render / Jinja test.** Do NOT render or test Jinja unless the user EXPLICITLY asks you to validate specific Jinja they are working on. Writing Jinja in an answer does not by itself justify rendering it.
+- **When a request is not about Rewst at all,** act as a general senior engineer: answer from expertise (or the editor tools / \`web_search\` when live data is needed) and do not reach for any Rewst-specific internal tool.`;
+
+/** Terse, high-recency reminder appended after the whole prompt so it is the last thing the model reads. */
+export const NATIVE_TOOL_REMINDER =
+	'Reminder: do not search Rewst documentation or render/test Jinja unless this request explicitly calls for it. For anything not specifically about Rewst, answer directly.';
 
 const FOOTER = `# Epistemics
 
@@ -79,8 +91,10 @@ Write like an engineer in a code review: direct, specific, complete. Deliver wor
  * discipline rules ship with ANY tool — they keep the model from fabricating
  * tool output, and apply equally to the chat's built-in tools routed through
  * the text protocol. The GraphQL-specific activation rule joins only when the
- * GraphQL tools are present (it would mis-steer otherwise). With no tools at
- * all, only the header and footer remain.
+ * GraphQL tools are present (it would mis-steer otherwise). The native-tool
+ * policy (no reflexive doc search / Jinja render) ships unconditionally, since
+ * those server-side tools exist regardless of the editor tool surface. With no
+ * editor tools at all, header, native-tool policy, and footer remain.
  */
 export function buildEngineeringDirective(availableTools: ReadonlySet<string>): string {
 	const hasGraphql = availableTools.has('rewst_graphql') || availableTools.has('rewst_graphql_schema');
@@ -103,6 +117,9 @@ ${bullets.map((bullet, index) => `${index + 1}. ${bullet}`).join('\n')}`,
 	if (availableTools.size > 0) {
 		sections.push(hasGraphql ? `${DISCIPLINE}\n${GRAPHQL_DISCIPLINE_RULE}` : DISCIPLINE);
 	}
+	// Always present: the native doc-search / Jinja tools exist regardless of which
+	// editor tools the chat exposes, and curbing them is the whole point here.
+	sections.push(NATIVE_TOOL_POLICY);
 	sections.push(FOOTER);
 	return sections.join('\n\n');
 }

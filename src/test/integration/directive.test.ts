@@ -36,7 +36,10 @@ suite('Integration: engineering directive steering', function () {
 		clearCachedSession();
 	});
 
-	async function turn(question: string, attempt = 1): Promise<{ content: string; requests: ToolRequest[] }> {
+	async function turn(
+		question: string,
+		attempt = 1,
+	): Promise<{ content: string; requests: ToolRequest[]; statuses: string[] }> {
 		const directive = buildEngineeringDirective(new Set(ALL_TOOL_SPECS.map(spec => spec.name)));
 		const message = `${directive}\n\n${question}\n\n${buildToolInstructions(ALL_TOOL_SPECS)}`;
 		let content = '';
@@ -66,8 +69,13 @@ suite('Integration: engineering directive steering', function () {
 			`===== Requested tools =====\n${requests.map(r => `${r.tool} ${JSON.stringify(r.args)}`).join('\n') || '(none)'}`,
 		);
 		console.log(`===== Full reply =====\n${content}\n======================\n`);
-		return { content, requests };
+		return { content, requests, statuses };
 	}
+
+	// The server reports a gitbook doc-search loop via the `searching` status,
+	// mapped to this label in ConversationEventMapper.
+	const DOC_SEARCH_LABEL = 'Searching documentation';
+	const searchedDocs = (statuses: string[]): boolean => statuses.some(label => label.includes(DOC_SEARCH_LABEL));
 
 	test('org variable question routes to GraphQL schema introspection', async () => {
 		const { requests } = await turn('What org variables are set in this org?');
@@ -97,6 +105,28 @@ suite('Integration: engineering directive steering', function () {
 		assert.ok(
 			tools.every(tool => tool === 'rewst_graphql_schema' || tool === 'rewst_graphql'),
 			`expected only GraphQL tools, got: ${tools.join(', ')}`,
+		);
+	});
+
+	test('a non-Rewst engineering task does not trigger a documentation search', async () => {
+		const { statuses } = await turn(
+			'Outline three concrete improvements to a Rust terminal Snake game and sketch an implementation plan for each. This is plain Rust, nothing to do with Rewst.',
+		);
+		assert.ok(
+			!searchedDocs(statuses),
+			`expected no documentation search for a non-Rewst task, got statuses: ${statuses.join(', ') || '(none)'}`,
+		);
+	});
+
+	test('an explicit Rewst-docs request is still allowed to search', async () => {
+		// Negative control: the curb must not over-suppress when the user actually
+		// asks about Rewst's own documentation.
+		const { statuses, content } = await turn(
+			"Search Rewst's own documentation for how the platform's noop tasks work and cite what you find.",
+		);
+		assert.ok(
+			searchedDocs(statuses) || /noop/i.test(content),
+			`expected an explicit docs request to search or answer about noops, got statuses: ${statuses.join(', ') || '(none)'}`,
 		);
 	});
 });

@@ -6,6 +6,7 @@
 
 - **Cage-Free Rewsty memory now follows the visible VS Code transcript** - each turn sends the visible chat history as authoritative context instead of relying on a long-lived Rewst backend conversation. The extension keeps the latest successful transient Rewst conversation for future resume work and deletes the prior one after a newer turn succeeds.
 - **Resume now opens transcripts only** - `Rewst Buddy: Resume Rewst AI Conversation` still lists stored Rewst conversations and opens the selected transcript, but binding a future VS Code message to that Rewst conversation is deferred to a transcript-import resume flow.
+- **Cage-Free Rewsty no longer reflexively searches Rewst docs or renders Jinja** - the steering directive now keeps the assistant's native internal tools (documentation search, Jinja render/test) off by default, so general engineering questions are answered directly. It still searches Rewst's documentation or validates Jinja when you explicitly ask.
 
 ## [0.42.0] - 2026-06-12
 
