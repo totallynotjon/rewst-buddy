@@ -3,7 +3,7 @@ import * as Mocha from 'mocha';
 import { createMockSession, initTestEnvironment } from '@test';
 import type { AskOptions, ConversationEvent, Session } from '@sessions';
 import vscode from 'vscode';
-import { conversationMap } from './conversationMap';
+import { latestConversationStore } from './latestConversationStore';
 import { RoboRewstyChatModelProvider, type ProviderDeps } from './RoboRewstyChatModelProvider';
 import { addOnceApprovals, APPROVAL_TOOL_NAME, takeOnceApprovals, type AiToolSettings } from './lmTools';
 
@@ -127,7 +127,7 @@ const TEMPLATE_LINKS_TOOL: vscode.LanguageModelChatTool = {
 suite('Unit: RoboRewstyChatModelProvider', () => {
 	setup(() => {
 		initTestEnvironment();
-		conversationMap._resetForTesting();
+		latestConversationStore._resetForTesting();
 	});
 
 	test('lists one model per active session org with tool calling', () => {
@@ -149,7 +149,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.strictEqual(harness.captured[0].orgId, 'org-1');
 	});
 
-	test('consecutive turns continue the same backend conversation', async () => {
+	test('consecutive turns start fresh backend conversations with visible history', async () => {
 		const harness = makeHarness([completeTurn('Hello'), completeTurn('Again')]);
 		await harness.run([message(User, [text('hi')])]);
 
@@ -161,10 +161,14 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		]);
 
 		assert.strictEqual(harness.captured.length, 2);
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-1');
+		assert.strictEqual(harness.captured[1].conversationId, undefined);
+		assert.match(harness.captured[1].message, /<visible_chat_transcript>/);
+		assert.match(harness.captured[1].message, /USER: hi/);
+		assert.match(harness.captured[1].message, /ASSISTANT: Hello/);
+		assert.match(harness.captured[1].message, /USER: next/);
 	});
 
-	test('a rewound transcript forks a fresh conversation seeded with a replay', async () => {
+	test('a rewound transcript starts fresh with only the visible transcript', async () => {
 		const harness = makeHarness([
 			completeTurn('Hello', 'conv-1'),
 			completeTurn('Again', 'conv-1'),
@@ -188,7 +192,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 
 		assert.strictEqual(harness.captured.length, 3);
 		assert.strictEqual(harness.captured[2].conversationId, undefined, 'fork starts a new conversation');
-		assert.match(harness.captured[2].message, /<chat_transcript_replay>/);
+		assert.match(harness.captured[2].message, /<visible_chat_transcript>/);
 		assert.match(harness.captured[2].message, /USER: hi/);
 		assert.match(harness.captured[2].message, /ASSISTANT: Hello/);
 		assert.match(harness.captured[2].message, /a different question/);
@@ -206,30 +210,6 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		]);
 		// The second request's prefix matches nothing stored — fresh conversation.
 		assert.strictEqual(harness.captured[1].conversationId, undefined);
-	});
-
-	test('pending resume binds the next fresh turn, exactly once', async () => {
-		conversationMap.setPendingResume('org-1', 'conv-resumed');
-		const harness = makeHarness([completeTurn('Continuing', 'conv-resumed'), completeTurn('New topic', 'conv-2')]);
-
-		await harness.run([message(User, [text('where were we?')])]);
-		assert.strictEqual(harness.captured[0].conversationId, 'conv-resumed', 'fresh turn consumes the binding');
-
-		await harness.run([message(User, [text('entirely new question')])]);
-		assert.strictEqual(harness.captured[1].conversationId, undefined, 'binding does not repeat');
-	});
-
-	test('post-resume turns continue the resumed conversation', async () => {
-		conversationMap.setPendingResume('org-1', 'conv-resumed');
-		const harness = makeHarness([completeTurn('Continuing', 'conv-resumed'), completeTurn('More', 'conv-resumed')]);
-
-		await harness.run([message(User, [text('where were we?')])]);
-		await harness.run([
-			message(User, [text('where were we?')]),
-			message(Assistant, [text('Continuing')]),
-			message(User, [text('go on')]),
-		]);
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-resumed');
 	});
 
 	test('advertises permitted tools and emits tool calls from rewst-tool fences', async () => {
@@ -273,7 +253,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(textOf(harness.parts).includes('run_command'), 'rejection note names the tool');
 	});
 
-	test('tool results round-trip into the same conversation', async () => {
+	test('tool results start a fresh conversation with tool output in the visible transcript', async () => {
 		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
 		const harness = makeHarness([completeTurn(reply), completeTurn('It says hello.')]);
 
@@ -293,15 +273,18 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			[READ_FILE_TOOL],
 		);
 
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'tool round stays in the conversation');
-		assert.ok(harness.captured[1].message.includes('Tool results:'));
+		assert.strictEqual(harness.captured[1].conversationId, undefined);
 		assert.ok(harness.captured[1].message.includes('file contents'));
 		assert.ok(harness.captured[1].message.includes('read_file'));
 	});
 
-	test('tool-result continuity survives assistant-text drift (callId path)', async () => {
+	test('tool-result cleanup survives assistant-text drift by callId', async () => {
 		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
-		const harness = makeHarness([completeTurn(reply), completeTurn('It says hello.')]);
+		const harness = makeHarness([
+			completeTurn(reply, 'conv-tool-call'),
+			completeTurn('It says hello.', 'conv-tool-result'),
+		]);
+		harness.wrapper.when('deleteConversation', { data: { deleteConversation: 'conv-tool-call' } });
 
 		const ask1 = [message(User, [text('check a.txt')])];
 		await harness.run(ask1, [READ_FILE_TOOL]);
@@ -320,7 +303,11 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			[READ_FILE_TOOL],
 		);
 
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'recovered by callId despite text drift');
+		assert.strictEqual(harness.captured[1].conversationId, undefined);
+		assert.deepStrictEqual(
+			harness.wrapper.getCallsFor('deleteConversation').map(call => call.variables),
+			[{ id: 'conv-tool-call' }],
+		);
 	});
 
 	test('with the approval tool available, an approval pause becomes an in-chat tool call', async () => {
@@ -488,7 +475,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		await assert.rejects(() => harness.run([message(User, [text('hi')])]), /boom/);
 	});
 
-	test('new conversations open with the hidden engineering directive; continuations do not repeat it', async () => {
+	test('every stateless request carries the hidden engineering directive', async () => {
 		const harness = makeHarness([completeTurn('Hello'), completeTurn('Again')]);
 		await harness.run([message(User, [text('hi')])]);
 		assert.ok(
@@ -501,10 +488,27 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			message(Assistant, [text('Hello')]),
 			message(User, [text('next')]),
 		]);
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-1');
+		assert.strictEqual(harness.captured[1].conversationId, undefined);
 		assert.ok(
-			!harness.captured[1].message.includes('<engineering_layer_directive>'),
-			'continuing the conversation does not repeat the directive',
+			harness.captured[1].message.startsWith('<engineering_layer_directive>'),
+			'every fresh backend request carries the directive',
+		);
+	});
+
+	test('deletes the previously retained conversation after a newer turn succeeds', async () => {
+		const harness = makeHarness([completeTurn('Hello', 'conv-old'), completeTurn('Again', 'conv-new')]);
+		harness.wrapper.when('deleteConversation', { data: { deleteConversation: 'conv-old' } });
+
+		await harness.run([message(User, [text('hi')])]);
+		await harness.run([
+			message(User, [text('hi')]),
+			message(Assistant, [text('Hello')]),
+			message(User, [text('next')]),
+		]);
+
+		assert.deepStrictEqual(
+			harness.wrapper.getCallsFor('deleteConversation').map(call => call.variables),
+			[{ id: 'conv-old' }],
 		);
 	});
 

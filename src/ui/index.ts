@@ -1,6 +1,5 @@
 export { extractCodeBlocks, type CodeBlock } from './chat/codeBlocks';
 export { conversationLabel, formatConversationTranscript } from './chat/conversationTranscript';
-export { conversationMap, ConversationMap } from './chat/model/conversationMap';
 export { getLastAiAnswer, setLastAiAnswer } from './chat/model/lastAnswer';
 export { LmToolRegistry } from './chat/model/lmTools';
 export { RoboRewstyChatModelProvider } from './chat/model/RoboRewstyChatModelProvider';

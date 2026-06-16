@@ -14,10 +14,10 @@ import { ChunkGate } from '../tools/chunkGate';
 import { stripToolRequestBlocks } from '../tools/toolProtocol';
 import { buildWorkspaceOverview } from '../tools/workspaceTools';
 import { prependInstructions } from '../promptContext';
-import { conversationMap, nextTurnKey, prefixKey, spineDepth } from './conversationMap';
-import { buildHistoryReplay } from './historyReplay';
 import { buildEngineeringDirective } from './engineeringDirective';
+import { latestConversationStore, type RetainedConversation } from './latestConversationStore';
 import { setLastAiAnswer } from './lastAnswer';
+import { serializeVisibleChat, visibleChatKey, visibleChatPrefixKey } from './statelessTranscript';
 import {
 	APPROVAL_TOOL_NAME,
 	readAiToolSettings,
@@ -32,7 +32,6 @@ import {
 	collectToolCalls,
 	extractTrailingToolResults,
 	filterToolsBySettings,
-	formatToolResultsMessage,
 	rejectedToolsNote,
 	translateToolRequests,
 } from './toolTranslation';
@@ -108,8 +107,9 @@ export const defaultProviderDeps: ProviderDeps = {
  * Contributes RoboRewsty to VS Code's chat model picker: one model per active
  * Rewst session org. Chat requests stream through the existing askRewstAi
  * subscription; tool calling is translated between VS Code's tool contract
- * and RoboRewsty's text protocol (toolTranslation.ts); continuity across the
- * stateless provider API is content-derived (conversationMap.ts).
+ * and RoboRewsty's text protocol (toolTranslation.ts). VS Code's visible chat
+ * transcript is the source of truth for memory; transient backend conversations
+ * are retained only for cleanup and approval/tool-call handoff.
  */
 export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProvider, vscode.Disposable {
 	private changeEmitter = new vscode.EventEmitter<void>();
@@ -184,10 +184,12 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		const permittedNames = new Set(tools.map(tool => tool.name));
 		const { customInstructions, conversationType, showActivity } = this.deps.aiConfig();
 
-		const key = prefixKey(orgId, messages);
+		const currentKey = visibleChatKey(orgId, messages);
+		const prefixKey = visibleChatPrefixKey(orgId, messages);
 		const trailingResults = extractTrailingToolResults(messages);
 		let conversationId: string | undefined;
 		let message: string;
+		let previousRetained: RetainedConversation | undefined;
 
 		if (trailingResults) {
 			const calls = collectToolCalls(messages);
@@ -200,41 +202,25 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				const input = approval.input as Partial<ApprovalToolInput> | undefined;
 				if (typeof input?.resume !== 'string') throw new Error('Approval call carried no resumable request.');
 				message = input.resume;
+				conversationId = latestConversationStore.lookupByCallIds(
+					trailingResults.map(result => result.callId),
+				)?.conversationId;
+				previousRetained = latestConversationStore.lookup(prefixKey);
 			} else {
-				// VS Code is handing back the outputs of tool calls we emitted last
-				// turn — feed them to the same backend conversation.
-				message = formatToolResultsMessage(trailingResults, calls);
+				message = await this.buildStatelessMessage(
+					messages,
+					customInstructions,
+					settings,
+					permittedNames,
+					tools,
+				);
+				previousRetained =
+					latestConversationStore.lookupByCallIds(trailingResults.map(result => result.callId)) ??
+					latestConversationStore.lookup(prefixKey);
 			}
-			// Recover the conversation by the tool-call ids VS Code preserved
-			// (robust); fall back to the prefix hash only if that misses.
-			conversationId =
-				conversationMap.lookupByCallIds(trailingResults.map(result => result.callId)) ??
-				conversationMap.lookup(key);
 		} else {
-			const fresh = messages.every(entry => entry.role !== vscode.LanguageModelChatMessageRole.Assistant);
-			message = prependInstructions(this.trailingText(messages), customInstructions);
-			if (settings.enableWorkspaceTools && permittedNames.size > 0) {
-				const overview = await this.deps.workspaceOverview();
-				if (overview) message += `\n\nThe user's VS Code workspace:\n${overview}`;
-			} else {
-				// No file listing in this mode, but the working directory is cheap
-				// context the model should always have.
-				const root = this.deps.workspaceRoot();
-				if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
-			}
-			if (tools.length > 0) message += `\n\n${buildInstructionsForChatTools(tools)}`;
-			conversationId =
-				(fresh ? conversationMap.takePendingResume(orgId) : undefined) ?? conversationMap.lookup(key);
-			if (conversationId === undefined) {
-				// The opening message of a new backend conversation carries the
-				// hidden steering preamble (never rendered in the chat UI), built
-				// from the tools actually available this turn. When the editor
-				// holds history the backend doesn't — a reloaded window, or a
-				// rewound transcript whose append-only conversation had to be
-				// forked — a compact transcript replay restores that context.
-				const replay = fresh ? '' : buildHistoryReplay(messages.slice(0, -1));
-				message = [buildEngineeringDirective(permittedNames), replay, message].filter(Boolean).join('\n\n');
-			}
+			message = await this.buildStatelessMessage(messages, customInstructions, settings, permittedNames, tools);
+			previousRetained = latestConversationStore.lookup(prefixKey);
 		}
 
 		// Everything reported this turn, for predicting the next request's key.
@@ -267,17 +253,34 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			progress.report(new vscode.LanguageModelTextPart(`\n\n> _${label}_\n`));
 			needsSeparator = true;
 		};
-		const storeContinuity = (calls: readonly vscode.LanguageModelToolCallPart[]): void => {
+		const bindPausedConversation = (calls: readonly vscode.LanguageModelToolCallPart[]): void => {
 			if (!conversationId) return;
-			// Primary: bind the conversation to the exact callIds VS Code will
-			// replay (drift-proof) for tool rounds. Secondary: the user-spine hash,
-			// which carries plain-text follow-ups that have no tool calls.
 			if (calls.length > 0)
-				conversationMap.storeByCallIds(
+				latestConversationStore.bindCallIds(
 					calls.map(call => call.callId),
+					currentKey,
 					conversationId,
 				);
-			conversationMap.store(nextTurnKey(orgId, messages), conversationId, spineDepth(messages));
+		};
+		const retainSuccessfulConversation = async (
+			calls: readonly vscode.LanguageModelToolCallPart[],
+		): Promise<void> => {
+			if (!conversationId) return;
+			if (calls.length > 0)
+				latestConversationStore.bindCallIds(
+					calls.map(call => call.callId),
+					currentKey,
+					conversationId,
+				);
+			const stale = previousRetained?.conversationId;
+			latestConversationStore.storeLatest(currentKey, conversationId, previousRetained);
+			if (stale && stale !== conversationId) {
+				try {
+					await session.sdk?.deleteConversation({ id: stale });
+				} catch (error) {
+					log.debug('RoboRewstyChatModelProvider: stale conversation delete failed', stale, error);
+				}
+			}
 		};
 		// Tools allow-listed for a one-time Approve; reverted once the turn ends.
 		const toolsToRevert = new Set<string>();
@@ -326,7 +329,6 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 								emitText(
 									"\n\n*RoboRewsty needs approval to run a Rewst action, but it didn't name the tool, so it can't be approved from here. You can approve it in the Rewst web app.*\n",
 								);
-								storeContinuity([]);
 								return;
 							}
 							if (options.tools?.some(tool => tool.name === APPROVAL_TOOL_NAME)) {
@@ -350,7 +352,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 									input,
 								);
 								progress.report(call);
-								storeContinuity([call]);
+								bindPausedConversation([call]);
 								return;
 							}
 							const choice = await this.deps.confirmApproval(named);
@@ -358,7 +360,6 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 								emitText(
 									'\n\n*Approval declined — the Rewst action was not run. Ask again if you change your mind.*\n',
 								);
-								storeContinuity([]);
 								return;
 							}
 							for (const tool of named) {
@@ -394,7 +395,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				if (calls.length > 0) {
 					emitText(remainder);
 					for (const call of calls) progress.report(call);
-					storeContinuity(calls);
+					await retainSuccessfulConversation(calls);
 					return;
 				}
 
@@ -403,7 +404,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				if (sources.length > 0) finalText += renderSourcesMarkdown(sources);
 				emitText(finalText);
 				setLastAiAnswer(stripToolRequestBlocks(completeContent));
-				storeContinuity([]);
+				await retainSuccessfulConversation([]);
 				return;
 			}
 		} finally {
@@ -419,14 +420,23 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		}
 	}
 
-	/** Concatenated text of the trailing (user) message. */
-	private trailingText(messages: readonly vscode.LanguageModelChatRequestMessage[]): string {
-		const last = messages[messages.length - 1];
-		let text = '';
-		for (const part of last.content) {
-			if (typeof part === 'string') text += part;
-			else if (typeof (part as { value?: unknown }).value === 'string') text += (part as { value: string }).value;
+	private async buildStatelessMessage(
+		messages: readonly vscode.LanguageModelChatRequestMessage[],
+		customInstructions: string,
+		settings: AiToolSettings,
+		permittedNames: ReadonlySet<string>,
+		tools: readonly vscode.LanguageModelChatTool[],
+	): Promise<string> {
+		let message = prependInstructions(serializeVisibleChat(messages), customInstructions);
+		if (settings.enableWorkspaceTools && permittedNames.size > 0) {
+			const overview = await this.deps.workspaceOverview();
+			if (overview) message += `\n\nThe user's VS Code workspace:\n${overview}`;
+		} else {
+			const root = this.deps.workspaceRoot();
+			if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
 		}
-		return text;
+		if (tools.length > 0) message += `\n\n${buildInstructionsForChatTools(tools)}`;
+		message = [buildEngineeringDirective(permittedNames), message].filter(Boolean).join('\n\n');
+		return message;
 	}
 }

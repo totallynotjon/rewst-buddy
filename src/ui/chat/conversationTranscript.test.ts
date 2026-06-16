@@ -22,7 +22,7 @@ suite('Unit: conversationTranscript', () => {
 			assert.match(text, /^\*\*Resumed conversation: Jinja help\*\*/);
 			assert.match(text, /\*\*You:\*\* how do I loop\?/);
 			assert.match(text, /Use \{% for %\}\./);
-			assert.match(text, /Follow-up questions in this chat continue this conversation/);
+			assert.match(text, /This is a transcript view/);
 		});
 
 		test('filters SYSTEM and TOOL messages', () => {

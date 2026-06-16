@@ -1,7 +1,7 @@
 /**
  * Renders a stored Rewst conversation (fetched over the HTTP getConversation
- * query) as chat markdown for the @rewst /resume command. Pure so it can be
- * unit tested without a session.
+ * query) as markdown for the resume command. Pure so it can be unit tested
+ * without a session.
  */
 
 export interface TranscriptMessage {
@@ -32,7 +32,9 @@ export function formatConversationTranscript(title: string | undefined, messages
 	for (const message of shown) {
 		parts.push(message.role === 'USER' ? `**You:** ${message.content}` : message.content);
 	}
-	parts.push('*Follow-up questions in this chat continue this conversation.*');
+	parts.push(
+		'*This is a transcript view. Starting a new Cage-Free Rewsty message uses the visible VS Code chat history as context.*',
+	);
 	return parts.join('\n\n---\n\n');
 }
 

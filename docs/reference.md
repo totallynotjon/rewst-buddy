@@ -79,7 +79,7 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 **AI Assistant**
 
 - `Ask Rewst AI` — Open the Chat view; pick **Cage-Free Rewsty** in the model picker to talk to Rewst's AI assistant (`Ctrl+Alt+R` / `Cmd+Alt+R`)
-- `Resume Rewst AI Conversation` — Pick a previous Rewst conversation, open its transcript, and continue it with your next Cage-Free Rewsty chat message
+- `Resume Rewst AI Conversation` — Pick a previous Rewst conversation and open its transcript
 - `Apply Rewst AI Suggestion` — Apply a code block from the latest Cage-Free Rewsty answer to the active file behind a diff preview
 
 **Server**
