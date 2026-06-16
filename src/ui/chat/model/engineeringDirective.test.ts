@@ -30,6 +30,9 @@ suite('Unit: engineeringDirective', () => {
 				/never as a native function call/i.test(directive),
 				'keeps todo/agent tools on the vscode-tool protocol, not native calls',
 			);
+			// Research must be planned and targeted, tracked as todos like other work.
+			assert.ok(/research is planned/i.test(directive), 'steers research to be planned');
+			assert.ok(/targeted, never open-ended/i.test(directive), 'steers research to be targeted');
 		}
 	});
 
