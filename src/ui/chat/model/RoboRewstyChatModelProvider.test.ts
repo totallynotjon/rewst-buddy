@@ -253,31 +253,6 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(textOf(harness.parts).includes('run_command'), 'rejection note names the tool');
 	});
 
-	test('tool results start a fresh conversation with tool output in the visible transcript', async () => {
-		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
-		const harness = makeHarness([completeTurn(reply), completeTurn('It says hello.')]);
-
-		const ask1 = [message(User, [text('check a.txt')])];
-		await harness.run(ask1, [READ_FILE_TOOL]);
-		const [call] = callsOf(harness.parts);
-		assert.ok(call);
-
-		// VS Code's follow-up: emitted assistant parts + the tool result.
-		const askText = textOf(harness.parts);
-		await harness.run(
-			[
-				...ask1,
-				message(Assistant, [text(askText), call]),
-				message(User, [new vscode.LanguageModelToolResultPart(call.callId, [text('file contents')])]),
-			],
-			[READ_FILE_TOOL],
-		);
-
-		assert.strictEqual(harness.captured[1].conversationId, undefined);
-		assert.ok(harness.captured[1].message.includes('file contents'));
-		assert.ok(harness.captured[1].message.includes('read_file'));
-	});
-
 	test('tool-result cleanup survives assistant-text drift by callId', async () => {
 		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
 		const harness = makeHarness([
@@ -303,10 +278,54 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			[READ_FILE_TOOL],
 		);
 
-		assert.strictEqual(harness.captured[1].conversationId, undefined);
+		assert.strictEqual(harness.captured[1].conversationId, undefined, 'tool results start a fresh conversation');
+		assert.ok(harness.captured[1].message.includes('<visible_chat_transcript>'));
+		assert.ok(harness.captured[1].message.includes('file contents'), 'tool output is carried in the transcript');
+		assert.ok(harness.captured[1].message.includes('read_file'));
 		assert.deepStrictEqual(
 			harness.wrapper.getCallsFor('deleteConversation').map(call => call.variables),
 			[{ id: 'conv-tool-call' }],
+		);
+	});
+
+	test('does not delete the prior final conversation until tool-result follow-up succeeds', async () => {
+		const reply = 'Let me check.\n```rewst-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+		const harness = makeHarness([
+			completeTurn('Hello', 'conv-old'),
+			completeTurn(reply, 'conv-tool-call'),
+			completeTurn('It says hello.', 'conv-tool-result'),
+		]);
+		harness.wrapper.when('deleteConversation', { data: { deleteConversation: 'deleted' } });
+
+		await harness.run([message(User, [text('hi')])]);
+		await harness.run(
+			[message(User, [text('hi')]), message(Assistant, [text('Hello')]), message(User, [text('check a.txt')])],
+			[READ_FILE_TOOL],
+		);
+
+		const [call] = callsOf(harness.parts);
+		assert.ok(call);
+		assert.strictEqual(
+			harness.wrapper.getCallsFor('deleteConversation').length,
+			0,
+			'tool-call-only turns do not retire the previous final conversation',
+		);
+
+		const askText = textOf(harness.parts);
+		await harness.run(
+			[
+				message(User, [text('hi')]),
+				message(Assistant, [text('Hello')]),
+				message(User, [text('check a.txt')]),
+				message(Assistant, [text(askText), call]),
+				message(User, [new vscode.LanguageModelToolResultPart(call.callId, [text('file contents')])]),
+			],
+			[READ_FILE_TOOL],
+		);
+
+		assert.deepStrictEqual(
+			harness.wrapper.getCallsFor('deleteConversation').map(call => call.variables),
+			[{ id: 'conv-tool-call' }, { id: 'conv-old' }],
 		);
 	});
 
@@ -506,6 +525,26 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			message(User, [text('next')]),
 		]);
 
+		assert.deepStrictEqual(
+			harness.wrapper.getCallsFor('deleteConversation').map(call => call.variables),
+			[{ id: 'conv-old' }],
+		);
+	});
+
+	test('does not wait for stale conversation deletes before resolving', async () => {
+		const harness = makeHarness([completeTurn('Hello', 'conv-old'), completeTurn('Again', 'conv-new')]);
+		harness.wrapper.when('deleteConversation', () => new Promise<never>(() => {}));
+
+		await harness.run([message(User, [text('hi')])]);
+		const result = await Promise.race([
+			harness
+				.run([message(User, [text('hi')]), message(Assistant, [text('Hello')]), message(User, [text('next')])])
+				.then(() => 'resolved'),
+			new Promise(resolve => setTimeout(() => resolve('blocked'), 25)),
+		]);
+
+		assert.strictEqual(result, 'resolved');
+		await new Promise(resolve => setImmediate(resolve));
 		assert.deepStrictEqual(
 			harness.wrapper.getCallsFor('deleteConversation').map(call => call.variables),
 			[{ id: 'conv-old' }],

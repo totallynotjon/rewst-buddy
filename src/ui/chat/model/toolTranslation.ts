@@ -118,32 +118,6 @@ export function extractTrailingToolResults(
 	return results.length > 0 ? results : undefined;
 }
 
-function partText(part: unknown): string {
-	if (typeof part === 'string') return part;
-	const candidate = part as { value?: unknown };
-	return typeof candidate?.value === 'string' ? candidate.value : '';
-}
-
-/**
- * Builds the follow-up text-protocol message carrying tool outputs back to
- * RoboRewsty, labeled with the original tool names/args from the history.
- */
-export function formatToolResultsMessage(
-	results: readonly ToolResultPartLike[],
-	calls: ReadonlyMap<string, ToolCallInfo>,
-): string {
-	const sections: string[] = ['Tool results:'];
-	for (const result of results) {
-		const call = calls.get(result.callId);
-		const name = call?.name ?? 'tool';
-		const argsLabel = call?.input === undefined ? '' : ` ${JSON.stringify(call.input)}`;
-		const output = result.content.map(partText).filter(Boolean).join('\n');
-		sections.push(`### ${name}${argsLabel}\n\`\`\`\n${output}\n\`\`\``);
-	}
-	sections.push('Reply with more rewst-tool blocks if you need anything else, or give your final answer.');
-	return sections.join('\n\n');
-}
-
 /** Note appended when the model asked for tools that cannot be invoked. */
 export function rejectedToolsNote(names: readonly string[]): string {
 	const unique = [...new Set(names)];

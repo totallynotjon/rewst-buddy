@@ -15,7 +15,11 @@ import { stripToolRequestBlocks } from '../tools/toolProtocol';
 import { buildWorkspaceOverview } from '../tools/workspaceTools';
 import { prependInstructions } from '../promptContext';
 import { buildEngineeringDirective } from './engineeringDirective';
-import { latestConversationStore, type RetainedConversation } from './latestConversationStore';
+import {
+	latestConversationStore,
+	type PendingConversation,
+	type RetainedConversation,
+} from './latestConversationStore';
 import { setLastAiAnswer } from './lastAnswer';
 import { serializeVisibleChat, visibleChatKey, visibleChatPrefixKey } from './statelessTranscript';
 import {
@@ -190,9 +194,12 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		let conversationId: string | undefined;
 		let message: string;
 		let previousRetained: RetainedConversation | undefined;
+		let previousPending: PendingConversation | undefined;
 
 		if (trailingResults) {
 			const calls = collectToolCalls(messages);
+			const callIds = trailingResults.map(result => result.callId);
+			previousPending = latestConversationStore.lookupByCallIds(callIds);
 			const approval = trailingResults
 				.map(result => calls.get(result.callId))
 				.find(call => call?.name === APPROVAL_TOOL_NAME);
@@ -202,10 +209,8 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				const input = approval.input as Partial<ApprovalToolInput> | undefined;
 				if (typeof input?.resume !== 'string') throw new Error('Approval call carried no resumable request.');
 				message = input.resume;
-				conversationId = latestConversationStore.lookupByCallIds(
-					trailingResults.map(result => result.callId),
-				)?.conversationId;
-				previousRetained = latestConversationStore.lookup(prefixKey);
+				conversationId = previousPending?.conversationId;
+				previousRetained = previousPending?.previousLatest ?? latestConversationStore.lookup(prefixKey);
 			} else {
 				message = await this.buildStatelessMessage(
 					messages,
@@ -214,9 +219,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 					permittedNames,
 					tools,
 				);
-				previousRetained =
-					latestConversationStore.lookupByCallIds(trailingResults.map(result => result.callId)) ??
-					latestConversationStore.lookup(prefixKey);
+				previousRetained = previousPending?.previousLatest ?? latestConversationStore.lookup(prefixKey);
 			}
 		} else {
 			message = await this.buildStatelessMessage(messages, customInstructions, settings, permittedNames, tools);
@@ -253,6 +256,20 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			progress.report(new vscode.LanguageModelTextPart(`\n\n> _${label}_\n`));
 			needsSeparator = true;
 		};
+		const deleteRetainedConversations = (retaineds: readonly (RetainedConversation | undefined)[]): void => {
+			const seen = new Set<string>();
+			for (const retained of retaineds) {
+				const stale = retained?.conversationId;
+				if (!stale || stale === conversationId || seen.has(stale)) continue;
+				seen.add(stale);
+				latestConversationStore.forgetConversation(stale);
+				// Fire-and-forget: cleaning up superseded transient conversations must
+				// not delay the chat turn from completing.
+				void session.sdk?.deleteConversation({ id: stale })?.catch(error => {
+					log.debug('RoboRewstyChatModelProvider: stale conversation delete failed', stale, error);
+				});
+			}
+		};
 		const bindPausedConversation = (calls: readonly vscode.LanguageModelToolCallPart[]): void => {
 			if (!conversationId) return;
 			if (calls.length > 0)
@@ -260,27 +277,25 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 					calls.map(call => call.callId),
 					currentKey,
 					conversationId,
+					previousRetained,
 				);
 		};
-		const retainSuccessfulConversation = async (
-			calls: readonly vscode.LanguageModelToolCallPart[],
-		): Promise<void> => {
+		const retainPendingConversation = (calls: readonly vscode.LanguageModelToolCallPart[]): void => {
 			if (!conversationId) return;
 			if (calls.length > 0)
 				latestConversationStore.bindCallIds(
 					calls.map(call => call.callId),
 					currentKey,
 					conversationId,
+					previousRetained,
 				);
-			const stale = previousRetained?.conversationId;
+			deleteRetainedConversations([previousPending]);
+		};
+		const retainSuccessfulConversation = (): void => {
+			if (!conversationId) return;
 			latestConversationStore.storeLatest(currentKey, conversationId, previousRetained);
-			if (stale && stale !== conversationId) {
-				try {
-					await session.sdk?.deleteConversation({ id: stale });
-				} catch (error) {
-					log.debug('RoboRewstyChatModelProvider: stale conversation delete failed', stale, error);
-				}
-			}
+			if (previousPending) latestConversationStore.forgetConversation(previousPending.conversationId);
+			deleteRetainedConversations([previousPending, previousRetained]);
 		};
 		// Tools allow-listed for a one-time Approve; reverted once the turn ends.
 		const toolsToRevert = new Set<string>();
@@ -395,7 +410,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				if (calls.length > 0) {
 					emitText(remainder);
 					for (const call of calls) progress.report(call);
-					await retainSuccessfulConversation(calls);
+					retainPendingConversation(calls);
 					return;
 				}
 
@@ -404,7 +419,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				if (sources.length > 0) finalText += renderSourcesMarkdown(sources);
 				emitText(finalText);
 				setLastAiAnswer(stripToolRequestBlocks(completeContent));
-				await retainSuccessfulConversation([]);
+				retainSuccessfulConversation();
 				return;
 			}
 		} finally {
