@@ -44,5 +44,5 @@
 	"prettier.requireConfig": true,
 	"git.allowNoVerifyCommit": true,
 	"chat.extensionUnification.enabled": false,
-	"chat.disableAIFeatures": true
+	"chat.disableAIFeatures": false
 }
