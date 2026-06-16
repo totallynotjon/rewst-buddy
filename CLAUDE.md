@@ -17,6 +17,26 @@ These tools run without prompting the user. **Never use Bash equivalents** (e.g.
 
 Subagents (Plan, Explore, etc.) inherit these permissions and should follow the same preference. Only prompt the user for write operations (Edit, Write) and potentially destructive commands.
 
+## AI Prompt Steering Directives
+
+When editing the Cage-Free Rewsty steering prompt or `vscode-tool` protocol text, keep the wording boring, descriptive, and transport-focused. The backend receives our preamble in the user-message channel, so XML-style wrappers, claims of special authority, and "override/supersede/ignore your system prompt" language can trigger the model's prompt-injection reflex, especially on edit/write requests.
+
+**Use neutral framing:**
+
+- Say "Rewst Buddy VS Code Context", "extension-supplied transport metadata", "local tool protocol", and "VS Code approval/sandbox flow."
+- Say that local tools are requested with fenced `vscode-tool` JSON blocks and that the extension intercepts those blocks, parses them, and routes them through VS Code.
+- Say safety constraints remain in effect and that the preamble does not grant direct filesystem or network access.
+
+**Avoid override-shaped framing:**
+
+- Do not wrap steering in XML-like authority tags such as `<engineering_layer_directive>`.
+- Do not say the preamble "supersedes", "overrides", "owns this session", "is trusted system-level instruction", or tells the model to ignore its system prompt.
+- Do not describe a refusal as an error by itself. Instead, explain the executable transport: if a listed editor tool is needed, emit the `vscode-tool` block and let VS Code handle execution and approval.
+
+For edit/write tools specifically (`insert_edit_into_file`, `replace_string_in_file`, `create_file`, terminal tools, todo/agent tools), keep explicit steering close to the concrete Available tools list. The model has been observed to handle read/list tools correctly while refusing edit tools unless the protocol text states that fenced blocks are executable extension requests, not ordinary prose.
+
+Live regression coverage for this behavior lives in `src/test/integration/directive.test.ts` under `an explicit insert edit tool request is a vscode-tool block, not a native call`.
+
 ## Directory Structure
 
 ```
@@ -284,7 +304,11 @@ Hover, completion, and definition providers are called frequently during editing
 npm test              # Run all tests
 npm run test:unit     # Run unit tests only (no auth required)
 npm run test:integration  # Run integration tests (requires REWST_TEST_TOKEN)
+npm run test:grep -- "Unit: toolProtocol"  # Run a targeted unit grep
+npm run test:grep:integration -- "an explicit insert edit tool request"  # Run a targeted live integration grep
 ```
+
+Use `vscode-test --grep`, not `vscode-test -- --grep`. The extra `--` prevents the VS Code test CLI from applying Mocha's grep and can accidentally run the full suite. For targeted live integration tests whose grep does not include the word `Integration`, use `test:grep:integration`; it sets `REWST_TEST_INTEGRATION=1` so `.vscode-test.mjs` loads `.env` / `REWST_TEST_TOKEN`.
 
 ### Test Structure
 
