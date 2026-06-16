@@ -128,6 +128,22 @@ suite('Integration: engineering directive steering', function () {
 		);
 	});
 
+	test('a single editor-tool request is not preceded by a spurious native call', async () => {
+		// The reported failure: the assistant fires one unrelated native wrapper
+		// (e.g. listWorkflow) as a warm-up, ignores it, then runs the real tool.
+		// Server-side native tools surface as "Running tool: …" statuses; an
+		// editor-tool request does not, so any such status here is a stray call.
+		const { statuses } = await turn(
+			'Use the list_template_links tool to show which local files are linked to templates.',
+		);
+		const nativeCalls = statuses.filter(label => label.startsWith('Running tool:'));
+		assert.deepStrictEqual(
+			nativeCalls,
+			[],
+			`expected no native tool calls before the editor tool, got: ${nativeCalls.join(', ') || '(none)'}`,
+		);
+	});
+
 	test('an explicit Rewst-docs request is still allowed to search', async () => {
 		// Negative control: the curb must not over-suppress when the user actually
 		// asks about Rewst's own documentation.
