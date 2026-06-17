@@ -4,11 +4,18 @@
 .claude/**
 .LOCAL/**
 .husky/**
+.github/**
 node_modules/**
 src/**
 scripts/**
+changelog.d/**
+
+# Secrets / local env (never ship)
+.env
+.env.*
 
 # Build and config files
+.coderabbit.yaml
 webpack.config.cjs
 tsconfig.json
 **/tsconfig.json

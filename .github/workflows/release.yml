@@ -1,0 +1,86 @@
+name: Prepare release
+
+# Manually triggered. Collates the pending changelog.d/ notes into a versioned
+# CHANGELOG.md section, bumps package.json, and opens a release PR to main.
+# It does NOT publish — a maintainer reviews and merges the PR (branch
+# protection requires approval), then the tag-driven Publish workflow ships it.
+
+on:
+    workflow_dispatch:
+        inputs:
+            version:
+                description: 'Release version, e.g. 0.45.0 (no leading v)'
+                required: true
+            date:
+                description: 'Release date YYYY-MM-DD (optional, defaults to today)'
+                required: false
+                default: ''
+
+permissions:
+    contents: write
+    pull-requests: write
+
+concurrency:
+    group: prepare-release
+    cancel-in-progress: false
+
+jobs:
+    prepare:
+        runs-on: ubuntu-latest
+        env:
+            GH_TOKEN: ${{ github.token }}
+            VERSION: ${{ github.event.inputs.version }}
+            DATE: ${{ github.event.inputs.date }}
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  ref: main
+                  fetch-depth: 0
+                  persist-credentials: true
+
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+
+            - name: Guard against an existing release
+              run: |
+                  if gh release view "v${VERSION}" >/dev/null 2>&1; then
+                    echo "::error::Release v${VERSION} already exists."
+                    exit 1
+                  fi
+
+            - name: Capture the changelog section for the PR body
+              run: |
+                  ARGS=(--version "$VERSION" --preview)
+                  [ -n "$DATE" ] && ARGS+=(--date "$DATE")
+                  node scripts/changelog/build.mjs "${ARGS[@]}" > /tmp/section.md
+                  cat /tmp/section.md
+
+            - name: Collate notes and bump version
+              run: |
+                  ARGS=(--version "$VERSION")
+                  [ -n "$DATE" ] && ARGS+=(--date "$DATE")
+                  node scripts/changelog/build.mjs "${ARGS[@]}"
+                  npm version "$VERSION" --no-git-tag-version
+
+            - name: Open release PR
+              run: |
+                  git config user.name 'github-actions[bot]'
+                  git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+                  BRANCH="release/v${VERSION}"
+                  git switch -c "$BRANCH"
+                  git add CHANGELOG.md changelog.d package.json package-lock.json
+                  git commit -m "Release v${VERSION}"
+                  git push -u origin "$BRANCH" --force-with-lease
+                  {
+                    echo "Automated release prep for **v${VERSION}**."
+                    echo
+                    echo "- Collated \`changelog.d/\` notes into CHANGELOG.md and bumped \`package.json\`."
+                    echo "- Merging this PR does **not** publish. After it lands on \`main\`, push the tag \`v${VERSION}\` (e.g. \`npm run release:tag\`) to trigger Publish."
+                    echo
+                    echo "---"
+                    echo
+                    cat /tmp/section.md
+                  } > /tmp/pr-body.md
+                  gh pr create --base main --head "$BRANCH" \
+                    --title "Release v${VERSION}" --body-file /tmp/pr-body.md

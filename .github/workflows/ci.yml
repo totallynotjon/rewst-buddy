@@ -1,0 +1,61 @@
+name: CI
+
+on:
+    pull_request:
+    push:
+        branches: [main]
+    merge_group:
+
+# Least privilege by default; no job here needs write access.
+permissions:
+    contents: read
+
+concurrency:
+    group: ci-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+    build-test:
+        name: Lint, type-check, build, test
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4 # pin to a SHA to harden (see docs/releasing.md)
+              with:
+                  persist-credentials: false
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+                  cache: npm
+            - run: npm ci
+            - name: Lint
+              run: npm run lint
+            - name: Type-check
+              run: npm run type-check
+            - name: Build (production bundle)
+              run: npm run package
+            # vscode-test runs a headless VS Code; Linux needs a virtual display.
+            - name: Unit tests
+              run: xvfb-run -a npm run test:unit
+
+    changelog:
+        name: Changelog note
+        # Only meaningful on PRs (needs a base branch to diff against), and skipped
+        # for release PRs and anything explicitly labeled skip-changelog.
+        if: >-
+            github.event_name == 'pull_request'
+            && !startsWith(github.head_ref, 'release/')
+            && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
+            && github.event.pull_request.user.login != 'github-actions[bot]'
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+                  persist-credentials: false
+            - uses: actions/setup-node@v4
+              with:
+                  node-version: 22
+            - name: Require & validate a changelog note
+              env:
+                  BASE_REF: ${{ github.base_ref }}
+              run: node scripts/changelog/check.mjs

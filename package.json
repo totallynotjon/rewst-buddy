@@ -1140,7 +1140,11 @@
 		"watch:webpack": "webpack --mode development --watch",
 		"compile": "webpack --mode development",
 		"vscode:prepublish": "npm run package",
-		"package": "webpack --mode production --devtool hidden-source-map"
+		"package": "webpack --mode production --devtool hidden-source-map",
+		"changelog:new": "node scripts/changelog/new.mjs",
+		"changelog:check": "node scripts/changelog/check.mjs",
+		"changelog:build": "node scripts/changelog/build.mjs",
+		"release:tag": "git tag v$npm_package_version && git push origin v$npm_package_version"
 	},
 	"devDependencies": {
 		"@0no-co/graphqlsp": "^1.15.2",

@@ -11,7 +11,7 @@ Extra context from the user (may be empty): $ARGUMENTS
 
 <target_branch>main</target_branch>
 <remote>origin</remote> <!-- totallynotjon (Jon's). The OwenIbarra remote is a PR-review fork — never push there. -->
-<changelog_file>CHANGELOG.md</changelog_file>
+<changelog_notes_dir>changelog.d/</changelog_notes_dir> <!-- one note file per PR; never edit CHANGELOG.md directly (see changelog.d/README.md) -->
 <branch_prefix>fix/issue-$1-</branch_prefix>
 <issue_reference>Addresses #$1</issue_reference> <!-- use "Addresses", not "Closes": leave the issue open for the user to close once they've confirmed the fix in real use -->
 
@@ -59,7 +59,7 @@ Do the work in a dedicated git worktree so the primary checkout stays untouched.
 
 ## Phase 5 — Document
 
-- Add (or extend) a `## [Unreleased]` section at the top of `CHANGELOG.md`, above the latest `## [x.y.z]` heading, with an `### Added/Changed/Fixed` entry ending in `(#$1)`.
+- Add a **changelog note**, not a `CHANGELOG.md` edit. Create `changelog.d/$1.md` (or run `npm run changelog:new`) with frontmatter `category: Added|Changed|Fixed` and a body that is the bullet exactly as it should read in the changelog. Do **not** touch `CHANGELOG.md` — the release flow collates these notes, and one file per PR is what keeps the changelog conflict-free. See `changelog.d/README.md`.
 - If the change is user-facing, update the matching `docs/` file and the README per CLAUDE.md "User-Facing Documentation".
 
 ## Phase 6 — Commit, push, PR
@@ -68,6 +68,7 @@ Do the work in a dedicated git worktree so the primary checkout stays untouched.
 2. Commit with a normal-English message whose body explains the _why_, ending with `Addresses #$1`.
 3. `git push -u origin <branch>` (from the worktree).
 4. `gh pr create --base main --title "<concise>" --body "..."` — the body covers the problem, the change, and how it was tested (state live-validation results honestly, including any unrelated flakes). Reference `#$1` with "Addresses", not "Closes".
+5. Once the PR number is known, set `pr: <PR number>` in the `changelog.d/` note so the changelog links the PR (not the issue), then commit and push that one-line change.
 
 ## Phase 7 — Review loop
 

@@ -131,15 +131,18 @@ If the VERSION_BUMP_TYPE in the configuration is not specified, ask the user to 
 
 Calculate the new version number based on the bump type.
 
-## Step 2: Draft Changelog Entries
+## Step 2: Collate the Changelog from Notes
 
-Based on your code analysis, create changelog entries organized by category:
+Do **not** hand-write changelog entries. The changelog is built from the per-PR
+notes in `changelog.d/` (one file per merged PR; see `changelog.d/README.md`).
+This release rolls up however many notes have accumulated since the last one.
 
-- **Added**: New features or capabilities
-- **Changed**: Modifications to existing functionality
-- **Fixed**: Bug fixes
-
-Focus on user-facing changes that matter to developers using this software. Each entry must correspond to actual code changes you identified in Phase 1.
+1. Preview the section that will be generated: `npm run changelog:build -- --version X.Y.Z --preview`.
+2. Sanity-check it against your Phase 1 analysis — every user-facing change should
+   be represented. If a note is missing for a change that shipped, add a
+   `changelog.d/<pr>.md` for it; if a note's wording is off, edit that note file.
+3. You apply it for real in the Output step below (it writes `CHANGELOG.md` and
+   removes the consumed notes).
 
 ## Step 3: Evaluate README Updates
 
@@ -173,26 +176,16 @@ vX.X.X
 
 ```
 
-### Update 2: [changelog_file_path]
+### Update 2: CHANGELOG.md (generated, do not hand-edit)
 
-Add the following entries at the top of the changelog (use today's date):
+Generate the new section by collating the `changelog.d/` notes — this writes the
+`## [X.X.X] - YYYY-MM-DD` section into `CHANGELOG.md` and removes the consumed notes:
 ```
 
-## [X.X.X] - YYYY-MM-DD
-
-### Added
-
-- [Description of new feature based on code changes]
-
-### Changed
-
-- [Description of changes to existing functionality]
-
-### Fixed
-
-- [Description of bug fixes]
+npm run changelog:build -- --version X.X.X
 
 ```
+(add `--date YYYY-MM-DD` to override the date). Show the resulting CHANGELOG.md section in your summary.
 
 ### Update 3: [readme_file_path]
 
@@ -228,54 +221,42 @@ Release vX.X.X: [Brief description of key changes]
 
 ```
 
-Please review these updates. Once they're applied and committed on the PR branch, let me know and I'll squash-merge the release PR into the target branch and create the GitHub release (Phase 3).
+Please review these updates. Once they're applied and committed on the PR branch, let me know and I'll squash-merge the release PR into the target branch, then push the version tag to trigger the Publish workflow (Phase 3).
 ```
 
-# Phase 3: GitHub Release
+# Phase 3: Merge & trigger the Publish workflow
 
-The release reaches the target branch by **squash-merging the release PR** — this repo is configured squash-only, and every PR merges that way (never a merge commit or rebase). With the version bump + changelog committed on the PR branch and the PR review-clean, land it with:
+Publishing is handled by CI, not by hand: pushing a `vX.X.X` tag runs the **Publish** workflow, which creates the GitHub release and publishes to the VS Code Marketplace after a maintainer approves the `release` environment. You do not run `gh release create` or `vsce publish` yourself. (See `docs/dev/releasing.md`.)
+
+## Step 1: Squash-merge the release PR
+
+This repo is squash-only — every PR merges that way (never a merge commit or rebase). With the collated changelog + version bump committed on the release PR branch and the PR review-clean and approved, land it:
 
 ```bash
 gh pr merge <PR> --squash --subject "Release vX.X.X: <brief description>"
 ```
 
-then `git checkout main && git pull` so the local target branch matches the remote. Only after that release commit is on the remote target branch do you create the GitHub release below.
+Then `git checkout main && git pull` so local main matches the remote.
 
-Only proceed after the release commit (version bump + changelog + any README updates) has been squash-merged and is **on the remote** target branch.
+## Step 2: Confirm, then push the tag
 
-## Step 1: Verify Prerequisites
+Confirm with the user before tagging — **the tag is what triggers the public release and the Marketplace publish.** Verify first:
 
-Before creating the release, confirm:
+- `gh auth status` is authenticated.
+- The release commit is on the remote: `git log origin/main..HEAD` is empty.
+- `package.json` version equals `X.X.X`, and `gh release view vX.X.X` fails (not found).
 
-- `gh` is authenticated: `gh auth status`
-- The release commit is pushed: `git status` shows nothing to push, and `git log origin/<target_branch>..HEAD` is empty
-- A release for this tag does not already exist: `gh release view vX.X.X` should fail (not found)
-
-If the commit is not yet pushed, stop and ask the user to push first — `gh release create` tags the latest commit on the remote, so an unpushed commit would tag the wrong revision.
-
-## Step 2: Extract Release Notes
-
-Read the new version's section from the changelog file (everything under `## [X.X.X] - YYYY-MM-DD` up to the next `## [` heading) and write just that body to a temp file (e.g. `/tmp/release-notes-vX.X.X.md`). This becomes the release body via `--notes-file`.
-
-## Step 3: Confirm Before Publishing
-
-Show the user the exact command and the extracted notes. **This creates a public GitHub release — wait for explicit confirmation before running it.**
-
-- Tag: `vX.X.X` (match the existing `v`-prefixed tag convention)
-- Title: `vX.X.X`
-- Body: the changelog section from Step 2
-
-## Step 4: Create the Release
-
-On confirmation, run:
+On confirmation, push the tag (matches the existing `v`-prefixed convention):
 
 ```bash
-gh release create vX.X.X \
-  --title "vX.X.X" \
-  --notes-file /tmp/release-notes-vX.X.X.md
+npm run release:tag    # tags vX.X.X from package.json and pushes it
 ```
 
-Report the release URL on success. If the command fails, surface the exact error and stop.
+## Step 3: Approve the release and verify
+
+The Publish workflow now waits on the `release` environment. Tell the user to approve the run in the GitHub Actions UI (the run's **Review deployments** prompt). The workflow then packages the `.vsix`, creates the GitHub release with the CHANGELOG section as notes, and publishes to the Marketplace.
+
+Watch it with `gh run watch` (or `gh run list --workflow=Publish`). On success, report the release URL and published version; if it fails, surface the exact step error and stop. If CI is unavailable, the manual fallback — run locally only with explicit user confirmation — is `gh release create vX.X.X --notes-file <section>` plus `npx @vscode/vsce publish`.
 
 # Analysis Process
 
@@ -316,10 +297,7 @@ Before providing your response, conduct your analysis inside a thinking block us
 **In <documentation_planning> tags inside your thinking block:**
 
 - Show the version calculation step-by-step from the current version to the new version
-- List out 5-7 potential changelog entries based on the code changes you analyzed
-- For each potential changelog entry, note which specific code change it corresponds to
-- Organize these entries by category: Added, Changed, Fixed
-- Select the best 2-4 entries for the final changelog and explain your selection reasoning
+- Preview the collated changelog (`npm run changelog:build -- --version X.Y.Z --preview`) and cross-check it against your Phase 1 analysis: confirm every user-facing change has a `changelog.d/` note, and flag any change that shipped without one (add a note) or any note whose wording is wrong (edit that note)
 - Review each major section of the README (installation, features, usage, etc.)
 - For each README section, assess whether it needs updates based on the changes
 - For any sections requiring updates, draft the before and after text with clear changes

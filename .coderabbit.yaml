@@ -1,7 +1,85 @@
 # yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
-# CodeRabbit submits a Request Changes review while it has unresolved comments
-# and approves once they're resolved. Paired with the main-branch ruleset
-# (1 required approval + conversation resolution), this makes CodeRabbit's
-# approval a merge requirement.
+# CodeRabbit configuration. Paired with the main-branch ruleset (PR + 1 required
+# approval + conversation resolution), request_changes_workflow makes
+# CodeRabbit's approval a merge gate: it requests changes while it has unresolved
+# comments and approves once they're resolved.
 reviews:
-  request_changes_workflow: true
+    request_changes_workflow: true
+    poem: false
+    auto_review:
+        enabled: true
+        drafts: false
+
+    # Skip generated and build artifacts so review focuses on hand-written source.
+    path_filters:
+        - '!src/sessions/graphql/sdk.ts'
+        - '!dist/**'
+        - '!**/*.vsix'
+        - '!package-lock.json'
+        - '!scripts/out/**'
+        - '!scripts/wf-backups/**'
+
+    # Project conventions from CLAUDE.md, enforced per path.
+    path_instructions:
+        - path: 'src/**/*.ts'
+          instructions: >-
+              New features must ship with tests: colocated *.test.ts unit tests, plus
+              an integration test under src/test/integration/ when live API or
+              assistant behavior is involved. Flag missing tests. Do not add obvious or
+              redundant comments — match the surrounding comment density and idiom.
+              Performance matters (editor extension): prefer Map-based O(1) lookups
+              over array.find/filter for repeated lookups, async I/O over sync, and
+              early returns. Context-menu commands read the URI from args[0][0], not
+              args[0]. Fire-and-forget persistence should not block user actions.
+        - path: 'src/ui/chat/**/*.ts'
+          instructions: >-
+              This is AI prompt-steering / vscode-tool protocol code. Keep wording
+              boring, descriptive, and transport-focused. Flag XML-style authority
+              wrappers (e.g. <engineering_layer_directive>) and override language —
+              "supersedes", "overrides", "owns this session", "ignore your system
+              prompt", "trusted system instruction" — which trips the backend's
+              prompt-injection reflex. Prefer neutral framing: "Rewst Buddy VS Code
+              Context", "local tool protocol", "VS Code approval/sandbox flow", and
+              state that fenced vscode-tool JSON blocks are intercepted and executed by
+              the extension. Does not apply to *.test.ts.
+        - path: 'tsconfig.json'
+          instructions: >-
+              Path-alias changes (compilerOptions.paths) must be mirrored in
+              webpack.config.cjs resolve.alias. Flag an alias added here but missing
+              there.
+        - path: 'webpack.config.cjs'
+          instructions: >-
+              Path-alias changes (resolve.alias) must be mirrored in tsconfig.json
+              compilerOptions.paths. Flag an alias added here but missing there.
+        - path: 'package.json'
+          instructions: >-
+              Command titles in contributes.commands and settings in
+              contributes.configuration must stay in sync with the docs (docs/
+              reference.md command list and settings table) and CLAUDE.md.
+
+    # Auto-label PRs by area so reviews and history are easy to scan.
+    auto_apply_labels: true
+    labeling_instructions:
+        - label: 'ai-steering'
+          instructions: 'Touches AI steering or the vscode-tool protocol under src/ui/chat/.'
+        - label: 'documentation'
+          instructions: 'Changes README.md, docs/, or CLAUDE.md.'
+        - label: 'tests'
+          instructions: 'Adds or changes *.test.ts files.'
+        - label: 'release'
+          instructions: 'A release/* branch: version bump and collated CHANGELOG.md.'
+        - label: 'ci'
+          instructions: 'Changes .github/workflows or the changelog tooling in scripts/changelog.'
+
+    tools:
+        # Run ESLint in review (the repo uses a flat eslint.config.mjs).
+        eslint:
+            enabled: true
+
+# Let CodeRabbit treat CLAUDE.md and docs as authoritative project guidelines.
+knowledge_base:
+    code_guidelines:
+        enabled: true
+        filePatterns:
+            - 'CLAUDE.md'
+            - 'docs/**'

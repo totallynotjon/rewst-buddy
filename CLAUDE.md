@@ -106,7 +106,7 @@ docs/
 - Status bar appears in the **bottom-left** (`StatusBarAlignment.Left` in `src/ui/StatusBarIcon.ts`).
 - "Unofficial" framing stays prominent in README — banner at top, title includes "Unofficial", package.json description starts with "Unofficial".
 - Relative links (`docs/features.md`, `#anchor`) resolve on both GitHub and the VS Code Marketplace — prefer them over absolute URLs.
-- When adding a new feature, update: `docs/features.md` (deep dive), `docs/reference.md` (commands + settings if any), `README.md` "Features at a glance" bullet if user-visible, and `CHANGELOG.md`.
+- When adding a new feature, update: `docs/features.md` (deep dive), `docs/reference.md` (commands + settings if any), `README.md` "Features at a glance" bullet if user-visible, and add a changelog note under `changelog.d/` (`npm run changelog:new`) — never edit `CHANGELOG.md` directly (see `changelog.d/README.md` and `docs/dev/releasing.md`).
 
 ## Path Aliases (CRITICAL)
 
