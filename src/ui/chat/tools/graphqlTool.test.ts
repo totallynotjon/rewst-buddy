@@ -2,9 +2,13 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
 import {
+	_resetApprovedMutationScopes,
+	approveMutationScope,
 	detectOperationType,
 	graphqlMutationConfirmation,
+	graphqlMutationScopeId,
 	isGraphqlTool,
+	isMutationScopeApproved,
 	runGraphqlTool,
 	type GraphqlToolDeps,
 } from './graphqlTool';
@@ -23,6 +27,7 @@ function deps(over: Partial<GraphqlToolDeps> = {}): GraphqlToolDeps {
 suite('Unit: graphqlTool', () => {
 	setup(() => {
 		initTestEnvironment();
+		_resetApprovedMutationScopes();
 	});
 
 	test('isGraphqlTool recognizes rewst_graphql', () => {
@@ -57,13 +62,14 @@ suite('Unit: graphqlTool', () => {
 	});
 
 	suite('graphqlMutationConfirmation()', () => {
-		test('returns confirmation copy for a mutation, with the operation and variables', () => {
+		test('returns scoped confirmation copy for a mutation, with the operation and variables', () => {
 			const confirmation = graphqlMutationConfirmation('rewst_graphql', {
 				query: 'mutation U($id: ID!) { updateTemplate(id: $id) { id } }',
 				variables: { id: 't-1' },
+				scopeId: 'wf-1',
 			});
-			assert.ok(confirmation, 'a mutation needs confirmation');
-			assert.match(confirmation.title, /mutation/i);
+			assert.ok(confirmation, 'an unapproved mutation needs confirmation');
+			assert.match(confirmation.message, /wf-1/);
 			assert.match(confirmation.message, /```graphql/);
 			assert.match(confirmation.message, /mutation U/);
 			assert.match(confirmation.message, /Variables:/);
@@ -73,21 +79,81 @@ suite('Unit: graphqlTool', () => {
 		test('omits the variables block when there are none', () => {
 			const confirmation = graphqlMutationConfirmation('rewst_graphql', {
 				query: 'mutation D { deleteTemplate { id } }',
+				scopeId: 'wf-1',
 			});
 			assert.ok(confirmation);
 			assert.doesNotMatch(confirmation.message, /Variables:/);
 		});
 
 		test('returns undefined for queries and schema reads', () => {
-			assert.strictEqual(graphqlMutationConfirmation('rewst_graphql', { query: '{ user { id } }' }), undefined);
+			assert.strictEqual(
+				graphqlMutationConfirmation('rewst_graphql', { query: '{ user { id } }', scopeId: 'wf-1' }),
+				undefined,
+			);
 			assert.strictEqual(graphqlMutationConfirmation('rewst_graphql_schema', {}), undefined);
 		});
 
-		test('returns undefined for other tools and missing or invalid queries', () => {
-			assert.strictEqual(graphqlMutationConfirmation('read_file', { query: 'mutation D { x }' }), undefined);
+		test('returns undefined for other tools, missing/invalid queries, and a mutation with no scopeId', () => {
+			assert.strictEqual(
+				graphqlMutationConfirmation('read_file', { query: 'mutation D { x }', scopeId: 'wf-1' }),
+				undefined,
+			);
 			assert.strictEqual(graphqlMutationConfirmation('rewst_graphql', {}), undefined);
 			assert.strictEqual(graphqlMutationConfirmation('rewst_graphql', { query: '   ' }), undefined);
 			assert.strictEqual(graphqlMutationConfirmation('rewst_graphql', undefined), undefined);
+			// A scopeId-less mutation is refused in runGraphqlTool, so there is
+			// nothing to approve here.
+			assert.strictEqual(
+				graphqlMutationConfirmation('rewst_graphql', { query: 'mutation D { deleteTemplate { id } }' }),
+				undefined,
+			);
+		});
+
+		test('an already-approved scopeId needs no further confirmation, a new one does', () => {
+			const request = { query: 'mutation U { updateTemplate { id } }', scopeId: 'wf-1' };
+			assert.ok(graphqlMutationConfirmation('rewst_graphql', request), 'first time prompts');
+
+			approveMutationScope('wf-1');
+			assert.strictEqual(
+				graphqlMutationConfirmation('rewst_graphql', request),
+				undefined,
+				'same resource no longer prompts',
+			);
+			assert.ok(
+				graphqlMutationConfirmation('rewst_graphql', {
+					query: 'mutation U { updateTemplate { id } }',
+					scopeId: 'wf-2',
+				}),
+				'a different resource still prompts',
+			);
+		});
+	});
+
+	suite('graphqlMutationScopeId() + scope approval', () => {
+		test('reports the scopeId only for a scoped mutation', () => {
+			assert.strictEqual(
+				graphqlMutationScopeId('rewst_graphql', {
+					query: 'mutation U { updateTemplate { id } }',
+					scopeId: 'wf-1',
+				}),
+				'wf-1',
+			);
+			assert.strictEqual(
+				graphqlMutationScopeId('rewst_graphql', { query: 'mutation U { updateTemplate { id } }' }),
+				undefined,
+			);
+			assert.strictEqual(
+				graphqlMutationScopeId('rewst_graphql', { query: '{ user { id } }', scopeId: 'wf-1' }),
+				undefined,
+			);
+		});
+
+		test('approve/reset toggle the approved set', () => {
+			assert.strictEqual(isMutationScopeApproved('wf-1'), false);
+			approveMutationScope('wf-1');
+			assert.strictEqual(isMutationScopeApproved('wf-1'), true);
+			_resetApprovedMutationScopes();
+			assert.strictEqual(isMutationScopeApproved('wf-1'), false);
 		});
 	});
 
@@ -152,12 +218,16 @@ suite('Unit: graphqlTool', () => {
 		assert.match(output, /My Template/);
 	});
 
-	test('asks for confirmation before running a mutation', async () => {
+	test('asks for confirmation before running a mutation, with the scope in the summary', async () => {
 		let confirmed = '';
 		const output = await runGraphqlTool(
 			{
 				tool: 'rewst_graphql',
-				args: { query: 'mutation U($id: ID!) { updateTemplate(id: $id) { id } }', variables: { id: 't-1' } },
+				args: {
+					query: 'mutation U($id: ID!) { updateTemplate(id: $id) { id } }',
+					variables: { id: 't-1' },
+					scopeId: 'wf-9',
+				},
 			},
 			deps({
 				confirmMutation: async operation => {
@@ -166,16 +236,34 @@ suite('Unit: graphqlTool', () => {
 				},
 			}),
 		);
+		assert.match(confirmed, /wf-9/);
 		assert.match(confirmed, /mutation U/);
 		assert.match(confirmed, /"id": "t-1"/);
 		assert.match(output, /"ok": true/);
+	});
+
+	test('refuses a mutation that carries no scopeId', async () => {
+		let ran = false;
+		await assert.rejects(
+			runGraphqlTool(
+				{ tool: 'rewst_graphql', args: { query: 'mutation D { deleteTemplate { id } }' } },
+				deps({
+					execute: async () => {
+						ran = true;
+						return {};
+					},
+				}),
+			),
+			/scopeId/,
+		);
+		assert.strictEqual(ran, false);
 	});
 
 	test('does not run a declined mutation', async () => {
 		let ran = false;
 		await assert.rejects(
 			runGraphqlTool(
-				{ tool: 'rewst_graphql', args: { query: 'mutation D { deleteTemplate { id } }' } },
+				{ tool: 'rewst_graphql', args: { query: 'mutation D { deleteTemplate { id } }', scopeId: 'wf-9' } },
 				deps({
 					confirmMutation: async () => false,
 					execute: async () => {

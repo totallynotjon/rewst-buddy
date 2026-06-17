@@ -147,7 +147,7 @@
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval before running, so keep them minimal and explain what you intend to change. Subscriptions are not supported.",
+				"modelDescription": "Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include scopeId: a stable id of the single resource the mutation changes (e.g. the workflow id), even if it is just a string. Reuse the exact same scopeId for every change to that same object — approving one mutation for a scopeId lets later mutations with that same scopeId run without re-asking, while a different scopeId is confirmed separately. A mutation without a scopeId is refused, so keep mutations minimal and scoped to one resource. Subscriptions are not supported.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -158,6 +158,10 @@
 						"variables": {
 							"type": "object",
 							"description": "Operation variables."
+						},
+						"scopeId": {
+							"type": "string",
+							"description": "Required for mutations: a stable id of the resource being changed (e.g. the workflow id). Approval is remembered per scopeId for the session; reuse the same id for repeated edits to the same object."
 						}
 					},
 					"required": [

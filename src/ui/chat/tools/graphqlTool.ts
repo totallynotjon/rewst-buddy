@@ -15,6 +15,12 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
  *     user approval — VS Code's native inline chat confirmation (Continue /
  *     Cancel) showing the full operation, gated at the tool's prepareInvocation
  *     (see lmTools.ts). There is no auto-approve escape hatch.
+ *   - Every mutation MUST carry a scopeId: a stable id of the single resource
+ *     it changes (e.g. the workflow id), which the assistant supplies. Approval
+ *     is remembered per scopeId for the session, so confirming one change to a
+ *     resource lets further mutations to that same resource run without
+ *     re-asking, while a different resource (or a mutation with no scopeId) is
+ *     gated again. A mutation without a scopeId is refused.
  *   - Subscriptions are rejected (the tool protocol is request/response).
  */
 
@@ -37,14 +43,19 @@ export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
 	},
 	{
 		name: 'rewst_graphql',
-		args: '{"query": string, "variables"?: object}',
+		args: '{"query": string, "variables"?: object, "scopeId"?: string}',
 		description:
-			"Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval before running, so keep them minimal and explain what you intend to change. Subscriptions are not supported.",
+			"Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include scopeId: a stable id of the single resource the mutation changes (e.g. the workflow id), even if it is just a string. Reuse the exact same scopeId for every change to that same object — approving one mutation for a scopeId lets later mutations with that same scopeId run without re-asking, while a different scopeId is confirmed separately. A mutation without a scopeId is refused, so keep mutations minimal and scoped to one resource. Subscriptions are not supported.",
 		inputSchema: {
 			type: 'object',
 			properties: {
 				query: { type: 'string', description: 'GraphQL operation text.' },
 				variables: { type: 'object', description: 'Operation variables.' },
+				scopeId: {
+					type: 'string',
+					description:
+						'Required for mutations: a stable id of the resource being changed (e.g. the workflow id). Approval is remembered per scopeId for the session; reuse the same id for repeated edits to the same object.',
+				},
 			},
 			required: ['query'],
 		},
@@ -219,6 +230,61 @@ export function createGraphqlDeps(session: Session): GraphqlToolDeps {
 	};
 }
 
+// Resource scopeIds the user has approved this session. Confirming a mutation
+// for a scopeId records it here so later mutations to the same resource run
+// without re-asking; cleared on window reload (process-lifetime "session").
+const approvedMutationScopes = new Set<string>();
+
+/** Whether a mutation scopeId has already been approved this session. */
+export function isMutationScopeApproved(scopeId: string): boolean {
+	return approvedMutationScopes.has(scopeId);
+}
+
+/** Records that the user approved mutations for this resource this session. */
+export function approveMutationScope(scopeId: string): void {
+	approvedMutationScopes.add(scopeId);
+}
+
+/** Clears all session approvals (tests). */
+export function _resetApprovedMutationScopes(): void {
+	approvedMutationScopes.clear();
+}
+
+interface ParsedMutation {
+	query: string;
+	variables?: Record<string, unknown>;
+	scopeId?: string;
+}
+
+/** Parses a `rewst_graphql` request as a mutation, or undefined if it isn't one. */
+function parseMutation(name: string, input: unknown): ParsedMutation | undefined {
+	if (name !== 'rewst_graphql') return undefined;
+	const args = (typeof input === 'object' && input !== null ? input : {}) as {
+		query?: unknown;
+		variables?: unknown;
+		scopeId?: unknown;
+	};
+	const query = typeof args.query === 'string' ? args.query.trim() : '';
+	if (query.length === 0 || detectOperationType(query) !== 'mutation') return undefined;
+	const variables =
+		args.variables && typeof args.variables === 'object' && !Array.isArray(args.variables)
+			? (args.variables as Record<string, unknown>)
+			: undefined;
+	const scopeId =
+		typeof args.scopeId === 'string' && args.scopeId.trim().length > 0 ? args.scopeId.trim() : undefined;
+	return { query, variables, scopeId };
+}
+
+/**
+ * The approved resource scopeId for a `rewst_graphql` mutation request, or
+ * undefined when the request is not a mutation or carries no scopeId. lmTools.ts
+ * records this once the invocation is permitted, so repeat edits to the same
+ * resource skip the prompt.
+ */
+export function graphqlMutationScopeId(name: string, input: unknown): string | undefined {
+	return parseMutation(name, input)?.scopeId;
+}
+
 /** Confirmation copy the chat surface renders inline for a mutation. */
 export interface GraphqlMutationConfirmation {
 	title: string;
@@ -227,28 +293,30 @@ export interface GraphqlMutationConfirmation {
 }
 
 /**
- * The inline mutation confirmation for a tool request, or undefined when the
- * request needs none — anything but a `rewst_graphql` mutation (queries, schema
- * reads, and other tools run without a prompt). Lets lmTools.ts gate mutations
- * through VS Code's native chat confirmation instead of an OS modal (#25).
+ * The inline mutation confirmation for a tool request, or undefined when no
+ * prompt is needed: anything but a `rewst_graphql` mutation (queries, schema
+ * reads, other tools), a mutation whose scopeId is already approved this
+ * session, or a mutation with no scopeId at all (it is refused downstream in
+ * runGraphqlTool, so there is nothing to approve). Lets lmTools.ts gate
+ * mutations through VS Code's native chat confirmation instead of an OS modal,
+ * scoped to the resource the assistant declares it is changing (#25).
  */
 export function graphqlMutationConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
-	if (name !== 'rewst_graphql') return undefined;
-	const args = (typeof input === 'object' && input !== null ? input : {}) as {
-		query?: unknown;
-		variables?: unknown;
-	};
-	const query = typeof args.query === 'string' ? args.query.trim() : '';
-	if (query.length === 0 || detectOperationType(query) !== 'mutation') return undefined;
+	const mutation = parseMutation(name, input);
+	if (!mutation?.scopeId || isMutationScopeApproved(mutation.scopeId)) return undefined;
 
-	const variables =
-		args.variables && typeof args.variables === 'object' && !Array.isArray(args.variables)
-			? (args.variables as Record<string, unknown>)
-			: undefined;
-	const lines = ['Run this mutation on your Rewst instance?', '', '```graphql', query, '```'];
-	if (variables) lines.push('', 'Variables:', '```json', JSON.stringify(variables, null, 2), '```');
+	const lines = [
+		`Run this mutation against resource \`${mutation.scopeId}\`? Approving also lets further changes to this same resource run for the rest of this session without asking again.`,
+		'',
+		'```graphql',
+		mutation.query,
+		'```',
+	];
+	if (mutation.variables) {
+		lines.push('', 'Variables:', '```json', JSON.stringify(mutation.variables, null, 2), '```');
+	}
 	return {
-		title: 'Cage-Free Rewsty wants to run a GraphQL mutation',
+		title: 'Cage-Free Rewsty wants to change a Rewst resource',
 		message: lines.join('\n'),
 	};
 }
@@ -460,9 +528,16 @@ export async function runGraphqlTool(request: ToolRequest, deps: GraphqlToolDeps
 		throw new Error('rewst_graphql does not support subscriptions; use a query or mutation.');
 	}
 	if (kind === 'mutation') {
-		const summary = variables
+		const scopeId = request.args.scopeId;
+		if (typeof scopeId !== 'string' || scopeId.trim().length === 0) {
+			throw new Error(
+				'rewst_graphql mutations require a non-empty "scopeId" identifying the single resource being changed (e.g. the workflow id). Add it and retry.',
+			);
+		}
+		const operation = variables
 			? `${query.trim()}\n\nVariables:\n${JSON.stringify(variables, null, 2)}`
 			: query.trim();
+		const summary = `Resource ${scopeId.trim()}\n\n${operation}`;
 		if (!(await deps.confirmMutation(summary))) {
 			throw new Error('The user declined this mutation. Do not retry it; ask what they would prefer.');
 		}

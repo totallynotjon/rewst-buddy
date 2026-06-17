@@ -2,7 +2,13 @@ import { extPrefix } from '@global';
 import { SessionManager, type Session } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { createGraphqlDeps, graphqlMutationConfirmation, GRAPHQL_TOOL_SPECS } from '../tools/graphqlTool';
+import {
+	approveMutationScope,
+	createGraphqlDeps,
+	graphqlMutationConfirmation,
+	graphqlMutationScopeId,
+	GRAPHQL_TOOL_SPECS,
+} from '../tools/graphqlTool';
 import { describeRequestBrief, type ToolSpec } from '../tools/toolProtocol';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
 import { WEB_TOOL_SPECS } from '../tools/webTools';
@@ -241,6 +247,11 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 				};
 			},
 			invoke: async (options, _token) => {
+				// invoke only runs once VS Code has accepted the confirmation (or none
+				// was needed), so reaching here for a scoped mutation means the user
+				// permitted this resource — remember it so repeat edits skip the prompt.
+				const scopeId = graphqlMutationScopeId(name, options.input);
+				if (scopeId) approveMutationScope(scopeId);
 				const session = resolveGraphqlSession();
 				const [result] = await runToolRequests(
 					[{ tool: name, args: options.input ?? {} }],
