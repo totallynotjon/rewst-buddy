@@ -264,8 +264,13 @@ real names, not ids.
    enumeration (`user { managedOrgs }` then `workflows(where:{orgId})`) is **wrong**: `managedOrgs`
    does **not** list sub-orgs the session can still read (verified live — Jon's Sandbox is reachable
    yet absent from `managedOrgs`), so it silently drops them. The un-scoped query catches everything
-   and needs no separate org-name lookup. Searches match name/id/org-name (case-insensitive
-   substring, exact-name first) and return each hit's **name, id, and org name (+ org id)**. The
+   and needs no separate org-name lookup. **Matching is tokenized and forgiving:** lowercase, strip
+   punctuation to spaces, and require every query word to appear (as a substring, any order) — so
+   `jon sandbox` finds `Jon's Sandbox` and `lock workflow` finds `[RAVEN] Workflow Lock`. Hits are
+   split: **name/id matches** are listed (exact-name first), while workflows that match only because
+   their **org name** matched (e.g. `jon's sandbox` → every workflow in the "Jon's Sandbox" org) are
+   **summarized, not listed** (`Org (count; orgId …)`), so an org-name query can't flood the result
+   — pass that orgId to list them. Returns each hit's **name, id, and org name (+ org id)**. The
    cache is built lazily on the first search (never at startup) and reused until `refresh: true`.
    This replaces the "guess an id and fail" loop; "list the workflows" is this tool, not raw GraphQL
    or the native `listWorkflow`.

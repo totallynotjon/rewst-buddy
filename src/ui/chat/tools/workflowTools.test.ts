@@ -1021,6 +1021,44 @@ suite('Unit: workflowTools', () => {
 			assert.match(out, /refresh:true/, 'suggests refresh for a newly created workflow');
 		});
 
+		test('buddy_workflow_search matches across punctuation and word order', async () => {
+			const { deps } = makeDeps({
+				indexWorkflows: [
+					{ id: 'wf-js', name: "Jon's Sandbox", orgId: 'org-1', orgName: 'Test Org' },
+					{ id: 'wf-lock', name: '[RAVEN] Workflow Lock', orgId: 'org-1', orgName: 'Test Org' },
+				],
+			});
+			// Apostrophe in the name must not block the match.
+			const a = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'jon sandbox' } }, deps);
+			assert.match(
+				a,
+				/Jon's Sandbox {2}\(id: wf-js\)/,
+				"apostrophe-insensitive: 'jon sandbox' finds Jon's Sandbox",
+			);
+			// Reversed word order + a bracket prefix must still match.
+			const b = await runWorkflowTool(
+				{ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'lock workflow' } },
+				deps,
+			);
+			assert.match(b, /\[RAVEN\] Workflow Lock {2}\(id: wf-lock\)/, 'word-order/bracket-insensitive');
+		});
+
+		test('buddy_workflow_search summarizes org-name matches instead of flooding the list', async () => {
+			const wfs = [{ id: 'wf-named', name: "Jon's Sandbox", orgId: 'org-x', orgName: 'Test Org' }];
+			for (let i = 0; i < 20; i++) {
+				wfs.push({ id: `wf-in-${i}`, name: `Unrelated ${i}`, orgId: 'org-js', orgName: "Jon's Sandbox" });
+			}
+			const { deps } = makeDeps({ indexWorkflows: wfs });
+			const out = await runWorkflowTool(
+				{ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'jon sandbox' } },
+				deps,
+			);
+			assert.match(out, /wf-named/, 'the by-name match is listed');
+			assert.ok(!out.includes('Unrelated 0'), 'org-only matches are NOT listed inline (no flood)');
+			assert.match(out, /Plus 20 workflow\(s\) in matching org\(s\)/, 'org-only matches are summarized');
+			assert.match(out, /Jon's Sandbox \(20; orgId org-js\)/, 'summary names the org, count, and orgId to scope');
+		});
+
 		test('buddy_workflow_search indexes sub-orgs the same as managed orgs (one cross-org query)', async () => {
 			// org-3 stands in for a sub-org that org enumeration would miss; the
 			// unscoped workflows query returns it like any other.

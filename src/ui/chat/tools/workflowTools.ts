@@ -56,7 +56,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_SEARCH_TOOL_NAME,
 		args: '{"query"?: string, "orgId"?: string, "refresh"?: boolean, "limit"?: number}',
 		description:
-			'Find Rewst workflows by name (or id) across every org you can access — the reliable way to resolve a workflow instead of guessing its id or paging through GraphQL. On first use it builds and CACHES an index of all workflows (id, name, org id, org name) reachable from your session — managed orgs and sub-orgs alike — then answers this and later searches from the cache with no re-listing. Pass query to match by name, id, or org name (case-insensitive substring); orgId to scope to one org; limit to cap results (default 25); refresh:true to rebuild the cache after workflows are created or renamed. Each result shows the workflow name, its id, and the ORG NAME (with org id) — feed those straight into buddy_workflow_get / buddy_workflow_edit / buddy_workflow_run.',
+			'Find Rewst workflows by name (or id) across every org you can access — the reliable way to resolve a workflow instead of guessing its id or paging through GraphQL. On first use it builds and CACHES an index of all workflows (id, name, org id, org name) reachable from your session — managed orgs and sub-orgs alike — then answers this and later searches from the cache with no re-listing. Pass query to match by name or id — matching ignores case, punctuation, and word order and requires every word, so "jon sandbox" finds "Jon\'s Sandbox" and "lock workflow" finds "[RAVEN] Workflow Lock". Workflows that match only because their ORG name matched are summarized separately (with the org id), so an org-name query never floods the list. orgId scopes to one org; limit caps results (default 25); refresh:true rebuilds the cache after workflows are created or renamed. Each result shows the workflow name, its id, and the ORG NAME (with org id) — feed those straight into buddy_workflow_get / buddy_workflow_edit / buddy_workflow_run.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -1714,6 +1714,23 @@ function ageString(ms: number): string {
 	return `${Math.round(minutes / 60)}h ago`;
 }
 
+/** Lowercase and collapse every run of non-alphanumerics to a single space, so
+ * matching ignores punctuation/spacing: "Jon's Sandbox", "[RAVEN] Workflow Lock"
+ * → "jon s sandbox", "raven workflow lock". A query's tokens are then matched as
+ * substrings in any order, so "jon sandbox" finds "Jon's Sandbox" and "lock
+ * workflow" finds "[RAVEN] Workflow Lock". */
+function normalizeText(s: string): string {
+	return s
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, ' ')
+		.trim();
+}
+
+interface NameHit {
+	entry: WorkflowIndexEntry;
+	rank: number;
+}
+
 async function runWorkflowSearch(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const refresh = request.args.refresh === true;
 	if (refresh || !workflowIndexCache) {
@@ -1721,40 +1738,80 @@ async function runWorkflowSearch(request: ToolRequest, deps: GraphqlToolDeps): P
 	}
 	const index = workflowIndexCache;
 
-	const query = (asStringArg(request.args, 'query') ?? '').trim().toLowerCase();
+	const rawQuery = (asStringArg(request.args, 'query') ?? '').trim();
+	const qLower = rawQuery.toLowerCase();
+	const qNorm = normalizeText(rawQuery);
+	const qTokens = qNorm.split(' ').filter(Boolean);
 	const orgId = asStringArg(request.args, 'orgId');
 	const limit = typeof request.args.limit === 'number' ? Math.max(1, Math.min(200, request.args.limit)) : 25;
 
-	let matches = index.entries;
-	if (orgId) matches = matches.filter(entry => entry.orgId === orgId);
-	if (query) {
-		matches = matches.filter(entry => `${entry.name} ${entry.id} ${entry.orgName}`.toLowerCase().includes(query));
-		// Surface the strongest name matches first: exact, then prefix, then the rest.
-		matches = [...matches].sort((a, b) => matchRank(a, query) - matchRank(b, query));
+	const pool = orgId ? index.entries.filter(entry => entry.orgId === orgId) : index.entries;
+
+	// Split hits into name/id matches (the answer) and org-only matches (a query
+	// that matched an ORG name, e.g. "jon's sandbox" → every workflow in that org).
+	// Org-only matches are summarized, never listed, so they cannot flood a search.
+	const nameHits: NameHit[] = [];
+	const orgOnly: WorkflowIndexEntry[] = [];
+	for (const entry of pool) {
+		if (!rawQuery) {
+			nameHits.push({ entry, rank: 2 });
+			continue;
+		}
+		const nameNorm = normalizeText(entry.name);
+		const nameMatch = qTokens.every(token => nameNorm.includes(token));
+		const idMatch = qLower.length >= 3 && entry.id.toLowerCase().includes(qLower);
+		if (nameMatch || idMatch) {
+			nameHits.push({ entry, rank: nameMatch ? nameRank(nameNorm, qNorm) : 3 });
+		} else if (qTokens.length > 0 && qTokens.every(token => normalizeText(entry.orgName).includes(token))) {
+			orgOnly.push(entry);
+		}
+	}
+	nameHits.sort((a, b) => a.rank - b.rank || a.entry.name.localeCompare(b.entry.name));
+
+	const total = nameHits.length + orgOnly.length;
+	const header =
+		`${total} workflow(s)${rawQuery ? ` matching "${rawQuery}"` : ''}` +
+		` (index: ${index.entries.length} workflows across ${index.orgCount} org(s)${index.truncated ? ', truncated at the page cap' : ''}, built ${ageString(index.builtAt)}; refresh:true to rebuild).`;
+	if (total === 0) {
+		return `${header}\nNo matches. Try fewer/looser words, drop orgId, or refresh:true if the workflow is new.`;
 	}
 
-	const header =
-		`${matches.length} workflow(s)${query ? ` matching "${query}"` : ''}` +
-		` (index: ${index.entries.length} workflows across ${index.orgCount} org(s)${index.truncated ? ', truncated at the page cap' : ''}, built ${ageString(index.builtAt)}; refresh:true to rebuild).`;
-	if (matches.length === 0) {
-		return `${header}\nNo matches. Try a shorter query, drop orgId, or refresh:true if the workflow is new.`;
+	const parts = [header];
+	const shown = nameHits.slice(0, limit);
+	if (shown.length > 0) {
+		if (rawQuery) parts.push('Matched by name:');
+		parts.push(
+			shown
+				.map(h => `- ${h.entry.name}  (id: ${h.entry.id})  org: ${h.entry.orgName} (${h.entry.orgId})`)
+				.join('\n'),
+		);
+		if (nameHits.length > shown.length) {
+			parts.push(`…and ${nameHits.length - shown.length} more by name; raise limit or narrow the query.`);
+		}
+	} else if (rawQuery) {
+		parts.push('No workflows matched by name.');
 	}
-	const shown = matches.slice(0, limit);
-	const lines = shown.map(entry => `- ${entry.name}  (id: ${entry.id})  org: ${entry.orgName} (${entry.orgId})`);
-	const more =
-		matches.length > shown.length
-			? `\n…and ${matches.length - shown.length} more; raise limit or narrow the query.`
-			: '';
-	return cap(`${header}\n${lines.join('\n')}${more}`);
+	if (orgOnly.length > 0) {
+		const byOrg = new Map<string, { name: string; count: number }>();
+		for (const entry of orgOnly) {
+			const cur = byOrg.get(entry.orgId) ?? { name: entry.orgName, count: 0 };
+			cur.count++;
+			byOrg.set(entry.orgId, cur);
+		}
+		const summary = [...byOrg.entries()].map(([id, v]) => `${v.name} (${v.count}; orgId ${id})`).join(', ');
+		parts.push(
+			`Plus ${orgOnly.length} workflow(s) in matching org(s), not by name: ${summary}. Pass that orgId to list an org's workflows.`,
+		);
+	}
+	return cap(parts.join('\n'));
 }
 
-/** Lower is better: 0 exact name, 1 name starts-with, 2 name contains, 3 other field. */
-function matchRank(entry: WorkflowIndexEntry, query: string): number {
-	const name = entry.name.toLowerCase();
-	if (name === query) return 0;
-	if (name.startsWith(query)) return 1;
-	if (name.includes(query)) return 2;
-	return 3;
+/** Lower is better: 0 exact name, 1 name starts-with the query, 2 all tokens present. */
+function nameRank(nameNorm: string, qNorm: string): number {
+	if (!qNorm) return 2;
+	if (nameNorm === qNorm) return 0;
+	if (nameNorm.startsWith(qNorm)) return 1;
+	return 2;
 }
 
 export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
