@@ -2,7 +2,7 @@
 
 The changelog is built from **per-PR notes**, and releases run through GitHub
 Actions with two human approval gates so nothing reaches `main` or the
-Marketplace unreviewed.
+Marketplace unreviewed. There is no manual release skill — these workflows are the whole process.
 
 ## Changelog notes
 
@@ -17,7 +17,7 @@ Marketplace unreviewed.
 ## Release flow
 
 1. **Prepare** — run the **Prepare release** workflow (Actions → Run workflow)
-   with the target version. It collates `changelog.d/` into a `## [x.y.z]`
+   picking a version bump (`patch`/`minor`/`major`) or an explicit version. It collates `changelog.d/` into a `## [x.y.z]`
    section, bumps `package.json`, and opens a `release/vx.y.z` PR.
 2. **Review & merge** — review the PR and merge it (squash). Branch protection
    requires the approval here — this is gate #1.

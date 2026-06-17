@@ -1,6 +1,7 @@
 // Roll every pending `changelog.d/` note into a single CHANGELOG.md section and
-// remove the consumed notes. Run at release time (by the release workflow or
-// /merge_release), once, for as many merged PRs as have accumulated.
+// remove the consumed notes. Run at release time by the Prepare release
+// workflow (.github/workflows/release.yml), once, for as many merged PRs as
+// have accumulated.
 //
 //   node scripts/changelog/build.mjs --version 0.45.0 [--date 2026-06-20]
 //   node scripts/changelog/build.mjs --version 0.45.0 --preview   # print, don't write

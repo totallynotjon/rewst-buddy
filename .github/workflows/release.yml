@@ -1,16 +1,26 @@
 name: Prepare release
 
-# Manually triggered. Collates the pending changelog.d/ notes into a versioned
-# CHANGELOG.md section, bumps package.json, and opens a release PR to main.
-# It does NOT publish — a maintainer reviews and merges the PR (branch
-# protection requires approval), then the tag-driven Publish workflow ships it.
+# Manually triggered. Resolves the next version, collates the pending
+# changelog.d/ notes into a versioned CHANGELOG.md section, bumps package.json,
+# and opens a release PR to main. It does NOT publish — a maintainer reviews and
+# merges the PR (branch protection requires approval), then the tag-driven
+# Publish workflow ships it.
 
 on:
     workflow_dispatch:
         inputs:
+            bump:
+                description: 'Version bump (ignored if "version" is set)'
+                type: choice
+                options:
+                    - patch
+                    - minor
+                    - major
+                default: patch
             version:
-                description: 'Release version, e.g. 0.45.0 (no leading v)'
-                required: true
+                description: 'Explicit version, e.g. 0.45.0 (overrides "bump")'
+                required: false
+                default: ''
             date:
                 description: 'Release date YYYY-MM-DD (optional, defaults to today)'
                 required: false
@@ -29,7 +39,8 @@ jobs:
         runs-on: ubuntu-latest
         env:
             GH_TOKEN: ${{ github.token }}
-            VERSION: ${{ github.event.inputs.version }}
+            BUMP: ${{ github.event.inputs.bump }}
+            VERSION_INPUT: ${{ github.event.inputs.version }}
             DATE: ${{ github.event.inputs.date }}
         steps:
             - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -41,6 +52,16 @@ jobs:
             - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: 22
+
+            - name: Resolve version
+              run: |
+                  if [ -n "$VERSION_INPUT" ]; then
+                    V="${VERSION_INPUT#v}"
+                  else
+                    V="$(node -e 'const p=require("./package.json").version.split(".").map(Number);const b=process.argv[1];if(b==="major"){p[0]++;p[1]=0;p[2]=0}else if(b==="minor"){p[1]++;p[2]=0}else{p[2]++}console.log(p.join("."))' "$BUMP")"
+                  fi
+                  echo "VERSION=$V" >> "$GITHUB_ENV"
+                  echo "Resolved release version: $V"
 
             - name: Guard against an existing release or tag
               run: |
