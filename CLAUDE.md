@@ -106,7 +106,29 @@ docs/
 - Status bar appears in the **bottom-left** (`StatusBarAlignment.Left` in `src/ui/StatusBarIcon.ts`).
 - "Unofficial" framing stays prominent in README — banner at top, title includes "Unofficial", package.json description starts with "Unofficial".
 - Relative links (`docs/features.md`, `#anchor`) resolve on both GitHub and the VS Code Marketplace — prefer them over absolute URLs.
-- When adding a new feature, update: `docs/features.md` (deep dive), `docs/reference.md` (commands + settings if any), `README.md` "Features at a glance" bullet if user-visible, and `CHANGELOG.md`.
+- When adding a new feature, update: `docs/features.md` (deep dive), `docs/reference.md` (commands + settings if any), `README.md` "Features at a glance" bullet if user-visible, and add a changelog note (see **Changelog & Releases**).
+
+## Changelog & Releases
+
+The changelog is generated from **per-PR note files** — never hand-edit `CHANGELOG.md`. This is the canonical process; the CI workflows point back here.
+
+### Adding a changelog note (every user-facing PR)
+
+- Add **one file per PR**: `changelog.d/<pr-or-issue-number>.md`. Scaffold it with `npm run changelog:new`, or write it directly.
+- Frontmatter `category:` is `Added`, `Changed`, or `Fixed` (also accepts `Deprecated`, `Removed`, `Security`; common synonyms auto-correct). Optional `pr:` sets the PR link; a numeric filename is the fallback. When the PR number is only known after opening the PR, set `pr:` then and push that one-line change.
+- The body is the Markdown bullet exactly as it should read in the changelog (multi-line / nested bullets allowed).
+- One file per PR is what keeps the changelog conflict-free — **never edit `CHANGELOG.md` directly.** Details: `changelog.d/README.md`.
+- CI requires a note on every PR (`npm run changelog:check`); a PR that genuinely needs none carries the `skip-changelog` label.
+
+### Releasing (fully automated in CI — there is no release skill)
+
+Releases run entirely through GitHub Actions; runbook and one-time setup are in `docs/dev/releasing.md`. In short:
+
+1. Run the **Prepare release** workflow (Actions → Run workflow) — pick a bump (`patch`/`minor`/`major`) or an explicit version. It collates `changelog.d/` into a new `## [x.y.z]` section in `CHANGELOG.md`, bumps `package.json`, and opens a `release/vx.y.z` PR.
+2. Review and squash-merge that PR (CodeRabbit + maintainer approval gate it).
+3. `npm run release:tag` — the **Publish** workflow then creates the GitHub release (notes from the CHANGELOG section) and publishes to the Marketplace, gated by the `release` environment's required reviewer.
+
+Per-change code review happens on each feature PR (CodeRabbit + CI), not at release time.
 
 ## Path Aliases (CRITICAL)
 

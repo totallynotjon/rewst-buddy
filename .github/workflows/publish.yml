@@ -1,0 +1,86 @@
+name: Publish
+
+# Fires when a vX.Y.Z tag is pushed (after the release PR has merged to main).
+# Packages the extension, creates the GitHub release, and publishes to the VS
+# Code Marketplace. The `release` environment requires a maintainer to approve
+# the run before it proceeds, and the Marketplace token (VSCE_PAT) is scoped to
+# that environment — so the token never unlocks without a human go-ahead.
+
+on:
+    push:
+        tags:
+            - 'v*.*.*'
+
+permissions:
+    contents: read
+
+concurrency:
+    group: publish-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+        environment: release
+        permissions:
+            contents: write # create the GitHub release
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  fetch-depth: 0
+                  persist-credentials: false
+
+            # No dependency cache in this release job: restoring a cache populated by a
+            # less-privileged PR run is a cache-poisoning vector for a job that holds a
+            # publish token.
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: 22
+
+            - run: npm ci
+
+            - name: Verify the tag matches package.json
+              run: |
+                  TAG="${GITHUB_REF_NAME#v}"
+                  PKG="$(node -p "require('./package.json').version")"
+                  if [ "$TAG" != "$PKG" ]; then
+                    echo "::error::Tag v$TAG does not match package.json version $PKG."
+                    exit 1
+                  fi
+
+            - name: Package extension
+              run: npx --yes @vscode/vsce package --no-dependencies -o "rewst-buddy-${GITHUB_REF_NAME}.vsix"
+
+            - name: Extract release notes for this version
+              run: |
+                  VERSION="${GITHUB_REF_NAME#v}"
+                  awk -v v="$VERSION" '
+                    $0 ~ "^## \\[" v "\\]" {grab=1; next}
+                    grab && /^## \[/ {exit}
+                    grab {print}
+                  ' CHANGELOG.md > /tmp/notes.md
+                  if ! grep -q '[^[:space:]]' /tmp/notes.md; then
+                    echo "::error::No release notes found for ${GITHUB_REF_NAME} in CHANGELOG.md."
+                    exit 1
+                  fi
+                  echo "--- release notes ---"; cat /tmp/notes.md
+
+            - name: Create GitHub release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  gh release create "$GITHUB_REF_NAME" \
+                    --title "$GITHUB_REF_NAME" \
+                    --notes-file /tmp/notes.md \
+                    "rewst-buddy-${GITHUB_REF_NAME}.vsix"
+
+            - name: Publish to VS Code Marketplace
+              env:
+                  VSCE_PAT: ${{ secrets.VSCE_PAT }}
+              run: npx --yes @vscode/vsce publish --no-dependencies --packagePath "rewst-buddy-${GITHUB_REF_NAME}.vsix"
+
+            # Open VSX (optional). Configure OVSX_PAT in the release environment to enable.
+            # - name: Publish to Open VSX
+            #   env:
+            #     OVSX_PAT: ${{ secrets.OVSX_PAT }}
+            #   run: npx --yes ovsx publish "rewst-buddy-${GITHUB_REF_NAME}.vsix" -p "$OVSX_PAT"

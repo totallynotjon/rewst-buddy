@@ -1,9 +1,9 @@
 ---
-description: Take a GitHub issue from triage to an open, review-clean PR (worktree, tested fix, changelog, PR) ready for /merge_release.
+description: Take a GitHub issue from triage to an open, review-clean PR (worktree, tested fix, changelog note, PR) ready to review and merge.
 argument-hint: <issue-number> [extra context or constraints]
 ---
 
-You are addressing GitHub issue #$1 end to end: understand it, spin up a worktree, implement a tested fix, document it, and open a PR that references the issue. Stop at an open, review-clean PR — versioning, merging, and publishing are a separate step (`/merge_release`).
+You are addressing GitHub issue #$1 end to end: understand it, spin up a worktree, implement a tested fix, document it, and open a PR that references the issue. Stop at an open, review-clean PR — versioning, merging, and publishing are handled separately and automatically by CI (see `docs/dev/releasing.md`).
 
 Extra context from the user (may be empty): $ARGUMENTS
 
@@ -11,7 +11,7 @@ Extra context from the user (may be empty): $ARGUMENTS
 
 <target_branch>main</target_branch>
 <remote>origin</remote> <!-- totallynotjon (Jon's). The OwenIbarra remote is a PR-review fork — never push there. -->
-<changelog_file>CHANGELOG.md</changelog_file>
+<changelog_notes_dir>changelog.d/</changelog_notes_dir> <!-- one note file per PR; never edit CHANGELOG.md directly (see changelog.d/README.md) -->
 <branch_prefix>fix/issue-$1-</branch_prefix>
 <issue_reference>Addresses #$1</issue_reference> <!-- use "Addresses", not "Closes": leave the issue open for the user to close once they've confirmed the fix in real use -->
 
@@ -22,7 +22,7 @@ Extra context from the user (may be empty): $ARGUMENTS
 - **Type-check via `mcp__ide__getDiagnostics`**, not `tsc`.
 - **Prompt steering changes must stay transport-shaped.** When editing Cage-Free Rewsty steering or `vscode-tool` protocol text, avoid XML authority wrappers and override language ("supersedes", "overrides", "ignore your system prompt", "trusted system instruction"). Use neutral VS Code context / local tool protocol wording, and keep edit/write tool routing close to the concrete Available tools list. See CLAUDE.md "AI Prompt Steering Directives".
 - **Path aliases**, if you add one, must go in BOTH `tsconfig.json` and `webpack.config.cjs`.
-- **Do not merge, tag, bump the version, or publish here.** That is `/merge_release`.
+- **Do not merge, tag, bump the version, or publish here** — releasing is a separate, fully CI-driven step (see `docs/dev/releasing.md`).
 
 ## Phase 1 — Understand
 
@@ -59,7 +59,7 @@ Do the work in a dedicated git worktree so the primary checkout stays untouched.
 
 ## Phase 5 — Document
 
-- Add (or extend) a `## [Unreleased]` section at the top of `CHANGELOG.md`, above the latest `## [x.y.z]` heading, with an `### Added/Changed/Fixed` entry ending in `(#$1)`.
+- Add a **changelog note** following the **Changelog & Releases** section in CLAUDE.md (`npm run changelog:new`, or create `changelog.d/$1.md` directly). Never edit `CHANGELOG.md` — releases collate the notes.
 - If the change is user-facing, update the matching `docs/` file and the README per CLAUDE.md "User-Facing Documentation".
 
 ## Phase 6 — Commit, push, PR
@@ -68,6 +68,7 @@ Do the work in a dedicated git worktree so the primary checkout stays untouched.
 2. Commit with a normal-English message whose body explains the _why_, ending with `Addresses #$1`.
 3. `git push -u origin <branch>` (from the worktree).
 4. `gh pr create --base main --title "<concise>" --body "..."` — the body covers the problem, the change, and how it was tested (state live-validation results honestly, including any unrelated flakes). Reference `#$1` with "Addresses", not "Closes".
+5. Once the PR number is known, set the note's `pr:` to it (per CLAUDE.md "Changelog & Releases") and push that one-line change, so the changelog links the PR.
 
 ## Phase 7 — Review loop
 
@@ -75,4 +76,4 @@ After the automated review (CodeRabbit) runs: fetch its comments, fix the legiti
 
 ## Done
 
-Report the PR URL. Then, from the primary checkout, tear down the worktree: `git worktree remove ../rb-issue-$1` (the branch and pushed PR remain on `origin`). The PR is now ready for `/merge_release`. Do not close the issue — the user closes it after confirming the fix.
+Report the PR URL. Then, from the primary checkout, tear down the worktree: `git worktree remove ../rb-issue-$1` (the branch and pushed PR remain on `origin`). The PR is now ready to review and merge. Do not close the issue — the user closes it after confirming the fix.

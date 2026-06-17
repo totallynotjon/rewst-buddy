@@ -1,0 +1,111 @@
+name: Prepare release
+
+# Manually triggered. Resolves the next version, collates the pending
+# changelog.d/ notes into a versioned CHANGELOG.md section, bumps package.json,
+# and opens a release PR to main. It does NOT publish — a maintainer reviews and
+# merges the PR (branch protection requires approval), then the tag-driven
+# Publish workflow ships it.
+
+on:
+    workflow_dispatch:
+        inputs:
+            bump:
+                description: 'Version bump (ignored if "version" is set)'
+                type: choice
+                options:
+                    - patch
+                    - minor
+                    - major
+                default: patch
+            version:
+                description: 'Explicit version, e.g. 0.45.0 (overrides "bump")'
+                required: false
+                default: ''
+            date:
+                description: 'Release date YYYY-MM-DD (optional, defaults to today)'
+                required: false
+                default: ''
+
+permissions:
+    contents: write
+    pull-requests: write
+
+concurrency:
+    group: prepare-release
+    cancel-in-progress: false
+
+jobs:
+    prepare:
+        runs-on: ubuntu-latest
+        env:
+            GH_TOKEN: ${{ github.token }}
+            BUMP: ${{ github.event.inputs.bump }}
+            VERSION_INPUT: ${{ github.event.inputs.version }}
+            DATE: ${{ github.event.inputs.date }}
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  ref: main
+                  fetch-depth: 0
+                  persist-credentials: true
+
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: 22
+
+            - name: Resolve version
+              run: |
+                  if [ -n "$VERSION_INPUT" ]; then
+                    V="${VERSION_INPUT#v}"
+                  else
+                    V="$(node -e 'const p=require("./package.json").version.split(".").map(Number);const b=process.argv[1];if(b==="major"){p[0]++;p[1]=0;p[2]=0}else if(b==="minor"){p[1]++;p[2]=0}else{p[2]++}console.log(p.join("."))' "$BUMP")"
+                  fi
+                  echo "VERSION=$V" >> "$GITHUB_ENV"
+                  echo "Resolved release version: $V"
+
+            - name: Guard against an existing release or tag
+              run: |
+                  if gh release view "v${VERSION}" >/dev/null 2>&1; then
+                    echo "::error::Release v${VERSION} already exists."
+                    exit 1
+                  fi
+                  if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+                    echo "::error::Tag v${VERSION} already exists on origin."
+                    exit 1
+                  fi
+
+            - name: Capture the changelog section for the PR body
+              run: |
+                  ARGS=(--version "$VERSION" --preview)
+                  [ -n "$DATE" ] && ARGS+=(--date "$DATE")
+                  node scripts/changelog/build.mjs "${ARGS[@]}" > /tmp/section.md
+                  cat /tmp/section.md
+
+            - name: Collate notes and bump version
+              run: |
+                  ARGS=(--version "$VERSION")
+                  [ -n "$DATE" ] && ARGS+=(--date "$DATE")
+                  node scripts/changelog/build.mjs "${ARGS[@]}"
+                  npm version "$VERSION" --no-git-tag-version
+
+            - name: Open release PR
+              run: |
+                  git config user.name 'github-actions[bot]'
+                  git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+                  BRANCH="release/v${VERSION}"
+                  git switch -c "$BRANCH"
+                  git add CHANGELOG.md changelog.d package.json package-lock.json
+                  git commit -m "Release v${VERSION}"
+                  git push -u origin "$BRANCH" --force-with-lease
+                  {
+                    echo "Automated release prep for **v${VERSION}**."
+                    echo
+                    echo "- Collated \`changelog.d/\` notes into CHANGELOG.md and bumped \`package.json\`."
+                    echo "- Merging this PR does **not** publish. After it lands on \`main\`, push the tag \`v${VERSION}\` (e.g. \`npm run release:tag\`) to trigger Publish."
+                    echo
+                    echo "---"
+                    echo
+                    cat /tmp/section.md
+                  } > /tmp/pr-body.md
+                  gh pr create --base main --head "$BRANCH" \
+                    --title "Release v${VERSION}" --body-file /tmp/pr-body.md
