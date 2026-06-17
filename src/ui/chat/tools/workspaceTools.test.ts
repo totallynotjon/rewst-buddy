@@ -56,6 +56,18 @@ suite('Unit: workspaceTools', () => {
 			assert.ok(result.output.includes('rewst-buddy.ai.tools'));
 		});
 
+		test('a workflow tool is refused when the workflows capability is disabled', async () => {
+			// The test config defaults to workspace-only, so "workflows" is off — a
+			// directly-emitted buddy_workflow_* block must be gated at dispatch, not run.
+			const [result] = await runToolRequests(
+				[{ tool: 'buddy_workflow_get', args: { workflowId: 'w', orgId: 'o' } }],
+				deps(),
+			);
+			assert.strictEqual(result.ok, false);
+			assert.match(result.output, /Workflow tools are disabled/);
+			assert.ok(result.output.includes('rewst-buddy.ai.tools'));
+		});
+
 		test('unknown tools fail with the available tool list', async () => {
 			const [result] = await runToolRequests([{ tool: 'delete_everything', args: {} }], deps());
 			assert.strictEqual(result.ok, false);

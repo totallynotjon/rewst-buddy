@@ -117,6 +117,14 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(next[0].publish, [{ key: 'k', value: 'v' }]);
 			assert.deepStrictEqual(next[0].do, ['bb02']);
 		});
+
+		test('carries the run/call form parameters through on a non-input edit', () => {
+			// updateWorkflow replaces the whole payload, so the action.parameters that
+			// drive the run/call form must be resent or they are silently dropped.
+			const w = sampleWorkflow();
+			const input = workflowToInput(w as never, w.tasks as never);
+			assert.deepStrictEqual(input.parameters, w.action.parameters, 'parameters preserved');
+		});
 	});
 
 	suite('applyOperations()', () => {
@@ -141,6 +149,23 @@ suite('Unit: workflowTools', () => {
 			const notify = tasks.find(t => t.name === 'notify')!;
 			assert.strictEqual(end.next!.length, 1);
 			assert.deepStrictEqual(end.next![0].do, [notify.id]);
+		});
+
+		test('connect inserts a success edge before a pre-existing targetless terminal', () => {
+			// A task saved once carries a terminal {{ SUCCEEDED }} with do:[]. Connecting
+			// from it must place the new success edge first, or FOLLOW_FIRST lets the
+			// empty terminal shadow it.
+			const tasksIn = sampleTasks();
+			tasksIn[1].next = [{ when: '{{ SUCCEEDED }}', label: '', do: [], publish: [] }];
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'after', action: 'core.noop' },
+				{ op: 'connect', from: 'end', to: 'after' },
+			];
+			const { tasks } = applyOperations(tasksIn as never, ops, NOOP_REF);
+			const end = tasks.find(t => t.name === 'end')!;
+			const after = tasks.find(t => t.name === 'after')!;
+			assert.deepStrictEqual(end.next![0].do, [after.id], 'new connection evaluated first');
+			assert.deepStrictEqual(end.next![1].do, [], 'empty terminal pushed after');
 		});
 
 		test('add_task with subWorkflowId calls another workflow (its id is the action id)', () => {

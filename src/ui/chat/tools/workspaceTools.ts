@@ -102,7 +102,17 @@ async function runTool(
 			return { output: listTemplateLinks(deps) };
 		default: {
 			if (isWebTool(request.tool)) return { output: await runWebTool(request) };
-			if (isWorkflowTool(request.tool)) return { output: await runWorkflowTool(request, graphqlDeps) };
+			if (isWorkflowTool(request.tool)) {
+				// runWorkflowTool's deps.isEnabled() gates the graphql capability, not
+				// workflows, so enforce the "workflows" capability here — a remote
+				// assistant can emit a tool block it was never offered.
+				if (!isAiToolEnabled('workflows')) {
+					throw new Error(
+						'Workflow tools are disabled. The user can enable them with the rewst-buddy.ai.tools setting (check "workflows").',
+					);
+				}
+				return { output: await runWorkflowTool(request, graphqlDeps) };
+			}
 			if (isGraphqlTool(request.tool)) return { output: await runGraphqlTool(request, graphqlDeps) };
 			const names = [...WORKSPACE_TOOL_SPECS, ...WEB_TOOL_SPECS, ...WORKFLOW_TOOL_SPECS, ...GRAPHQL_TOOL_SPECS]
 				.map(s => s.name)

@@ -442,6 +442,11 @@ export function workflowToInput(
 	if (w.schemaVersion != null) input.schemaVersion = w.schemaVersion;
 	if (w.version != null) input.version = w.version;
 	if (w.input != null) input.input = w.input;
+	// The run/call form parameters live under action.parameters on read but are a
+	// top-level WorkflowInput field on write. updateWorkflow replaces the whole
+	// payload, so a non-input edit must carry them through or they are dropped
+	// (set_inputs overrides this via the overrides arg below).
+	if (w.action?.parameters != null) input.parameters = w.action.parameters;
 	if (w.inputSchema != null) input.inputSchema = w.inputSchema;
 	if (w.outputSchema != null) input.outputSchema = w.outputSchema;
 	if (w.varsSchema != null) input.varsSchema = w.varsSchema;
@@ -895,7 +900,16 @@ export function applyOperations(
 					do: [to.id],
 					publish: normalizePublish(operation.publish),
 				};
-				from.next = [...(from.next ?? []), transition];
+				// A task saved once carries a terminal "{{ SUCCEEDED }}" transition with
+				// no targets. Appending another success transition after it would let
+				// that empty terminal shadow the new edge under FOLLOW_FIRST, so insert
+				// the new success edge before the first targetless terminal.
+				const existing = from.next ?? [];
+				const terminalIndex = existing.findIndex(t => isSuccessCondition(t.when) && (t.do ?? []).length === 0);
+				from.next =
+					terminalIndex >= 0 && isSuccessCondition(transition.when)
+						? [...existing.slice(0, terminalIndex), transition, ...existing.slice(terminalIndex)]
+						: [...existing, transition];
 				applied.push(`connect ${from.name} -> ${to.name} when ${transition.when}`);
 				break;
 			}

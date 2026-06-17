@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { log } from '@utils';
 import { getTestSession, getTestToken, hasTestToken, initTestEnvironment } from '@test';
 import { runWorkflowTool } from '../../ui/chat/tools/workflowTools';
 import type { GraphqlToolDeps } from '../../ui/chat/tools/graphqlTool';
@@ -55,7 +56,7 @@ suite('Integration: workflowTools', function () {
 			);
 			available = (JSON.parse(out) as GraphSummary).workflow.id === WORKFLOW_ID;
 		} catch (error) {
-			console.log('workflowTools integration: workflow unavailable —', error);
+			log.debug('workflowTools integration: workflow unavailable —', error);
 			available = false;
 		}
 		if (!available) this.skip();
@@ -134,7 +135,7 @@ suite('Integration: workflowTools', function () {
 		)) as { data?: { workflowExecutions?: ({ id?: string } | null)[] } };
 		const executionId = execs.data?.workflowExecutions?.[0]?.id;
 		if (!executionId) {
-			console.log('buddy_execution_logs: no executions to inspect — skipping');
+			log.debug('buddy_execution_logs: no executions to inspect — skipping');
 			return;
 		}
 		const out = await runWorkflowTool({ tool: 'buddy_execution_logs', args: { executionId } }, deps);
