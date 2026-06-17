@@ -472,6 +472,14 @@ suite('Unit: workflowTools', () => {
 				if (query.includes('RewstBuddyWorkflowUpdate')) {
 					return updateResults[Math.min(updateIndex++, updateResults.length - 1)];
 				}
+				if (query.includes('RewstBuddyExecutionContexts')) {
+					return { data: { workflowExecutionContexts: [{ proceed: false }, { proceed: true }] } };
+				}
+				if (query.includes('RewstBuddyRenderJinja')) {
+					// Echo the context value the tool passed, to prove it rendered against it.
+					const vars = variables?.vars as { proceed?: unknown } | undefined;
+					return { data: { renderJinja: { result: vars?.proceed } } };
+				}
 				return { data: {} };
 			};
 			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
@@ -515,6 +523,63 @@ suite('Unit: workflowTools', () => {
 			);
 			assert.match(output, /sub-workflow|subWorkflowId/i);
 			assert.strictEqual(calls.length, 0, 'short-circuits without hitting the API');
+		});
+
+		test('rewst_render_jinja renders against an execution (last snapshot) and returns only the result', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'rewst_render_jinja',
+					args: { orgId: 'org-1', executionId: 'exec-1', template: '{{ CTX.proceed }}' },
+				},
+				deps,
+			);
+			// Mock has snapshots [{proceed:false},{proceed:true}]; default uses the last.
+			assert.match(output, /Rendered: true \(type boolean\)/);
+			assert.ok(
+				calls.some(c => c.query.includes('RewstBuddyExecutionContexts')),
+				'fetched the execution context server-side',
+			);
+		});
+
+		test('rewst_render_jinja honors contextIndex', async () => {
+			const { deps } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'rewst_render_jinja',
+					args: { orgId: 'org-1', executionId: 'exec-1', template: '{{ CTX.proceed }}', contextIndex: 0 },
+				},
+				deps,
+			);
+			assert.match(output, /Rendered: false/);
+		});
+
+		test('rewst_render_jinja renders ad-hoc vars without an execution', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'rewst_render_jinja',
+					args: { orgId: 'org-1', vars: { proceed: true }, template: '{{ CTX.proceed }}' },
+				},
+				deps,
+			);
+			assert.match(output, /Rendered: true/);
+			assert.ok(
+				!calls.some(c => c.query.includes('RewstBuddyExecutionContexts')),
+				'no execution fetch for ad-hoc vars',
+			);
+		});
+
+		test('rewst_render_jinja requires an execution or vars', async () => {
+			const { deps } = makeDeps();
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{ tool: 'rewst_render_jinja', args: { orgId: 'org-1', template: '{{ 1 }}' } },
+						deps,
+					),
+				/executionId.*vars|vars/,
+			);
 		});
 
 		test('rewst_workflow_edit applies ops and reports the new version token', async () => {

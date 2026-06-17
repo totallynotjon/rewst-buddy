@@ -194,3 +194,11 @@ real names, not ids.
 4. **`rewst_workflow_autolayout`** `{ workflowId, workflowName, orgId, orgName }` →
    re-arranges every node with the layered algorithm above (strict transition order,
    loop nodes kept compact, terminal catches sent to a right lane) and saves.
+5. **`rewst_render_jinja`** `{ orgId, template, executionId? | vars?, contextIndex? }` →
+   renders a Jinja template via the `renderJinja` mutation against a real execution's
+   context (fetched server-side from `workflowExecutionContexts`, so the large context
+   never enters the chat) and returns only the result. Lets the assistant **confirm a
+   condition/expression before editing** — `renderJinja`'s `vars` IS the `CTX` namespace,
+   and the execution-contexts query returns an array of snapshots (the last is the most
+   complete). This is the fix for the recurring failure mode where the assistant guesses
+   a Jinja change (boolean vs `'true'`, `CTX.x` vs `CTX.<alias>.x`) and ships it wrong.

@@ -233,6 +233,45 @@
 				}
 			},
 			{
+				"name": "rewst_render_jinja",
+				"displayName": "Render Rewst Jinja",
+				"toolReferenceName": "rewstRenderJinja",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. In the template, CTX is the execution context. By default the last context snapshot of the run is used; contextIndex picks another. Returns the rendered value, or the Jinja error if it fails.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"orgId": {
+							"type": "string",
+							"description": "The org the template renders in."
+						},
+						"template": {
+							"type": "string",
+							"description": "The Jinja to evaluate, e.g. \"{{ CTX.learning_result.proceed | d(false) }}\"."
+						},
+						"executionId": {
+							"type": "string",
+							"description": "A workflow execution id; its context is fetched server-side and used as CTX (kept out of the chat)."
+						},
+						"vars": {
+							"type": "object",
+							"description": "Ad-hoc context object to render against instead of an execution."
+						},
+						"contextIndex": {
+							"type": "number",
+							"description": "Which context snapshot of the execution to use (default: the last/most-complete)."
+						}
+					},
+					"required": [
+						"orgId",
+						"template"
+					]
+				}
+			},
+			{
 				"name": "rewst_graphql_schema",
 				"displayName": "Inspect Rewst GraphQL Schema",
 				"toolReferenceName": "rewstGraphqlSchema",

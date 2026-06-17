@@ -109,6 +109,36 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 			required: ['workflowId', 'workflowName', 'orgId', 'orgName'],
 		},
 	},
+	{
+		name: 'rewst_render_jinja',
+		args: '{"orgId": string, "template": string, "executionId"?: string, "vars"?: object, "contextIndex"?: number}',
+		description:
+			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. In the template, CTX is the execution context. By default the last context snapshot of the run is used; contextIndex picks another. Returns the rendered value, or the Jinja error if it fails.",
+		inputSchema: {
+			type: 'object',
+			properties: {
+				orgId: { type: 'string', description: 'The org the template renders in.' },
+				template: {
+					type: 'string',
+					description: 'The Jinja to evaluate, e.g. "{{ CTX.learning_result.proceed | d(false) }}".',
+				},
+				executionId: {
+					type: 'string',
+					description:
+						'A workflow execution id; its context is fetched server-side and used as CTX (kept out of the chat).',
+				},
+				vars: {
+					type: 'object',
+					description: 'Ad-hoc context object to render against instead of an execution.',
+				},
+				contextIndex: {
+					type: 'number',
+					description: 'Which context snapshot of the execution to use (default: the last/most-complete).',
+				},
+			},
+			required: ['orgId', 'template'],
+		},
+	},
 ];
 
 const WORKFLOW_TOOL_NAMES = new Set(WORKFLOW_TOOL_SPECS.map(spec => spec.name));
@@ -938,6 +968,15 @@ const ACTION_DESCRIBE_QUERY = `query RewstBuddyActionDescribe($orgId: ID!, $sear
 	}
 }`;
 
+const EXECUTION_CONTEXTS_QUERY = `query RewstBuddyExecutionContexts($id: ID!) {
+	workflowExecutionContexts(workflowExecutionId: $id)
+}`;
+
+// renderJinja evaluates a template; `vars` becomes the CTX namespace. No side effects.
+const RENDER_JINJA_MUTATION = `mutation RewstBuddyRenderJinja($orgId: ID!, $template: String!, $vars: JSON) {
+	renderJinja(orgId: $orgId, template: $template, vars: $vars)
+}`;
+
 async function searchActions(
 	deps: GraphqlToolDeps,
 	orgId: string,
@@ -1051,7 +1090,7 @@ function summarizeWorkflow(w: RawWorkflow): string {
 		},
 		nodes,
 		edges,
-		note: 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema).',
+		note: 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). When troubleshooting a condition or expression, render it against a recent execution with rewst_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").',
 	};
 	return cap(JSON.stringify(summary, null, 1));
 }
@@ -1118,6 +1157,44 @@ async function runActionSearch(request: ToolRequest, deps: GraphqlToolDeps): Pro
 	return cap(
 		`Actions matching "${query}":\n${lines.join('\n')}\n\nDescribe one with rewst_action_search {"orgId","ref"} to see its input parameters.`,
 	);
+}
+
+async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
+	const orgId = asStringArg(request.args, 'orgId');
+	const template = asStringArg(request.args, 'template');
+	if (!orgId || !template) throw new Error('rewst_render_jinja requires "orgId" and "template".');
+
+	// Resolve the render context (CTX). An executionId is fetched server-side so the
+	// (large) run context never enters the chat; vars is an inline alternative.
+	let vars = request.args.vars && typeof request.args.vars === 'object' ? (request.args.vars as object) : undefined;
+	const executionId = asStringArg(request.args, 'executionId');
+	if (executionId) {
+		const result = await deps.execute(EXECUTION_CONTEXTS_QUERY, { id: executionId });
+		const error = firstErrorMessage(result);
+		if (error) throw new Error(`Failed to read execution context: ${error}`);
+		const raw = (result.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts;
+		const snapshots = Array.isArray(raw) ? raw : raw ? [raw] : [];
+		if (snapshots.length === 0) throw new Error(`Execution ${executionId} has no context to render against.`);
+		const requested =
+			typeof request.args.contextIndex === 'number' ? request.args.contextIndex : snapshots.length - 1;
+		const index = Math.max(0, Math.min(snapshots.length - 1, requested));
+		vars = snapshots[index] as object;
+	}
+	if (!vars) {
+		throw new Error(
+			'rewst_render_jinja requires "executionId" (a run to use as context) or "vars" (an inline context).',
+		);
+	}
+
+	const result = await deps.execute(RENDER_JINJA_MUTATION, { orgId, template, vars });
+	const error = firstErrorMessage(result);
+	if (error) throw new Error(`renderJinja failed: ${error}`);
+	const rendered = (result.data as { renderJinja?: { result?: unknown; error?: unknown } } | undefined)?.renderJinja;
+	if (rendered && typeof rendered === 'object' && 'error' in rendered && rendered.error) {
+		return `Jinja error: ${typeof rendered.error === 'string' ? rendered.error : JSON.stringify(rendered.error)}`;
+	}
+	const value = rendered && typeof rendered === 'object' && 'result' in rendered ? rendered.result : rendered;
+	return cap(`Rendered: ${JSON.stringify(value)} (type ${value === null ? 'null' : typeof value})`);
 }
 
 /** Validates the four scope fields a workflow mutation must carry. */
@@ -1197,6 +1274,8 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 			return runWorkflowGet(request, bound);
 		case 'rewst_action_search':
 			return runActionSearch(request, bound);
+		case 'rewst_render_jinja':
+			return runRenderJinja(request, bound);
 		case WORKFLOW_EDIT_TOOL_NAME:
 			return runWorkflowEdit(request, bound);
 		case WORKFLOW_AUTOLAYOUT_TOOL_NAME:

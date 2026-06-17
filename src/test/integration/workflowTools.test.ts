@@ -91,6 +91,32 @@ suite('Integration: workflowTools', function () {
 		assert.ok('parameters' in action, 'describe mode returns parameters');
 	});
 
+	test('rewst_render_jinja evaluates a template (against a recent execution if one exists)', async () => {
+		// Plain arithmetic proves the renderer works regardless of context.
+		const plain = await runWorkflowTool(
+			{ tool: 'rewst_render_jinja', args: { orgId: ORG_ID, template: '{{ 1 + 1 }}', vars: {} } },
+			deps,
+		);
+		assert.match(plain, /Rendered: 2/);
+
+		// If the workflow has an execution, render its context server-side.
+		const execs = (await deps.execute(
+			'query ($where: WorkflowExecutionWhereInput) { workflowExecutions(where: $where, limit: 1) { id } }',
+			{ where: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
+		)) as { data?: { workflowExecutions?: ({ id?: string } | null)[] } };
+		const executionId = execs.data?.workflowExecutions?.[0]?.id;
+		if (executionId) {
+			const out = await runWorkflowTool(
+				{
+					tool: 'rewst_render_jinja',
+					args: { orgId: ORG_ID, executionId, template: '{{ CTX.execution_id }}' },
+				},
+				deps,
+			);
+			assert.match(out, /Rendered:/, 'rendered against the execution context without erroring');
+		}
+	});
+
 	test('rewst_workflow_get surfaces the org name for the approval args', async () => {
 		const summary = JSON.parse(
 			await runWorkflowTool(
