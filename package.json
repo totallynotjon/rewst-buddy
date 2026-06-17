@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Unofficial community VS Code extension for editing Rewst templates locally. Not affiliated with Rewst LLC.",
-	"version": "0.43.4",
+	"version": "0.43.6",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.122.0"
@@ -147,7 +147,7 @@
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval before running, so keep them minimal and explain what you intend to change. Subscriptions are not supported.",
+				"modelDescription": "Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include four identifying fields: scopeId and scopeName (the id and human-readable name of the single resource the mutation changes, e.g. a workflow's id and name) plus orgId and orgName (the id and name of the org it runs in). A mutation missing any of them is refused. Reuse the exact same scopeId and orgId for every change to that same object — approval is remembered per resource for the session, so approving one mutation lets later mutations to that same resource run without re-asking, while a different resource is confirmed separately. The names are shown to the user in the approval prompt so they can recognize what is changing; only the ids are used to remember approval. Subscriptions are not supported.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -158,6 +158,22 @@
 						"variables": {
 							"type": "object",
 							"description": "Operation variables."
+						},
+						"scopeId": {
+							"type": "string",
+							"description": "Required for mutations: a stable id of the resource being changed (e.g. the workflow id). Approval is remembered per resource for the session; reuse the same id for repeated edits to the same object."
+						},
+						"scopeName": {
+							"type": "string",
+							"description": "Required for mutations: the resource's human-readable name (e.g. the workflow name), shown to the user in the approval prompt."
+						},
+						"orgId": {
+							"type": "string",
+							"description": "Required for mutations: the id of the org the mutation runs in."
+						},
+						"orgName": {
+							"type": "string",
+							"description": "Required for mutations: the name of the org the mutation runs in, shown in the approval prompt."
 						}
 					},
 					"required": [
@@ -279,7 +295,7 @@
 				"rewst-buddy.ai.enableGraphqlTool": {
 					"type": "boolean",
 					"default": false,
-					"description": "Let Cage-Free Rewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval in a dialog showing the full operation. Off by default because the session can read and change anything you can in Rewst."
+					"description": "Let Cage-Free Rewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval through VS Code's inline chat confirmation (Continue / Cancel) showing the full operation, must declare the resource and org they change (scopeId, scopeName, orgId, orgName), and approval is remembered for the session by the ids. Off by default because the session can read and change anything you can in Rewst."
 				}
 			}
 		},

@@ -1,10 +1,17 @@
 # Changelog
 
-## [Unreleased]
+## [0.43.6] - 2026-06-16
 
 ### Added
 
 - **Context-usage status bar indicator** - the Rewst backend reports real context-window usage mid-turn, but VS Code's native "Context Window" gauge can't be driven by a third-party model provider (its response stream has no usage channel — see [microsoft/vscode#309207](https://github.com/microsoft/vscode/issues/309207) and [#313458](https://github.com/microsoft/vscode/issues/313458)), so it always reads `0 / 144K` for Cage-Free Rewsty. The extension now surfaces that usage as a native status bar item in the bottom-right (`$(dashboard) 42%`), with a hover tooltip showing the token breakdown and organization. It appears after the first turn that reports usage and tracks the most recent turn. (#29)
+
+## [0.43.5] - 2026-06-16
+
+### Changed
+
+- **GraphQL mutations confirm in the chat, not in an OS dialog** - approving a `rewst_graphql` mutation now uses VS Code's native inline chat confirmation (Continue / Cancel) showing the full operation and variables, the same approval surface as Cage-Free Rewsty's other Rewst-side actions, instead of a separate operating-system modal popping over the editor. Declining simply skips the mutation; queries and schema reads still run without a prompt. (#25)
+- **GraphQL mutations are scoped to the resource they change** - every `rewst_graphql` mutation must now declare four identifying fields: `scopeId` and `scopeName` (the id and name of the single resource it changes, e.g. a workflow's id and name) plus `orgId` and `orgName`; a mutation missing any of them is refused. Approval is remembered for the session by the ids only (org + resource) — the names are shown in the confirmation so you can recognize what is changing — so confirming one change to a resource lets further mutations to that same resource run without re-asking, while a different resource (or the same resource id in another org) is confirmed separately. (#25)
 
 ## [0.43.4] - 2026-06-16
 
