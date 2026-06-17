@@ -49,7 +49,13 @@ test('new.mjs falls back to a slug filename without a number', () => {
 test('new.mjs aborts on an invalid custom category', () => {
 	const dir = mkdtempSync(join(tmpdir(), 'cl-new-'));
 	try {
-		assert.throws(() => runNew(dir, '4\nBogus\n'));
+		// Feed a full set of answers so the run would succeed if the category
+		// were accepted; the failure must come from category validation, not a
+		// later "summary required" abort.
+		assert.throws(
+			() => runNew(dir, '4\nBogus\nAdded anyway\n123\n'),
+			err => /not a valid category/i.test(String(err.stderr)),
+		);
 		assert.equal(existsSync(join(dir, 'changelog.d')), false);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
