@@ -70,11 +70,19 @@ test('build.mjs rejects an invalid note with a nonzero exit', () => {
 	try {
 		writeFileSync(join(dir, 'CHANGELOG.md'), '# Changelog\n');
 		writeFileSync(join(dir, 'changelog.d', 'bad.md'), '---\ncategory: Nonsense\n---\n\n- broken\n');
-		assert.throws(() =>
-			execFileSync('node', [buildScript, '--version', '1.0.0'], {
-				cwd: dir,
-				stdio: 'pipe',
-			}),
+		assert.throws(
+			() =>
+				execFileSync('node', [buildScript, '--version', '1.0.0'], {
+					cwd: dir,
+					encoding: 'utf8',
+					stdio: 'pipe',
+				}),
+			err =>
+				typeof err === 'object' &&
+				err !== null &&
+				'status' in err &&
+				err.status !== 0 &&
+				/Invalid release notes/.test(String(err.stderr ?? '')),
 		);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
