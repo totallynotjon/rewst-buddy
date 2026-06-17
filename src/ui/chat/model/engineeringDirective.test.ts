@@ -1,10 +1,15 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { initTestEnvironment } from '@test';
 import { buildEngineeringDirective, buildNativeToolReminder } from './engineeringDirective';
 
-const { suite, test } = Mocha;
+const { suite, test, setup } = Mocha;
 
 suite('Unit: engineeringDirective', () => {
+	setup(() => {
+		initTestEnvironment();
+	});
+
 	test('no tools yields header, native-tool policy, and footer', () => {
 		const directive = buildEngineeringDirective(new Set());
 		assert.ok(directive.includes('# Rewst Buddy VS Code Context'));
@@ -116,6 +121,10 @@ suite('Unit: engineeringDirective', () => {
 });
 
 suite('Unit: buildNativeToolReminder', () => {
+	setup(() => {
+		initTestEnvironment();
+	});
+
 	test('always curbs reflexive doc search and a throwaway native call', () => {
 		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['web_search'])]) {
 			const reminder = buildNativeToolReminder(tools);

@@ -1580,6 +1580,10 @@ async function pollExecutionStatus(
 			order: [['createdAt', 'desc']],
 			limit: 1,
 		});
+		// Surface auth/schema/lookup failures immediately rather than looping to the
+		// timeout and reporting a misleading "still running".
+		const error = firstErrorMessage(result);
+		if (error) throw new Error(`Failed to poll execution ${executionId}: ${error}`);
 		const status =
 			(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions?.[0]
 				?.status ?? undefined;
@@ -1668,6 +1672,8 @@ interface WorkflowIndex {
 	orgCount: number;
 	builtAt: number;
 	truncated: boolean;
+	/** The deps.cacheScope (session/org) the index was built for; a mismatch forces a rebuild. */
+	scope?: string;
 }
 
 let workflowIndexCache: WorkflowIndex | undefined;
@@ -1747,8 +1753,11 @@ interface NameHit {
 
 async function runWorkflowSearch(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const refresh = request.args.refresh === true;
-	if (refresh || !workflowIndexCache) {
-		workflowIndexCache = await buildWorkflowIndex(deps);
+	// Rebuild when forced, when empty, or when the session/org behind deps changed
+	// (the cache is module-global, so without this a session switch would show the
+	// previous session's workflows).
+	if (refresh || !workflowIndexCache || workflowIndexCache.scope !== deps.cacheScope) {
+		workflowIndexCache = { ...(await buildWorkflowIndex(deps)), scope: deps.cacheScope };
 	}
 	const index = workflowIndexCache;
 

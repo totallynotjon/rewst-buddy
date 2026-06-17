@@ -203,7 +203,7 @@ So the assistant produces well-behaved tasks rather than copying odd UI defaults
 ## Native tools (implemented; replace many GraphQL turns with one call each)
 
 All are in `src/ui/chat/tools/workflowTools.ts`, gated by the
-`rewst-buddy.ai.enableWorkflowTools` setting; the two mutating tools reuse the
+`rewst-buddy.ai.tools` setting (the `workflows` capability); the two mutating tools reuse the
 in-chat per-workflow mutation-approval flow. They require `workflowId`,
 `workflowName`, `orgId`, `orgName` for approval — `buddy_workflow_get` surfaces all
 four (including **`orgName`** via `organization { name }`) so the assistant passes

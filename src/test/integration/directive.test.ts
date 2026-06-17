@@ -123,8 +123,14 @@ suite('Integration: engineering directive steering', function () {
 		const tools = requests.map(request => request.tool);
 		assert.ok(tools.includes('buddy_workflow_search'), `expected buddy_workflow_search, got: ${tools.join(', ')}`);
 		assert.ok(
-			!tools.some(tool => tool === 'listWorkflow' || tool === 'searchWorkflows'),
-			`must not use native wrappers, got: ${tools.join(', ')}`,
+			!tools.some(
+				tool =>
+					tool === 'buddy_graphql' ||
+					tool === 'buddy_graphql_schema' ||
+					tool === 'listWorkflow' ||
+					tool === 'searchWorkflows',
+			),
+			`must not use GraphQL or native wrappers, got: ${tools.join(', ')}`,
 		);
 	});
 

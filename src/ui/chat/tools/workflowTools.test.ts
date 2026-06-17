@@ -551,6 +551,7 @@ suite('Unit: workflowTools', () => {
 			over: Partial<{
 				updateResults: { data?: unknown; errors?: unknown }[];
 				pollStatus: string;
+				pollError: string;
 				taskLogs: unknown[];
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
 			}> = {},
@@ -588,6 +589,7 @@ suite('Unit: workflowTools', () => {
 					const where = (variables?.where ?? {}) as { id?: string; workflowId?: string };
 					// where.id => run-and-wait poll for a single execution's status.
 					if (where.id) {
+						if (over.pollError) return { errors: [{ message: over.pollError }] };
 						return {
 							data: { workflowExecutions: [{ id: where.id, status: over.pollStatus ?? 'failed' }] },
 						};
@@ -932,6 +934,21 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!calls.some(c => c.query.includes('RewstBuddyTaskLogs')), 'no log fetch on success');
 		});
 
+		test('buddy_workflow_run surfaces a polling error instead of looping to the timeout', async () => {
+			const { deps } = makeDeps({ pollError: 'permission denied' });
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{
+							tool: WORKFLOW_RUN_TOOL_NAME,
+							args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+						},
+						deps,
+					),
+				/Failed to poll.*permission denied/,
+			);
+		});
+
 		test('buddy_execution_logs summarizes tasks and details failed ones', async () => {
 			const { deps } = makeDeps({
 				taskLogs: [
@@ -1022,6 +1039,17 @@ suite('Unit: workflowTools', () => {
 			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { refresh: true } }, deps);
 			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
 			assert.strictEqual(indexCalls, 2, 'refresh re-listed the workflows');
+		});
+
+		test('buddy_workflow_search rebuilds when the session (deps.cacheScope) changes', async () => {
+			const { deps, calls } = makeDeps();
+			const depsA = { ...deps, cacheScope: 'org-A' };
+			const depsB = { ...deps, cacheScope: 'org-B' };
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, depsA); // build for A
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, depsA); // reuse A
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, depsB); // switch -> rebuild
+			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
+			assert.strictEqual(indexCalls, 2, 'reused within a session, rebuilt when the session changed');
 		});
 
 		test('buddy_workflow_search scopes to a single org with orgId', async () => {

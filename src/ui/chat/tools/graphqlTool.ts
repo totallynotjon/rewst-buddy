@@ -94,6 +94,12 @@ export interface GraphqlToolDeps {
 	 */
 	confirmMutation(operation: string): Promise<boolean>;
 	execute(query: string, variables?: Record<string, unknown>): Promise<{ data?: unknown; errors?: unknown }>;
+	/**
+	 * Stable identifier for the session/org behind `execute`, used to partition any
+	 * cross-call cache (e.g. the workflow-search index) so a session switch in the
+	 * same extension host never reuses another session's data. Undefined in tests.
+	 */
+	cacheScope?: string;
 }
 
 interface GraphqlTypeRef {
@@ -242,6 +248,8 @@ export function createGraphqlDeps(session: Session): GraphqlToolDeps {
 		// jarring double-prompt this replaced (#25).
 		confirmMutation: async () => true,
 		execute: (query, variables) => session.rawGraphql(query, variables),
+		// Partition per-session caches by the org behind this session.
+		cacheScope: session.profile.org.id,
 	};
 }
 

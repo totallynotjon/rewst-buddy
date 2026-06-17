@@ -202,8 +202,13 @@ if (flags.includes('--set-input')) {
 	// Mirror of set_inputs: set the input name list, parameters (the action-parameter
 	// form that actually drives the UI run/call form), and inputSchema; varsSchema is
 	// left untouched (it is the separate trigger/variables map).
-	const name = flags[flags.indexOf('--set-input') + 1] ?? 'probe_input';
-	const def = flags[flags.indexOf('--set-input') + 2] ?? "{{ 'probe default' }}";
+	// Only consume the next two tokens as name/default when they aren't themselves
+	// flags (so `--set-input --apply` doesn't treat `--apply` as the input name).
+	const setInputIdx = flags.indexOf('--set-input');
+	const rawName = flags[setInputIdx + 1];
+	const rawDef = flags[setInputIdx + 2];
+	const name = rawName && !rawName.startsWith('--') ? rawName : 'probe_input';
+	const def = rawDef && !rawDef.startsWith('--') ? rawDef : "{{ 'probe default' }}";
 	input.input = [name];
 	input.parameters = {
 		[name]: {
