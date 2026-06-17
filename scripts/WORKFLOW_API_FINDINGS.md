@@ -155,7 +155,10 @@ description}}`), and `inputSchema` (a JSON-Schema mirror) together. Setting only
   `WorkflowInput.parameters` writes `Workflow.action.parameters`. Omitting
   `parameters`/`output` from `updateWorkflow` does **not** clear them (partial update
   for these fields, unlike `tasks` which is replaced wholesale). The `set_inputs`
-  operation writes `input` + `parameters` + `inputSchema` together.
+  operation writes `input` + `parameters` + `inputSchema` together. **Input defaults
+  are Jinja-expression strings** (`"{{ false }}"`, `"{{ 5 }}"`, `"{{ CTX.x }}"`) — a
+  raw boolean/number default does not render in the UI, so `set_inputs` wraps raw
+  scalars as `{{ value }}` and passes strings through.
 - **Data flow: branch on a task's output with `RESULT.<field>`** in that task's own
   outgoing transitions, or `CTX.<alias>.<field>` when the task sets
   `publishResultAs: <alias>`. A task's (or sub-workflow's) internally published

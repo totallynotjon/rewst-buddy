@@ -158,15 +158,16 @@ suite('Unit: workflowTools', () => {
 					inputs: [
 						{ name: 'email', type: 'string', title: 'Email', description: 'addr', required: true },
 						{ name: 'count', type: 'integer' },
+						{ name: 'drop', type: 'boolean', default: false },
 					],
 				},
 			];
 			const { workflow } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
-			assert.deepStrictEqual(workflow.input, ['email', 'count'], 'ordered input name list');
+			assert.deepStrictEqual(workflow.input, ['email', 'count', 'drop'], 'ordered input name list');
 			const schema = workflow.inputSchema as {
 				type: string;
 				required: string[];
-				properties: Record<string, { type: string; title: string }>;
+				properties: Record<string, { type: string; title: string; default?: unknown }>;
 			};
 			assert.strictEqual(schema.type, 'object');
 			assert.deepStrictEqual(schema.required, ['email'], 'only required inputs listed');
@@ -176,12 +177,15 @@ suite('Unit: workflowTools', () => {
 			// parameters (action-parameter form) is what the UI input form actually reads.
 			const params = workflow.parameters as Record<
 				string,
-				{ label: string; required: boolean; multiline: boolean }
+				{ label: string; required: boolean; multiline: boolean; default: unknown }
 			>;
 			assert.strictEqual(params.email.label, 'Email', 'parameters use label, not title');
 			assert.strictEqual(params.email.required, true);
 			assert.strictEqual(params.count.required, false);
 			assert.strictEqual(params.count.multiline, false);
+			// Raw boolean/number defaults are wrapped as Jinja expressions, which Rewst needs.
+			assert.strictEqual(params.drop.default, '{{ false }}', 'raw boolean default is Jinja-wrapped');
+			assert.strictEqual(schema.properties.drop.default, '{{ false }}', 'inputSchema default is wrapped too');
 			assert.ok(!('varsSchema' in workflow), 'varsSchema is never touched by set_inputs');
 		});
 

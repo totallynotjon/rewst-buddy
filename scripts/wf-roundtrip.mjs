@@ -203,12 +203,13 @@ if (flags.includes('--set-input')) {
 	// form that actually drives the UI run/call form), and inputSchema; varsSchema is
 	// left untouched (it is the separate trigger/variables map).
 	const name = flags[flags.indexOf('--set-input') + 1] ?? 'probe_input';
+	const def = flags[flags.indexOf('--set-input') + 2] ?? "{{ 'probe default' }}";
 	input.input = [name];
 	input.parameters = {
 		[name]: {
 			type: 'string',
 			label: 'Probe Input',
-			default: '',
+			default: def,
 			required: true,
 			multiline: false,
 			description: 'set by wf-roundtrip --set-input',
@@ -218,9 +219,15 @@ if (flags.includes('--set-input')) {
 		type: 'object',
 		required: [name],
 		properties: {
-			[name]: { type: 'string', title: 'Probe Input', description: 'set by wf-roundtrip --set-input' },
+			[name]: {
+				type: 'string',
+				title: 'Probe Input',
+				default: def,
+				description: 'set by wf-roundtrip --set-input',
+			},
 		},
 	};
+	console.log(`(default = ${JSON.stringify(def)})`);
 	console.log(
 		`\nset input=[${name}] + parameters + inputSchema; varsSchema left as-is (${input.varsSchema ? 'present' : 'absent'})`,
 	);

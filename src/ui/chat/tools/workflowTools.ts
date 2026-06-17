@@ -71,7 +71,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			"Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an \"op\" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?}]} (replace the workflow's run/call inputs). Workflow inputs — the parameters shown on the run/call form — are driven by inputSchema plus the ordered input name list; set them with set_inputs (which writes both), NOT by editing varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task's own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task's or sub-workflow's internally published variables are NOT in this workflow's CTX. when defaults to \"{{ SUCCEEDED }}\". A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.",
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}". A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -844,14 +844,22 @@ export function applyOperations(
 					const description = str(def.description) ?? '';
 					const isRequired = def.required === true;
 					if (isRequired) required.push(name);
+					// Rewst defaults are Jinja-expression strings ("{{ false }}", "{{ 5 }}",
+					// "{{ CTX.x }}"); a raw boolean/number won't render. Wrap raw scalars,
+					// pass strings through (they may already be an expression or a literal).
+					const hasDefault = 'default' in def;
+					const formattedDefault =
+						typeof def.default === 'boolean' || typeof def.default === 'number'
+							? `{{ ${def.default} }}`
+							: def.default;
 					const schemaProp: Record<string, unknown> = { type, title };
-					if ('default' in def) schemaProp.default = def.default;
+					if (hasDefault) schemaProp.default = formattedDefault;
 					if (description) schemaProp.description = description;
 					properties[name] = schemaProp;
 					parameters[name] = {
 						type,
 						label: title,
-						default: 'default' in def ? def.default : '',
+						default: hasDefault ? formattedDefault : '',
 						required: isRequired,
 						multiline: def.multiline === true,
 						description,
