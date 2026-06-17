@@ -193,7 +193,7 @@ So the assistant produces well-behaved tasks rather than copying odd UI defaults
 
 ## Native tools (implemented; replace many GraphQL turns with one call each)
 
-All four are in `src/ui/chat/tools/workflowTools.ts`, gated by the
+All are in `src/ui/chat/tools/workflowTools.ts`, gated by the
 `rewst-buddy.ai.enableWorkflowTools` setting; the two mutating tools reuse the
 in-chat per-workflow mutation-approval flow. They require `workflowId`,
 `workflowName`, `orgId`, `orgName` for approval — `rewst_workflow_get` surfaces all
@@ -227,12 +227,40 @@ real names, not ids.
    and the execution-contexts query returns an array of snapshots (the last is the most
    complete). This is the fix for the recurring failure mode where the assistant guesses
    a Jinja change (boolean vs `'true'`, `CTX.x` vs `CTX.<alias>.x`) and ships it wrong.
-6. **`rewst_workflow_run`** `{ workflowId, workflowName, orgId, orgName, input? }` → triggers a
-   run via the `testWorkflow` mutation (`testWorkflow(id, orgId, input) { executionId }`) and
-   returns the new `executionId` — which feeds straight into `rewst_render_jinja` to inspect
-   what the run produced. Approval-gated per workflow (it executes real automation).
+6. **`rewst_workflow_run`** `{ workflowId, workflowName, orgId, orgName, input?, wait? }` →
+   triggers a run via the `testWorkflow` mutation (`testWorkflow(id, orgId, input) { executionId }`).
+   By default it **waits** for the run to reach a terminal state (polling
+   `workflowExecutions(where: { id })` until status leaves running/queued/pending) and reports the
+   outcome; on failure it auto-fetches the failing task's log so the cause comes back in one call.
+   `wait: false` returns immediately with just the `executionId`. Approval-gated per workflow.
 7. **`rewst_workflow_executions`** `{ workflowId, orgId, status?, limit? }` → lists recent
    executions newest-first via `workflowExecutions(where: { workflowId, orgId, status }, order:
 [["createdAt","desc"]])`. `status` is a lowercase string (`"failed"`, `"succeeded"`,
    `"running"`); results come back oldest-first without the explicit `order`, so it always
-   requests `createdAt desc`. Pairs with `rewst_render_jinja` to debug a failed run.
+   requests `createdAt desc`. Pairs with `rewst_execution_logs` / `rewst_render_jinja` to debug.
+8. **`rewst_execution_logs`** `{ executionId, failedOnly?, includeResult? }` → per-task logs for
+   one execution via `taskLogs(where: { workflowExecutionId }, order: [["createdAt","ASC"]])`
+   (note the field is **`originalWorkflowTaskName`**, the arg is **`order`** not `orderBy`, and
+   pagination is `limit`/`offset` not `take`). Returns each task's status, and for failed tasks
+   the `message`, the `input` it received, and the `result` it produced (truncated). This is the
+   "**why did it fail**" tool — it replaces the agent hand-writing `taskLogs` GraphQL and
+   rediscovering those field names every time. A failed task's `input` shows exactly what it got
+   (an empty-string id ⇒ the caller passed nothing); its `result` shows the real output shape.
+
+## Troubleshooting knowledge (baked into tool prompts)
+
+- **`renderJinja` runs against the STORED context snapshot, which is the `CTX` namespace only.**
+  The live runtime objects `WORKFLOW`, `ORG`, `USER`, `RESULT` do **not** exist there, so
+  `{{ WORKFLOW.id }}` / `{{ WORKFLOW.execution_id }}` render empty in `rewst_render_jinja`. Their
+  CTX equivalents: execution id = `CTX.execution_id`, org id = `CTX.organization.id`, and the
+  running workflow's own id = `CTX.trigger_instance.trigger.workflow_id`. (Even `WORKFLOW.workflow_id`
+  does not exist at runtime — Rewst's docs only list `WORKFLOW.org_id`, `WORKFLOW.name`,
+  `WORKFLOW.timeout`, `WORKFLOW.type`.) `rewst_render_jinja` with `keys: true` dumps the context's
+  top-level keys so the agent discovers what's available instead of guessing field paths.
+- **Read a task's `result` before assuming a wrapper key.** Some actions (e.g.
+  `rewst.generic_graph_request`) return the list/value **directly**, not wrapped in
+  `{ <fieldName>: [...] }`. `rewst_execution_logs` shows the real shape.
+- **A default referenced in a publish/transition expression isn't in `CTX` until it's set.** A
+  required input with a UI default (`5`) is still missing from `CTX` while an upstream transition
+  runs, so `CTX.ignore_threshhold_minutes | int` is `0` there — add the same `| d(5)` in the
+  expression, not just on the input.

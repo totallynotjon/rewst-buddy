@@ -126,6 +126,22 @@ suite('Integration: workflowTools', function () {
 		assert.ok(/execution\(s\)|No .* executions/.test(out), out);
 	});
 
+	test("rewst_execution_logs reads a real execution's task logs (validates the taskLogs query)", async () => {
+		// Find a recent execution to inspect; skip cleanly if the workflow has none.
+		const execs = (await deps.execute(
+			'query ($where: WorkflowExecutionWhereInput) { workflowExecutions(where: $where, limit: 1) { id } }',
+			{ where: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
+		)) as { data?: { workflowExecutions?: ({ id?: string } | null)[] } };
+		const executionId = execs.data?.workflowExecutions?.[0]?.id;
+		if (!executionId) {
+			console.log('rewst_execution_logs: no executions to inspect — skipping');
+			return;
+		}
+		const out = await runWorkflowTool({ tool: 'rewst_execution_logs', args: { executionId } }, deps);
+		// Real field names (originalWorkflowTaskName, order arg) resolved without a GraphQL error.
+		assert.match(out, new RegExp(`Execution ${executionId}: \\d+ task\\(s\\), \\d+ failed`), out);
+	});
+
 	test('rewst_workflow_get surfaces the org name for the approval args', async () => {
 		const summary = JSON.parse(
 			await runWorkflowTool(

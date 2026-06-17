@@ -31,6 +31,7 @@ const MAX_OUTPUT_CHARS = 8_000;
 export const WORKFLOW_EDIT_TOOL_NAME = 'rewst_workflow_edit';
 export const WORKFLOW_AUTOLAYOUT_TOOL_NAME = 'rewst_workflow_autolayout';
 export const WORKFLOW_RUN_TOOL_NAME = 'rewst_workflow_run';
+export const WORKFLOW_EXECUTION_LOGS_TOOL_NAME = 'rewst_execution_logs';
 
 /** Identifying fields a workflow-mutation request must carry (org + workflow). */
 const MUTATION_SCOPE_KEYS = ['workflowId', 'workflowName', 'orgId', 'orgName'] as const;
@@ -112,9 +113,9 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	},
 	{
 		name: WORKFLOW_RUN_TOOL_NAME,
-		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "input"?: object}',
+		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "input"?: object, "wait"?: boolean}',
 		description:
-			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from rewst_workflow_get's workflow.inputs). Returns the started execution's id, which you can feed to rewst_render_jinja (executionId) to inspect what the run produced. This actually executes the workflow's automation, so it requires user approval, remembered per workflow for the session.",
+			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from rewst_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate rewst_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to rewst_execution_logs or rewst_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval, remembered per workflow for the session.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -123,6 +124,11 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
 				orgName: { type: 'string', description: 'The org name, shown in the approval prompt.' },
 				input: { type: 'object', description: "The workflow's run inputs (maps input name to value)." },
+				wait: {
+					type: 'boolean',
+					description:
+						'Wait for the run to finish and report its outcome (default true). False returns immediately.',
+				},
 			},
 			required: ['workflowId', 'workflowName', 'orgId', 'orgName'],
 		},
@@ -148,17 +154,36 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		},
 	},
 	{
-		name: 'rewst_render_jinja',
-		args: '{"orgId": string, "template": string, "executionId"?: string, "vars"?: object, "contextIndex"?: number}',
+		name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+		args: '{"executionId": string, "failedOnly"?: boolean, "includeResult"?: boolean}',
 		description:
-			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. In the template, CTX is the execution context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. By default the last context snapshot of the run is used; contextIndex picks another. Returns the rendered value, or the Jinja error if it fails.",
+			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from rewst_workflow_run or rewst_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }).",
+		inputSchema: {
+			type: 'object',
+			properties: {
+				executionId: { type: 'string', description: 'The workflow execution id to inspect.' },
+				failedOnly: { type: 'boolean', description: 'List only failed tasks (default false).' },
+				includeResult: {
+					type: 'boolean',
+					description: "Include every task's result, not just failed tasks' (default false).",
+				},
+			},
+			required: ['executionId'],
+		},
+	},
+	{
+		name: 'rewst_render_jinja',
+		args: '{"orgId": string, "template"?: string, "executionId"?: string, "vars"?: object, "contextIndex"?: number, "keys"?: boolean}',
+		description:
+			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. By default the last context snapshot of the run is used; contextIndex picks another. Returns the rendered value, or the Jinja error if it fails.",
 		inputSchema: {
 			type: 'object',
 			properties: {
 				orgId: { type: 'string', description: 'The org the template renders in.' },
 				template: {
 					type: 'string',
-					description: 'The Jinja to evaluate, e.g. "{{ CTX.learning_result.proceed | d(false) }}".',
+					description:
+						'The Jinja to evaluate, e.g. "{{ CTX.learning_result.proceed | d(false) }}". Omit when keys is true.',
 				},
 				executionId: {
 					type: 'string',
@@ -173,8 +198,12 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 					type: 'number',
 					description: 'Which context snapshot of the execution to use (default: the last/most-complete).',
 				},
+				keys: {
+					type: 'boolean',
+					description: "List the context's top-level keys instead of rendering a template (default false).",
+				},
 			},
-			required: ['orgId', 'template'],
+			required: ['orgId'],
 		},
 	},
 ];
@@ -1072,6 +1101,12 @@ const WORKFLOW_EXECUTIONS_QUERY = `query RewstBuddyExecutions($where: WorkflowEx
 	}
 }`;
 
+const TASK_LOGS_QUERY = `query RewstBuddyTaskLogs($where: TaskLogWhereInput) {
+	taskLogs(where: $where, order: [["createdAt", "ASC"]]) {
+		id originalWorkflowTaskName status message input result createdAt
+	}
+}`;
+
 async function searchActions(
 	deps: GraphqlToolDeps,
 	orgId: string,
@@ -1257,7 +1292,11 @@ async function runActionSearch(request: ToolRequest, deps: GraphqlToolDeps): Pro
 async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const orgId = asStringArg(request.args, 'orgId');
 	const template = asStringArg(request.args, 'template');
-	if (!orgId || !template) throw new Error('rewst_render_jinja requires "orgId" and "template".');
+	const keysMode = request.args.keys === true;
+	if (!orgId) throw new Error('rewst_render_jinja requires "orgId".');
+	if (!keysMode && !template) {
+		throw new Error('rewst_render_jinja requires "template" (or pass keys:true to list the context keys).');
+	}
 
 	// Resolve the render context (CTX). An executionId is fetched server-side so the
 	// (large) run context never enters the chat; vars is an inline alternative.
@@ -1278,6 +1317,13 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	if (!vars) {
 		throw new Error(
 			'rewst_render_jinja requires "executionId" (a run to use as context) or "vars" (an inline context).',
+		);
+	}
+
+	if (keysMode) {
+		const keys = Object.keys(vars as Record<string, unknown>).sort();
+		return cap(
+			`Context top-level keys (${keys.length}): ${keys.join(', ') || '(none)'}\n\nDrill in with {{ CTX.<key> }}. System vars: execution id = CTX.execution_id, org id = CTX.organization.id, this workflow's id = CTX.trigger_instance.trigger.workflow_id.`,
 		);
 	}
 
@@ -1362,6 +1408,117 @@ async function runWorkflowAutolayout(request: ToolRequest, deps: GraphqlToolDeps
 	return applyWorkflowMutation(deps, workflowId, orgId, [{ op: 'autolayout' }], comment);
 }
 
+// ---------------------------------------------------------------------------
+// Task logs: per-task status/input/result for one execution. The fastest way to
+// see WHY a run failed without the agent hand-writing taskLogs GraphQL (and
+// rediscovering that the field is originalWorkflowTaskName, the arg is order
+// not orderBy, etc.). Shared by rewst_execution_logs and run-and-wait.
+// ---------------------------------------------------------------------------
+
+interface TaskLogRow {
+	id?: string | null;
+	originalWorkflowTaskName?: string | null;
+	status?: string | null;
+	message?: string | null;
+	input?: unknown;
+	result?: unknown;
+	createdAt?: string | null;
+}
+
+const TASK_VALUE_CHARS = 600;
+
+/** A failed/errored status, for both task and execution status strings. */
+function isFailedStatus(status: string | null | undefined): boolean {
+	return /fail|error/i.test(status ?? '');
+}
+
+function briefValue(value: unknown): string {
+	if (value === undefined || value === null) return '(none)';
+	const text = typeof value === 'string' ? value : JSON.stringify(value);
+	if (!text) return '(none)';
+	return text.length > TASK_VALUE_CHARS ? text.slice(0, TASK_VALUE_CHARS) + '…(truncated)' : text;
+}
+
+async function fetchTaskLogs(deps: GraphqlToolDeps, executionId: string): Promise<TaskLogRow[]> {
+	const result = await deps.execute(TASK_LOGS_QUERY, { where: { workflowExecutionId: executionId } });
+	const error = firstErrorMessage(result);
+	if (error) throw new Error(`Failed to read task logs: ${error}`);
+	return ((result.data as { taskLogs?: (TaskLogRow | null)[] } | undefined)?.taskLogs ?? []).filter(
+		(r): r is TaskLogRow => !!r,
+	);
+}
+
+function formatTaskLogs(rows: TaskLogRow[], opts: { failedOnly?: boolean; includeResult?: boolean }): string {
+	const visible = opts.failedOnly ? rows.filter(r => isFailedStatus(r.status)) : rows;
+	if (visible.length === 0) {
+		return opts.failedOnly ? 'No failed tasks in this execution.' : 'This execution has no task logs yet.';
+	}
+	return visible
+		.map(row => {
+			const name = row.originalWorkflowTaskName ?? '(unnamed task)';
+			const failed = isFailedStatus(row.status);
+			const parts = [`- ${name}: ${row.status ?? '?'}`];
+			if (failed) {
+				if (row.message) parts.push(`    message: ${briefValue(row.message)}`);
+				parts.push(`    input: ${briefValue(row.input)}`);
+				parts.push(`    result: ${briefValue(row.result)}`);
+			} else if (opts.includeResult) {
+				parts.push(`    result: ${briefValue(row.result)}`);
+			}
+			return parts.join('\n');
+		})
+		.join('\n');
+}
+
+async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
+	const executionId = asStringArg(request.args, 'executionId');
+	if (!executionId) throw new Error('rewst_execution_logs requires "executionId".');
+	const failedOnly = request.args.failedOnly === true;
+	const includeResult = request.args.includeResult === true;
+	const rows = await fetchTaskLogs(deps, executionId);
+	const failed = rows.filter(r => isFailedStatus(r.status)).length;
+	const header = `Execution ${executionId}: ${rows.length} task(s), ${failed} failed.`;
+	return cap(`${header}\n${formatTaskLogs(rows, { failedOnly, includeResult })}`);
+}
+
+// ---------------------------------------------------------------------------
+// Run-and-wait: trigger a run and, by default, poll to a terminal state so the
+// outcome (and on failure the failing task's log) comes back in one tool call
+// instead of a run -> poll -> poll -> logs sequence.
+// ---------------------------------------------------------------------------
+
+const RUNNING_EXECUTION_STATUSES = new Set(['running', 'queued', 'pending', 'new', 'scheduled', 'waiting']);
+const RUN_POLL_INTERVAL_MS = 2_000;
+const RUN_MAX_WAIT_MS = 45_000;
+
+function isTerminalExecutionStatus(status: string | null | undefined): boolean {
+	return !!status && !RUNNING_EXECUTION_STATUSES.has(status.toLowerCase());
+}
+
+function delay(ms: number): Promise<void> {
+	return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function pollExecutionStatus(
+	deps: GraphqlToolDeps,
+	executionId: string,
+): Promise<{ status?: string; timedOut: boolean }> {
+	const deadline = Date.now() + RUN_MAX_WAIT_MS;
+	for (;;) {
+		const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, {
+			where: { id: executionId },
+			order: [['createdAt', 'desc']],
+			limit: 1,
+		});
+		const status =
+			(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions?.[0]
+				?.status ?? undefined;
+		if (isTerminalExecutionStatus(status)) return { status, timedOut: false };
+		if (Date.now() >= deadline) return { status, timedOut: true };
+		await delay(RUN_POLL_INTERVAL_MS);
+	}
+}
+
 async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const { workflowId, orgId } = requireScopeFields(WORKFLOW_RUN_TOOL_NAME, request.args);
 	const input = request.args.input && typeof request.args.input === 'object' ? request.args.input : undefined;
@@ -1371,7 +1528,24 @@ async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	const executionId = (result.data as { testWorkflow?: { executionId?: string } } | undefined)?.testWorkflow
 		?.executionId;
 	if (!executionId) throw new Error('testWorkflow returned no execution id.');
-	return `Started a run of "${asStringArg(request.args, 'workflowName')}". executionId: ${executionId}\n\nInspect what it produced with rewst_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}.`;
+	const name = asStringArg(request.args, 'workflowName');
+
+	if (request.args.wait === false) {
+		return `Started a run of "${name}". executionId: ${executionId}\n\nWatch it with rewst_execution_logs {"executionId": "${executionId}"}, or inspect context with rewst_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}.`;
+	}
+
+	const { status, timedOut } = await pollExecutionStatus(deps, executionId);
+	if (timedOut) {
+		return `Started a run of "${name}". executionId: ${executionId}\nStill ${status ?? 'running'} after ${Math.round(RUN_MAX_WAIT_MS / 1000)}s — check back with rewst_execution_logs {"executionId": "${executionId}"}.`;
+	}
+	const head = `Run of "${name}" finished: ${(status ?? 'unknown').toUpperCase()}. executionId: ${executionId}`;
+	if (isFailedStatus(status)) {
+		const rows = await fetchTaskLogs(deps, executionId);
+		return cap(
+			`${head}\n\nFailing task(s):\n${formatTaskLogs(rows, { failedOnly: true })}\n\nFull logs: rewst_execution_logs {"executionId": "${executionId}"}.`,
+		);
+	}
+	return `${head}\n\nInspect what it produced with rewst_execution_logs {"executionId": "${executionId}", "includeResult": true} or rewst_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}.`;
 }
 
 interface ExecutionRow {
@@ -1422,6 +1596,8 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 			return runWorkflowRun(request, bound);
 		case 'rewst_workflow_executions':
 			return runWorkflowExecutions(request, bound);
+		case WORKFLOW_EXECUTION_LOGS_TOOL_NAME:
+			return runExecutionLogs(request, bound);
 		default:
 			throw new Error(`Unknown workflow tool "${request.tool}".`);
 	}

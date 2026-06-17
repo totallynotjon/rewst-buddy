@@ -10,6 +10,7 @@ import {
 	runWorkflowTool,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
+	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 	workflowEditConfirmation,
 	workflowEditScope,
@@ -520,7 +521,13 @@ suite('Unit: workflowTools', () => {
 
 	suite('runWorkflowTool()', () => {
 		// A deps.execute that routes by operation name and records calls.
-		function makeDeps(over: Partial<{ updateResults: { data?: unknown; errors?: unknown }[] }> = {}) {
+		function makeDeps(
+			over: Partial<{
+				updateResults: { data?: unknown; errors?: unknown }[];
+				pollStatus: string;
+				taskLogs: unknown[];
+			}> = {},
+		) {
 			const calls: { query: string; variables?: Record<string, unknown> }[] = [];
 			const updateResults = over.updateResults ?? [
 				{ data: { updateWorkflow: { id: 'wf-1', updatedAt: '2000' } } },
@@ -551,6 +558,13 @@ suite('Unit: workflowTools', () => {
 					return { data: { testWorkflow: { executionId: 'exec-new' } } };
 				}
 				if (query.includes('RewstBuddyExecutions')) {
+					const where = (variables?.where ?? {}) as { id?: string; workflowId?: string };
+					// where.id => run-and-wait poll for a single execution's status.
+					if (where.id) {
+						return {
+							data: { workflowExecutions: [{ id: where.id, status: over.pollStatus ?? 'failed' }] },
+						};
+					}
 					return {
 						data: {
 							workflowExecutions: [
@@ -559,6 +573,9 @@ suite('Unit: workflowTools', () => {
 							],
 						},
 					};
+				}
+				if (query.includes('RewstBuddyTaskLogs')) {
+					return { data: { taskLogs: over.taskLogs ?? [] } };
 				}
 				return { data: {} };
 			};
@@ -740,7 +757,7 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(call.variables!.order, [['createdAt', 'desc']], 'requests newest-first');
 		});
 
-		test('rewst_workflow_run triggers testWorkflow and returns the execution id', async () => {
+		test('rewst_workflow_run with wait:false returns the execution id without polling', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
 				{
@@ -751,6 +768,7 @@ suite('Unit: workflowTools', () => {
 						orgId: 'org-1',
 						orgName: 'Acme',
 						input: { email: 'x@y.z' },
+						wait: false,
 					},
 				},
 				deps,
@@ -758,6 +776,145 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /exec-new/, 'returns the execution id');
 			const call = calls.find(c => c.query.includes('RewstBuddyTestWorkflow'))!;
 			assert.deepStrictEqual(call.variables!.input, { email: 'x@y.z' }, 'passes the run input through');
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyExecutions')), 'wait:false does not poll');
+		});
+
+		test('rewst_workflow_run waits and surfaces the failing task on a failed run', async () => {
+			const { deps, calls } = makeDeps({
+				pollStatus: 'failed',
+				taskLogs: [
+					{
+						originalWorkflowTaskName: 'executions',
+						status: 'failed',
+						message: 'invalid input syntax for type uuid: ""',
+						input: { where: { orgId: '', workflowId: '' } },
+						result: null,
+					},
+					{ originalWorkflowTaskName: 'start', status: 'succeeded', result: { ok: true } },
+				],
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_RUN_TOOL_NAME,
+					args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+				},
+				deps,
+			);
+			assert.match(output, /FAILED/, 'reports the failed outcome');
+			assert.match(output, /executions: failed/, 'names the failing task');
+			assert.match(output, /invalid input syntax/, 'surfaces the failure message');
+			assert.match(output, /orgId/, 'surfaces the input the task received');
+			assert.ok(
+				calls.some(c => c.query.includes('RewstBuddyExecutions')),
+				'polled for status',
+			);
+			assert.ok(
+				calls.some(c => c.query.includes('RewstBuddyTaskLogs')),
+				'fetched task logs',
+			);
+		});
+
+		test('rewst_workflow_run waits and reports success without fetching logs', async () => {
+			const { deps, calls } = makeDeps({ pollStatus: 'succeeded' });
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_RUN_TOOL_NAME,
+					args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+				},
+				deps,
+			);
+			assert.match(output, /SUCCEEDED/);
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyTaskLogs')), 'no log fetch on success');
+		});
+
+		test('rewst_execution_logs summarizes tasks and details failed ones', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [
+					{
+						originalWorkflowTaskName: 'executions',
+						status: 'failed',
+						message: 'boom',
+						input: { x: '' },
+						result: { e: 1 },
+					},
+					{ originalWorkflowTaskName: 'start', status: 'succeeded', result: { ok: true } },
+				],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /2 task\(s\), 1 failed/);
+			assert.match(output, /executions: failed/);
+			assert.match(output, /message: boom/);
+			assert.match(output, /input:/, 'failed task shows the input it received');
+			assert.match(output, /start: succeeded/);
+			assert.ok(!output.includes('"ok":true'), "succeeded task's result is hidden by default");
+		});
+
+		test('rewst_execution_logs failedOnly lists only failed tasks', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [
+					{ originalWorkflowTaskName: 'executions', status: 'failed', message: 'boom' },
+					{ originalWorkflowTaskName: 'start', status: 'succeeded' },
+				],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', failedOnly: true } },
+				deps,
+			);
+			assert.match(output, /executions: failed/);
+			assert.ok(!output.includes('start: succeeded'), 'omits non-failed tasks');
+		});
+
+		test('rewst_execution_logs includeResult shows every task result', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'start', status: 'succeeded', result: { ok: true } }],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', includeResult: true } },
+				deps,
+			);
+			assert.match(output, /start: succeeded/);
+			assert.match(output, /"ok":true/);
+		});
+
+		test('rewst_execution_logs requires an executionId', async () => {
+			const { deps } = makeDeps();
+			await assert.rejects(
+				() => runWorkflowTool({ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: {} }, deps),
+				/executionId/,
+			);
+		});
+
+		test('rewst_render_jinja keys lists the context top-level keys instead of rendering', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'rewst_render_jinja', args: { orgId: 'org-1', executionId: 'exec-1', keys: true } },
+				deps,
+			);
+			// Last snapshot in the mock is { proceed: true }.
+			assert.match(output, /top-level keys/);
+			assert.match(output, /proceed/);
+			assert.match(output, /CTX\.execution_id/, 'hints the canonical system-var paths');
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyRenderJinja')), 'keys mode does not render');
+		});
+
+		test('rewst_render_jinja keys works with ad-hoc vars', async () => {
+			const { deps } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'rewst_render_jinja', args: { orgId: 'org-1', vars: { alpha: 1, beta: 2 }, keys: true } },
+				deps,
+			);
+			assert.match(output, /alpha, beta/);
+		});
+
+		test('rewst_render_jinja requires a template unless keys is set', async () => {
+			const { deps } = makeDeps();
+			await assert.rejects(
+				() => runWorkflowTool({ tool: 'rewst_render_jinja', args: { orgId: 'org-1', vars: { a: 1 } } }, deps),
+				/template/,
+			);
 		});
 
 		test('rewst_workflow_run is scope-gated with a "run" confirmation', () => {
