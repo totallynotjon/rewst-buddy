@@ -474,31 +474,28 @@
 					"default": true,
 					"description": "Show Cage-Free Rewsty's live activity (documentation searches and tool calls) as it works, instead of only a spinner until the answer arrives."
 				},
-				"rewst-buddy.ai.enableWorkspaceTools": {
-					"type": "boolean",
-					"default": true,
-					"description": "Let Cage-Free Rewsty see a compact workspace overview (folder names and top-level entries) and the list of files linked to Rewst templates. This context is sent to the Rewst AI assistant — disable if you don't want workspace structure shared. File reading, editing, search, and terminal access come from VS Code's built-in agent-mode tools, not from this extension."
-				},
-				"rewst-buddy.ai.enableWebTools": {
-					"type": "boolean",
-					"default": false,
-					"description": "Let Cage-Free Rewsty search the public web. The assistant chooses what to search, so enabling this allows it to direct network requests from your machine (private/loopback hosts are always blocked). Opening result pages uses VS Code's built-in fetch tool."
-				},
-				"rewst-buddy.ai.maxToolRounds": {
-					"type": "number",
-					"default": 4,
-					"minimum": 0,
-					"description": "Legacy — no effect since Cage-Free Rewsty became a chat model: VS Code's chat runs the tool loop and owns its limits. Kept so existing settings files don't warn."
-				},
-				"rewst-buddy.ai.enableGraphqlTool": {
-					"type": "boolean",
-					"default": false,
-					"description": "Let Cage-Free Rewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval through VS Code's inline chat confirmation (Continue / Cancel) showing the full operation, must declare the resource and org they change (scopeId, scopeName, orgId, orgName), and approval is remembered for the session by the ids. Off by default because the session can read and change anything you can in Rewst."
-				},
-				"rewst-buddy.ai.enableWorkflowTools": {
-					"type": "boolean",
-					"default": false,
-					"description": "Let Cage-Free Rewsty read and edit Rewst workflows through high-level tools (read a workflow as a node/edge graph, search actions, and apply add/connect/update/reposition operations) using your session. Reads run directly; edits always require your approval through VS Code's inline chat confirmation showing the operations, and approval is remembered per workflow for the session. Off by default because the session can change any workflow you can in Rewst."
+				"rewst-buddy.ai.tools": {
+					"type": "array",
+					"default": [
+						"workspace"
+					],
+					"uniqueItems": true,
+					"items": {
+						"type": "string",
+						"enum": [
+							"workspace",
+							"web",
+							"graphql",
+							"workflows"
+						],
+						"enumDescriptions": [
+							"Workspace context: a compact workspace overview plus the list of files linked to Rewst templates.",
+							"Web search: let Cage-Free Rewsty search the public web (private/loopback hosts are always blocked).",
+							"GraphQL: compose and run GraphQL operations against your Rewst instance using your session (mutations require your approval).",
+							"Workflows: read and edit Rewst workflows, search actions, and render Jinja against executions (edits require your approval)."
+						]
+					},
+					"markdownDescription": "Extra AI tools Cage-Free Rewsty may use — check the ones to enable. `workspace` shares a workspace overview and the template-link list; `web`, `graphql`, and `workflows` let the assistant act against the web or your Rewst instance, where GraphQL and workflow **edits always require your approval**."
 				}
 			}
 		},

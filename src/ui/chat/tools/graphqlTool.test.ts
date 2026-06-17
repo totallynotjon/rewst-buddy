@@ -188,11 +188,11 @@ suite('Unit: graphqlTool', () => {
 				{ tool: 'rewst_graphql', args: { query: '{ user { id } }' } },
 				deps({ isEnabled: () => false }),
 			),
-			/enableGraphqlTool/,
+			/rewst-buddy\.ai\.tools/,
 		);
 		await assert.rejects(
 			runGraphqlTool({ tool: 'rewst_graphql', args: { query: '{ user { id } }' } }, undefined),
-			/enableGraphqlTool/,
+			/rewst-buddy\.ai\.tools/,
 		);
 	});
 

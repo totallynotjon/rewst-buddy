@@ -1,7 +1,7 @@
-import { extPrefix } from '@global';
 import { LinkManager, type TemplateLink } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
+import { isAiToolEnabled } from './aiToolSettings';
 import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
 import { GRAPHQL_TOOL_SPECS, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
 import { isWebTool, runWebTool, WEB_TOOL_SPECS } from './webTools';
@@ -29,8 +29,7 @@ export const defaultDeps: WorkspaceToolDeps = {
 	workspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
 	asRelativePath: uri => vscode.workspace.asRelativePath(uri, false),
 	templateLinks: () => LinkManager.getAllTemplateLinks(),
-	workspaceToolsEnabled: () =>
-		vscode.workspace.getConfiguration(`${extPrefix}.ai`).get<boolean>('enableWorkspaceTools', true),
+	workspaceToolsEnabled: () => isAiToolEnabled('workspace'),
 };
 
 export const WORKSPACE_TOOL_SPECS: ToolSpec[] = [
@@ -64,7 +63,7 @@ const LOCAL_TOOL_NAMES = new Set(WORKSPACE_TOOL_SPECS.map(spec => spec.name));
 function requireWorkspaceTools(deps: WorkspaceToolDeps): void {
 	if (!deps.workspaceToolsEnabled()) {
 		throw new Error(
-			'Workspace tools are disabled. The user can enable them with the rewst-buddy.ai.enableWorkspaceTools setting.',
+			'Workspace tools are disabled. The user can enable them with the rewst-buddy.ai.tools setting (check "workspace").',
 		);
 	}
 }

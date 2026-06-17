@@ -9,6 +9,7 @@ import {
 	graphqlMutationScope,
 	GRAPHQL_TOOL_SPECS,
 } from '../tools/graphqlTool';
+import { enabledAiTools } from '../tools/aiToolSettings';
 import { describeRequestBrief, type ToolSpec } from '../tools/toolProtocol';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
 import { WEB_TOOL_SPECS } from '../tools/webTools';
@@ -49,13 +50,13 @@ export const ALL_TOOL_SPECS: ToolSpec[] = GOVERNED_TOOL_SPECS.map(entry => entry
 const GOVERNED_BY_NAME = new Map(GOVERNED_TOOL_SPECS.map(entry => [entry.spec.name, entry]));
 
 export function readAiToolSettings(): AiToolSettings {
-	const config = vscode.workspace.getConfiguration(`${extPrefix}.ai`);
+	const tools = enabledAiTools();
 	return {
-		enableWorkspaceTools:
-			config.get<boolean>('enableWorkspaceTools', true) && (vscode.workspace.workspaceFolders?.length ?? 0) > 0,
-		enableWebTools: config.get<boolean>('enableWebTools', false),
-		enableGraphqlTool: config.get<boolean>('enableGraphqlTool', false),
-		enableWorkflowTools: config.get<boolean>('enableWorkflowTools', false),
+		// Workspace tools also need a workspace folder to be meaningful.
+		enableWorkspaceTools: tools.has('workspace') && (vscode.workspace.workspaceFolders?.length ?? 0) > 0,
+		enableWebTools: tools.has('web'),
+		enableGraphqlTool: tools.has('graphql'),
+		enableWorkflowTools: tools.has('workflows'),
 	};
 }
 

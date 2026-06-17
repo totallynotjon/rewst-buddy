@@ -1,6 +1,5 @@
-import { extPrefix } from '@global';
 import type { Session } from '@sessions';
-import vscode from 'vscode';
+import { isAiToolEnabled } from './aiToolSettings';
 import type { ToolRequest, ToolSpec } from './toolProtocol';
 
 /**
@@ -9,8 +8,8 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
  * assistant already knows Rewst's domain; this gives it live access to the
  * same API the extension itself uses.
  *
- *   - Off by default (rewst-buddy.ai.enableGraphqlTool): the session can read
- *     and change anything the user can in Rewst.
+ *   - Off by default (enable "graphql" in rewst-buddy.ai.tools): the session can
+ *     read and change anything the user can in Rewst.
  *   - Queries run directly once enabled; mutations always require explicit
  *     user approval — VS Code's native inline chat confirmation (Continue /
  *     Cancel) showing the full operation, gated at the tool's prepareInvocation
@@ -235,7 +234,7 @@ const TYPE_NAMES_QUERY = `query RewstBuddySchemaTypeNames($includeDeprecated: Bo
 /** Binds the tool to the chat's session so operations hit the right org/region. */
 export function createGraphqlDeps(session: Session): GraphqlToolDeps {
 	return {
-		isEnabled: () => vscode.workspace.getConfiguration(`${extPrefix}.ai`).get<boolean>('enableGraphqlTool', false),
+		isEnabled: () => isAiToolEnabled('graphql'),
 		// The mutation prompt is VS Code's inline chat confirmation, shown at
 		// prepareInvocation before the tool runs (see graphqlMutationConfirmation +
 		// lmTools.ts). By the time execution reaches here the user has already said
@@ -554,7 +553,7 @@ function formatResultText(text: string): string {
 export async function runGraphqlTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
 	if (!deps || !deps.isEnabled()) {
 		throw new Error(
-			'GraphQL tools are disabled. The user can enable them with the rewst-buddy.ai.enableGraphqlTool setting.',
+			'GraphQL tools are disabled. The user can enable them with the rewst-buddy.ai.tools setting (check "graphql").',
 		);
 	}
 

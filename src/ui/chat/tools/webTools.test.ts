@@ -89,7 +89,7 @@ suite('Unit: webTools', () => {
 		test('fails when web tools are disabled', async () => {
 			await assert.rejects(
 				runWebTool({ tool: 'web_search', args: { query: 'x' } }, deps({ isEnabled: () => false })),
-				/enableWebTools/,
+				/rewst-buddy\.ai\.tools/,
 			);
 		});
 

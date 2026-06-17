@@ -1,5 +1,4 @@
-import { extPrefix } from '@global';
-import vscode from 'vscode';
+import { isAiToolEnabled } from './aiToolSettings';
 import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
 
 /**
@@ -8,7 +7,7 @@ import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
  * lets it search the public web — executed by the extension. Opening result
  * pages is left to VS Code's built-in fetch tool in agent mode.
  *
- * Off by default (rewst-buddy.ai.enableWebTools): the assistant chooses the
+ * Off by default (enable "web" in rewst-buddy.ai.tools): the assistant chooses the
  * queries, so enabling this lets a remote model direct local network requests.
  * Mitigations: http(s) only, private/loopback hosts rejected, redirects
  * re-validated hop by hop.
@@ -44,7 +43,7 @@ export interface WebToolDeps {
 }
 
 export const defaultWebDeps: WebToolDeps = {
-	isEnabled: () => vscode.workspace.getConfiguration(`${extPrefix}.ai`).get<boolean>('enableWebTools', false),
+	isEnabled: () => isAiToolEnabled('web'),
 	fetchRaw: async url => {
 		const response = await fetch(url, {
 			redirect: 'manual',
@@ -158,7 +157,7 @@ export function parseDuckDuckGoResults(html: string): SearchResult[] {
 export async function runWebTool(request: ToolRequest, deps: WebToolDeps = defaultWebDeps): Promise<string> {
 	if (!deps.isEnabled()) {
 		throw new Error(
-			'Web tools are disabled. The user can enable them with the rewst-buddy.ai.enableWebTools setting.',
+			'Web tools are disabled. The user can enable them with the rewst-buddy.ai.tools setting (check "web").',
 		);
 	}
 

@@ -1099,14 +1099,14 @@ function summarizeWorkflow(w: RawWorkflow): string {
 // Tool runners
 // ---------------------------------------------------------------------------
 
-// Availability is gated at registration time by the rewst-buddy.ai.enableWorkflowTools
-// setting (see lmTools.ts); runToolRequests is only ever invoked per registered
-// tool, so a disabled tool is never routed here. The remaining requirement is a
-// live session to run GraphQL against.
+// Availability is gated at registration time by the rewst-buddy.ai.tools setting
+// ("workflows"; see lmTools.ts); runToolRequests is only ever invoked per
+// registered tool, so a disabled tool is never routed here. The remaining
+// requirement is a live session to run GraphQL against.
 function requireDeps(deps: GraphqlToolDeps | undefined): GraphqlToolDeps {
 	if (!deps) {
 		throw new Error(
-			'No active Rewst session for the workflow tools (enable rewst-buddy.ai.enableWorkflowTools and sign in).',
+			'No active Rewst session for the workflow tools (enable "workflows" in rewst-buddy.ai.tools and sign in).',
 		);
 	}
 	return deps;

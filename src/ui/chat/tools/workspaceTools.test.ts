@@ -49,11 +49,11 @@ suite('Unit: workspaceTools', () => {
 			assert.strictEqual(result.output, 'No files are linked to Rewst templates.');
 		});
 
-		test('workspace tools respect the enableWorkspaceTools setting', async () => {
+		test('workspace tools respect the ai.tools setting', async () => {
 			const d = deps({ workspaceToolsEnabled: () => false });
 			const [result] = await runToolRequests([{ tool: 'list_template_links', args: {} }], d);
 			assert.strictEqual(result.ok, false);
-			assert.ok(result.output.includes('enableWorkspaceTools'));
+			assert.ok(result.output.includes('rewst-buddy.ai.tools'));
 		});
 
 		test('unknown tools fail with the available tool list', async () => {
