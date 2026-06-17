@@ -1,0 +1,1 @@
+export { GenerateMcpConfig } from './GenerateMcpConfig';

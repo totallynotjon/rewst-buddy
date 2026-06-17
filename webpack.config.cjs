@@ -118,4 +118,44 @@ const testConfig = {
 	},
 };
 
-module.exports = [config, testConfig];
+/**
+ * Standalone stdio MCP bridge. Spawned by external MCP clients (Claude Desktop,
+ * Claude Code, Cursor), independent of the extension host, so it bundles the
+ * @modelcontextprotocol/sdk and does NOT treat vscode as external — it never
+ * imports vscode (only the credential-free discovery + protocol modules).
+ */
+/**@type {import('webpack').Configuration}*/
+const bridgeConfig = {
+	target: 'node',
+	entry: './src/mcp/bin/rewst-mcp.ts',
+	output: {
+		path: path.resolve(__dirname, 'dist/mcp'),
+		filename: 'rewst-mcp.js',
+		libraryTarget: 'commonjs2',
+		devtoolModuleFilenameTemplate: '../../[resource-path]',
+	},
+	devtool: 'source-map',
+	externals: {
+		bufferutil: 'commonjs bufferutil',
+		'utf-8-validate': 'commonjs utf-8-validate',
+	},
+	resolve: {
+		extensions: ['.ts', '.js'],
+		alias: aliases,
+		modules: ['node_modules'],
+	},
+	module: {
+		rules: [
+			{
+				test: /\.ts$/,
+				exclude: /node_modules/,
+				use: ['ts-loader'],
+			},
+		],
+	},
+	stats: { errorDetails: true },
+	cache: { type: 'filesystem' },
+	optimization: { usedExports: true },
+};
+
+module.exports = [config, testConfig, bridgeConfig];

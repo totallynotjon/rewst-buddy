@@ -879,6 +879,11 @@
 				"command": "rewst-buddy.prefix.ApplyRewstAiEdit",
 				"title": "Rewst Buddy: Apply Rewst AI Suggestion",
 				"icon": "$(git-pull-request-go-to-changes)"
+			},
+			{
+				"command": "rewst-buddy.prefix.GenerateMcpConfig",
+				"title": "Rewst Buddy: Generate MCP Client Config",
+				"icon": "$(server-process)"
 			}
 		],
 		"keybindings": [
