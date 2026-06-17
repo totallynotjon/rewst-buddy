@@ -134,6 +134,35 @@ ids as `randomUUID().replace(/-/g, '')`** so the task id and every `do` referenc
 (Transition `id`s, by contrast, are fine as dashed UUIDs.) Verified live: a de-dashed id
 links cleanly; a dashed id does not.
 
+## Disparity 7 — sub-workflow calls, workflow inputs, and data flow
+
+These three trip up assistants constantly; verified live and encoded in the tools.
+
+- **Calling a sub-workflow is not an action.** There is no `core.run_workflow`. A
+  workflow exposes an action whose **id equals the workflow id** (`Workflow.action.id`
+  == the workflow id, `ref` null). A sub-workflow call is a task whose `actionId` is
+  the target workflow's id. `actionsForOrg` does **not** list workflows-as-actions, so
+  searching for a "run workflow" action is a dead end — find the target via a workflow
+  search and use its id. (`add_task` accepts `subWorkflowId` for this.)
+- **Workflow inputs (the run/call form) are driven by `input` + the action's
+  `parameters`, NOT `inputSchema`, and definitely not `varsSchema`.** The UI's
+  `updateWorkflowParams` writes `input` (ordered names), `parameters` (the
+  action-parameter form: `{name: {type, label, default, required, multiline,
+description}}`), and `inputSchema` (a JSON-Schema mirror) together. Setting only
+  `inputSchema` shows nothing in the UI (verified: a stale `inputSchema` entry never
+  rendered while `input` + `action.parameters` did). `varsSchema` is a separate
+  variables map (trigger/config vars) — putting inputs there is the classic mistake.
+  `WorkflowInput.parameters` writes `Workflow.action.parameters`. Omitting
+  `parameters`/`output` from `updateWorkflow` does **not** clear them (partial update
+  for these fields, unlike `tasks` which is replaced wholesale). The `set_inputs`
+  operation writes `input` + `parameters` + `inputSchema` together.
+- **Data flow: branch on a task's output with `RESULT.<field>`** in that task's own
+  outgoing transitions, or `CTX.<alias>.<field>` when the task sets
+  `publishResultAs: <alias>`. A task's (or sub-workflow's) internally published
+  variables are **not** in the parent's `CTX.<field>` — e.g. a sub-workflow that
+  publishes `proceed` is read as `RESULT.proceed` / `CTX.<alias>.proceed`, never
+  `CTX.proceed`.
+
 ## Native tools (implemented; replace many GraphQL turns with one call each)
 
 All four are in `src/ui/chat/tools/workflowTools.ts`, gated by the
@@ -144,18 +173,21 @@ four (including **`orgName`** via `organization { name }`) so the assistant pass
 real names, not ids.
 
 1. **`rewst_workflow_get`** `{ workflowId, orgId }` → normalized graph: workflow
-   (id, name, orgId, orgName, version token), nodes (id, name, action ref, input,
-   position), edges (`from`, when, label, `to[]` task names, publish). One call
-   instead of schema-introspect + query + reshape.
+   (id, name, orgId, orgName, **inputs** from `action.parameters`, version token),
+   nodes (id, name, action ref, input, position), edges (`from`, when, label, `to[]`
+   task names, publish). One call instead of schema-introspect + query + reshape.
 2. **`rewst_action_search`** `{ orgId, query, limit, includeDeprecated }` → ranked,
    deduped action matches (ref, id, category); describe mode `{ orgId, ref|actionId }`
    → `parameters` + `outputSchema` so the assistant can fill task `input` correctly.
+   A "run/call workflow" query short-circuits to the sub-workflow guidance.
 3. **`rewst_workflow_edit`** `{ workflowId, workflowName, orgId, orgName, operations[] }`
-   → fetches full state, applies high-level ops (`add_task`, `update_task`,
-   `delete_task`, `connect`, `disconnect`, `set_transition`, `reposition`) in memory,
-   sends the **complete** `WorkflowInput` with correct `openedAt` + `createPatch`,
-   retrying once on a version conflict. Nothing-lost, id-normalization, action-ref
-   resolution, and conflict handling are native.
+   → fetches full state, applies high-level ops (`add_task` [supports `subWorkflowId`],
+   `update_task`, `delete_task`, `connect`, `disconnect`, `set_transition`, `reposition`,
+   `set_inputs`) in memory, sends the **complete** `WorkflowInput` with correct
+   `openedAt` + `createPatch`, retrying once on a version conflict. Nothing-lost,
+   id-normalization, action-ref resolution, sub-workflow calls, input definitions
+   (`set_inputs` writes `input` + `parameters` + `inputSchema`), and conflict handling
+   are native.
 4. **`rewst_workflow_autolayout`** `{ workflowId, workflowName, orgId, orgName }` →
    re-arranges every node with the layered algorithm above (strict transition order,
    loop nodes kept compact, terminal catches sent to a right lane) and saves.

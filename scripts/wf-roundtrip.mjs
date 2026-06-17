@@ -198,6 +198,34 @@ if (flags.includes('--probe-remove')) {
 	console.log(`\nremoving probe_temp_node + probe_edge (${before2} -> ${input.tasks.length} tasks)`);
 }
 
+if (flags.includes('--set-input')) {
+	// Mirror of set_inputs: set the input name list, parameters (the action-parameter
+	// form that actually drives the UI run/call form), and inputSchema; varsSchema is
+	// left untouched (it is the separate trigger/variables map).
+	const name = flags[flags.indexOf('--set-input') + 1] ?? 'probe_input';
+	input.input = [name];
+	input.parameters = {
+		[name]: {
+			type: 'string',
+			label: 'Probe Input',
+			default: '',
+			required: true,
+			multiline: false,
+			description: 'set by wf-roundtrip --set-input',
+		},
+	};
+	input.inputSchema = {
+		type: 'object',
+		required: [name],
+		properties: {
+			[name]: { type: 'string', title: 'Probe Input', description: 'set by wf-roundtrip --set-input' },
+		},
+	};
+	console.log(
+		`\nset input=[${name}] + parameters + inputSchema; varsSchema left as-is (${input.varsSchema ? 'present' : 'absent'})`,
+	);
+}
+
 if (flags.includes('--autolayout')) {
 	// Mirror of src/ui/chat/tools/workflowTools.ts autoLayout (layered + right lane).
 	const HEIGHT = 88,

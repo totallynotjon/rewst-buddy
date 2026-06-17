@@ -71,7 +71,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id), input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates). when defaults to "{{ SUCCEEDED }}". A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.',
+			"Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an \"op\" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?}]} (replace the workflow's run/call inputs). Workflow inputs — the parameters shown on the run/call form — are driven by inputSchema plus the ordered input name list; set them with set_inputs (which writes both), NOT by editing varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task's own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task's or sub-workflow's internally published variables are NOT in this workflow's CTX. when defaults to \"{{ SUCCEEDED }}\". A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -166,6 +166,7 @@ interface RawWorkflow {
 	version?: string | null;
 	orgId: string;
 	organization?: { id?: string | null; name?: string | null } | null;
+	action?: { parameters?: Record<string, unknown> | null } | null;
 	updatedAt?: string | null;
 	input?: string[] | null;
 	inputSchema?: unknown;
@@ -180,6 +181,7 @@ const WORKFLOW_GET_QUERY = `query RewstBuddyWorkflowGet($where: WorkflowWhereInp
 	workflow(where: $where) {
 		id name description type schemaVersion version orgId updatedAt
 		organization { id name }
+		action { parameters }
 		input inputSchema outputSchema varsSchema metadata timeout
 		tasks {
 			id name actionId description input metadata
@@ -298,7 +300,11 @@ function taskToInput(t: RawTask): Record<string, unknown> {
 	return input;
 }
 
-export function workflowToInput(w: RawWorkflow, tasks: RawTask[]): Record<string, unknown> {
+export function workflowToInput(
+	w: RawWorkflow,
+	tasks: RawTask[],
+	overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
 	const input: Record<string, unknown> = {
 		id: w.id,
 		orgId: w.orgId,
@@ -315,7 +321,8 @@ export function workflowToInput(w: RawWorkflow, tasks: RawTask[]): Record<string
 	if (w.varsSchema != null) input.varsSchema = w.varsSchema;
 	if (w.metadata != null) input.metadata = w.metadata;
 	if (w.timeout != null) input.timeout = w.timeout;
-	return input;
+	// Workflow-level edits (e.g. set_inputs) win over the read-back values.
+	return Object.assign(input, overrides);
 }
 
 // ---------------------------------------------------------------------------
@@ -651,12 +658,15 @@ export function applyOperations(
 	tasks: RawTask[],
 	operations: WorkflowOperation[],
 	actionIdByRef: Map<string, string>,
-): { tasks: RawTask[]; applied: string[] } {
+): { tasks: RawTask[]; applied: string[]; workflow: Record<string, unknown> } {
 	const next: RawTask[] = tasks.map(t => ({
 		...t,
 		next: (t.next ?? []).map(n => ({ ...n, do: [...(n.do ?? [])] })),
 	}));
 	const applied: string[] = [];
+	// Workflow-level field changes (e.g. set_inputs) collected here, applied over
+	// the read-back workflow when it is converted to WorkflowInput.
+	const workflow: Record<string, unknown> = {};
 
 	const resolveActionId = (action: string): string => {
 		if (isActionIdShape(action)) return action;
@@ -671,14 +681,21 @@ export function applyOperations(
 			case 'add_task': {
 				const name = str(operation.name);
 				const action = str(operation.action);
+				// A sub-workflow call is a task whose action is the target workflow's id
+				// (a workflow's id doubles as its action id); there is no run-workflow action.
+				const subWorkflowId = str(operation.subWorkflowId);
 				if (!name) throw new Error('add_task requires a "name".');
-				if (!action) throw new Error('add_task requires an "action" (ref or id).');
+				if (!action && !subWorkflowId) {
+					throw new Error(
+						'add_task requires an "action" (ref or id) or a "subWorkflowId" (to call another workflow).',
+					);
+				}
 				const id = str(operation.id) ? str(operation.id)!.replace(/-/g, '') : newTaskId();
 				if (next.some(t => t.id === id)) throw new Error(`add_task id "${id}" already exists.`);
 				const task: RawTask = {
 					id,
 					name,
-					actionId: resolveActionId(action),
+					actionId: subWorkflowId ?? resolveActionId(action!),
 					input: asObject(operation.input),
 					metadata: {},
 					transitionMode: str(operation.transitionMode) ?? 'FOLLOW_ALL',
@@ -693,7 +710,9 @@ export function applyOperations(
 					setPosition(task, operation.x, operation.y);
 				}
 				next.push(task);
-				applied.push(`add_task ${name} (${id}) action=${action}`);
+				applied.push(
+					`add_task ${name} (${id}) ${subWorkflowId ? `subWorkflow=${subWorkflowId}` : `action=${action}`}`,
+				);
 				break;
 			}
 			case 'update_task': {
@@ -703,7 +722,8 @@ export function applyOperations(
 				const set = asObject(operation.set);
 				if (str(set.name)) task.name = str(set.name)!;
 				if ('input' in set) task.input = set.input;
-				if (str(set.action)) task.actionId = resolveActionId(str(set.action)!);
+				if (str(set.subWorkflowId)) task.actionId = str(set.subWorkflowId)!;
+				else if (str(set.action)) task.actionId = resolveActionId(str(set.action)!);
 				if ('publishResultAs' in set) task.publishResultAs = set.publishResultAs as string;
 				if ('transitionMode' in set) task.transitionMode = set.transitionMode as string;
 				if ('join' in set) task.join = set.join as number;
@@ -798,12 +818,57 @@ export function applyOperations(
 				applied.push(`autolayout (${next.length} node(s) re-arranged)`);
 				break;
 			}
+			case 'set_inputs': {
+				// Workflow inputs (the run/call form in the UI) are driven by the
+				// ordered input name list plus `parameters` (the action-parameter form:
+				// label/required/multiline) — with inputSchema kept in step. They are
+				// NOT varsSchema (trigger variables). The Rewst builder sets all three;
+				// we mirror that so inputs actually appear in the UI.
+				const defs = Array.isArray(operation.inputs)
+					? (operation.inputs as Record<string, unknown>[])
+					: undefined;
+				if (!defs)
+					throw new Error(
+						'set_inputs requires an "inputs" array of { name, type?, title?, default?, description?, required?, multiline? }.',
+					);
+				const names: string[] = [];
+				const required: string[] = [];
+				const properties: Record<string, unknown> = {};
+				const parameters: Record<string, unknown> = {};
+				for (const def of defs) {
+					const name = str(def.name);
+					if (!name) throw new Error('each set_inputs entry needs a "name".');
+					names.push(name);
+					const type = str(def.type) ?? 'string';
+					const title = str(def.title) ?? name;
+					const description = str(def.description) ?? '';
+					const isRequired = def.required === true;
+					if (isRequired) required.push(name);
+					const schemaProp: Record<string, unknown> = { type, title };
+					if ('default' in def) schemaProp.default = def.default;
+					if (description) schemaProp.description = description;
+					properties[name] = schemaProp;
+					parameters[name] = {
+						type,
+						label: title,
+						default: 'default' in def ? def.default : '',
+						required: isRequired,
+						multiline: def.multiline === true,
+						description,
+					};
+				}
+				workflow.input = names;
+				workflow.parameters = parameters;
+				workflow.inputSchema = { type: 'object', required, properties };
+				applied.push(`set_inputs (${names.length}: ${names.join(', ') || 'none'})`);
+				break;
+			}
 			default:
 				throw new Error(`Unknown operation "${op}".`);
 		}
 	}
 	layoutNewTasks(next);
-	return { tasks: next, applied };
+	return { tasks: next, applied, workflow };
 }
 
 /** Locates a transition on a task by transitionId, then by target ref. */
@@ -948,6 +1013,23 @@ function summarizeWorkflow(w: RawWorkflow): string {
 		}
 	}
 
+	// Workflow inputs come from the ordered name list + the action parameters
+	// (the action-parameter form that drives the UI input/run form).
+	const paramDefs =
+		w.action?.parameters && typeof w.action.parameters === 'object'
+			? (w.action.parameters as Record<string, Record<string, unknown>>)
+			: {};
+	const inputs = (w.input ?? []).map(name => {
+		const def = paramDefs[name] ?? {};
+		const entry: Record<string, unknown> = { name, type: def.type ?? 'string' };
+		const title = def.label ?? def.title;
+		if (title) entry.title = title;
+		if (def.required === true) entry.required = true;
+		if (def.default !== undefined && def.default !== '') entry.default = def.default;
+		if (def.description) entry.description = def.description;
+		return entry;
+	});
+
 	const summary = {
 		workflow: {
 			id: w.id,
@@ -956,12 +1038,12 @@ function summarizeWorkflow(w: RawWorkflow): string {
 			orgId: w.orgId,
 			orgName: w.organization?.name ?? undefined,
 			type: w.type ?? undefined,
-			inputs: w.input ?? [],
+			inputs,
 			versionToken: w.updatedAt,
 		},
 		nodes,
 		edges,
-		note: 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y.',
+		note: 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema).',
 	};
 	return cap(JSON.stringify(summary, null, 1));
 }
@@ -1006,6 +1088,10 @@ async function runActionSearch(request: ToolRequest, deps: GraphqlToolDeps): Pro
 
 	const query = asStringArg(request.args, 'query');
 	if (!query) throw new Error('rewst_action_search requires "query" (search) or "ref"/"actionId" (describe).');
+	// Calling another workflow isn't an action — steer away from the dead-end search.
+	if (/\b(sub.?workflow|run.?workflow|call.?workflow|execute.?workflow)\b/i.test(query)) {
+		return "Calling another workflow is not an action — there is no run-workflow action. To call a workflow as a sub-workflow, add a task with rewst_workflow_edit add_task and set subWorkflowId to the target workflow's id (a workflow's id is its action id). Find the target workflow id with your workflow-search tool.";
+	}
 	const includeDeprecated = request.args.includeDeprecated === true;
 	const limit = typeof request.args.limit === 'number' ? Math.max(1, Math.min(50, request.args.limit)) : 15;
 
@@ -1055,9 +1141,9 @@ async function applyWorkflowMutation(
 	const apply = (source: RawWorkflow) => applyOperations(source.tasks, operations, actionIdByRef);
 
 	const workflow = await fetchWorkflow(deps, workflowId, orgId);
-	let { tasks, applied } = apply(workflow);
+	let { tasks, applied, workflow: overrides } = apply(workflow);
 	let result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
-		workflow: workflowToInput(workflow, tasks),
+		workflow: workflowToInput(workflow, tasks, overrides),
 		openedAt: workflow.updatedAt,
 		comment,
 	});
@@ -1065,9 +1151,9 @@ async function applyWorkflowMutation(
 	let error = firstErrorMessage(result);
 	if (error && /newer version/i.test(error)) {
 		const fresh = await fetchWorkflow(deps, workflowId, orgId);
-		({ tasks, applied } = apply(fresh));
+		({ tasks, applied, workflow: overrides } = apply(fresh));
 		result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
-			workflow: workflowToInput(fresh, tasks),
+			workflow: workflowToInput(fresh, tasks, overrides),
 			openedAt: fresh.updatedAt,
 			comment,
 		});

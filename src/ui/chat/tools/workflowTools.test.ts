@@ -48,6 +48,19 @@ function sampleWorkflow() {
 		name: 'Sample',
 		orgId: 'org-1',
 		organization: { id: 'org-1', name: 'Test Org' },
+		input: ['email'],
+		action: {
+			parameters: {
+				email: {
+					type: 'string',
+					label: 'Email',
+					default: '',
+					required: true,
+					multiline: false,
+					description: 'addr',
+				},
+			},
+		},
 		updatedAt: '1000',
 		tasks: sampleTasks(),
 	};
@@ -123,6 +136,53 @@ suite('Unit: workflowTools', () => {
 			const notify = tasks.find(t => t.name === 'notify')!;
 			assert.strictEqual(end.next!.length, 1);
 			assert.deepStrictEqual(end.next![0].do, [notify.id]);
+		});
+
+		test('add_task with subWorkflowId calls another workflow (its id is the action id)', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'call_child', subWorkflowId: '019ecc4c-b826-70b0-a8c7-e87ff2377833' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			const call = tasks.find(t => t.name === 'call_child')!;
+			assert.strictEqual(
+				call.actionId,
+				'019ecc4c-b826-70b0-a8c7-e87ff2377833',
+				'sub-workflow id becomes the action id',
+			);
+		});
+
+		test('set_inputs builds the input name list and inputSchema, never varsSchema', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'set_inputs',
+					inputs: [
+						{ name: 'email', type: 'string', title: 'Email', description: 'addr', required: true },
+						{ name: 'count', type: 'integer' },
+					],
+				},
+			];
+			const { workflow } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(workflow.input, ['email', 'count'], 'ordered input name list');
+			const schema = workflow.inputSchema as {
+				type: string;
+				required: string[];
+				properties: Record<string, { type: string; title: string }>;
+			};
+			assert.strictEqual(schema.type, 'object');
+			assert.deepStrictEqual(schema.required, ['email'], 'only required inputs listed');
+			assert.strictEqual(schema.properties.email.type, 'string');
+			assert.strictEqual(schema.properties.email.title, 'Email');
+			assert.strictEqual(schema.properties.count.title, 'count', 'title defaults to the name');
+			// parameters (action-parameter form) is what the UI input form actually reads.
+			const params = workflow.parameters as Record<
+				string,
+				{ label: string; required: boolean; multiline: boolean }
+			>;
+			assert.strictEqual(params.email.label, 'Email', 'parameters use label, not title');
+			assert.strictEqual(params.email.required, true);
+			assert.strictEqual(params.count.required, false);
+			assert.strictEqual(params.count.multiline, false);
+			assert.ok(!('varsSchema' in workflow), 'varsSchema is never touched by set_inputs');
 		});
 
 		test('update_task merges set fields', () => {
@@ -423,6 +483,11 @@ suite('Unit: workflowTools', () => {
 			const parsed = JSON.parse(output);
 			assert.strictEqual(parsed.workflow.name, 'Sample');
 			assert.strictEqual(parsed.workflow.orgName, 'Test Org', 'org name is surfaced for the edit/approval args');
+			assert.deepStrictEqual(
+				parsed.workflow.inputs,
+				[{ name: 'email', type: 'string', title: 'Email', required: true, description: 'addr' }],
+				'inputs are surfaced from action.parameters',
+			);
 			assert.strictEqual(parsed.nodes.length, 2);
 			assert.deepStrictEqual(parsed.nodes[0].position, { x: 0, y: 0 }, 'node position is surfaced');
 			assert.strictEqual(parsed.edges[0].from, 'start');
@@ -436,6 +501,16 @@ suite('Unit: workflowTools', () => {
 				deps,
 			);
 			assert.match(output, /core\.noop/);
+		});
+
+		test('rewst_action_search steers a run-workflow query to the sub-workflow pattern', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'rewst_action_search', args: { orgId: 'org-1', query: 'run workflow' } },
+				deps,
+			);
+			assert.match(output, /sub-workflow|subWorkflowId/i);
+			assert.strictEqual(calls.length, 0, 'short-circuits without hitting the API');
 		});
 
 		test('rewst_workflow_edit applies ops and reports the new version token', async () => {
