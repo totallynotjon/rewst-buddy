@@ -77,9 +77,29 @@ suite('Unit: ConversationEventMapper', () => {
 	});
 
 	test('ignores bookkeeping statuses', () => {
-		for (const status of ['context_usage', 'summarization_complete', 'search_complete', 'TOOL_CALL_COMPLETE']) {
+		for (const status of ['summarization_complete', 'search_complete', 'TOOL_CALL_COMPLETE']) {
 			assert.deepStrictEqual(mapper.map({ status }), [], `expected no events for ${status}`);
 		}
+	});
+
+	test('maps context_usage to a usage event', () => {
+		const events = mapper.map({
+			status: 'context_usage',
+			metadata: { totalTokens: 60500, maxTokens: 144000, percent: 42, agentName: 'roborewsty_supervisor' },
+		});
+		assert.deepStrictEqual(events, [{ kind: 'usage', totalTokens: 60500, maxTokens: 144000, percent: 42 }]);
+	});
+
+	test('context_usage computes percent when the backend omits it', () => {
+		const events = mapper.map({ status: 'context_usage', metadata: { totalTokens: 36000, maxTokens: 144000 } });
+		assert.deepStrictEqual(events, [{ kind: 'usage', totalTokens: 36000, maxTokens: 144000, percent: 25 }]);
+	});
+
+	test('context_usage drops payloads missing the total or window size', () => {
+		assert.deepStrictEqual(mapper.map({ status: 'context_usage', metadata: { totalTokens: 100 } }), []);
+		assert.deepStrictEqual(mapper.map({ status: 'context_usage', metadata: { maxTokens: 144000 } }), []);
+		assert.deepStrictEqual(mapper.map({ status: 'context_usage', metadata: { totalTokens: 100, maxTokens: 0 } }), []);
+		assert.deepStrictEqual(mapper.map({ status: 'context_usage' }), []);
 	});
 
 	test('ignores unknown statuses (forward-compatible)', () => {

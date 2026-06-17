@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- **Context-usage indicator in the chat** - the Rewst backend reports real context-window usage mid-turn, but VS Code's native "Context Window" gauge can't be driven by a third-party model provider (its response stream has no usage channel — see [microsoft/vscode#309207](https://github.com/microsoft/vscode/issues/309207) and [#313458](https://github.com/microsoft/vscode/issues/313458)), so it always reads `0 / 144K` for Cage-Free Rewsty. The extension now surfaces that usage as its own inline line (`📊 Context: 42% · 60.5K / 144K tokens`) alongside the other live-activity lines, following the same `rewst-buddy.ai.showActivity` toggle. (#29)
+
 ## [0.43.4] - 2026-06-16
 
 ### Fixed

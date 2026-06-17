@@ -86,6 +86,25 @@ function formatActivityLine(status: { label: string; tool?: { name: string; args
 	return `\n\n> _${status.label}_\n`;
 }
 
+/** Compact token count for the context indicator: 950, 16K, 60.5K, 144K. */
+function formatTokenCount(count: number): string {
+	if (count < 1000) return String(Math.round(count));
+	const thousands = count / 1000;
+	const value = thousands >= 100 ? Math.round(thousands) : Number(thousands.toFixed(1));
+	return `${value}K`;
+}
+
+/**
+ * The backend reports real context-window usage mid-turn, but VS Code's native
+ * "Context Window" gauge can't be driven by a third-party model provider (the
+ * LanguageModelChatProvider response stream has no usage channel — see
+ * microsoft/vscode#309207, #313458). So this surfaces it as the assistant's own
+ * inline indicator, alongside the other activity lines.
+ */
+function formatContextUsage(usage: { totalTokens: number; maxTokens: number; percent: number }): string {
+	return `📊 Context: ${Math.round(usage.percent)}% · ${formatTokenCount(usage.totalTokens)} / ${formatTokenCount(usage.maxTokens)} tokens`;
+}
+
 async function confirmApprovalModal(tools: ApprovalTool[]): Promise<ApprovalChoice> {
 	const detail = tools
 		.map(tool => (tool.args === undefined ? tool.name : `${tool.name}\n${truncate(safeJson(tool.args), 500)}`))
@@ -333,6 +352,11 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 							case 'status':
 								// Only surface real steps; skip thinking/summarizing churn.
 								if (event.activity) emitStatus(event, gate);
+								break;
+							case 'usage':
+								// Stand-in for VS Code's native context gauge, which a model
+								// provider can't update; follows the same showActivity toggle.
+								emitStatus({ label: formatContextUsage(event) }, gate);
 								break;
 							case 'conversation':
 								conversationId = event.conversationId;

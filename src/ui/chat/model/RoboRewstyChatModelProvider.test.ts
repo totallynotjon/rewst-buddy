@@ -667,6 +667,33 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(out.includes('the answer'), 'the answer still streams');
 	});
 
+	const usageTurn: ConversationEvent[] = [
+		{ kind: 'conversation', conversationId: 'conv-1' },
+		{ kind: 'usage', totalTokens: 60500, maxTokens: 144000, percent: 42 },
+		{ kind: 'chunk', text: 'the answer' },
+		{ kind: 'complete', content: 'the answer', sources: [], conversationId: 'conv-1' },
+	];
+
+	test('surfaces context usage as an inline indicator', async () => {
+		const harness = makeHarness([usageTurn]);
+		await harness.run([message(User, [text('hi')])]);
+		const out = textOf(harness.parts);
+
+		assert.ok(out.includes('📊 Context: 42% · 60.5K / 144K tokens'), 'context usage line shown');
+		assert.ok(out.includes('the answer'), 'the answer still streams');
+	});
+
+	test('hides the context-usage indicator when showActivity is off', async () => {
+		const harness = makeHarness([usageTurn], {
+			aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: false }),
+		});
+		await harness.run([message(User, [text('hi')])]);
+		const out = textOf(harness.parts);
+
+		assert.ok(!out.includes('Context:'), 'no context usage line');
+		assert.ok(out.includes('the answer'), 'the answer still streams');
+	});
+
 	test('includes the working directory in context when the full overview is not sent', async () => {
 		const harness = makeHarness([completeTurn('ok')], {
 			workspaceRoot: () => '/work/dir',
