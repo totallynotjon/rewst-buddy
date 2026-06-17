@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Unofficial community VS Code extension for editing Rewst templates locally. Not affiliated with Rewst LLC.",
-	"version": "0.43.6",
+	"version": "0.44.0",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.122.0"
@@ -70,6 +70,124 @@
 					},
 					"required": [
 						"query"
+					]
+				}
+			},
+			{
+				"name": "rewst_workflow_get",
+				"displayName": "Read Rewst Workflow",
+				"toolReferenceName": "rewstWorkflowGet",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what rewst_workflow_edit operations expect. Use this before editing a workflow.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"workflowId": {
+							"type": "string",
+							"description": "The workflow id."
+						},
+						"orgId": {
+							"type": "string",
+							"description": "The id of the org that owns the workflow."
+						}
+					},
+					"required": [
+						"workflowId",
+						"orgId"
+					]
+				}
+			},
+			{
+				"name": "rewst_action_search",
+				"displayName": "Search Rewst Actions",
+				"toolReferenceName": "rewstActionSearch",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Find Rewst actions for an org, or describe one action's inputs. Search mode (pass query) matches action name and ref, ranks core/common actions first, dedupes, and returns each match's ref, id, and category. Describe mode (pass ref or actionId) returns the action's parameters (the input schema you fill into a task's input) and output schema. Use describe mode before adding a task so you know which inputs the action accepts.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"orgId": {
+							"type": "string",
+							"description": "The org to search actions for."
+						},
+						"query": {
+							"type": "string",
+							"description": "Search term matched against action name and ref."
+						},
+						"ref": {
+							"type": "string",
+							"description": "Describe this exact action ref (e.g. core.noop)."
+						},
+						"actionId": {
+							"type": "string",
+							"description": "Describe this exact action id."
+						},
+						"limit": {
+							"type": "number",
+							"description": "Max search results (default 15)."
+						},
+						"includeDeprecated": {
+							"type": "boolean",
+							"description": "Include deprecated actions (default false)."
+						}
+					},
+					"required": [
+						"orgId"
+					]
+				}
+			},
+			{
+				"name": "rewst_workflow_edit",
+				"displayName": "Edit Rewst Workflow",
+				"toolReferenceName": "rewstWorkflowEdit",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an \"op\" field): add_task {name, action (ref or id), input?, publishResultAs?, transitionMode?, join?, with?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {from, to?|transitionId?, top?, left?, orientation?}. when defaults to \"{{ SUCCEEDED }}\". This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"workflowId": {
+							"type": "string",
+							"description": "The workflow id being edited."
+						},
+						"workflowName": {
+							"type": "string",
+							"description": "The workflow name, shown in the approval prompt."
+						},
+						"orgId": {
+							"type": "string",
+							"description": "The id of the org that owns the workflow."
+						},
+						"orgName": {
+							"type": "string",
+							"description": "The org name, shown in the approval prompt."
+						},
+						"operations": {
+							"type": "array",
+							"items": {
+								"type": "object"
+							},
+							"description": "Ordered list of edit operations to apply."
+						},
+						"comment": {
+							"type": "string",
+							"description": "Optional patch comment describing the change."
+						}
+					},
+					"required": [
+						"workflowId",
+						"workflowName",
+						"orgId",
+						"orgName",
+						"operations"
 					]
 				}
 			},
@@ -296,6 +414,11 @@
 					"type": "boolean",
 					"default": false,
 					"description": "Let Cage-Free Rewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval through VS Code's inline chat confirmation (Continue / Cancel) showing the full operation, must declare the resource and org they change (scopeId, scopeName, orgId, orgName), and approval is remembered for the session by the ids. Off by default because the session can read and change anything you can in Rewst."
+				},
+				"rewst-buddy.ai.enableWorkflowTools": {
+					"type": "boolean",
+					"default": false,
+					"description": "Let Cage-Free Rewsty read and edit Rewst workflows through high-level tools (read a workflow as a node/edge graph, search actions, and apply add/connect/update/reposition operations) using your session. Reads run directly; edits always require your approval through VS Code's inline chat confirmation showing the operations, and approval is remembered per workflow for the session. Off by default because the session can change any workflow you can in Rewst."
 				}
 			}
 		},

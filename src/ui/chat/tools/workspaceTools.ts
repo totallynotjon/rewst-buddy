@@ -5,6 +5,7 @@ import vscode from 'vscode';
 import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
 import { GRAPHQL_TOOL_SPECS, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
 import { isWebTool, runWebTool, WEB_TOOL_SPECS } from './webTools';
+import { isWorkflowTool, runWorkflowTool, WORKFLOW_TOOL_SPECS } from './workflowTools';
 
 /**
  * Domain workspace context for the Rewst AI assistant: the list of files
@@ -102,8 +103,9 @@ async function runTool(
 			return { output: listTemplateLinks(deps) };
 		default: {
 			if (isWebTool(request.tool)) return { output: await runWebTool(request) };
+			if (isWorkflowTool(request.tool)) return { output: await runWorkflowTool(request, graphqlDeps) };
 			if (isGraphqlTool(request.tool)) return { output: await runGraphqlTool(request, graphqlDeps) };
-			const names = [...WORKSPACE_TOOL_SPECS, ...WEB_TOOL_SPECS, ...GRAPHQL_TOOL_SPECS]
+			const names = [...WORKSPACE_TOOL_SPECS, ...WEB_TOOL_SPECS, ...WORKFLOW_TOOL_SPECS, ...GRAPHQL_TOOL_SPECS]
 				.map(s => s.name)
 				.join(', ');
 			throw new Error(`Unknown tool "${request.tool}". Available: ${names}.`);

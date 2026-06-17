@@ -52,6 +52,13 @@ export const MAX_REQUESTS_PER_TURN = 5;
 export function buildToolInstructions(specs: ToolSpec[]): string {
 	const lines = specs.map(spec => `- ${spec.name} — args: ${spec.args}. ${spec.description}`);
 	const hasGraphqlTools = specs.some(spec => spec.name === 'rewst_graphql');
+	const hasWorkflowTools = specs.some(spec => spec.name === 'rewst_workflow_edit');
+	const workflowNote = hasWorkflowTools
+		? [
+				'',
+				'Workflows: to read a specific workflow as a node/edge graph, to change one, or to find an action and its inputs, the rewst_workflow_get, rewst_workflow_edit, and rewst_action_search tools handle the full read/edit choreography in one call — they carry the version token, resend the whole graph so nothing is dropped, generate valid task ids, and resolve action refs for you. Prefer them over assembling raw GraphQL for that workflow work; rewst_graphql remains available for other Rewst data and for listing workflows.',
+			]
+		: [];
 	const graphqlNote = hasGraphqlTools
 		? [
 				'',
@@ -72,6 +79,7 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 		'Available tools:',
 		...lines,
 		...graphqlNote,
+		...workflowNote,
 		'',
 		`Rules: when you need tool information, reply with ONLY vscode-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Tackle multi-step work one step per reply: for a multi-step request, give the plan in a tool-free reply first, then take one step (one short lead-in sentence plus its block) per following reply; a single lookup is one step, so answer it tool-first. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long results are cut off with a note saying how to continue; never repeat a request you already made.${
 			hasGraphqlTools

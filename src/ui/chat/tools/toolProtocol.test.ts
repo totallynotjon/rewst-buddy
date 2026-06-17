@@ -162,6 +162,21 @@ suite('Unit: toolProtocol', () => {
 			assert.ok(text.includes('then call rewst_graphql'));
 		});
 
+		test('adds workflow-tool guidance when the workflow edit tool is available', () => {
+			const text = buildToolInstructions([
+				{ name: 'rewst_workflow_get', args: '{}', description: 'Read a workflow.' },
+				{ name: 'rewst_workflow_edit', args: '{}', description: 'Edit a workflow.' },
+				{ name: 'rewst_action_search', args: '{}', description: 'Search actions.' },
+			]);
+			assert.ok(text.includes('rewst_workflow_get, rewst_workflow_edit, and rewst_action_search'));
+			assert.ok(/resend the whole graph so nothing is dropped/i.test(text));
+		});
+
+		test('omits workflow-tool guidance when the workflow tools are absent', () => {
+			const text = buildToolInstructions([{ name: 'read_file', args: '{}', description: 'Read.' }]);
+			assert.ok(!text.includes('rewst_workflow_edit'));
+		});
+
 		test('states vscode-tool blocks are extension-executed requests, including edit tools', () => {
 			const text = buildToolInstructions([
 				{

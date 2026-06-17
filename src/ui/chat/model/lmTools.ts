@@ -12,6 +12,7 @@ import {
 import { describeRequestBrief, type ToolSpec } from '../tools/toolProtocol';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
 import { WEB_TOOL_SPECS } from '../tools/webTools';
+import { WORKFLOW_TOOL_SPECS, workflowEditConfirmation, workflowEditScope } from '../tools/workflowTools';
 
 /**
  * Exposes every vscode-tool protocol tool as a registered VS Code language
@@ -27,6 +28,7 @@ export interface AiToolSettings {
 	enableWorkspaceTools: boolean;
 	enableWebTools: boolean;
 	enableGraphqlTool: boolean;
+	enableWorkflowTools: boolean;
 }
 
 interface GovernedSpec {
@@ -38,6 +40,7 @@ interface GovernedSpec {
 export const GOVERNED_TOOL_SPECS: GovernedSpec[] = [
 	...WORKSPACE_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkspaceTools })),
 	...WEB_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWebTools })),
+	...WORKFLOW_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkflowTools })),
 	...GRAPHQL_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableGraphqlTool })),
 ];
 
@@ -52,6 +55,7 @@ export function readAiToolSettings(): AiToolSettings {
 			config.get<boolean>('enableWorkspaceTools', true) && (vscode.workspace.workspaceFolders?.length ?? 0) > 0,
 		enableWebTools: config.get<boolean>('enableWebTools', false),
 		enableGraphqlTool: config.get<boolean>('enableGraphqlTool', false),
+		enableWorkflowTools: config.get<boolean>('enableWorkflowTools', false),
 	};
 }
 
@@ -236,7 +240,8 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 			// here, replacing the OS modal — decline simply skips invoke (#25).
 			prepareInvocation: async options => {
 				const invocationMessage = describeRequestBrief({ tool: name, args: options.input ?? {} });
-				const confirmation = graphqlMutationConfirmation(name, options.input);
+				const confirmation =
+					graphqlMutationConfirmation(name, options.input) ?? workflowEditConfirmation(name, options.input);
 				if (!confirmation) return { invocationMessage };
 				return {
 					invocationMessage,
@@ -250,7 +255,7 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 				// invoke only runs once VS Code has accepted the confirmation (or none
 				// was needed), so reaching here for a scoped mutation means the user
 				// permitted this resource — remember it so repeat edits skip the prompt.
-				const scope = graphqlMutationScope(name, options.input);
+				const scope = graphqlMutationScope(name, options.input) ?? workflowEditScope(name, options.input);
 				if (scope) approveMutationScope(scope);
 				const session = resolveGraphqlSession();
 				const [result] = await runToolRequests(

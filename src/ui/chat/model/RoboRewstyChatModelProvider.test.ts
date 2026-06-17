@@ -17,6 +17,7 @@ const allSettings: AiToolSettings = {
 	enableWorkspaceTools: true,
 	enableWebTools: true,
 	enableGraphqlTool: true,
+	enableWorkflowTools: true,
 };
 
 function message(

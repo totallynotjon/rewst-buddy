@@ -10,6 +10,9 @@ tsconfig.tsbuildinfo
 .env.local
 !.env.example
 
+# Workflow probe snapshots (may contain live workflow internals)
+scripts/wf-backups/
+
 # Claude Code local files
 .claude/settings.*
 .claudeignore

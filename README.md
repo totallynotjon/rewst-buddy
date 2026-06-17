@@ -38,6 +38,7 @@ Want to pull in **every template** from an organization at once? See the [Bulk F
 
 - Auto-sync on save with conflict detection
 - Cage-Free Rewsty chat model — Rewst's AI assistant (RoboRewsty) right in VS Code's chat model picker, **no GitHub account or Copilot plan needed**; it can read, search, and edit your workspace files to ground its answers
+- Opt-in workflow tools — let Cage-Free Rewsty read a workflow as a node/edge graph, search actions, and edit workflows with high-level operations (approval-gated, reversible)
 - Auto-fetch on open — picks up remote changes when you open a file
 - `Ctrl+Click` template navigation + hover info on `template('UUID')` calls
 - Template bundles — dependency-based grouping in the Explorer sidebar

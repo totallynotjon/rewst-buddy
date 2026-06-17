@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.44.0] - 2026-06-17
+
+### Added
+
+- **Workflow tools for Cage-Free Rewsty** (`rewst-buddy.ai.enableWorkflowTools`, off by default) — three purpose-built tools that let the assistant understand and edit Rewst workflows in single calls instead of many rounds of raw GraphQL:
+    - `rewst_workflow_get` reads a workflow as a normalized **node/edge graph** (tasks with their action ref and input; transitions with their condition, label, target tasks, and published context variables).
+    - `rewst_action_search` finds actions for an org (ranking `core`/common actions first and deduping) and, in describe mode, returns an action's input **parameters** and output schema.
+    - `rewst_workflow_edit` applies high-level **operations** — `add_task`, `update_task`, `delete_task`, `connect`, `disconnect`, `set_transition`, `reposition` — by reading the current workflow, applying the operations to the whole graph, and saving it back. The tool resends the entire workflow (the API replaces rather than merges, so nothing is dropped), checks the version to avoid clobbering a concurrent change and retries once on conflict, generates valid de-dashed task ids, resolves action refs to ids, and records a reversible patch on every save.
+    - Reads run directly; edits require the same inline chat confirmation (Continue / Cancel) as a GraphQL mutation, showing the operations, with approval remembered per workflow for the session.
+
 ## [0.43.6] - 2026-06-16
 
 ### Added
