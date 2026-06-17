@@ -9,13 +9,14 @@ function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
 		enableWorkspaceTools: false,
 		enableWebTools: false,
 		enableGraphqlTool: false,
+		enableWorkflowTools: false,
 		...overrides,
 	};
 }
 
 suite('Unit: lmTools', () => {
-	test('exposes all 4 protocol tools with input schemas', () => {
-		assert.strictEqual(ALL_TOOL_SPECS.length, 4);
+	test('exposes all 13 protocol tools with input schemas', () => {
+		assert.strictEqual(ALL_TOOL_SPECS.length, 13);
 		for (const spec of ALL_TOOL_SPECS) {
 			assert.ok(spec.inputSchema, `${spec.name} carries an inputSchema`);
 		}
@@ -33,20 +34,32 @@ suite('Unit: lmTools', () => {
 			);
 			assert.deepStrictEqual([...enabledToolNames(settings({ enableWebTools: true }))].sort(), ['web_search']);
 			assert.deepStrictEqual([...enabledToolNames(settings({ enableGraphqlTool: true }))].sort(), [
-				'rewst_graphql',
-				'rewst_graphql_schema',
+				'buddy_graphql',
+				'buddy_graphql_schema',
+			]);
+			assert.deepStrictEqual([...enabledToolNames(settings({ enableWorkflowTools: true }))].sort(), [
+				'buddy_action_search',
+				'buddy_execution_logs',
+				'buddy_render_jinja',
+				'buddy_workflow_autolayout',
+				'buddy_workflow_edit',
+				'buddy_workflow_executions',
+				'buddy_workflow_get',
+				'buddy_workflow_run',
+				'buddy_workflow_search',
 			]);
 		});
 
-		test('everything enabled yields all 4', () => {
+		test('everything enabled yields all 13', () => {
 			const names = enabledToolNames(
 				settings({
 					enableWorkspaceTools: true,
 					enableWebTools: true,
 					enableGraphqlTool: true,
+					enableWorkflowTools: true,
 				}),
 			);
-			assert.strictEqual(names.size, 4);
+			assert.strictEqual(names.size, 13);
 		});
 	});
 
@@ -54,7 +67,7 @@ suite('Unit: lmTools', () => {
 		test('governed tools follow their setting', () => {
 			assert.strictEqual(isToolPermitted('list_template_links', settings()), false);
 			assert.strictEqual(isToolPermitted('list_template_links', settings({ enableWorkspaceTools: true })), true);
-			assert.strictEqual(isToolPermitted('rewst_graphql', settings()), false);
+			assert.strictEqual(isToolPermitted('buddy_graphql', settings()), false);
 		});
 
 		test('names outside the rewst set are not governed', () => {

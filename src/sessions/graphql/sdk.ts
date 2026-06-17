@@ -2061,6 +2061,8 @@ export type MicrosoftCspCustomer = {
   companyName: Scalars['String']['output'];
   createdAt: Scalars['String']['output'];
   cspTenantId: Scalars['String']['output'];
+  gdapRelationshipId?: Maybe<Scalars['ID']['output']>;
+  gdapRelationshipStatus?: Maybe<Scalars['String']['output']>;
   hasConsent: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
   linkedOrganizations?: Maybe<Array<Organization>>;
@@ -2120,6 +2122,7 @@ export type Mutation = {
    * This will send the invite email to the user.
    */
   approveUserInvite: UserInvite;
+  assignGDAPAccess?: Maybe<JobRequestedResponse>;
   assignRoleToUser: UserRole;
   bulkCreateOrganizations: Array<Organization>;
   bulkDeleteOrganizations?: Maybe<Scalars['Void']['output']>;
@@ -2231,6 +2234,8 @@ export type Mutation = {
   killConversation: Scalars['Boolean']['output'];
   killWorkflowExecution?: Maybe<Scalars['JSON']['output']>;
   linkMicrosoftCSPCustomer: MicrosoftCspCustomer;
+  listGDAPRelationshipsForTenant?: Maybe<JobRequestedResponse>;
+  lockGDAPRelationship?: Maybe<JobRequestedResponse>;
   markOrgMappingComplete?: Maybe<OrganizationOnboardingPackRequirement>;
   /** @deprecated Replaced with microsoftCSPConsentRequest subscription */
   modifyCSPConsent: CspConsentResult;
@@ -2255,6 +2260,7 @@ export type Mutation = {
    */
   recordPermissionsReportDownload: Scalars['Boolean']['output'];
   refetchPackConfigRefOptions?: Maybe<JobRequestedResponse>;
+  refreshGDAPStatuses?: Maybe<JobRequestedResponse>;
   refreshOnboardingOrgMappingProgress?: Maybe<OrganizationOnboardingRequirement>;
   removeAllowedTool: UserRoboRewstyPreferences;
   removeFavoriteAction?: Maybe<Scalars['Void']['output']>;
@@ -2275,6 +2281,7 @@ export type Mutation = {
   rotateApiClientSecret: ApiClientSecretRotation;
   runTriggerWithMCP?: Maybe<JobRequestedResponse>;
   runWorkflowForOptions?: Maybe<WorkflowOptionsResponse>;
+  sendGDAPInvites?: Maybe<JobRequestedResponse>;
   setFavoriteActions: Array<UserFavoriteAction>;
   setFormPermissions: SetFormPermissionsResult;
   setFormTags?: Maybe<Form>;
@@ -2407,6 +2414,12 @@ export type MutationAdminCreateOrUpdatePackBundleArgs = {
 
 export type MutationApproveUserInviteArgs = {
   id: Scalars['ID']['input'];
+};
+
+
+export type MutationAssignGdapAccessArgs = {
+  packConfigId: Scalars['ID']['input'];
+  relationshipId: Scalars['ID']['input'];
 };
 
 
@@ -2946,6 +2959,18 @@ export type MutationLinkMicrosoftCspCustomerArgs = {
 };
 
 
+export type MutationListGdapRelationshipsForTenantArgs = {
+  customerTenantId: Scalars['ID']['input'];
+  packConfigId: Scalars['ID']['input'];
+};
+
+
+export type MutationLockGdapRelationshipArgs = {
+  packConfigId: Scalars['ID']['input'];
+  relationshipId: Scalars['ID']['input'];
+};
+
+
 export type MutationMarkOrgMappingCompleteArgs = {
   complete: Scalars['Boolean']['input'];
   id: Scalars['ID']['input'];
@@ -2991,6 +3016,12 @@ export type MutationRecordPermissionsReportDownloadArgs = {
 export type MutationRefetchPackConfigRefOptionsArgs = {
   packConfigId: Scalars['ID']['input'];
   reference?: InputMaybe<Scalars['JSON']['input']>;
+};
+
+
+export type MutationRefreshGdapStatusesArgs = {
+  packConfigId: Scalars['ID']['input'];
+  relationshipId?: InputMaybe<Scalars['ID']['input']>;
 };
 
 
@@ -3086,6 +3117,13 @@ export type MutationRunWorkflowForOptionsArgs = {
   skipCache?: InputMaybe<Scalars['Boolean']['input']>;
   triggerId?: InputMaybe<Scalars['ID']['input']>;
   workflowId: Scalars['ID']['input'];
+};
+
+
+export type MutationSendGdapInvitesArgs = {
+  customerTenantIds: Array<Scalars['ID']['input']>;
+  displayNamePrefix?: InputMaybe<Scalars['String']['input']>;
+  packConfigId: Scalars['ID']['input'];
 };
 
 
@@ -3355,7 +3393,9 @@ export type MutationUpdateManagedAndSubOrganizationsArgs = {
 export type MutationUpdateMicrosoftCspCustomerArgs = {
   cspPackConfigId: Scalars['ID']['input'];
   customerId: Scalars['ID']['input'];
-  hasConsent: Scalars['Boolean']['input'];
+  gdapRelationshipId?: InputMaybe<Scalars['ID']['input']>;
+  gdapRelationshipStatus?: InputMaybe<Scalars['String']['input']>;
+  hasConsent?: InputMaybe<Scalars['Boolean']['input']>;
 };
 
 
@@ -5368,7 +5408,6 @@ export type Query = {
   pendingTasksAggregate: PendingTasksAggregate;
   permission?: Maybe<Permission>;
   permissionAuditLog: PermissionAuditLogList;
-  permissionAuditLogExport: Scalars['String']['output'];
   permissions: Array<Permission>;
   /** Fetch account type and status filter options from the specified PSA integration */
   psaFilterOptions: PsaFilterOptions;
@@ -5381,6 +5420,7 @@ export type Query = {
   resourceTypesByPack: Array<PackResourceTypesContainer>;
   roboRewstyConfigOption: RoboRewstyConfigValue;
   roboRewstyConfigOptions: Array<RoboRewstyConfigValue>;
+  roboRewstyWorkflowDraftState?: Maybe<WorkflowDraftStateMetadata>;
   /**
    * Batched membership counts for the role list sidebar, scoped to the
    * caller's managed subtree.
@@ -6217,14 +6257,6 @@ export type QueryPermissionAuditLogArgs = {
 };
 
 
-export type QueryPermissionAuditLogExportArgs = {
-  filters?: InputMaybe<PermissionAuditLogFiltersInput>;
-  format: PermissionAuditExportFormat;
-  includeSubOrgs?: InputMaybe<Scalars['Boolean']['input']>;
-  orgId: Scalars['ID']['input'];
-};
-
-
 export type QueryPermissionsArgs = {
   where?: InputMaybe<PermissionWhereInput>;
 };
@@ -6280,6 +6312,12 @@ export type QueryRoboRewstyConfigOptionArgs = {
 
 export type QueryRoboRewstyConfigOptionsArgs = {
   where?: InputMaybe<RoboRewstyConfigWhere>;
+};
+
+
+export type QueryRoboRewstyWorkflowDraftStateArgs = {
+  orgId: Scalars['ID']['input'];
+  workflowId: Scalars['ID']['input'];
 };
 
 
@@ -8221,6 +8259,12 @@ export type WorkflowTriggersArgs = {
 
 export type WorkflowVisibleForOrganizationsArgs = {
   where?: InputMaybe<OrganizationInput>;
+};
+
+export type WorkflowDraftStateMetadata = {
+  __typename?: 'WorkflowDraftStateMetadata';
+  draftHash?: Maybe<Scalars['String']['output']>;
+  revision?: Maybe<Scalars['Int']['output']>;
 };
 
 export type WorkflowDraftSyncResponse = {

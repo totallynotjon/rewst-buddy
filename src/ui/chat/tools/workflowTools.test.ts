@@ -1,0 +1,1222 @@
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
+import { initTestEnvironment } from '@test';
+import { SessionManager } from '@sessions';
+import { _resetApprovedMutationScopes, approveMutationScope, type GraphqlToolDeps } from './graphqlTool';
+import {
+	applyOperations,
+	autoLayout,
+	isWorkflowTool,
+	normalizePublish,
+	runWorkflowTool,
+	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_EDIT_TOOL_NAME,
+	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+	WORKFLOW_RUN_TOOL_NAME,
+	WORKFLOW_SEARCH_TOOL_NAME,
+	_resetWorkflowIndexForTesting,
+	workflowEditConfirmation,
+	workflowEditScope,
+	workflowToInput,
+	type WorkflowOperation,
+} from './workflowTools';
+
+const { suite, test, setup } = Mocha;
+
+// A minimal two-task workflow: start (core.noop) -> end (core.noop).
+function sampleTasks() {
+	return [
+		{
+			id: 'aa01',
+			name: 'start',
+			actionId: 'noop-id',
+			action: { ref: 'core.noop' },
+			input: {},
+			metadata: { x: 0, y: 0 },
+			next: [{ when: '{{ SUCCEEDED }}', label: '', do: ['bb02'], publish: [] }],
+		},
+		{
+			id: 'bb02',
+			name: 'end',
+			actionId: 'noop-id',
+			action: { ref: 'core.noop' },
+			input: {},
+			metadata: { x: 0, y: 120 },
+			next: [],
+		},
+	];
+}
+
+function sampleWorkflow() {
+	return {
+		id: 'wf-1',
+		name: 'Sample',
+		orgId: 'org-1',
+		organization: { id: 'org-1', name: 'Test Org' },
+		input: ['email'],
+		action: {
+			parameters: {
+				email: {
+					type: 'string',
+					label: 'Email',
+					default: '',
+					required: true,
+					multiline: false,
+					description: 'addr',
+				},
+			},
+		},
+		updatedAt: '1000',
+		tasks: sampleTasks(),
+	};
+}
+
+const NO_ACTIONS = new Map<string, string>();
+const NOOP_REF = new Map([['core.noop', 'noop-id']]);
+
+suite('Unit: workflowTools', () => {
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+		_resetApprovedMutationScopes();
+		_resetWorkflowIndexForTesting();
+	});
+
+	test('isWorkflowTool recognizes the workflow tools', () => {
+		assert.ok(isWorkflowTool('buddy_workflow_get'));
+		assert.ok(isWorkflowTool('buddy_action_search'));
+		assert.ok(isWorkflowTool('buddy_workflow_edit'));
+		assert.ok(!isWorkflowTool('buddy_graphql'));
+	});
+
+	suite('normalizePublish()', () => {
+		test('keeps {key,value} array form', () => {
+			assert.deepStrictEqual(normalizePublish([{ key: 'a', value: '1' }]), [{ key: 'a', value: '1' }]);
+		});
+		test('converts {key: value} object form', () => {
+			assert.deepStrictEqual(normalizePublish({ a: '1', b: '2' }), [
+				{ key: 'a', value: '1' },
+				{ key: 'b', value: '2' },
+			]);
+		});
+		test('converts array of single-key objects', () => {
+			assert.deepStrictEqual(normalizePublish([{ a: '1' }]), [{ key: 'a', value: '1' }]);
+		});
+		test('null yields empty', () => {
+			assert.deepStrictEqual(normalizePublish(null), []);
+		});
+	});
+
+	suite('workflowToInput()', () => {
+		test('uses actionId (not action.ref) and normalizes publish', () => {
+			const w = sampleWorkflow();
+			w.tasks[0].next[0].publish = [{ key: 'k', value: 'v' }] as never;
+			const input = workflowToInput(w as never, w.tasks as never);
+			const tasks = input.tasks as Record<string, unknown>[];
+			assert.strictEqual(tasks[0].actionId, 'noop-id');
+			assert.ok(!('action' in tasks[0]), 'action object is not sent');
+			const next = tasks[0].next as Record<string, unknown>[];
+			assert.deepStrictEqual(next[0].publish, [{ key: 'k', value: 'v' }]);
+			assert.deepStrictEqual(next[0].do, ['bb02']);
+		});
+
+		test('carries the run/call form parameters through on a non-input edit', () => {
+			// updateWorkflow replaces the whole payload, so the action.parameters that
+			// drive the run/call form must be resent or they are silently dropped.
+			const w = sampleWorkflow();
+			const input = workflowToInput(w as never, w.tasks as never);
+			assert.deepStrictEqual(input.parameters, w.action.parameters, 'parameters preserved');
+		});
+	});
+
+	suite('applyOperations()', () => {
+		test('add_task generates a de-dashed hex id and resolves the action ref', () => {
+			const ops: WorkflowOperation[] = [{ op: 'add_task', name: 'notify', action: 'core.noop', input: { x: 1 } }];
+			const { tasks, applied } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const added = tasks.find(t => t.name === 'notify')!;
+			assert.ok(added, 'task added');
+			assert.match(added.id, /^[0-9a-f]{32}$/, 'id is de-dashed hex');
+			assert.strictEqual(added.actionId, 'noop-id');
+			assert.deepStrictEqual(added.input, { x: 1 });
+			assert.strictEqual(applied.length, 1);
+		});
+
+		test('connect links by name, including a task added in the same edit', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'notify', action: 'core.noop' },
+				{ op: 'connect', from: 'end', to: 'notify', when: '{{ SUCCEEDED }}' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const end = tasks.find(t => t.name === 'end')!;
+			const notify = tasks.find(t => t.name === 'notify')!;
+			assert.strictEqual(end.next!.length, 1);
+			assert.deepStrictEqual(end.next![0].do, [notify.id]);
+		});
+
+		test('connect inserts a success edge before a pre-existing targetless terminal', () => {
+			// A task saved once carries a terminal {{ SUCCEEDED }} with do:[]. Connecting
+			// from it must place the new success edge first, or FOLLOW_FIRST lets the
+			// empty terminal shadow it.
+			const tasksIn = sampleTasks();
+			tasksIn[1].next = [{ when: '{{ SUCCEEDED }}', label: '', do: [], publish: [] }];
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'after', action: 'core.noop' },
+				{ op: 'connect', from: 'end', to: 'after' },
+			];
+			const { tasks } = applyOperations(tasksIn as never, ops, NOOP_REF);
+			const end = tasks.find(t => t.name === 'end')!;
+			const after = tasks.find(t => t.name === 'after')!;
+			assert.deepStrictEqual(end.next![0].do, [after.id], 'new connection evaluated first');
+			assert.deepStrictEqual(end.next![1].do, [], 'empty terminal pushed after');
+		});
+
+		test('add_task with subWorkflowId calls another workflow (its id is the action id)', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'call_child', subWorkflowId: '019ecc4c-b826-70b0-a8c7-e87ff2377833' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			const call = tasks.find(t => t.name === 'call_child')!;
+			assert.strictEqual(
+				call.actionId,
+				'019ecc4c-b826-70b0-a8c7-e87ff2377833',
+				'sub-workflow id becomes the action id',
+			);
+		});
+
+		test('set_inputs builds the input name list and inputSchema, never varsSchema', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'set_inputs',
+					inputs: [
+						{ name: 'email', type: 'string', title: 'Email', description: 'addr', required: true },
+						{ name: 'count', type: 'integer' },
+						{ name: 'drop', type: 'boolean', default: false },
+					],
+				},
+			];
+			const { workflow } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(workflow.input, ['email', 'count', 'drop'], 'ordered input name list');
+			const schema = workflow.inputSchema as {
+				type: string;
+				required: string[];
+				properties: Record<string, { type: string; title: string; default?: unknown }>;
+			};
+			assert.strictEqual(schema.type, 'object');
+			assert.deepStrictEqual(schema.required, ['email'], 'only required inputs listed');
+			assert.strictEqual(schema.properties.email.type, 'string');
+			assert.strictEqual(schema.properties.email.title, 'Email');
+			assert.strictEqual(schema.properties.count.title, 'count', 'title defaults to the name');
+			// parameters (action-parameter form) is what the UI input form actually reads.
+			const params = workflow.parameters as Record<
+				string,
+				{ label: string; required: boolean; multiline: boolean; default: unknown }
+			>;
+			assert.strictEqual(params.email.label, 'Email', 'parameters use label, not title');
+			assert.strictEqual(params.email.required, true);
+			assert.strictEqual(params.count.required, false);
+			assert.strictEqual(params.count.multiline, false);
+			// Raw boolean/number defaults are wrapped as Jinja expressions, which Rewst needs.
+			assert.strictEqual(params.drop.default, '{{ false }}', 'raw boolean default is Jinja-wrapped');
+			assert.strictEqual(schema.properties.drop.default, '{{ false }}', 'inputSchema default is wrapped too');
+			assert.ok(!('varsSchema' in workflow), 'varsSchema is never touched by set_inputs');
+		});
+
+		test('a new task defaults to FOLLOW_FIRST + join 1 and gets a terminal transition', () => {
+			const { tasks } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'add_task', name: 'leaf', action: 'core.noop' }],
+				NOOP_REF,
+			);
+			const leaf = tasks.find(t => t.name === 'leaf')!;
+			assert.strictEqual(leaf.transitionMode, 'FOLLOW_FIRST');
+			assert.strictEqual(leaf.join, 1);
+			assert.strictEqual(leaf.next!.length, 1, 'unconnected task gets a success transition');
+			assert.strictEqual(leaf.next![0].when, '{{ SUCCEEDED }}');
+			assert.deepStrictEqual(leaf.next![0].do, []);
+		});
+
+		test('add_task honors an explicit join (e.g. 0 for a join task)', () => {
+			const { tasks } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'add_task', name: 'merge', action: 'core.noop', join: 0 }],
+				NOOP_REF,
+			);
+			assert.strictEqual(tasks.find(t => t.name === 'merge')!.join, 0);
+		});
+
+		test('every existing task is normalized to an explicit FOLLOW_FIRST + join 1 on save', () => {
+			// sampleTasks() leave transitionMode/join unset (Rewst would treat that as
+			// FOLLOW_ALL at runtime); any edit must make the safe default explicit.
+			const { tasks } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'set_transition', from: 'start', set: { label: 'go' } }],
+				NO_ACTIONS,
+			);
+			for (const task of tasks) {
+				assert.strictEqual(task.transitionMode, 'FOLLOW_FIRST', `${task.name} mode made explicit`);
+				assert.strictEqual(task.join, 1, `${task.name} join made explicit`);
+			}
+		});
+
+		test('normalization is fill-only: an explicit FOLLOW_ALL fan-out and join 0 survive', () => {
+			const tasksIn = sampleTasks();
+			(tasksIn[0] as { transitionMode?: string }).transitionMode = 'FOLLOW_ALL';
+			(tasksIn[1] as { join?: number }).join = 0;
+			const { tasks } = applyOperations(tasksIn as never, [], NO_ACTIONS);
+			assert.strictEqual(tasks.find(t => t.name === 'start')!.transitionMode, 'FOLLOW_ALL', 'fan-out preserved');
+			assert.strictEqual(tasks.find(t => t.name === 'end')!.join, 0, 'explicit join preserved');
+		});
+
+		test('update_task merges set fields', () => {
+			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: { msg: 'hi' } } }];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.input, { msg: 'hi' });
+		});
+
+		test('delete_task removes the task and edges pointing at it', () => {
+			const ops: WorkflowOperation[] = [{ op: 'delete_task', name: 'end' }];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.ok(!tasks.some(t => t.name === 'end'), 'end removed');
+			// start's only edge pointed at end and is dropped; it then gets a terminal transition.
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next!.length, 1, 'start gets a terminal transition after losing its only edge');
+			assert.deepStrictEqual(start.next![0].do, []);
+			assert.strictEqual(start.next![0].when, '{{ SUCCEEDED }}');
+		});
+
+		test('disconnect removes the edge to a target (task keeps a terminal transition)', () => {
+			const ops: WorkflowOperation[] = [{ op: 'disconnect', from: 'start', to: 'end' }];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next!.length, 1);
+			assert.deepStrictEqual(start.next![0].do, []);
+		});
+
+		test('set_transition edits the single transition', () => {
+			const ops: WorkflowOperation[] = [{ op: 'set_transition', from: 'start', set: { label: 'go' } }];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.strictEqual(tasks.find(t => t.name === 'start')!.next![0].label, 'go');
+		});
+
+		test('orders a custom condition before the {{ SUCCEEDED }} catch-all on a task', () => {
+			// start already has a success transition to end; add a custom-condition
+			// edge after it. The success catch-all must end up last so it cannot
+			// shadow the custom condition under FOLLOW_FIRST.
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'special', action: 'core.noop' },
+				{ op: 'connect', from: 'start', to: 'special', when: '{{ RESULT.flag }}' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next![0].when, '{{ RESULT.flag }}', 'custom condition first');
+			assert.strictEqual(start.next![1].when, '{{ SUCCEEDED }}', 'success catch-all last');
+		});
+
+		test('treats a blank/whitespace-only condition as a success catch-all when ordering', () => {
+			const tasksIn = sampleTasks();
+			tasksIn[0].next = [
+				{ when: '', label: '', do: ['bb02'], publish: [] },
+				{ when: '{{ RESULT.flag }}', label: '', do: ['bb02'], publish: [] },
+			];
+			const { tasks } = applyOperations(tasksIn as never, [], NO_ACTIONS);
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next![0].when, '{{ RESULT.flag }}', 'custom condition moves first');
+			assert.strictEqual(start.next![1].when, '', 'blank (success) catch-all moves last');
+		});
+
+		test('keeps relative order among multiple custom conditions', () => {
+			const tasksIn = sampleTasks();
+			tasksIn[0].next = [
+				{ when: '{{ SUCCEEDED }}', label: '', do: ['bb02'], publish: [] },
+				{ when: '{{ RESULT.a }}', label: '', do: ['bb02'], publish: [] },
+				{ when: '{{ RESULT.b }}', label: '', do: ['bb02'], publish: [] },
+			];
+			const { tasks } = applyOperations(tasksIn as never, [], NO_ACTIONS);
+			const whens = tasks.find(t => t.name === 'start')!.next!.map(t => t.when);
+			assert.deepStrictEqual(whens, ['{{ RESULT.a }}', '{{ RESULT.b }}', '{{ SUCCEEDED }}']);
+		});
+
+		test('reposition moves a task to exact (un-snapped) canvas coordinates', () => {
+			const ops: WorkflowOperation[] = [{ op: 'reposition', task: 'start', x: 50.5, y: 130 }];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.metadata as object, { x: 50.5, y: 130 });
+		});
+
+		test('a new connected task is auto-placed one node-height-plus-gap below its parent', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'notify', action: 'core.noop' },
+				{ op: 'connect', from: 'end', to: 'notify' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const end = tasks.find(t => t.name === 'end')!.metadata as { x: number; y: number };
+			const notify = tasks.find(t => t.name === 'notify')!.metadata as { x: number; y: number };
+			assert.strictEqual(notify.x, end.x, 'same column as its parent');
+			// NODE_HEIGHT (88) + V_GAP (80) below the parent's top.
+			assert.strictEqual(notify.y, end.y + 168, 'placed below its parent with a gap');
+		});
+
+		test('add_task honors an explicit position verbatim', () => {
+			const ops: WorkflowOperation[] = [{ op: 'add_task', name: 'notify', action: 'core.noop', x: 312, y: 205 }];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'notify')!.metadata as object, { x: 312, y: 205 });
+		});
+
+		test('an unconnected new task drops below the lowest existing node', () => {
+			const ops: WorkflowOperation[] = [{ op: 'add_task', name: 'orphan', action: 'core.noop' }];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const orphan = tasks.find(t => t.name === 'orphan')!.metadata as { x: number; y: number };
+			// lowest node bottom is end (y=120 + height 88 = 208) + V_GAP (80) = 288.
+			assert.strictEqual(orphan.y, 288);
+		});
+
+		test('does not mutate the input task list', () => {
+			const original = sampleTasks();
+			applyOperations(original as never, [{ op: 'delete_task', name: 'end' }], NO_ACTIONS);
+			assert.strictEqual(original.length, 2, 'source untouched');
+		});
+
+		test('errors on unknown task, unknown op, and unresolved action', () => {
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, [{ op: 'connect', from: 'x', to: 'end' }], NO_ACTIONS),
+				/No task/,
+			);
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, [{ op: 'frobnicate' }], NO_ACTIONS),
+				/Unknown operation/,
+			);
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[{ op: 'add_task', name: 'n', action: 'pack.thing' }],
+						NO_ACTIONS,
+					),
+				/resolve action/,
+			);
+		});
+	});
+
+	suite('autoLayout()', () => {
+		// Node footprint for overlap checks, mirroring the tool's geometry.
+		const box = (t: { metadata: unknown; next?: { do?: string[] }[] }) => {
+			const m = t.metadata as { x: number; y: number };
+			return { x: m.x, y: m.y, w: 209 + 127 * Math.max(1, (t.next ?? []).length), h: 88 };
+		};
+		const overlap = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) =>
+			a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+		test('positions every task with finite, non-overlapping coordinates', () => {
+			const tasks = sampleTasks();
+			autoLayout(tasks as never);
+			for (const t of tasks) {
+				const m = t.metadata as { x: number; y: number };
+				assert.ok(Number.isFinite(m.x) && Number.isFinite(m.y), `${t.name} has finite coordinates`);
+			}
+			for (let i = 0; i < tasks.length; i++) {
+				for (let j = i + 1; j < tasks.length; j++) {
+					assert.ok(!overlap(box(tasks[i]), box(tasks[j])), `${tasks[i].name} overlaps ${tasks[j].name}`);
+				}
+			}
+		});
+
+		test('is deterministic for identical input', () => {
+			const a = sampleTasks();
+			const b = sampleTasks();
+			autoLayout(a as never);
+			autoLayout(b as never);
+			assert.deepStrictEqual(
+				a.map(t => t.metadata),
+				b.map(t => t.metadata),
+			);
+		});
+
+		test('handles a cycle without runaway coordinates', () => {
+			const cyclic = sampleTasks();
+			cyclic[1].next = [{ when: '{{ SUCCEEDED }}', label: '', do: ['aa01'], publish: [] }]; // end -> start
+			autoLayout(cyclic as never);
+			for (const t of cyclic) {
+				const m = t.metadata as { x: number; y: number };
+				assert.ok(Math.abs(m.x) < 100000 && Math.abs(m.y) < 100000, `${t.name} stays bounded`);
+			}
+		});
+
+		test('orders a rank by transition order and floats a loop node to its target rank', () => {
+			// start -> executions -> can_proceed -> {drop, maxretry, delay, noop_end};
+			// delay loops back to executions.
+			const node = (id: string, dos: string[][] = []) => ({
+				id,
+				name: id,
+				actionId: 'noop-id',
+				action: { ref: 'core.noop' },
+				input: {},
+				metadata: {} as { x: number; y: number },
+				next: dos.map(d => ({ when: '{{ SUCCEEDED }}', label: '', do: d, publish: [] })),
+			});
+			const tasks = [
+				node('start', [['executions']]),
+				node('executions', [['can_proceed']]),
+				node('can_proceed', [['drop'], ['maxretry'], ['delay'], ['noop_end']]),
+				node('drop'),
+				node('maxretry'),
+				node('delay', [['executions']]),
+				node('noop_end'),
+			];
+			autoLayout(tasks as never);
+			const pos = Object.fromEntries(tasks.map(t => [t.id, t.metadata as { x: number; y: number }]));
+
+			// The loop node shares its target's rank, not the exit row below can_proceed.
+			assert.strictEqual(pos.delay.y, pos.executions.y, 'delay floats to executions row');
+			assert.ok(pos.delay.y < pos.drop.y, 'delay is above the exit row');
+
+			// can_proceed's non-loop children share one rank, ordered by transition order.
+			assert.strictEqual(pos.drop.y, pos.maxretry.y);
+			assert.strictEqual(pos.maxretry.y, pos.noop_end.y);
+			assert.ok(pos.drop.x < pos.maxretry.x, 'drop (transition 0) left of maxretry (transition 1)');
+			assert.ok(pos.maxretry.x < pos.noop_end.x, 'maxretry left of noop_end (later transition)');
+		});
+
+		test('routes a terminal catch fed by many ranks into the right lane', () => {
+			const node = (id: string, dos: string[][] = []) => ({
+				id,
+				name: id,
+				actionId: 'noop-id',
+				action: { ref: 'core.noop' },
+				input: {},
+				metadata: {} as { x: number; y: number },
+				next: dos.map(d => ({ when: '{{ SUCCEEDED }}', label: '', do: d, publish: [] })),
+			});
+			// A 7-node chain n0..n6; n0,n2,n4,n6 also feed a shared "catch" -> end.
+			const tasks = [
+				node('n0', [['n1'], ['catch']]),
+				node('n1', [['n2']]),
+				node('n2', [['n3'], ['catch']]),
+				node('n3', [['n4']]),
+				node('n4', [['n5'], ['catch']]),
+				node('n5', [['n6']]),
+				node('n6', [['end'], ['catch']]),
+				node('catch', [['end']]),
+				node('end'),
+			];
+			autoLayout(tasks as never);
+			const pos = Object.fromEntries(tasks.map(t => [t.id, t.metadata as { x: number; y: number }]));
+			const mainMaxX = Math.max(...['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'end'].map(id => pos[id].x));
+			assert.ok(pos.catch.x > mainMaxX, 'the catch is in a lane to the right of the whole main flow');
+			// end is fed by only 2 (n6 + catch), so it stays in the main column, not the lane.
+			assert.ok(pos.end.x <= mainMaxX, 'the natural end node stays in the main flow');
+		});
+
+		test('the autolayout operation recomputes positions from a messy layout', () => {
+			const messy = sampleTasks();
+			messy[0].metadata = { x: 9999, y: -9999 };
+			const { tasks, applied } = applyOperations(messy as never, [{ op: 'autolayout' }], NO_ACTIONS);
+			const start = tasks.find(t => t.name === 'start')!.metadata as { x: number; y: number };
+			assert.notDeepStrictEqual(start, { x: 9999, y: -9999 }, 'the stale position was replaced');
+			assert.ok(Number.isFinite(start.x) && Number.isFinite(start.y));
+			assert.match(applied[0], /autolayout/);
+		});
+	});
+
+	suite('workflowEditScope()', () => {
+		test('returns the scope when all four fields are present', () => {
+			const scope = workflowEditScope(WORKFLOW_EDIT_TOOL_NAME, {
+				workflowId: 'wf-1',
+				workflowName: 'WF',
+				orgId: 'org-1',
+				orgName: 'Acme',
+				operations: [],
+			});
+			assert.deepStrictEqual(scope, { scopeId: 'wf-1', scopeName: 'WF', orgId: 'org-1', orgName: 'Acme' });
+		});
+		test('undefined when a field is missing or wrong tool', () => {
+			assert.strictEqual(workflowEditScope(WORKFLOW_EDIT_TOOL_NAME, { workflowId: 'wf-1' }), undefined);
+			assert.strictEqual(
+				workflowEditScope('buddy_graphql', { workflowId: 'a', workflowName: 'b', orgId: 'c', orgName: 'd' }),
+				undefined,
+			);
+		});
+	});
+
+	suite('workflowEditConfirmation()', () => {
+		const fullArgs = {
+			workflowId: 'wf-1',
+			workflowName: 'WF',
+			orgId: 'org-1',
+			orgName: 'Acme',
+			operations: [{ op: 'add_task', name: 'notify', action: 'core.noop' }],
+		};
+
+		test('summarizes operations and names the workflow', () => {
+			const confirmation = workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, fullArgs);
+			assert.ok(confirmation);
+			assert.match(confirmation!.message, /WF/);
+			assert.match(confirmation!.message, /add_task notify/);
+		});
+
+		test('undefined once the workflow scope is approved this session', () => {
+			approveMutationScope({ scopeId: 'wf-1', scopeName: 'WF', orgId: 'org-1', orgName: 'Acme' });
+			assert.strictEqual(workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, fullArgs), undefined);
+		});
+
+		test('the autolayout tool shares the per-workflow scope and prompt', () => {
+			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme' };
+			assert.deepStrictEqual(workflowEditScope(WORKFLOW_AUTOLAYOUT_TOOL_NAME, args), {
+				scopeId: 'wf-1',
+				scopeName: 'WF',
+				orgId: 'org-1',
+				orgName: 'Acme',
+			});
+			const confirmation = workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, args);
+			assert.ok(confirmation);
+			assert.match(confirmation!.message, /Auto-layout/);
+			assert.match(confirmation!.message, /re-arranges every task/i);
+		});
+	});
+
+	suite('runWorkflowTool()', () => {
+		// A deps.execute that routes by operation name and records calls.
+		function makeDeps(
+			over: Partial<{
+				updateResults: { data?: unknown; errors?: unknown }[];
+				pollStatus: string;
+				pollError: string;
+				taskLogs: unknown[];
+				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
+			}> = {},
+		) {
+			const calls: { query: string; variables?: Record<string, unknown> }[] = [];
+			const updateResults = over.updateResults ?? [
+				{ data: { updateWorkflow: { id: 'wf-1', updatedAt: '2000' } } },
+			];
+			let updateIndex = 0;
+			const execute: GraphqlToolDeps['execute'] = async (query, variables) => {
+				calls.push({ query, variables });
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					const updatedAt =
+						calls.filter(c => c.query.includes('RewstBuddyWorkflowGet')).length === 1 ? '1000' : '1500';
+					return { data: { workflow: { ...sampleWorkflow(), updatedAt } } };
+				}
+				if (query.includes('RewstBuddyActionSearch')) {
+					return { data: { actionsForOrg: [{ id: 'noop-id', ref: 'core.noop', name: 'noop' }] } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					return updateResults[Math.min(updateIndex++, updateResults.length - 1)];
+				}
+				if (query.includes('RewstBuddyExecutionContexts')) {
+					return { data: { workflowExecutionContexts: [{ proceed: false }, { proceed: true }] } };
+				}
+				if (query.includes('RewstBuddyRenderJinja')) {
+					// Echo the context value the tool passed, to prove it rendered against it.
+					const vars = variables?.vars as { proceed?: unknown } | undefined;
+					return { data: { renderJinja: { result: vars?.proceed } } };
+				}
+				if (query.includes('RewstBuddyTestWorkflow')) {
+					return { data: { testWorkflow: { executionId: 'exec-new' } } };
+				}
+				if (query.includes('RewstBuddyExecutions')) {
+					const where = (variables?.where ?? {}) as { id?: string; workflowId?: string };
+					// where.id => run-and-wait poll for a single execution's status.
+					if (where.id) {
+						if (over.pollError) return { errors: [{ message: over.pollError }] };
+						return {
+							data: { workflowExecutions: [{ id: where.id, status: over.pollStatus ?? 'failed' }] },
+						};
+					}
+					return {
+						data: {
+							workflowExecutions: [
+								{ id: 'ex-2', status: 'failed', createdAt: '2000', numSuccessfulTasks: 1 },
+								{ id: 'ex-1', status: 'failed', createdAt: '1000', numSuccessfulTasks: 2 },
+							],
+						},
+					};
+				}
+				if (query.includes('RewstBuddyTaskLogs')) {
+					return { data: { taskLogs: over.taskLogs ?? [] } };
+				}
+				if (query.includes('RewstBuddyWorkflowsIndex')) {
+					const all = over.indexWorkflows ?? [
+						{ id: 'wf-aaa', name: 'Onboarding', orgId: 'org-1', orgName: 'Primary Org' },
+						{ id: 'wf-bbb', name: 'Offboarding', orgId: 'org-1', orgName: 'Primary Org' },
+						{ id: 'wf-ccc', name: 'Acme Onboarding', orgId: 'org-2', orgName: 'Acme Corp' },
+					];
+					const offset = (variables?.offset as number | undefined) ?? 0;
+					const limit = (variables?.limit as number | undefined) ?? all.length;
+					const page = all.slice(offset, offset + limit).map(w => ({
+						id: w.id,
+						name: w.name,
+						orgId: w.orgId,
+						organization: { id: w.orgId, name: w.orgName },
+					}));
+					return { data: { workflows: page } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			return { deps, calls };
+		}
+
+		test('buddy_workflow_get returns a concise analysis graph by default (no ids/positions)', async () => {
+			const { deps } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
+				deps,
+			);
+			const parsed = JSON.parse(output);
+			assert.strictEqual(parsed.workflow.name, 'Sample');
+			assert.strictEqual(parsed.workflow.orgName, 'Test Org', 'org name is surfaced for the edit/approval args');
+			assert.strictEqual(parsed.workflow.id, 'wf-1', 'workflow id is kept (needed for follow-up calls)');
+			assert.ok(!('versionToken' in parsed.workflow), 'version token omitted in the analysis view');
+			assert.deepStrictEqual(
+				parsed.workflow.inputs,
+				[{ name: 'email', type: 'string', title: 'Email', required: true, description: 'addr' }],
+				'inputs are surfaced from action.parameters',
+			);
+			assert.strictEqual(parsed.nodes.length, 2);
+			assert.ok(!('id' in parsed.nodes[0]), 'task ids omitted in the analysis view');
+			assert.ok(!('position' in parsed.nodes[0]), 'canvas position omitted in the analysis view');
+			assert.strictEqual(parsed.edges[0].from, 'start');
+			assert.deepStrictEqual(parsed.edges[0].to, ['end'], 'targets referenced by name, no id');
+			assert.ok(!('transitionId' in parsed.edges[0]), 'transition ids omitted in the analysis view');
+		});
+
+		test('buddy_workflow_get with detail "full" restores ids, positions, and the version token', async () => {
+			const { deps } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1', detail: 'full' } },
+				deps,
+			);
+			const parsed = JSON.parse(output);
+			assert.strictEqual(parsed.workflow.versionToken, '1000', 'version token present in full view');
+			assert.strictEqual(parsed.nodes[0].id, 'aa01', 'task id present in full view');
+			assert.deepStrictEqual(parsed.nodes[0].position, { x: 0, y: 0 }, 'position present in full view');
+			assert.deepStrictEqual(parsed.edges[0].to, ['end (bb02)'], 'targets carry the id in full view');
+		});
+
+		test('buddy_workflow_get surfaces a deliberate FOLLOW_ALL and non-default join, hides the safe default', async () => {
+			const task = (over: Record<string, unknown>) => ({
+				id: String(over.name),
+				actionId: 'x',
+				action: { ref: 'core.noop' },
+				next: [],
+				...over,
+			});
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					return {
+						data: {
+							workflow: {
+								id: 'wf-1',
+								name: 'Sample',
+								orgId: 'org-1',
+								organization: { id: 'org-1', name: 'Test Org' },
+								input: [],
+								action: { parameters: {} },
+								updatedAt: '1000',
+								tasks: [
+									task({ name: 'fanout', transitionMode: 'FOLLOW_ALL', join: 1 }),
+									task({ name: 'merge', transitionMode: 'FOLLOW_FIRST', join: 0 }),
+									task({ name: 'plain', transitionMode: 'FOLLOW_FIRST', join: 1 }),
+								],
+							},
+						},
+					};
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			const parsed = JSON.parse(
+				await runWorkflowTool(
+					{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
+					deps,
+				),
+			);
+			const byName = (n: string) => parsed.nodes.find((x: { name: string }) => x.name === n);
+			assert.strictEqual(byName('fanout').transitionMode, 'FOLLOW_ALL', 'deliberate FOLLOW_ALL surfaced');
+			assert.strictEqual(byName('merge').join, 0, 'non-default join surfaced');
+			assert.ok(!('transitionMode' in byName('plain')), 'FOLLOW_FIRST default is not surfaced');
+			assert.ok(!('join' in byName('plain')), 'join 1 default is not surfaced');
+		});
+
+		test('buddy_action_search returns ranked matches', async () => {
+			const { deps } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_action_search', args: { orgId: 'org-1', query: 'noop' } },
+				deps,
+			);
+			assert.match(output, /core\.noop/);
+		});
+
+		test('buddy_action_search steers a run-workflow query to the sub-workflow pattern', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_action_search', args: { orgId: 'org-1', query: 'run workflow' } },
+				deps,
+			);
+			assert.match(output, /sub-workflow|subWorkflowId/i);
+			assert.strictEqual(calls.length, 0, 'short-circuits without hitting the API');
+		});
+
+		test('buddy_render_jinja renders against an execution (last snapshot) and returns only the result', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_render_jinja',
+					args: { orgId: 'org-1', executionId: 'exec-1', template: '{{ CTX.proceed }}' },
+				},
+				deps,
+			);
+			// Mock has snapshots [{proceed:false},{proceed:true}]; default uses the last.
+			assert.match(output, /Rendered: true \(type boolean\)/);
+			assert.ok(
+				calls.some(c => c.query.includes('RewstBuddyExecutionContexts')),
+				'fetched the execution context server-side',
+			);
+		});
+
+		test('buddy_render_jinja honors contextIndex', async () => {
+			const { deps } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_render_jinja',
+					args: { orgId: 'org-1', executionId: 'exec-1', template: '{{ CTX.proceed }}', contextIndex: 0 },
+				},
+				deps,
+			);
+			assert.match(output, /Rendered: false/);
+		});
+
+		test('buddy_render_jinja renders ad-hoc vars without an execution', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_render_jinja',
+					args: { orgId: 'org-1', vars: { proceed: true }, template: '{{ CTX.proceed }}' },
+				},
+				deps,
+			);
+			assert.match(output, /Rendered: true/);
+			assert.ok(
+				!calls.some(c => c.query.includes('RewstBuddyExecutionContexts')),
+				'no execution fetch for ad-hoc vars',
+			);
+		});
+
+		test('buddy_render_jinja requires an execution or vars', async () => {
+			const { deps } = makeDeps();
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{ tool: 'buddy_render_jinja', args: { orgId: 'org-1', template: '{{ 1 }}' } },
+						deps,
+					),
+				/executionId.*vars|vars/,
+			);
+		});
+
+		test('buddy_workflow_edit applies ops and reports the new version token', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [{ op: 'add_task', name: 'notify', action: 'core.noop' }],
+					},
+				},
+				deps,
+			);
+			assert.match(output, /Applied 1 operation/);
+			assert.match(output, /2000/);
+			const update = calls.find(c => c.query.includes('RewstBuddyWorkflowUpdate'))!;
+			assert.strictEqual(update.variables!.openedAt, '1000', 'openedAt is the updatedAt read at fetch');
+		});
+
+		test('buddy_workflow_edit retries once on a version conflict with the fresh token', async () => {
+			const { deps, calls } = makeDeps({
+				updateResults: [
+					{ errors: [{ message: 'A newer version of this workflow exists.' }] },
+					{ data: { updateWorkflow: { id: 'wf-1', updatedAt: '3000' } } },
+				],
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [{ op: 'connect', from: 'end', to: 'start' }],
+					},
+				},
+				deps,
+			);
+			assert.match(output, /3000/);
+			const updates = calls.filter(c => c.query.includes('RewstBuddyWorkflowUpdate'));
+			assert.strictEqual(updates.length, 2, 'retried once');
+			assert.strictEqual(updates[1].variables!.openedAt, '1500', 'retry uses the re-read token');
+		});
+
+		test('buddy_workflow_edit aborts without saving when the mutation is not confirmed', async () => {
+			const { deps, calls } = makeDeps();
+			const declining: GraphqlToolDeps = { ...deps, confirmMutation: async () => false };
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{
+							tool: 'buddy_workflow_edit',
+							args: {
+								workflowId: 'wf-1',
+								workflowName: 'Sample',
+								orgId: 'org-1',
+								orgName: 'Acme',
+								operations: [{ op: 'add_task', name: 'x', action: 'core.noop' }],
+							},
+						},
+						declining,
+					),
+				/not confirmed/,
+			);
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')), 'no save when declined');
+		});
+
+		test('buddy_workflow_autolayout re-arranges and saves', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+					args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+				},
+				deps,
+			);
+			assert.match(output, /autolayout/);
+			assert.match(output, /2000/);
+			assert.ok(
+				calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')),
+				'it saved',
+			);
+		});
+
+		test('buddy_workflow_executions lists failed runs newest-first and passes the status filter', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_workflow_executions', args: { workflowId: 'wf-1', orgId: 'org-1', status: 'failed' } },
+				deps,
+			);
+			assert.match(output, /ex-2/);
+			assert.match(output, /ex-1/);
+			assert.match(output, /failed/);
+			const call = calls.find(c => c.query.includes('RewstBuddyExecutions'))!;
+			assert.deepStrictEqual((call.variables!.where as { status?: string }).status, 'failed');
+			assert.deepStrictEqual(call.variables!.order, [['createdAt', 'desc']], 'requests newest-first');
+		});
+
+		test('buddy_workflow_run with wait:false returns the execution id without polling', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_RUN_TOOL_NAME,
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						input: { email: 'x@y.z' },
+						wait: false,
+					},
+				},
+				deps,
+			);
+			assert.match(output, /exec-new/, 'returns the execution id');
+			const call = calls.find(c => c.query.includes('RewstBuddyTestWorkflow'))!;
+			assert.deepStrictEqual(call.variables!.input, { email: 'x@y.z' }, 'passes the run input through');
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyExecutions')), 'wait:false does not poll');
+		});
+
+		test('buddy_workflow_run waits and surfaces the failing task on a failed run', async () => {
+			const { deps, calls } = makeDeps({
+				pollStatus: 'failed',
+				taskLogs: [
+					{
+						originalWorkflowTaskName: 'executions',
+						status: 'failed',
+						message: 'invalid input syntax for type uuid: ""',
+						input: { where: { orgId: '', workflowId: '' } },
+						result: null,
+					},
+					{ originalWorkflowTaskName: 'start', status: 'succeeded', result: { ok: true } },
+				],
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_RUN_TOOL_NAME,
+					args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+				},
+				deps,
+			);
+			assert.match(output, /FAILED/, 'reports the failed outcome');
+			assert.match(output, /executions: failed/, 'names the failing task');
+			assert.match(output, /invalid input syntax/, 'surfaces the failure message');
+			assert.match(output, /orgId/, 'surfaces the input the task received');
+			assert.ok(
+				calls.some(c => c.query.includes('RewstBuddyExecutions')),
+				'polled for status',
+			);
+			assert.ok(
+				calls.some(c => c.query.includes('RewstBuddyTaskLogs')),
+				'fetched task logs',
+			);
+		});
+
+		test('buddy_workflow_run waits and reports success without fetching logs', async () => {
+			const { deps, calls } = makeDeps({ pollStatus: 'succeeded' });
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_RUN_TOOL_NAME,
+					args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+				},
+				deps,
+			);
+			assert.match(output, /SUCCEEDED/);
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyTaskLogs')), 'no log fetch on success');
+		});
+
+		test('buddy_workflow_run surfaces a polling error instead of looping to the timeout', async () => {
+			const { deps } = makeDeps({ pollError: 'permission denied' });
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{
+							tool: WORKFLOW_RUN_TOOL_NAME,
+							args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+						},
+						deps,
+					),
+				/Failed to poll.*permission denied/,
+			);
+		});
+
+		test('buddy_execution_logs summarizes tasks and details failed ones', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [
+					{
+						originalWorkflowTaskName: 'executions',
+						status: 'failed',
+						message: 'boom',
+						input: { x: '' },
+						result: { e: 1 },
+					},
+					{ originalWorkflowTaskName: 'start', status: 'succeeded', result: { ok: true } },
+				],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /2 task\(s\), 1 failed/);
+			assert.match(output, /executions: failed/);
+			assert.match(output, /message: boom/);
+			assert.match(output, /input:/, 'failed task shows the input it received');
+			assert.match(output, /start: succeeded/);
+			assert.ok(!output.includes('"ok":true'), "succeeded task's result is hidden by default");
+		});
+
+		test('buddy_execution_logs failedOnly lists only failed tasks', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [
+					{ originalWorkflowTaskName: 'executions', status: 'failed', message: 'boom' },
+					{ originalWorkflowTaskName: 'start', status: 'succeeded' },
+				],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', failedOnly: true } },
+				deps,
+			);
+			assert.match(output, /executions: failed/);
+			assert.ok(!output.includes('start: succeeded'), 'omits non-failed tasks');
+		});
+
+		test('buddy_execution_logs includeResult shows every task result', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'start', status: 'succeeded', result: { ok: true } }],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', includeResult: true } },
+				deps,
+			);
+			assert.match(output, /start: succeeded/);
+			assert.match(output, /"ok":true/);
+		});
+
+		test('buddy_execution_logs requires an executionId', async () => {
+			const { deps } = makeDeps();
+			await assert.rejects(
+				() => runWorkflowTool({ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: {} }, deps),
+				/executionId/,
+			);
+		});
+
+		test('buddy_workflow_search indexes every accessible org and shows the org name', async () => {
+			const { deps } = makeDeps();
+			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'onboarding' } }, deps);
+			assert.match(out, /Onboarding {2}\(id: wf-aaa\) {2}org: Primary Org \(org-1\)/);
+			assert.match(out, /Acme Onboarding {2}\(id: wf-ccc\) {2}org: Acme Corp \(org-2\)/);
+			assert.ok(!out.includes('Offboarding'), 'only the matching workflows are listed');
+			assert.match(out, /across 2 org/, 'reports how many orgs were indexed');
+		});
+
+		test('buddy_workflow_search ranks an exact name match first', async () => {
+			const { deps } = makeDeps();
+			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'onboarding' } }, deps);
+			// "Onboarding" (exact) must sort before "Acme Onboarding" (contains).
+			assert.ok(out.indexOf('wf-aaa') < out.indexOf('wf-ccc'), 'exact match ranked first');
+		});
+
+		test('buddy_workflow_search caches the index and reuses it on the next search', async () => {
+			const { deps, calls } = makeDeps();
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, deps); // builds
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'off' } }, deps); // cached
+			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
+			assert.strictEqual(indexCalls, 1, 'the workflow list was fetched once, not per search');
+		});
+
+		test('buddy_workflow_search refresh rebuilds the index', async () => {
+			const { deps, calls } = makeDeps();
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, deps);
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { refresh: true } }, deps);
+			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
+			assert.strictEqual(indexCalls, 2, 'refresh re-listed the workflows');
+		});
+
+		test('buddy_workflow_search rebuilds when the session (deps.cacheScope) changes', async () => {
+			const { deps, calls } = makeDeps();
+			const depsA = { ...deps, cacheScope: 'org-A' };
+			const depsB = { ...deps, cacheScope: 'org-B' };
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, depsA); // build for A
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, depsA); // reuse A
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, depsB); // switch -> rebuild
+			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
+			assert.strictEqual(indexCalls, 2, 'reused within a session, rebuilt when the session changed');
+		});
+
+		test('buddy_workflow_search scopes to a single org with orgId', async () => {
+			const { deps } = makeDeps();
+			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { orgId: 'org-2' } }, deps);
+			assert.match(out, /Acme Onboarding/);
+			assert.ok(!out.includes('wf-aaa'), 'org-1 workflows excluded');
+		});
+
+		test('buddy_workflow_search reports a clean no-match message', async () => {
+			const { deps } = makeDeps();
+			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'zzz-nope' } }, deps);
+			assert.match(out, /No matches/);
+			assert.match(out, /refresh:true/, 'suggests refresh for a newly created workflow');
+		});
+
+		test('buddy_workflow_search matches across punctuation and word order', async () => {
+			const { deps } = makeDeps({
+				indexWorkflows: [
+					{ id: 'wf-js', name: "Jon's Sandbox", orgId: 'org-1', orgName: 'Test Org' },
+					{ id: 'wf-lock', name: '[RAVEN] Workflow Lock', orgId: 'org-1', orgName: 'Test Org' },
+				],
+			});
+			// Apostrophe in the name must not block the match.
+			const a = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'jon sandbox' } }, deps);
+			assert.match(
+				a,
+				/Jon's Sandbox {2}\(id: wf-js\)/,
+				"apostrophe-insensitive: 'jon sandbox' finds Jon's Sandbox",
+			);
+			// Reversed word order + a bracket prefix must still match.
+			const b = await runWorkflowTool(
+				{ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'lock workflow' } },
+				deps,
+			);
+			assert.match(b, /\[RAVEN\] Workflow Lock {2}\(id: wf-lock\)/, 'word-order/bracket-insensitive');
+		});
+
+		test('buddy_workflow_search summarizes org-name matches instead of flooding the list', async () => {
+			const wfs = [{ id: 'wf-named', name: "Jon's Sandbox", orgId: 'org-x', orgName: 'Test Org' }];
+			for (let i = 0; i < 20; i++) {
+				wfs.push({ id: `wf-in-${i}`, name: `Unrelated ${i}`, orgId: 'org-js', orgName: "Jon's Sandbox" });
+			}
+			const { deps } = makeDeps({ indexWorkflows: wfs });
+			const out = await runWorkflowTool(
+				{ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'jon sandbox' } },
+				deps,
+			);
+			assert.match(out, /wf-named/, 'the by-name match is listed');
+			assert.ok(!out.includes('Unrelated 0'), 'org-only matches are NOT listed inline (no flood)');
+			assert.match(out, /Plus 20 workflow\(s\) in matching org\(s\)/, 'org-only matches are summarized');
+			assert.match(out, /Jon's Sandbox \(20; orgId org-js\)/, 'summary names the org, count, and orgId to scope');
+		});
+
+		test('buddy_workflow_search indexes sub-orgs the same as managed orgs (one cross-org query)', async () => {
+			// org-3 stands in for a sub-org that org enumeration would miss; the
+			// unscoped workflows query returns it like any other.
+			const { deps } = makeDeps({
+				indexWorkflows: [
+					{ id: 'wf-aaa', name: 'Onboarding', orgId: 'org-1', orgName: 'Primary Org' },
+					{ id: 'wf-sub', name: 'Sub Onboarding', orgId: 'org-3', orgName: 'Sub Org' },
+				],
+			});
+			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'onboarding' } }, deps);
+			assert.match(out, /Sub Onboarding {2}\(id: wf-sub\) {2}org: Sub Org \(org-3\)/);
+			assert.match(out, /across 2 org/);
+		});
+
+		test('buddy_render_jinja keys lists the context top-level keys instead of rendering', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_render_jinja', args: { orgId: 'org-1', executionId: 'exec-1', keys: true } },
+				deps,
+			);
+			// Last snapshot in the mock is { proceed: true }.
+			assert.match(output, /top-level keys/);
+			assert.match(output, /proceed/);
+			assert.match(output, /CTX\.execution_id/, 'hints the canonical system-var paths');
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyRenderJinja')), 'keys mode does not render');
+		});
+
+		test('buddy_render_jinja keys works with ad-hoc vars', async () => {
+			const { deps } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_render_jinja', args: { orgId: 'org-1', vars: { alpha: 1, beta: 2 }, keys: true } },
+				deps,
+			);
+			assert.match(output, /alpha, beta/);
+		});
+
+		test('buddy_render_jinja requires a template unless keys is set', async () => {
+			const { deps } = makeDeps();
+			await assert.rejects(
+				() => runWorkflowTool({ tool: 'buddy_render_jinja', args: { orgId: 'org-1', vars: { a: 1 } } }, deps),
+				/template/,
+			);
+		});
+
+		test('buddy_workflow_run is scope-gated with a "run" confirmation', () => {
+			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme', input: { a: 1 } };
+			assert.ok(workflowEditScope(WORKFLOW_RUN_TOOL_NAME, args), 'shares the per-workflow scope');
+			const confirmation = workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args);
+			assert.ok(confirmation);
+			assert.match(confirmation!.message, /Run workflow/);
+			assert.match(confirmation!.message, /executes the workflow/i);
+		});
+
+		test('buddy_workflow_edit refuses when scope fields are missing', async () => {
+			const { deps } = makeDeps();
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{ tool: 'buddy_workflow_edit', args: { workflowId: 'wf-1', operations: [{ op: 'add_task' }] } },
+						deps,
+					),
+				/requires non-empty/,
+			);
+		});
+	});
+});

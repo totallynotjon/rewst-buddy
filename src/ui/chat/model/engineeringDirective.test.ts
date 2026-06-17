@@ -1,10 +1,17 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { initTestEnvironment } from '@test';
+import { SessionManager } from '@sessions';
 import { buildEngineeringDirective, buildNativeToolReminder } from './engineeringDirective';
 
-const { suite, test } = Mocha;
+const { suite, test, setup } = Mocha;
 
 suite('Unit: engineeringDirective', () => {
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+	});
+
 	test('no tools yields header, native-tool policy, and footer', () => {
 		const directive = buildEngineeringDirective(new Set());
 		assert.ok(directive.includes('# Rewst Buddy VS Code Context'));
@@ -19,7 +26,7 @@ suite('Unit: engineeringDirective', () => {
 	test('always steers complex work into todos and agent delegation', () => {
 		// The Working method section ships unconditionally, so the decomposition /
 		// todo / agent steering is present regardless of the editor tool surface.
-		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['rewst_graphql', 'web_search'])]) {
+		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['buddy_graphql', 'web_search'])]) {
 			const directive = buildEngineeringDirective(tools);
 			assert.ok(/decompose by default/i.test(directive), 'tells the model to decompose');
 			assert.ok(/list of todos/i.test(directive), 'frames the plan as a todo list');
@@ -39,7 +46,7 @@ suite('Unit: engineeringDirective', () => {
 	});
 
 	test('always curbs reflexive documentation search and Jinja rendering', () => {
-		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['rewst_graphql', 'web_search'])]) {
+		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['buddy_graphql', 'web_search'])]) {
 			const directive = buildEngineeringDirective(tools);
 			assert.ok(directive.includes('# Native internal tools: off by default'), 'native-tool policy present');
 			assert.ok(/documentation .*search/i.test(directive), 'names documentation search');
@@ -71,11 +78,32 @@ suite('Unit: engineeringDirective', () => {
 	});
 
 	test('graphql tools add the priority bullet and the activation rule', () => {
-		const directive = buildEngineeringDirective(new Set(['rewst_graphql', 'rewst_graphql_schema']));
+		const directive = buildEngineeringDirective(new Set(['buddy_graphql', 'buddy_graphql_schema']));
 		assert.ok(directive.includes('# Tool selection'));
-		assert.ok(directive.includes('Live Rewst data → GraphQL first'));
+		assert.ok(directive.includes('GraphQL, before native wrappers'));
 		assert.ok(directive.includes('# Tool-call discipline'));
 		assert.ok(directive.includes('activate_rewst_graphql_tools'));
+	});
+
+	test('workflow tools add a priority bullet ranked above GraphQL', () => {
+		const directive = buildEngineeringDirective(
+			new Set(['buddy_workflow_get', 'buddy_workflow_edit', 'buddy_graphql', 'buddy_graphql_schema']),
+		);
+		assert.ok(directive.includes('# Tool selection'));
+		const workflowIdx = directive.indexOf('purpose-built workflow tools');
+		const graphqlIdx = directive.indexOf('GraphQL, before native wrappers');
+		assert.ok(workflowIdx >= 0, 'workflow bullet present');
+		assert.ok(graphqlIdx >= 0, 'graphql bullet present');
+		assert.ok(workflowIdx < graphqlIdx, 'workflow tools are ranked before GraphQL');
+		assert.ok(directive.includes('buddy_execution_logs'), 'names the execution-logs tool');
+		assert.ok(directive.includes('buddy_workflow_get'), 'names the workflow read tool');
+	});
+
+	test('workflow tools alone (no graphql) still emit the priority section', () => {
+		const directive = buildEngineeringDirective(new Set(['buddy_workflow_get', 'buddy_workflow_edit']));
+		assert.ok(directive.includes('# Tool selection'));
+		assert.ok(directive.includes('purpose-built workflow tools'));
+		assert.ok(!directive.includes('activate_rewst_graphql_tools'), 'graphql rule withheld without graphql tools');
 	});
 
 	test('web tools add their priority bullet', () => {
@@ -95,6 +123,11 @@ suite('Unit: engineeringDirective', () => {
 });
 
 suite('Unit: buildNativeToolReminder', () => {
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+	});
+
 	test('always curbs reflexive doc search and a throwaway native call', () => {
 		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['web_search'])]) {
 			const reminder = buildNativeToolReminder(tools);

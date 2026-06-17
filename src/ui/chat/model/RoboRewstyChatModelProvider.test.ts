@@ -17,6 +17,7 @@ const allSettings: AiToolSettings = {
 	enableWorkspaceTools: true,
 	enableWebTools: true,
 	enableGraphqlTool: true,
+	enableWorkflowTools: true,
 };
 
 function message(
@@ -253,12 +254,12 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 	});
 
 	test('a tool request with no tools available surfaces the rejection note', async () => {
-		const reply = '```vscode-tool\n{"tool": "rewst_graphql", "args": {"query": "{ workflows { id } }"}}\n```';
+		const reply = '```vscode-tool\n{"tool": "buddy_graphql", "args": {"query": "{ workflows { id } }"}}\n```';
 		const harness = makeHarness([completeTurn(reply)]);
 		await harness.run([message(User, [text('list workflows')])]);
 
 		assert.strictEqual(callsOf(harness.parts).length, 0);
-		assert.ok(textOf(harness.parts).includes('rewst_graphql'), 'rejection note names the tool');
+		assert.ok(textOf(harness.parts).includes('buddy_graphql'), 'rejection note names the tool');
 		assert.ok(textOf(harness.parts).includes('rewst-buddy.ai'), 'note points at the settings');
 	});
 

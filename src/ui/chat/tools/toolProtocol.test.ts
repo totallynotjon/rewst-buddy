@@ -66,7 +66,7 @@ suite('Unit: toolProtocol', () => {
 		test('uses top-level request fields as args when the args wrapper is omitted', () => {
 			const content = fence(
 				JSON.stringify({
-					tool: 'rewst_graphql',
+					tool: 'buddy_graphql',
 					query: 'query CurrentUser { currentUser { id } }',
 					variables: { includeDisabled: false },
 				}),
@@ -74,7 +74,7 @@ suite('Unit: toolProtocol', () => {
 
 			assert.deepStrictEqual(parseToolRequests(content), [
 				{
-					tool: 'rewst_graphql',
+					tool: 'buddy_graphql',
 					args: {
 						query: 'query CurrentUser { currentUser { id } }',
 						variables: { includeDisabled: false },
@@ -154,12 +154,27 @@ suite('Unit: toolProtocol', () => {
 
 		test('adds explicit GraphQL guidance when GraphQL tools are available', () => {
 			const text = buildToolInstructions([
-				{ name: 'rewst_graphql_schema', args: '{}', description: 'Inspect schema.' },
-				{ name: 'rewst_graphql', args: '{"query": string}', description: 'Run GraphQL.' },
+				{ name: 'buddy_graphql_schema', args: '{}', description: 'Inspect schema.' },
+				{ name: 'buddy_graphql', args: '{"query": string}', description: 'Run GraphQL.' },
 			]);
 			assert.ok(text.includes('session-authenticated GraphQL action'));
-			assert.ok(text.includes('Use rewst_graphql_schema first'));
-			assert.ok(text.includes('then call rewst_graphql'));
+			assert.ok(text.includes('Use buddy_graphql_schema first'));
+			assert.ok(text.includes('then call buddy_graphql'));
+		});
+
+		test('adds workflow-tool guidance when the workflow edit tool is available', () => {
+			const text = buildToolInstructions([
+				{ name: 'buddy_workflow_get', args: '{}', description: 'Read a workflow.' },
+				{ name: 'buddy_workflow_edit', args: '{}', description: 'Edit a workflow.' },
+				{ name: 'buddy_action_search', args: '{}', description: 'Search actions.' },
+			]);
+			assert.ok(text.includes('buddy_workflow_get, buddy_workflow_edit, and buddy_action_search'));
+			assert.ok(/resend the whole graph so nothing is dropped/i.test(text));
+		});
+
+		test('omits workflow-tool guidance when the workflow tools are absent', () => {
+			const text = buildToolInstructions([{ name: 'read_file', args: '{}', description: 'Read.' }]);
+			assert.ok(!text.includes('buddy_workflow_edit'));
 		});
 
 		test('states vscode-tool blocks are extension-executed requests, including edit tools', () => {
@@ -197,9 +212,9 @@ suite('Unit: toolProtocol', () => {
 		});
 
 		test('truncates labels past the cap with an ellipsis', () => {
-			const brief = describeRequestBrief({ tool: 'rewst_graphql', args: { query: 'q'.repeat(300) } }, 40);
+			const brief = describeRequestBrief({ tool: 'buddy_graphql', args: { query: 'q'.repeat(300) } }, 40);
 			assert.strictEqual(brief.length, 40);
-			assert.ok(brief.startsWith('rewst_graphql {"query":"qqq'));
+			assert.ok(brief.startsWith('buddy_graphql {"query":"qqq'));
 			assert.ok(brief.endsWith('…'));
 		});
 

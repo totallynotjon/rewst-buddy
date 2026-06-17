@@ -185,7 +185,7 @@ export default class Session {
 	/**
 	 * Executes an arbitrary GraphQL document against this session's region
 	 * endpoint, authenticated with the stored session cookie. Used by the chat
-	 * rewst_graphql tool; the extension's own operations use the typed SDK.
+	 * buddy_graphql tool; the extension's own operations use the typed SDK.
 	 */
 	public async rawGraphql(
 		query: string,

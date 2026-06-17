@@ -9,9 +9,11 @@ import {
 	graphqlMutationScope,
 	GRAPHQL_TOOL_SPECS,
 } from '../tools/graphqlTool';
+import { enabledAiTools } from '../tools/aiToolSettings';
 import { describeRequestBrief, type ToolSpec } from '../tools/toolProtocol';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
 import { WEB_TOOL_SPECS } from '../tools/webTools';
+import { WORKFLOW_TOOL_SPECS, workflowEditConfirmation, workflowEditScope } from '../tools/workflowTools';
 
 /**
  * Exposes every vscode-tool protocol tool as a registered VS Code language
@@ -27,6 +29,7 @@ export interface AiToolSettings {
 	enableWorkspaceTools: boolean;
 	enableWebTools: boolean;
 	enableGraphqlTool: boolean;
+	enableWorkflowTools: boolean;
 }
 
 interface GovernedSpec {
@@ -38,6 +41,7 @@ interface GovernedSpec {
 export const GOVERNED_TOOL_SPECS: GovernedSpec[] = [
 	...WORKSPACE_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkspaceTools })),
 	...WEB_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWebTools })),
+	...WORKFLOW_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkflowTools })),
 	...GRAPHQL_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableGraphqlTool })),
 ];
 
@@ -46,12 +50,13 @@ export const ALL_TOOL_SPECS: ToolSpec[] = GOVERNED_TOOL_SPECS.map(entry => entry
 const GOVERNED_BY_NAME = new Map(GOVERNED_TOOL_SPECS.map(entry => [entry.spec.name, entry]));
 
 export function readAiToolSettings(): AiToolSettings {
-	const config = vscode.workspace.getConfiguration(`${extPrefix}.ai`);
+	const tools = enabledAiTools();
 	return {
-		enableWorkspaceTools:
-			config.get<boolean>('enableWorkspaceTools', true) && (vscode.workspace.workspaceFolders?.length ?? 0) > 0,
-		enableWebTools: config.get<boolean>('enableWebTools', false),
-		enableGraphqlTool: config.get<boolean>('enableGraphqlTool', false),
+		// Workspace tools also need a workspace folder to be meaningful.
+		enableWorkspaceTools: tools.has('workspace') && (vscode.workspace.workspaceFolders?.length ?? 0) > 0,
+		enableWebTools: tools.has('web'),
+		enableGraphqlTool: tools.has('graphql'),
+		enableWorkflowTools: tools.has('workflows'),
 	};
 }
 
@@ -77,7 +82,7 @@ export function isToolPermitted(name: string, settings: AiToolSettings): boolean
  * confirmationMessages); confirming allow-lists the tool(s) and the provider
  * resumes the original request, then reverts the allow-listing after the turn.
  */
-export const APPROVAL_TOOL_NAME = 'rewst_approval';
+export const APPROVAL_TOOL_NAME = 'buddy_approval';
 
 export const APPROVAL_TOOL_SPEC: ToolSpec = {
 	name: APPROVAL_TOOL_NAME,
@@ -236,7 +241,8 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 			// here, replacing the OS modal — decline simply skips invoke (#25).
 			prepareInvocation: async options => {
 				const invocationMessage = describeRequestBrief({ tool: name, args: options.input ?? {} });
-				const confirmation = graphqlMutationConfirmation(name, options.input);
+				const confirmation =
+					graphqlMutationConfirmation(name, options.input) ?? workflowEditConfirmation(name, options.input);
 				if (!confirmation) return { invocationMessage };
 				return {
 					invocationMessage,
@@ -250,7 +256,7 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 				// invoke only runs once VS Code has accepted the confirmation (or none
 				// was needed), so reaching here for a scoped mutation means the user
 				// permitted this resource — remember it so repeat edits skip the prompt.
-				const scope = graphqlMutationScope(name, options.input);
+				const scope = graphqlMutationScope(name, options.input) ?? workflowEditScope(name, options.input);
 				if (scope) approveMutationScope(scope);
 				const session = resolveGraphqlSession();
 				const [result] = await runToolRequests(
