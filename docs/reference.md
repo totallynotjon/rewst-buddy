@@ -35,6 +35,8 @@ When editing a linked template, a status indicator appears in the **bottom-left 
 
 The status bar item hides when viewing non-linked files.
 
+A second item appears in the **bottom-right corner** showing Cage-Free Rewsty's context-window usage (`$(dashboard) 42%`) once a chat turn reports it; hover for the token breakdown and organization. This stands in for VS Code's native "Context Window" gauge, which can't be driven by a third-party model provider (see [Ask Rewst AI](features.md#ask-rewst-ai-cage-free-rewsty)).
+
 ## Commands
 
 All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the `Rewst Buddy:` prefix.

@@ -18,6 +18,7 @@ import { buildEngineeringDirective, buildNativeToolReminder } from './engineerin
 import { conversationMap, nextTurnKey, prefixKey, spineDepth } from './conversationMap';
 import { formatBreadcrumb, parseLatestBreadcrumb } from './breadcrumb';
 import { setLastAiAnswer } from './lastAnswer';
+import { setContextUsage } from './contextUsage';
 import { serializeVisibleChat } from './statelessTranscript';
 import {
 	APPROVAL_TOOL_NAME,
@@ -333,6 +334,17 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 							case 'status':
 								// Only surface real steps; skip thinking/summarizing churn.
 								if (event.activity) emitStatus(event, gate);
+								break;
+							case 'usage':
+								// Stand-in for VS Code's native context gauge, which a model
+								// provider can't update; the status bar renders the latest.
+								setContextUsage({
+									orgId,
+									orgName: model.detail,
+									totalTokens: event.totalTokens,
+									maxTokens: event.maxTokens,
+									percent: event.percent,
+								});
 								break;
 							case 'conversation':
 								conversationId = event.conversationId;

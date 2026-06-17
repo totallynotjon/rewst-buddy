@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { createMockSession, initTestEnvironment } from '@test';
 import type { AskOptions, ConversationEvent, Session } from '@sessions';
+import { onDidChangeContextUsage, type ContextUsage } from './contextUsage';
 import vscode from 'vscode';
 import { conversationMap } from './conversationMap';
 import { parseLatestBreadcrumb } from './breadcrumb';
@@ -665,6 +666,47 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 
 		assert.ok(!out.includes('Searching documentation') && !out.includes('Running tool'), 'no activity lines');
 		assert.ok(out.includes('the answer'), 'the answer still streams');
+	});
+
+	const usageTurn: ConversationEvent[] = [
+		{ kind: 'conversation', conversationId: 'conv-1' },
+		{ kind: 'usage', totalTokens: 60500, maxTokens: 144000, percent: 42 },
+		{ kind: 'chunk', text: 'the answer' },
+		{ kind: 'complete', content: 'the answer', sources: [], conversationId: 'conv-1' },
+	];
+
+	test('records context usage for the status bar without printing it inline', async () => {
+		const captured: ContextUsage[] = [];
+		const subscription = onDidChangeContextUsage(usage => captured.push(usage));
+		try {
+			const harness = makeHarness([usageTurn]);
+			await harness.run([message(User, [text('hi')])]);
+
+			assert.deepStrictEqual(captured, [
+				{ orgId: 'org-1', orgName: undefined, totalTokens: 60500, maxTokens: 144000, percent: 42 },
+			]);
+			const out = textOf(harness.parts);
+			assert.ok(!out.includes('Context'), 'usage is not rendered inline');
+			assert.ok(out.includes('the answer'), 'the answer still streams');
+		} finally {
+			subscription.dispose();
+		}
+	});
+
+	test('records context usage regardless of the showActivity setting', async () => {
+		const captured: ContextUsage[] = [];
+		const subscription = onDidChangeContextUsage(usage => captured.push(usage));
+		try {
+			const harness = makeHarness([usageTurn], {
+				aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: false }),
+			});
+			await harness.run([message(User, [text('hi')])]);
+
+			assert.strictEqual(captured.length, 1, 'usage is recorded even with activity lines off');
+			assert.strictEqual(captured[0].percent, 42);
+		} finally {
+			subscription.dispose();
+		}
 	});
 
 	test('includes the working directory in context when the full overview is not sent', async () => {

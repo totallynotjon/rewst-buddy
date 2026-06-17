@@ -6,6 +6,7 @@ import { Server } from '@server';
 import { SessionManager } from '@sessions';
 import {
 	BundleTreeDataProvider,
+	ContextUsageStatusBar,
 	LmToolRegistry,
 	ProposedContentProvider,
 	RewstViewProvider,
@@ -65,6 +66,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(LmToolRegistry.init());
 	context.subscriptions.push(ProposedContentProvider.init());
 	context.subscriptions.push(new StatusBar());
+	context.subscriptions.push(new ContextUsageStatusBar());
 
 	log.info(`Finished activation of extension ${extPrefix}`);
 }
