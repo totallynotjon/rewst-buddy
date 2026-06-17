@@ -1,6 +1,8 @@
 import { log } from '@utils';
 import http, { IncomingMessage, ServerResponse } from 'http';
 import vscode from 'vscode';
+import { handleMcpRequest, type McpRequestHeaders } from '../mcp/McpActions';
+import { isMcpAction, MCP_PROTOCOL_HEADER, MCP_TOKEN_HEADER, type McpRequest } from '../mcp/protocol';
 import { getServerConfig } from './config';
 import { handleAddSession, handleOpenTemplate, validateRequest } from './handlers';
 import { BrowserRequest, Response, ServerConfig } from './types';
@@ -9,6 +11,9 @@ export const Server = new (class _ implements vscode.Disposable {
 	private server: http.Server | null = null;
 	private isRunning = false;
 	private disposables: vscode.Disposable[] = [];
+	private readonly statusEmitter = new vscode.EventEmitter<boolean>();
+	/** Fires true when the server binds, false when it stops or fails to bind. */
+	readonly onDidChangeStatus = this.statusEmitter.event;
 
 	constructor() {
 		this.disposables.push(
@@ -27,6 +32,7 @@ export const Server = new (class _ implements vscode.Disposable {
 
 	dispose(): void {
 		this.stop();
+		this.statusEmitter.dispose();
 		this.disposables.forEach(d => d.dispose());
 	}
 
@@ -64,6 +70,7 @@ export const Server = new (class _ implements vscode.Disposable {
 				this.server!.listen(config.port, config.host, () => {
 					this.isRunning = true;
 					log.info(`Server.start: listening on ${config.host}:${config.port}`);
+					this.statusEmitter.fire(true);
 					resolve(true);
 				});
 
@@ -91,6 +98,7 @@ export const Server = new (class _ implements vscode.Disposable {
 				this.isRunning = false;
 				this.server = null;
 				log.info('Server.stop: stopped');
+				this.statusEmitter.fire(false);
 				resolve();
 			});
 		});
@@ -98,6 +106,13 @@ export const Server = new (class _ implements vscode.Disposable {
 
 	getStatus(): boolean {
 		return this.isRunning;
+	}
+
+	/** The address the server is bound to while running, for MCP discovery. */
+	getBoundAddress(): { host: string; port: number } | undefined {
+		if (!this.isRunning) return undefined;
+		const config = getServerConfig();
+		return { host: config.host, port: config.port };
 	}
 
 	private handleRequest(req: IncomingMessage, res: ServerResponse): void {
@@ -137,9 +152,13 @@ export const Server = new (class _ implements vscode.Disposable {
 			}
 			chunks.push(chunk);
 		});
+		const mcpHeaders: McpRequestHeaders = {
+			token: firstHeader(req.headers[MCP_TOKEN_HEADER]),
+			protocolVersion: firstHeader(req.headers[MCP_PROTOCOL_HEADER]),
+		};
 		req.on('end', () => {
 			if (rejected) return;
-			this.processRequest(Buffer.concat(chunks).toString('utf-8'), res);
+			this.processRequest(Buffer.concat(chunks).toString('utf-8'), res, mcpHeaders);
 		});
 		req.on('error', err => {
 			log.error('Server.handleRequest: request error', err);
@@ -147,7 +166,7 @@ export const Server = new (class _ implements vscode.Disposable {
 		});
 	}
 
-	private async processRequest(rawBody: string, res: ServerResponse): Promise<void> {
+	private async processRequest(rawBody: string, res: ServerResponse, mcpHeaders: McpRequestHeaders): Promise<void> {
 		log.trace('Server.processRequest: processing', { bodyLength: rawBody.length });
 
 		if (!rawBody) {
@@ -163,6 +182,15 @@ export const Server = new (class _ implements vscode.Disposable {
 		} catch {
 			log.warn('Server.processRequest: invalid JSON');
 			this.sendResponse(res, 400, { success: false, error: 'Invalid JSON format' });
+			return;
+		}
+
+		// MCP actions carry their own structured request/response shapes and gating
+		// (token + protocol + settings), handled by the credential-free bridge surface.
+		if (typeof request.action === 'string' && isMcpAction(request.action)) {
+			const { statusCode, body } = await handleMcpRequest(request as unknown as McpRequest, mcpHeaders);
+			res.writeHead(statusCode);
+			res.end(JSON.stringify(body));
 			return;
 		}
 
@@ -213,5 +241,12 @@ export const Server = new (class _ implements vscode.Disposable {
 		}
 		this.isRunning = false;
 		this.server = null;
+		this.statusEmitter.fire(false);
 	}
 })();
+
+/** node lowercases header names; a repeated header arrives as an array. */
+function firstHeader(value: string | string[] | undefined): string | undefined {
+	if (Array.isArray(value)) return value[0];
+	return value;
+}

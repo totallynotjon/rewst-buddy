@@ -27,10 +27,13 @@ export interface CapabilitySettings {
 /**
  * The session + org a capability handler runs against. The surface resolves and
  * validates the session before calling run, so handlers can assume it is live.
+ * `sessions` is every active session, for org-discovery capabilities that span
+ * orgs (e.g. list_orgs) and so do not depend on `session`/`orgId`.
  */
 export interface CapabilityContext {
 	session: Session;
 	orgId: string;
+	sessions: Session[];
 }
 
 export interface Capability {
@@ -45,6 +48,13 @@ export interface Capability {
 	chat: boolean;
 	/** Exposed over the MCP server surface. */
 	mcp: boolean;
+	/**
+	 * Whether the capability operates on a specific org. When false (e.g.
+	 * list_orgs), the MCP surface does not require an `orgId` argument and the
+	 * handler should use `ctx.sessions` rather than `ctx.session`. Defaults to
+	 * org-scoped (true) when omitted.
+	 */
+	requiresOrg?: boolean;
 	/** Intrinsic feature gate; surface-specific gates are applied by the surface. */
 	enabled(settings: CapabilitySettings): boolean;
 	/** Runs the operation and returns text for the caller. */

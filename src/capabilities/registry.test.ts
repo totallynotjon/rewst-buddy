@@ -61,9 +61,43 @@ suite('Unit: capability registry', () => {
 	});
 
 	suite('mcp surface', () => {
-		test('no capabilities are exposed to MCP yet (added in Phase 1)', () => {
-			assert.deepStrictEqual(mcpCapabilities(), []);
-			assert.deepStrictEqual(enabledMcpCapabilities(settings({ enableGraphqlTool: true })), []);
+		test('read tools are exposed to MCP and are all read access', () => {
+			const names = mcpCapabilities().map(capability => capability.spec.name);
+			for (const expected of [
+				'list_orgs',
+				'list_templates',
+				'get_template',
+				'list_workflows',
+				'get_workflow',
+				'rewst_graphql_query',
+			]) {
+				assert.ok(names.includes(expected), `${expected} exposed to MCP`);
+			}
+			for (const capability of mcpCapabilities()) {
+				assert.strictEqual(capability.access, 'read', `${capability.spec.name} is read-only`);
+			}
+		});
+
+		test('the GraphQL chat tools are not exposed to MCP (writes stay in the chat surface)', () => {
+			const names = mcpCapabilities().map(capability => capability.spec.name);
+			assert.ok(!names.includes('rewst_graphql'));
+			assert.ok(!names.includes('rewst_graphql_schema'));
+		});
+
+		test('list_orgs does not require an org', () => {
+			const listOrgs = getCapability('list_orgs');
+			assert.ok(listOrgs);
+			assert.strictEqual(listOrgs.requiresOrg, false);
+		});
+
+		test('rewst_graphql_query is gated by enableGraphqlTool; structured reads are not', () => {
+			const off = enabledMcpCapabilities(settings()).map(capability => capability.spec.name);
+			assert.ok(!off.includes('rewst_graphql_query'), 'raw query off by default');
+			assert.ok(off.includes('list_templates'), 'structured reads always available');
+			const on = enabledMcpCapabilities(settings({ enableGraphqlTool: true })).map(
+				capability => capability.spec.name,
+			);
+			assert.ok(on.includes('rewst_graphql_query'), 'raw query available when graphql enabled');
 		});
 	});
 });

@@ -1,5 +1,6 @@
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
+import { McpServerController } from '@mcp';
 import { LinkManager, SyncManager, SyncOnSaveManager, TemplateBundleManager, TemplateMetadataStore } from '@models';
 import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
 import { Server } from '@server';
@@ -64,6 +65,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(TemplateBundleManager.init());
 	context.subscriptions.push(Server.init());
+	// Register after Server.init so the controller's status subscription is in
+	// place before the server's bind callback fires and writes MCP discovery.
+	context.subscriptions.push(McpServerController.init());
 	// Persist chat continuity across window reloads so warm conversations are
 	// reused instead of every chat re-shipping its full transcript statelessly.
 	const conversationMapKey = 'RewstConversationMap';
