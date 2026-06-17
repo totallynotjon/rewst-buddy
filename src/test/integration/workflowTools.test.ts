@@ -117,6 +117,15 @@ suite('Integration: workflowTools', function () {
 		}
 	});
 
+	test('rewst_workflow_executions lists recent runs without error', async () => {
+		const out = await runWorkflowTool(
+			{ tool: 'rewst_workflow_executions', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID, limit: 3 } },
+			deps,
+		);
+		// Either some executions or a clean "no executions" message — never an error.
+		assert.ok(/execution\(s\)|No .* executions/.test(out), out);
+	});
+
 	test('rewst_workflow_get surfaces the org name for the approval args', async () => {
 		const summary = JSON.parse(
 			await runWorkflowTool(

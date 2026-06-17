@@ -128,6 +128,26 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		},
 	},
 	{
+		name: 'rewst_workflow_executions',
+		args: '{"workflowId": string, "orgId": string, "status"?: string, "limit"?: number}',
+		description:
+			'List a workflow\'s recent executions, most recent first — typically to find recent FAILED runs to debug. Pass status to filter (e.g. "failed", "succeeded", "running"; lowercase). Returns each execution\'s id, status, time, and successful-task count. Feed a failed execution\'s id to rewst_render_jinja (executionId) to inspect the context it produced and see why a condition or expression went wrong.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				workflowId: { type: 'string', description: 'The workflow whose executions to list.' },
+				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
+				status: {
+					type: 'string',
+					description:
+						'Filter by execution status, lowercase (e.g. "failed", "succeeded", "running"). Omit for any.',
+				},
+				limit: { type: 'number', description: 'Max executions to return (default 10).' },
+			},
+			required: ['workflowId', 'orgId'],
+		},
+	},
+	{
 		name: 'rewst_render_jinja',
 		args: '{"orgId": string, "template": string, "executionId"?: string, "vars"?: object, "contextIndex"?: number}',
 		description:
@@ -1019,6 +1039,12 @@ const TEST_WORKFLOW_MUTATION = `mutation RewstBuddyTestWorkflow($id: ID!, $orgId
 	}
 }`;
 
+const WORKFLOW_EXECUTIONS_QUERY = `query RewstBuddyExecutions($where: WorkflowExecutionWhereInput, $order: [[String!]!], $limit: Int) {
+	workflowExecutions(where: $where, order: $order, limit: $limit) {
+		id status createdAt numSuccessfulTasks
+	}
+}`;
+
 async function searchActions(
 	deps: GraphqlToolDeps,
 	orgId: string,
@@ -1321,6 +1347,37 @@ async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	return `Started a run of "${asStringArg(request.args, 'workflowName')}". executionId: ${executionId}\n\nInspect what it produced with rewst_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}.`;
 }
 
+interface ExecutionRow {
+	id?: string | null;
+	status?: string | null;
+	createdAt?: string | null;
+	numSuccessfulTasks?: number | null;
+}
+
+async function runWorkflowExecutions(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
+	const workflowId = asStringArg(request.args, 'workflowId');
+	const orgId = asStringArg(request.args, 'orgId');
+	if (!workflowId || !orgId) throw new Error('rewst_workflow_executions requires "workflowId" and "orgId".');
+	const status = asStringArg(request.args, 'status');
+	const limit = typeof request.args.limit === 'number' ? Math.max(1, Math.min(50, request.args.limit)) : 10;
+	const where = { workflowId, orgId, ...(status ? { status } : {}) };
+	const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, { where, order: [['createdAt', 'desc']], limit });
+	const error = firstErrorMessage(result);
+	if (error) throw new Error(`Failed to list executions: ${error}`);
+	const rows = (
+		(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
+	).filter((e): e is ExecutionRow => !!e);
+	if (rows.length === 0) return `No ${status ?? 'recent'} executions for workflow ${workflowId}.`;
+	const fmt = (e: ExecutionRow): string => {
+		const ts = Number(e.createdAt);
+		const when = Number.isFinite(ts) ? new Date(ts).toISOString() : (e.createdAt ?? '?');
+		return `- ${e.id}  ${e.status}  ${when}  (${e.numSuccessfulTasks ?? '?'} task(s) ok)`;
+	};
+	return cap(
+		`${rows.length} ${status ?? 'recent'} execution(s), newest first:\n${rows.map(fmt).join('\n')}\n\nInspect one with rewst_render_jinja {"executionId": "<id>", "template": "{{ CTX.<field> }}"}.`,
+	);
+}
+
 export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
 	const bound = requireDeps(deps);
 	switch (request.tool) {
@@ -1336,6 +1393,8 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 			return runWorkflowAutolayout(request, bound);
 		case WORKFLOW_RUN_TOOL_NAME:
 			return runWorkflowRun(request, bound);
+		case 'rewst_workflow_executions':
+			return runWorkflowExecutions(request, bound);
 		default:
 			throw new Error(`Unknown workflow tool "${request.tool}".`);
 	}

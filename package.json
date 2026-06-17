@@ -313,6 +313,41 @@
 				}
 			},
 			{
+				"name": "rewst_workflow_executions",
+				"displayName": "List Rewst Workflow Executions",
+				"toolReferenceName": "rewstWorkflowExecutions",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "List a workflow's recent executions, most recent first — typically to find recent FAILED runs to debug. Pass status to filter (e.g. \"failed\", \"succeeded\", \"running\"; lowercase). Returns each execution's id, status, time, and successful-task count. Feed a failed execution's id to rewst_render_jinja (executionId) to inspect the context it produced and see why a condition or expression went wrong.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"workflowId": {
+							"type": "string",
+							"description": "The workflow whose executions to list."
+						},
+						"orgId": {
+							"type": "string",
+							"description": "The id of the org that owns the workflow."
+						},
+						"status": {
+							"type": "string",
+							"description": "Filter by execution status, lowercase (e.g. \"failed\", \"succeeded\", \"running\"). Omit for any."
+						},
+						"limit": {
+							"type": "number",
+							"description": "Max executions to return (default 10)."
+						}
+					},
+					"required": [
+						"workflowId",
+						"orgId"
+					]
+				}
+			},
+			{
 				"name": "rewst_graphql_schema",
 				"displayName": "Inspect Rewst GraphQL Schema",
 				"toolReferenceName": "rewstGraphqlSchema",

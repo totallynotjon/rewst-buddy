@@ -512,6 +512,16 @@ suite('Unit: workflowTools', () => {
 				if (query.includes('RewstBuddyTestWorkflow')) {
 					return { data: { testWorkflow: { executionId: 'exec-new' } } };
 				}
+				if (query.includes('RewstBuddyExecutions')) {
+					return {
+						data: {
+							workflowExecutions: [
+								{ id: 'ex-2', status: 'failed', createdAt: '2000', numSuccessfulTasks: 1 },
+								{ id: 'ex-1', status: 'failed', createdAt: '1000', numSuccessfulTasks: 2 },
+							],
+						},
+					};
+				}
 				return { data: {} };
 			};
 			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
@@ -676,6 +686,20 @@ suite('Unit: workflowTools', () => {
 				calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')),
 				'it saved',
 			);
+		});
+
+		test('rewst_workflow_executions lists failed runs newest-first and passes the status filter', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'rewst_workflow_executions', args: { workflowId: 'wf-1', orgId: 'org-1', status: 'failed' } },
+				deps,
+			);
+			assert.match(output, /ex-2/);
+			assert.match(output, /ex-1/);
+			assert.match(output, /failed/);
+			const call = calls.find(c => c.query.includes('RewstBuddyExecutions'))!;
+			assert.deepStrictEqual((call.variables!.where as { status?: string }).status, 'failed');
+			assert.deepStrictEqual(call.variables!.order, [['createdAt', 'desc']], 'requests newest-first');
 		});
 
 		test('rewst_workflow_run triggers testWorkflow and returns the execution id', async () => {

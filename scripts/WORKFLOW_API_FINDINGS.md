@@ -218,3 +218,8 @@ real names, not ids.
    run via the `testWorkflow` mutation (`testWorkflow(id, orgId, input) { executionId }`) and
    returns the new `executionId` — which feeds straight into `rewst_render_jinja` to inspect
    what the run produced. Approval-gated per workflow (it executes real automation).
+7. **`rewst_workflow_executions`** `{ workflowId, orgId, status?, limit? }` → lists recent
+   executions newest-first via `workflowExecutions(where: { workflowId, orgId, status }, order:
+[["createdAt","desc"]])`. `status` is a lowercase string (`"failed"`, `"succeeded"`,
+   `"running"`); results come back oldest-first without the explicit `order`, so it always
+   requests `createdAt desc`. Pairs with `rewst_render_jinja` to debug a failed run.
