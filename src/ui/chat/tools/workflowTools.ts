@@ -72,7 +72,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}". A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the "{{ SUCCEEDED }}" success catch-all (with FOLLOW_FIRST a success transition placed first would shadow every custom condition after it, so the custom Jinja would never evaluate). A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -536,6 +536,9 @@ function orderedChildren(task: RawTask, ids: Set<string>): string[] {
  */
 export function autoLayout(tasks: RawTask[]): void {
 	if (tasks.length === 0) return;
+	// Order transitions before reading them: within-rank placement follows
+	// transition order, so custom conditions sit left of the success catch-all.
+	orderTransitionsByCondition(tasks);
 	const ids = new Set(tasks.map(t => t.id));
 	const byId = new Map(tasks.map(t => [t.id, t]));
 	const children = new Map(tasks.map(t => [t.id, orderedChildren(t, ids)]));
@@ -947,6 +950,7 @@ export function applyOperations(
 		}
 	}
 	ensureTerminalTransitions(next);
+	orderTransitionsByCondition(next);
 	layoutNewTasks(next);
 	return { tasks: next, applied, workflow };
 }
@@ -962,6 +966,29 @@ function ensureTerminalTransitions(tasks: RawTask[]): void {
 		if ((task.next ?? []).length === 0) {
 			task.next = [{ when: '{{ SUCCEEDED }}', label: '', do: [], publish: [] }];
 		}
+	}
+}
+
+/** A transition with no condition or the built-in {{ SUCCEEDED }} catch-all. */
+function isSuccessCondition(when: string | null | undefined): boolean {
+	const normalized = (when ?? '').replace(/[{}]/g, '').replace(/\s+/g, '').toUpperCase();
+	return normalized === '' || normalized === 'SUCCEEDED';
+}
+
+/**
+ * Within each task, custom-condition transitions must precede the success
+ * ("{{ SUCCEEDED }}") catch-all. Under FOLLOW_FIRST the first transition whose
+ * condition holds wins, and {{ SUCCEEDED }} is truthy on any success — so a
+ * success transition listed first shadows every custom condition after it and
+ * that custom Jinja never evaluates. Stable-partition keeps each group's order.
+ */
+function orderTransitionsByCondition(tasks: RawTask[]): void {
+	for (const task of tasks) {
+		const transitions = task.next;
+		if (!transitions || transitions.length < 2) continue;
+		const custom = transitions.filter(t => !isSuccessCondition(t.when));
+		const success = transitions.filter(t => isSuccessCondition(t.when));
+		if (custom.length > 0 && success.length > 0) task.next = [...custom, ...success];
 	}
 }
 

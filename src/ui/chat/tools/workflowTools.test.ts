@@ -244,6 +244,44 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(tasks.find(t => t.name === 'start')!.next![0].label, 'go');
 		});
 
+		test('orders a custom condition before the {{ SUCCEEDED }} catch-all on a task', () => {
+			// start already has a success transition to end; add a custom-condition
+			// edge after it. The success catch-all must end up last so it cannot
+			// shadow the custom condition under FOLLOW_FIRST.
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'special', action: 'core.noop' },
+				{ op: 'connect', from: 'start', to: 'special', when: '{{ RESULT.flag }}' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next![0].when, '{{ RESULT.flag }}', 'custom condition first');
+			assert.strictEqual(start.next![1].when, '{{ SUCCEEDED }}', 'success catch-all last');
+		});
+
+		test('treats a blank/whitespace-only condition as a success catch-all when ordering', () => {
+			const tasksIn = sampleTasks();
+			tasksIn[0].next = [
+				{ when: '', label: '', do: ['bb02'], publish: [] },
+				{ when: '{{ RESULT.flag }}', label: '', do: ['bb02'], publish: [] },
+			];
+			const { tasks } = applyOperations(tasksIn as never, [], NO_ACTIONS);
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next![0].when, '{{ RESULT.flag }}', 'custom condition moves first');
+			assert.strictEqual(start.next![1].when, '', 'blank (success) catch-all moves last');
+		});
+
+		test('keeps relative order among multiple custom conditions', () => {
+			const tasksIn = sampleTasks();
+			tasksIn[0].next = [
+				{ when: '{{ SUCCEEDED }}', label: '', do: ['bb02'], publish: [] },
+				{ when: '{{ RESULT.a }}', label: '', do: ['bb02'], publish: [] },
+				{ when: '{{ RESULT.b }}', label: '', do: ['bb02'], publish: [] },
+			];
+			const { tasks } = applyOperations(tasksIn as never, [], NO_ACTIONS);
+			const whens = tasks.find(t => t.name === 'start')!.next!.map(t => t.when);
+			assert.deepStrictEqual(whens, ['{{ RESULT.a }}', '{{ RESULT.b }}', '{{ SUCCEEDED }}']);
+		});
+
 		test('reposition moves a task to exact (un-snapped) canvas coordinates', () => {
 			const ops: WorkflowOperation[] = [{ op: 'reposition', task: 'start', x: 50.5, y: 130 }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);

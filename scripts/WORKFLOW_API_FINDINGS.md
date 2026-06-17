@@ -182,6 +182,14 @@ So the assistant produces well-behaved tasks rather than copying odd UI defaults
   out of a task (a freshly added leaf, or a task left edgeless after a delete), the
   edit tool adds a terminal `{{ SUCCEEDED }}` transition with an empty `do` — the same
   shape Rewst uses for an end-of-branch task.
+- **Custom-condition transitions are ordered before the `{{ SUCCEEDED }}` catch-all.**
+  Under `FOLLOW_FIRST` the first transition whose condition holds wins, and
+  `{{ SUCCEEDED }}` is truthy on any success — so a success transition listed first
+  shadows every custom condition after it and that custom Jinja never evaluates. The
+  edit tool and `autoLayout` stable-partition each task's `next[]` so custom conditions
+  come first and the success (or blank/whitespace-only) catch-all sits last; relative
+  order within each group is preserved. Because within-rank node placement follows
+  transition order, custom branches also render left of the success branch.
 
 ## Native tools (implemented; replace many GraphQL turns with one call each)
 
