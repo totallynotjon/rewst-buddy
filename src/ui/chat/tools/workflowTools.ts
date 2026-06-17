@@ -1452,6 +1452,11 @@ async function applyWorkflowMutation(
 
 	const workflow = await fetchWorkflow(deps, workflowId, orgId);
 	let { tasks, applied, workflow: overrides } = apply(workflow);
+	// Final gate before writing. In production this is already true (the user
+	// approved at prepareInvocation), but a direct/fallback caller can decline.
+	if (!(await deps.confirmMutation(`update workflow "${workflow.name}" (${applied.length} operation(s))`))) {
+		throw new Error('Workflow change was not confirmed.');
+	}
 	let result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
 		workflow: workflowToInput(workflow, tasks, overrides),
 		openedAt: workflow.updatedAt,
@@ -1902,11 +1907,9 @@ export function workflowEditScope(name: string, input: unknown): MutationScope |
 
 function describeOperation(operation: WorkflowOperation): string {
 	const op = operation.op;
-	const detail =
-		str(operation.name) ??
-		str(operation.from) ??
-		str(operation.id) ??
-		(str(operation.from) && str(operation.to) ? `${str(operation.from)}->${str(operation.to)}` : undefined);
+	const from = str(operation.from);
+	const to = str(operation.to);
+	const detail = str(operation.name) ?? (from && to ? `${from}->${to}` : from) ?? str(operation.id);
 	return detail ? `${op} ${detail}` : String(op);
 }
 

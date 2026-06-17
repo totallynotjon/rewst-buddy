@@ -2,7 +2,7 @@
 
 Empirical notes from probing the live Rewst GraphQL API (`scripts/probe-workflow.mjs`,
 `scripts/wf-roundtrip.mjs`) against the sandbox "Learning Workflow"
-(`019ecc4c-b826-70b0-a8c7-e87ff2377833`, org `01940973-8a88-7109-8ba7-d64bfbb18950`).
+(`<sandbox-workflow-id>`, org `<sandbox-org-id>`).
 
 Purpose: capture the disparity between the GraphQL **schema** and what is **actually
 required** to read/edit workflows, so we can bundle the logic into native chat tools

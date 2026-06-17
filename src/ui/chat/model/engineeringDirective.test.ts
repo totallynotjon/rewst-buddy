@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
+import { SessionManager } from '@sessions';
 import { buildEngineeringDirective, buildNativeToolReminder } from './engineeringDirective';
 
 const { suite, test, setup } = Mocha;
@@ -8,6 +9,7 @@ const { suite, test, setup } = Mocha;
 suite('Unit: engineeringDirective', () => {
 	setup(() => {
 		initTestEnvironment();
+		SessionManager._resetForTesting();
 	});
 
 	test('no tools yields header, native-tool policy, and footer', () => {
@@ -123,6 +125,7 @@ suite('Unit: engineeringDirective', () => {
 suite('Unit: buildNativeToolReminder', () => {
 	setup(() => {
 		initTestEnvironment();
+		SessionManager._resetForTesting();
 	});
 
 	test('always curbs reflexive doc search and a throwaway native call', () => {

@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
+import { SessionManager } from '@sessions';
 import { _resetApprovedMutationScopes, approveMutationScope, type GraphqlToolDeps } from './graphqlTool';
 import {
 	applyOperations,
@@ -76,6 +77,7 @@ const NOOP_REF = new Map([['core.noop', 'noop-id']]);
 suite('Unit: workflowTools', () => {
 	setup(() => {
 		initTestEnvironment();
+		SessionManager._resetForTesting();
 		_resetApprovedMutationScopes();
 		_resetWorkflowIndexForTesting();
 	});
@@ -856,6 +858,29 @@ suite('Unit: workflowTools', () => {
 			const updates = calls.filter(c => c.query.includes('RewstBuddyWorkflowUpdate'));
 			assert.strictEqual(updates.length, 2, 'retried once');
 			assert.strictEqual(updates[1].variables!.openedAt, '1500', 'retry uses the re-read token');
+		});
+
+		test('buddy_workflow_edit aborts without saving when the mutation is not confirmed', async () => {
+			const { deps, calls } = makeDeps();
+			const declining: GraphqlToolDeps = { ...deps, confirmMutation: async () => false };
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{
+							tool: 'buddy_workflow_edit',
+							args: {
+								workflowId: 'wf-1',
+								workflowName: 'Sample',
+								orgId: 'org-1',
+								orgName: 'Acme',
+								operations: [{ op: 'add_task', name: 'x', action: 'core.noop' }],
+							},
+						},
+						declining,
+					),
+				/not confirmed/,
+			);
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')), 'no save when declined');
 		});
 
 		test('buddy_workflow_autolayout re-arranges and saves', async () => {

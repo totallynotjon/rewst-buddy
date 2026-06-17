@@ -5,10 +5,14 @@
  * diff to discover what is lost / transformed on round-trip.
  *
  *   node scripts/wf-roundtrip.mjs <orgId> <workflowId> [--apply] [--mutate-label]
+ *       [--probe-add] [--probe-remove] [--set-input [name] [default]] [--autolayout]
+ *       [--clear-probe]
  *
  * Without --apply: dry run, prints the WorkflowInput it WOULD send. No mutation.
- * With --apply: performs updateWorkflow(createPatch:true, overwrite:true), then
- *   re-reads and diffs. createPatch gives an undo point in workflow history.
+ * With --apply: performs updateWorkflow(createPatch:true), then re-reads and diffs.
+ *   createPatch gives an undo point in workflow history. The other flags shape what
+ *   the edit does (add/remove a probe task, set an input, run autolayout, clear
+ *   probe artifacts); they only mutate when combined with --apply.
  * With --mutate-label: also tweaks one transition label to validate a real edit.
  */
 
@@ -28,6 +32,10 @@ try {
 
 const HTTP_URL = process.env.REWST_GRAPHQL_URL ?? 'https://api.rewst.io/graphql';
 const token = process.env.REWST_TEST_TOKEN;
+if (!token) {
+	console.error('REWST_TEST_TOKEN is not set (add it to .env or the environment).');
+	process.exit(1);
+}
 const cookie = token.includes('=') ? token : `appSession=${token}`;
 
 async function gql(query, variables = {}) {
@@ -155,7 +163,12 @@ const [orgId, workflowId, ...flags] = process.argv.slice(2);
 const apply = flags.includes('--apply');
 const mutateLabel = flags.includes('--mutate-label');
 
-const before = (await gql(GET, { where: { id: workflowId, orgId } })).data?.workflow;
+const beforeResult = await gql(GET, { where: { id: workflowId, orgId } });
+if (beforeResult.errors) {
+	console.error('GraphQL error reading workflow:', JSON.stringify(beforeResult.errors, null, 2));
+	process.exit(1);
+}
+const before = beforeResult.data?.workflow;
 if (!before) {
 	console.error('workflow not found');
 	process.exit(1);
