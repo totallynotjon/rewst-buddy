@@ -174,7 +174,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'append reuses the warm conversation');
 		// Reuse sends only the new turn — not the whole transcript or the directive.
 		assert.ok(!harness.captured[1].message.includes('<visible_chat_transcript>'), 'no transcript re-sent');
-		assert.ok(!harness.captured[1].message.includes('<engineering_layer_directive>'), 'no directive re-sent');
+		assert.ok(!harness.captured[1].message.includes('# Rewst Buddy VS Code Context'), 'no directive re-sent');
 		assert.match(harness.captured[1].message, /next/);
 	});
 
@@ -516,7 +516,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		const harness = makeHarness([completeTurn('Hello', 'conv-1'), completeTurn('Again', 'conv-1')]);
 		await harness.run([message(User, [text('hi')])]);
 		assert.ok(
-			harness.captured[0].message.startsWith('<engineering_layer_directive>'),
+			harness.captured[0].message.startsWith('# Rewst Buddy VS Code Context'),
 			'opening message carries the directive',
 		);
 
@@ -527,7 +527,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		]);
 		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'append reuses the conversation');
 		assert.ok(
-			!harness.captured[1].message.includes('<engineering_layer_directive>'),
+			!harness.captured[1].message.includes('# Rewst Buddy VS Code Context'),
 			'a reused turn does not re-send the directive (the conversation already has it)',
 		);
 	});

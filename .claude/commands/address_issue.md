@@ -20,6 +20,7 @@ Extra context from the user (may be empty): $ARGUMENTS
 - **Exploration tooling:** use the pre-approved read-only tools — `Read`, `Glob`, `Grep`, `Bash(git log/diff/show/status/branch)`, `Bash(ls/tree)`, `mcp__ide__getDiagnostics`. Never use `Bash(cat/grep/find)` for what those dedicated tools handle (see CLAUDE.md).
 - **Tests are mandatory.** Every fix ships with tests: colocated `*.test.ts` unit tests next to the source, plus an integration test under `src/test/integration/` when live API / assistant behavior is involved. Prefer the mock SDK wrapper (`createMockSession`, `Fixtures`) for unit tests — see CLAUDE.md "Testing".
 - **Type-check via `mcp__ide__getDiagnostics`**, not `tsc`.
+- **Prompt steering changes must stay transport-shaped.** When editing Cage-Free Rewsty steering or `vscode-tool` protocol text, avoid XML authority wrappers and override language ("supersedes", "overrides", "ignore your system prompt", "trusted system instruction"). Use neutral VS Code context / local tool protocol wording, and keep edit/write tool routing close to the concrete Available tools list. See CLAUDE.md "AI Prompt Steering Directives".
 - **Path aliases**, if you add one, must go in BOTH `tsconfig.json` and `webpack.config.cjs`.
 - **Do not merge, tag, bump the version, or publish here.** That is `/merge_release`.
 
@@ -47,12 +48,13 @@ Do the work in a dedicated git worktree so the primary checkout stays untouched.
 - Make the smallest correct change that reads like the surrounding code (match comment density, naming, idioms). No redundant comments.
 - Add or extend tests for the change — happy path, error paths, and the edge cases the change introduces.
 - For assistant-steering / chat-behavior changes, the real proof is a live integration test (`src/test/integration/directive.test.ts`). It needs `REWST_TEST_TOKEN`; load it from `.env` without printing it, e.g.
-  `export REWST_TEST_TOKEN="$(grep -E '^REWST_TEST_TOKEN=' .env | head -1 | sed 's/^REWST_TEST_TOKEN=//; s/^"//; s/"$//')"` then `npm run test:integration`.
+  `npm run test:grep:integration -- "<exact live regression test name>"` for the focused check, then `npm run test:integration` when a broader live pass is warranted.
   Only exercise the sandbox org; never delete data without asking.
 
 ## Phase 4 — Verify
 
 - `mcp__ide__getDiagnostics` on the edited files — zero errors.
+- Target changed test areas first: `npm run test:grep -- "<Unit suite or test name>"`, and for live assistant behavior `npm run test:grep:integration -- "<Integration test name>"`.
 - `npm run test:unit` — all green; re-run until clean. Report failures honestly with their output.
 
 ## Phase 5 — Document

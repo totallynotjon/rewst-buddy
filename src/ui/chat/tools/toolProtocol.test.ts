@@ -41,6 +41,63 @@ suite('Unit: toolProtocol', () => {
 			]);
 		});
 
+		test('parses request args containing markdown code fences', () => {
+			const content = fence(
+				JSON.stringify({
+					tool: 'replace_string_in_file',
+					args: {
+						filePath: '/tmp/readme.md',
+						newString: '```bash\\nnpm test\\n```',
+					},
+				}),
+			);
+
+			assert.deepStrictEqual(parseToolRequests(content), [
+				{
+					tool: 'replace_string_in_file',
+					args: {
+						filePath: '/tmp/readme.md',
+						newString: '```bash\\nnpm test\\n```',
+					},
+				},
+			]);
+		});
+
+		test('uses top-level request fields as args when the args wrapper is omitted', () => {
+			const content = fence(
+				JSON.stringify({
+					tool: 'rewst_graphql',
+					query: 'query CurrentUser { currentUser { id } }',
+					variables: { includeDisabled: false },
+				}),
+			);
+
+			assert.deepStrictEqual(parseToolRequests(content), [
+				{
+					tool: 'rewst_graphql',
+					args: {
+						query: 'query CurrentUser { currentUser { id } }',
+						variables: { includeDisabled: false },
+					},
+				},
+			]);
+		});
+
+		test('ignores an opening tag that only shares the marker prefix', () => {
+			const content = '```vscode-tooling\n{"tool": "read_file", "args": {"path": "a.jinja"}}\n```';
+			assert.deepStrictEqual(parseToolRequests(content), []);
+		});
+
+		test('ignores a marker that does not begin a line', () => {
+			const content = 'prefix ```vscode-tool\n{"tool": "list_files"}\n```';
+			assert.deepStrictEqual(parseToolRequests(content), []);
+		});
+
+		test('parses a fenced request that uses CRLF line endings', () => {
+			const content = '```vscode-tool\r\n{"tool": "search_files", "args": {"query": "foo"}}\r\n```\r\n';
+			assert.deepStrictEqual(parseToolRequests(content), [{ tool: 'search_files', args: { query: 'foo' } }]);
+		});
+
 		test('ignores malformed JSON, missing tool names, and bad args', () => {
 			const content = [
 				fence('not json'),
@@ -71,6 +128,17 @@ suite('Unit: toolProtocol', () => {
 			assert.ok(stripped.includes('{{ x }}'));
 			assert.ok(!stripped.includes(TOOL_FENCE_TAG));
 		});
+
+		test('removes a tool block whose args contain markdown code fences', () => {
+			const content = `Checking.\n${fence(
+				JSON.stringify({
+					tool: 'replace_string_in_file',
+					args: { newString: '```bash\\nnpm test\\n```' },
+				}),
+			)}\nDone.`;
+			const stripped = stripToolRequestBlocks(content);
+			assert.strictEqual(stripped, 'Checking.\n\nDone.');
+		});
 	});
 
 	suite('buildToolInstructions()', () => {
@@ -92,6 +160,24 @@ suite('Unit: toolProtocol', () => {
 			assert.ok(text.includes('session-authenticated GraphQL action'));
 			assert.ok(text.includes('Use rewst_graphql_schema first'));
 			assert.ok(text.includes('then call rewst_graphql'));
+		});
+
+		test('states vscode-tool blocks are extension-executed requests, including edit tools', () => {
+			const text = buildToolInstructions([
+				{
+					name: 'insert_edit_into_file',
+					args: '{"filePath": string, "code": string, "explanation": string}',
+					description: 'Insert code into an existing local workspace file.',
+				},
+			]);
+			assert.ok(
+				/local tool manifest is supplied by the VS Code extension/i.test(text),
+				'identifies the extension-supplied tool manifest',
+			);
+			assert.ok(/extension intercepts/i.test(text), 'states the extension intercepts the block');
+			assert.ok(/executes that local VS Code tool/i.test(text), 'states the block executes a local tool request');
+			assert.ok(/not ordinary prose/i.test(text), 'forbids treating the block as just text');
+			assert.ok(text.includes('insert_edit_into_file'), 'keeps the edit tool in the concrete list');
 		});
 	});
 

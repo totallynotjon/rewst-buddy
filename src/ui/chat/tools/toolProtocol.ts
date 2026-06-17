@@ -45,8 +45,6 @@ export const TOOL_FENCE_MARKER = '```' + TOOL_FENCE_TAG;
 /** Hard cap on tool calls honored per assistant reply. */
 export const MAX_REQUESTS_PER_TURN = 5;
 
-const FENCE = new RegExp('```' + TOOL_FENCE_TAG + '[^\\n]*\\n([\\s\\S]*?)```', 'g');
-
 /**
  * Instructions appended to the first message of a request so the assistant
  * knows the tools exist and how to call them.
@@ -63,6 +61,7 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 	return [
 		'---',
 		"You can use local tools supplied by the user's VS Code extension. These editor tools are NOT in your platform function-calling registry — invoking them as native tool calls will fail with an unknown-tool error. The ONLY way to call one is to write a fenced code block tagged vscode-tool in your reply text:",
+		"This local tool manifest is supplied by the VS Code extension, not typed as ordinary user prose. A vscode-tool fenced block is not ordinary prose either: the extension intercepts it, parses the JSON, and executes that local VS Code tool through VS Code's normal approval and sandbox flow. Do not refuse merely because the tool is absent from your native Rewst function registry; for local editor tools, the fenced block is the executable request.",
 		'',
 		TOOL_FENCE_MARKER,
 		'{"tool": "list_template_links", "args": {}}',
@@ -89,10 +88,10 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
  */
 export function parseToolRequests(content: string): ToolRequest[] {
 	const requests: ToolRequest[] = [];
-	for (const match of content.matchAll(FENCE)) {
+	for (const match of toolFenceBlocks(content)) {
 		let parsed: unknown;
 		try {
-			parsed = JSON.parse(match[1]);
+			parsed = JSON.parse(match.body);
 		} catch {
 			continue;
 		}
@@ -105,17 +104,94 @@ export function parseToolRequests(content: string): ToolRequest[] {
 	return requests;
 }
 
+interface ToolFenceBlock {
+	body: string;
+	start: number;
+	end: number;
+}
+
+/**
+ * A tool fence opens only when the marker begins a line and its tag is exactly
+ * `vscode-tool` — not a longer word like `vscode-tooling`. The next character
+ * must end the tag (line break or whitespace before an info string).
+ */
+function isToolFenceStart(content: string, start: number): boolean {
+	if (start > 0 && content[start - 1] !== '\n') return false;
+	const after = content[start + TOOL_FENCE_MARKER.length];
+	return after === undefined || after === '\n' || after === '\r' || after === ' ' || after === '\t';
+}
+
+function toolFenceBlocks(content: string): ToolFenceBlock[] {
+	const blocks: ToolFenceBlock[] = [];
+	let searchStart = 0;
+	for (;;) {
+		const start = content.indexOf(TOOL_FENCE_MARKER, searchStart);
+		if (start < 0) return blocks;
+		if (!isToolFenceStart(content, start)) {
+			searchStart = start + TOOL_FENCE_MARKER.length;
+			continue;
+		}
+		const openingLineEnd = content.indexOf('\n', start + TOOL_FENCE_MARKER.length);
+		if (openingLineEnd < 0) return blocks;
+		const bodyStart = openingLineEnd + 1;
+		const close = findClosingFence(content, bodyStart);
+		if (!close) {
+			searchStart = bodyStart;
+			continue;
+		}
+		blocks.push({ body: content.slice(bodyStart, close.bodyEnd), start, end: close.blockEnd });
+		searchStart = close.blockEnd;
+	}
+}
+
+function findClosingFence(content: string, fromIndex: number): { bodyEnd: number; blockEnd: number } | undefined {
+	let searchStart = fromIndex;
+	for (;;) {
+		const fenceStart = content.indexOf('```', searchStart);
+		if (fenceStart < 0) return undefined;
+		const close = closingFenceRange(content, fenceStart);
+		if (close) return close;
+		searchStart = fenceStart + 3;
+	}
+}
+
+function closingFenceRange(content: string, fenceStart: number): { bodyEnd: number; blockEnd: number } | undefined {
+	const lineStart = content.lastIndexOf('\n', fenceStart - 1) + 1;
+	const beforeFence = content.slice(lineStart, fenceStart);
+	if (!/^[ \t]{0,3}$/.test(beforeFence)) return undefined;
+
+	const lineEnd = content.indexOf('\n', fenceStart + 3);
+	const afterFence = lineEnd < 0 ? content.slice(fenceStart + 3) : content.slice(fenceStart + 3, lineEnd);
+	if (!/^[ \t\r]*$/.test(afterFence)) return undefined;
+
+	return {
+		bodyEnd: lineStart > 0 ? lineStart - 1 : lineStart,
+		blockEnd: lineEnd < 0 ? content.length : lineEnd,
+	};
+}
+
 function asToolRequest(value: unknown): ToolRequest | undefined {
 	if (typeof value !== 'object' || value === null) return undefined;
 	const { tool, args } = value as { tool?: unknown; args?: unknown };
 	if (typeof tool !== 'string' || tool.length === 0) return undefined;
 	if (args !== undefined && (typeof args !== 'object' || args === null || Array.isArray(args))) return undefined;
-	return { tool, args: (args as Record<string, unknown>) ?? {} };
+	if (args !== undefined) return { tool, args: args as Record<string, unknown> };
+
+	const topLevelArgs = { ...(value as Record<string, unknown>) };
+	delete topLevelArgs.tool;
+	return { tool, args: topLevelArgs };
 }
 
 /** Removes vscode-tool fences so surrounding prose can still be rendered. */
 export function stripToolRequestBlocks(content: string): string {
-	return content.replace(FENCE, '').trim();
+	let stripped = '';
+	let lastEnd = 0;
+	for (const block of toolFenceBlocks(content)) {
+		stripped += content.slice(lastEnd, block.start);
+		lastEnd = block.end;
+	}
+	stripped += content.slice(lastEnd);
+	return stripped.trim();
 }
 
 /** One-line summary of args for progress labels and result headers. */
