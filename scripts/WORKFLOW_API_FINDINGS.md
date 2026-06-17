@@ -71,13 +71,38 @@ transitionMode, publishResultAs, join, timeout, humanSecondsSaved, isMocked, moc
 runAsOrgId, securitySchema, retry, with`, and `next[]` mapped to `WorkflowTransitionInput`
 (`id, when, label, do, publish, top, left, orientation, targetHandles`).
 
-## Disparity 4 — there are no node positions in schema v1.0
+## Disparity 4 — node positions live in `task.metadata.{x,y}` (free, un-snapped)
 
-Every task `metadata` and the workflow `metadata` came back `{}`; transition
-`top`/`left`/`orientation`/`targetHandles` were null. The editor auto-lays-out the DAG.
-"Repositioning" in this schema means preserving/setting transition `top`/`left`
-(label/edge offsets) and any task `metadata` — there is no `x,y` on a node to track.
-Tools must **preserve** whatever layout values exist on round-trip and not invent any.
+Node canvas positions are stored on each task as `metadata.x` / `metadata.y` (the
+top-left anchor). They were `{}` on the first sandbox workflow only because it was
+built programmatically and never arranged in the editor; a hand-laid-out workflow
+shows e.g. `metadata: { x: 696, y: -912, clonedFromId: ... }`. Key points:
+
+- Coordinates are **free floats** (e.g. `-95.8`, `807.7`) — the editor does **not**
+  hard-snap to a grid, so layout tools must not snap either.
+- Transition `top`/`left`/`orientation`/`targetHandles` are separate **edge-label**
+  offsets, usually null; they are not node positions.
+- `updateWorkflow` round-trips `metadata.{x,y}` faithfully (verified live), so the
+  edit tool must resend every task's `metadata` unchanged or it loses the layout.
+
+**Calibrated geometry** (measured from a hand-arranged workflow where nodes were
+placed flush to expose their size): node **height ≈ 88px**; node **width ≈ 209 +
+127 × (outgoing transition count)** (≈ 335 at one transition — each transition adds
+an output port and widens the node). Used for spacing in `rewst_workflow_edit`
+placement and `rewst_workflow_autolayout`.
+
+**Layout algorithm** (`autoLayout` in `workflowTools.ts`, hand-rolled, dependency-free,
+deterministic): break cycles by DFS (back-edge = edge to a node on the stack);
+longest-path ranks on the remaining acyclic graph (one row per rank); a back-edge's
+source is pulled to its target's rank so a retry loop stays compact (the loop node
+sits on its target's row, not down with the exit tasks); within a rank, tasks are
+ordered strictly by a transition-order pre-order walk; barycenter sweeps center
+parents over children. A near-terminal "catch" node fed by **more than 2** actions
+whose feeders span **≥ 5 ranks** (e.g. a global `failure_catch`) is lifted out of the
+main ranking and placed in a **lane to the right**, centered on its feeders, so it
+does not drag long edges across every rank (matches the guideline that a normal end
+node has at most one feeder). Incremental `add_task` placement (not full autolayout)
+puts a new task one row below the action it connects from.
 
 ## Disparity 5 — action search is Hasura-style; parameters are the input schema
 
@@ -109,17 +134,28 @@ ids as `randomUUID().replace(/-/g, '')`** so the task id and every `do` referenc
 (Transition `id`s, by contrast, are fine as dashed UUIDs.) Verified live: a de-dashed id
 links cleanly; a dashed id does not.
 
-## Proposed native tools (replace many GraphQL turns with one call each)
+## Native tools (implemented; replace many GraphQL turns with one call each)
 
-1. **`rewst_workflow_get`** `{ workflowId, orgId }` → normalized graph: nodes (id, name,
-   action ref, input), edges (`from → do[]`, when, label, publish), the `updatedAt`
-   version token, and any layout. One call instead of schema-introspect + query + reshape.
-2. **`rewst_workflow_edit`** `{ workflowId, orgId, operations[] }` → fetches full state,
-   applies high-level ops (`add_task`, `update_task`, `delete_task`, `connect`,
-   `disconnect`, `set_transition`, `reposition`) in memory, sends the **complete**
-   `WorkflowInput` with correct `openedAt` + `createPatch`. Nothing-lost and conflict
-   handling are native. Returns new version token + applied diff. (Mutation → gated by the
-   existing in-chat approval flow.)
-3. **`rewst_action_search`** `{ orgId, query, limit, includeDeprecated }` → ranked, deduped
-   action matches (ref, id, category, summary); and a describe mode `{ orgId, ref|actionId }`
+All four are in `src/ui/chat/tools/workflowTools.ts`, gated by the
+`rewst-buddy.ai.enableWorkflowTools` setting; the two mutating tools reuse the
+in-chat per-workflow mutation-approval flow. They require `workflowId`,
+`workflowName`, `orgId`, `orgName` for approval — `rewst_workflow_get` surfaces all
+four (including **`orgName`** via `organization { name }`) so the assistant passes
+real names, not ids.
+
+1. **`rewst_workflow_get`** `{ workflowId, orgId }` → normalized graph: workflow
+   (id, name, orgId, orgName, version token), nodes (id, name, action ref, input,
+   position), edges (`from`, when, label, `to[]` task names, publish). One call
+   instead of schema-introspect + query + reshape.
+2. **`rewst_action_search`** `{ orgId, query, limit, includeDeprecated }` → ranked,
+   deduped action matches (ref, id, category); describe mode `{ orgId, ref|actionId }`
    → `parameters` + `outputSchema` so the assistant can fill task `input` correctly.
+3. **`rewst_workflow_edit`** `{ workflowId, workflowName, orgId, orgName, operations[] }`
+   → fetches full state, applies high-level ops (`add_task`, `update_task`,
+   `delete_task`, `connect`, `disconnect`, `set_transition`, `reposition`) in memory,
+   sends the **complete** `WorkflowInput` with correct `openedAt` + `createPatch`,
+   retrying once on a version conflict. Nothing-lost, id-normalization, action-ref
+   resolution, and conflict handling are native.
+4. **`rewst_workflow_autolayout`** `{ workflowId, workflowName, orgId, orgName }` →
+   re-arranges every node with the layered algorithm above (strict transition order,
+   loop nodes kept compact, terminal catches sent to a right lane) and saves.

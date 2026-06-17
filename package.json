@@ -150,7 +150,7 @@
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an \"op\" field): add_task {name, action (ref or id), input?, publishResultAs?, transitionMode?, join?, with?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {from, to?|transitionId?, top?, left?, orientation?}. when defaults to \"{{ SUCCEEDED }}\". This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.",
+				"modelDescription": "Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an \"op\" field): add_task {name, action (ref or id), input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates). when defaults to \"{{ SUCCEEDED }}\". A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -188,6 +188,47 @@
 						"orgId",
 						"orgName",
 						"operations"
+					]
+				}
+			},
+			{
+				"name": "rewst_workflow_autolayout",
+				"displayName": "Auto-Layout Rewst Workflow",
+				"toolReferenceName": "rewstWorkflowAutolayout",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use rewst_workflow_edit with a reposition operation instead.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"workflowId": {
+							"type": "string",
+							"description": "The workflow id to lay out."
+						},
+						"workflowName": {
+							"type": "string",
+							"description": "The workflow name, shown in the approval prompt."
+						},
+						"orgId": {
+							"type": "string",
+							"description": "The id of the org that owns the workflow."
+						},
+						"orgName": {
+							"type": "string",
+							"description": "The org name, shown in the approval prompt."
+						},
+						"comment": {
+							"type": "string",
+							"description": "Optional patch comment describing the change."
+						}
+					},
+					"required": [
+						"workflowId",
+						"workflowName",
+						"orgId",
+						"orgName"
 					]
 				}
 			},

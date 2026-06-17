@@ -29,8 +29,9 @@ import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
 const MAX_OUTPUT_CHARS = 8_000;
 
 export const WORKFLOW_EDIT_TOOL_NAME = 'rewst_workflow_edit';
+export const WORKFLOW_AUTOLAYOUT_TOOL_NAME = 'rewst_workflow_autolayout';
 
-/** Identifying fields a rewst_workflow_edit request must carry (org + workflow). */
+/** Identifying fields a workflow-mutation request must carry (org + workflow). */
 const MUTATION_SCOPE_KEYS = ['workflowId', 'workflowName', 'orgId', 'orgName'] as const;
 
 export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
@@ -70,7 +71,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id), input?, publishResultAs?, transitionMode?, join?, with?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {from, to?|transitionId?, top?, left?, orientation?}. when defaults to "{{ SUCCEEDED }}". This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id), input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates). when defaults to "{{ SUCCEEDED }}". A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -89,6 +90,23 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 				comment: { type: 'string', description: 'Optional patch comment describing the change.' },
 			},
 			required: ['workflowId', 'workflowName', 'orgId', 'orgName', 'operations'],
+		},
+	},
+	{
+		name: WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "comment"?: string}',
+		description:
+			'Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use rewst_workflow_edit with a reposition operation instead.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				workflowId: { type: 'string', description: 'The workflow id to lay out.' },
+				workflowName: { type: 'string', description: 'The workflow name, shown in the approval prompt.' },
+				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
+				orgName: { type: 'string', description: 'The org name, shown in the approval prompt.' },
+				comment: { type: 'string', description: 'Optional patch comment describing the change.' },
+			},
+			required: ['workflowId', 'workflowName', 'orgId', 'orgName'],
 		},
 	},
 ];
@@ -147,6 +165,7 @@ interface RawWorkflow {
 	schemaVersion?: string | null;
 	version?: string | null;
 	orgId: string;
+	organization?: { id?: string | null; name?: string | null } | null;
 	updatedAt?: string | null;
 	input?: string[] | null;
 	inputSchema?: unknown;
@@ -160,6 +179,7 @@ interface RawWorkflow {
 const WORKFLOW_GET_QUERY = `query RewstBuddyWorkflowGet($where: WorkflowWhereInput) {
 	workflow(where: $where) {
 		id name description type schemaVersion version orgId updatedAt
+		organization { id name }
 		input inputSchema outputSchema varsSchema metadata timeout
 		tasks {
 			id name actionId description input metadata
@@ -312,6 +332,294 @@ function newTaskId(): string {
 	return randomUUID().replace(/-/g, '');
 }
 
+// Canvas geometry, calibrated from a hand-arranged workflow (see
+// scripts/WORKFLOW_API_FINDINGS.md): node.metadata.{x,y} is the node's top-left
+// anchor in free (un-snapped) canvas coordinates. A node is ~NODE_HEIGHT tall;
+// its width grows with its outgoing transition count (each transition adds an
+// output port), ~WIDTH_BASE + WIDTH_PER_TRANSITION * transitions. We never place
+// nodes flush, so layout leaves a gap of V_GAP / H_GAP between footprints.
+const NODE_HEIGHT = 88;
+const WIDTH_BASE = 209;
+const WIDTH_PER_TRANSITION = 127;
+const V_GAP = 80;
+const H_GAP = 80;
+
+/** Estimated rendered width of a node from its outgoing transition count. */
+function nodeWidth(task: RawTask): number {
+	return WIDTH_BASE + WIDTH_PER_TRANSITION * Math.max(1, (task.next ?? []).length);
+}
+
+/** A task's canvas position, if its metadata carries numeric x/y. */
+function positionOf(task: RawTask): { x: number; y: number } | undefined {
+	const metadata = task.metadata;
+	if (metadata && typeof metadata === 'object') {
+		const { x, y } = metadata as { x?: unknown; y?: unknown };
+		if (typeof x === 'number' && typeof y === 'number') return { x, y };
+	}
+	return undefined;
+}
+
+function setPosition(task: RawTask, x: number, y: number): void {
+	const metadata = task.metadata && typeof task.metadata === 'object' ? { ...(task.metadata as object) } : {};
+	task.metadata = { ...metadata, x, y };
+}
+
+interface Box {
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+}
+
+/** Whether two footprints overlap (touching edges count as clear). */
+function overlaps(a: Box, b: Box): boolean {
+	return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+/**
+ * Places any task that still lacks a position: directly below the action it is
+ * connected from (same column, one node-height-plus-gap down), or below the
+ * lowest existing node when it has no parent. If the spot (padded by the gap)
+ * would overlap an existing node, it is nudged right by a node width until clear.
+ * Existing positions are never moved. This is how the tools determine spacing
+ * between actions for newly added tasks.
+ */
+function layoutNewTasks(tasks: RawTask[]): void {
+	const placed: Box[] = [];
+	for (const task of tasks) {
+		const position = positionOf(task);
+		if (position) placed.push({ x: position.x, y: position.y, w: nodeWidth(task), h: NODE_HEIGHT });
+	}
+	const baseX = placed.length ? Math.min(...placed.map(b => b.x)) : 0;
+	const lowestBottom = placed.length ? Math.max(...placed.map(b => b.y + b.h)) : 0;
+
+	for (const task of tasks) {
+		if (positionOf(task)) continue;
+		const parent = tasks.find(candidate => (candidate.next ?? []).some(t => (t.do ?? []).includes(task.id)));
+		const parentBox = parent
+			? placed.find(b => positionOf(parent)?.x === b.x && positionOf(parent)?.y === b.y)
+			: undefined;
+		const w = nodeWidth(task);
+		let x = parentBox ? parentBox.x : baseX;
+		const y = parentBox ? parentBox.y + NODE_HEIGHT + V_GAP : lowestBottom + V_GAP;
+		// Pad the candidate footprint by the gap and slide right until it clears.
+		const padded = (): Box => ({ x: x - H_GAP, y: y - V_GAP, w: w + 2 * H_GAP, h: NODE_HEIGHT + 2 * V_GAP });
+		while (placed.some(box => overlaps(padded(), box))) x += w + H_GAP;
+		setPosition(task, x, y);
+		placed.push({ x, y, w, h: NODE_HEIGHT });
+	}
+}
+
+// One vertical row per rank.
+const ROW_STEP = NODE_HEIGHT + V_GAP;
+
+// A terminal node fed by more than this many actions is treated as a shared
+// "catch" rather than a normal endpoint (workflow guidelines expect at most one
+// action feeding an end node). Such a catch is pulled out of the main ranking
+// and placed in a lane to the right, so it doesn't drag long edges across every
+// rank. The feeder-span guard keeps the workflow's natural end node — fed by a
+// few adjacent final branches — in the main flow.
+const SIDE_HANDLER_MIN_FEEDERS = 2; // strictly more than 2 feeders
+const SIDE_HANDLER_MIN_SPAN = 5; // feeders must span at least this many ranks
+const LANE_GAP = 2 * H_GAP;
+
+/** Ordered, de-duplicated forward child ids of a task, in transition order. */
+function orderedChildren(task: RawTask, ids: Set<string>): string[] {
+	const out: string[] = [];
+	const seen = new Set<string>();
+	for (const transition of task.next ?? []) {
+		for (const target of transition.do ?? []) {
+			if (ids.has(target) && !seen.has(target)) {
+				seen.add(target);
+				out.push(target);
+			}
+		}
+	}
+	return out;
+}
+
+/**
+ * Re-lays-out every task as a layered flow, hand-rolled so within-rank order
+ * strictly follows transition order and loops read the way Rewst flows do:
+ *
+ *  - Cycles are broken by DFS; an edge back to a node still on the stack is a
+ *    back-edge (a retry loop's return). Ranks come from the longest path on the
+ *    remaining acyclic graph, so every rank is a single row.
+ *  - A back-edge's source is pulled to its target's rank, so a loop stays compact
+ *    instead of dropping the loop node down with the exit tasks (delay sits on
+ *    executions' row, not below can_proceed).
+ *  - A terminal "catch" — a near-terminal task fed by more than two actions whose
+ *    feeders span many ranks (e.g. a global failure_catch) — is lifted out of the
+ *    main ranking and placed in a lane to the right, centered on its feeders, so
+ *    it doesn't drag long edges down across every rank.
+ *  - Within each rank, tasks are ordered strictly by a transition-order pre-order
+ *    walk: if transition a comes before transition b, task a is left of task b.
+ *  - X coordinates pack left-to-right without overlap, then a few barycenter
+ *    sweeps center parents over their children. y is rank * (height + gap).
+ *
+ * Deterministic for a given task/transition order. Overwrites all positions.
+ */
+export function autoLayout(tasks: RawTask[]): void {
+	if (tasks.length === 0) return;
+	const ids = new Set(tasks.map(t => t.id));
+	const byId = new Map(tasks.map(t => [t.id, t]));
+	const children = new Map(tasks.map(t => [t.id, orderedChildren(t, ids)]));
+	const edgeKey = (u: string, v: string) => `${u} ${v}`;
+	const firstId = tasks[0].id;
+	const width = (id: string) => nodeWidth(byId.get(id)!);
+
+	// 1. Break cycles: DFS flags edges to a node on the current stack as back-edges.
+	const backEdges = new Set<string>();
+	const visited = new Set<string>();
+	const stack = new Set<string>();
+	const dfs = (u: string): void => {
+		visited.add(u);
+		stack.add(u);
+		for (const v of children.get(u)!) {
+			if (stack.has(v)) backEdges.add(edgeKey(u, v));
+			else if (!visited.has(v)) dfs(v);
+		}
+		stack.delete(u);
+	};
+	const indegree = new Map(tasks.map(t => [t.id, 0]));
+	for (const t of tasks) for (const v of children.get(t.id)!) indegree.set(v, (indegree.get(v) ?? 0) + 1);
+	const roots = tasks.filter(t => (indegree.get(t.id) ?? 0) === 0).map(t => t.id);
+	for (const r of roots.length ? roots : [firstId]) if (!visited.has(r)) dfs(r);
+	for (const t of tasks) if (!visited.has(t.id)) dfs(t.id);
+
+	const forwardChildren = (u: string) => children.get(u)!.filter(v => !backEdges.has(edgeKey(u, v)));
+	const forwardParents = new Map<string, string[]>(tasks.map(t => [t.id, []]));
+	for (const t of tasks) for (const v of forwardChildren(t.id)) forwardParents.get(v)!.push(t.id);
+
+	// Longest-path ranks over a node subset (edges to non-members are ignored).
+	const computeRanks = (members: Set<string>): Map<string, number> => {
+		const rank = new Map<string, number>();
+		const pending = new Map<string, number>();
+		for (const id of members) {
+			rank.set(id, 0);
+			pending.set(id, 0);
+		}
+		for (const id of members)
+			for (const v of forwardChildren(id)) if (members.has(v)) pending.set(v, pending.get(v)! + 1);
+		const queue = [...members].filter(id => pending.get(id) === 0);
+		while (queue.length) {
+			const u = queue.shift()!;
+			for (const v of forwardChildren(u)) {
+				if (!members.has(v)) continue;
+				if (rank.get(v)! < rank.get(u)! + 1) rank.set(v, rank.get(u)! + 1);
+				pending.set(v, pending.get(v)! - 1);
+				if (pending.get(v) === 0) queue.push(v);
+			}
+		}
+		return rank;
+	};
+
+	// 2. Detect terminal catch nodes (in-degree > 2, feeders spanning many ranks)
+	//    and lay out the main flow without them.
+	const rankAll = computeRanks(ids);
+	const isSideHandler = (id: string): boolean => {
+		const feeders = forwardParents.get(id)!;
+		if (feeders.length <= SIDE_HANDLER_MIN_FEEDERS) return false;
+		if (forwardChildren(id).length > 1) return false; // near-terminal only
+		const feederRanks = feeders.map(p => rankAll.get(p)!);
+		return Math.max(...feederRanks) - Math.min(...feederRanks) >= SIDE_HANDLER_MIN_SPAN;
+	};
+	const sideHandlers = tasks.filter(t => isSideHandler(t.id)).map(t => t.id);
+	const sideSet = new Set(sideHandlers);
+	const mainSet = new Set(tasks.filter(t => !sideSet.has(t.id)).map(t => t.id));
+	const mainIds = [...mainSet];
+
+	// 3. Rank the main flow, then apply the loop exception to its back-edges.
+	const rank = mainSet.size ? computeRanks(mainSet) : new Map<string, number>();
+	for (const key of backEdges) {
+		const [u, v] = key.split(' ');
+		if (mainSet.has(u) && mainSet.has(v)) rank.set(u, rank.get(v)!);
+	}
+
+	// 4. Transition-order pre-order over the main flow drives within-rank order.
+	const seq = new Map<string, number>();
+	let counter = 0;
+	const order = (u: string): void => {
+		if (seq.has(u)) return;
+		seq.set(u, counter++);
+		for (const v of forwardChildren(u)) if (mainSet.has(v)) order(v);
+	};
+	const mainIndegree = new Map(mainIds.map(id => [id, 0]));
+	for (const id of mainIds)
+		for (const v of forwardChildren(id)) if (mainSet.has(v)) mainIndegree.set(v, mainIndegree.get(v)! + 1);
+	const mainRoots = mainIds.filter(id => mainIndegree.get(id) === 0);
+	for (const r of mainRoots.length ? mainRoots : mainIds) order(r);
+	for (const id of mainIds) order(id);
+
+	// 5. Group the main flow into rank rows, ordered by transition sequence.
+	const layers = new Map<number, string[]>();
+	for (const id of mainIds) {
+		const r = rank.get(id)!;
+		if (!layers.has(r)) layers.set(r, []);
+		layers.get(r)!.push(id);
+	}
+	for (const layer of layers.values()) layer.sort((a, b) => seq.get(a)! - seq.get(b)!);
+
+	// 6. X coordinates: pack each row, then barycenter sweeps center over neighbors.
+	const x = new Map<string, number>();
+	const ranks = [...layers.keys()].sort((a, b) => a - b);
+	for (const r of ranks) {
+		let cursor = 0;
+		for (const id of layers.get(r)!) {
+			x.set(id, cursor);
+			cursor += width(id) + H_GAP;
+		}
+	}
+	const mainChildren = (id: string) => forwardChildren(id).filter(v => mainSet.has(v));
+	const mainParents = new Map<string, string[]>(mainIds.map(id => [id, []]));
+	for (const id of mainIds) for (const v of mainChildren(id)) mainParents.get(v)!.push(id);
+	const center = (id: string) => x.get(id)! + width(id) / 2;
+	const placeRow = (row: string[], desired: Map<string, number>) => {
+		let prevRight = -Infinity;
+		for (const id of row) {
+			const target = desired.has(id) ? desired.get(id)! : center(id);
+			const left = Math.max(target - width(id) / 2, prevRight + H_GAP);
+			x.set(id, left);
+			prevRight = left + width(id);
+		}
+	};
+	for (let sweep = 0; sweep < 8; sweep++) {
+		const downward = sweep % 2 === 0;
+		for (const r of downward ? ranks : [...ranks].reverse()) {
+			const desired = new Map<string, number>();
+			for (const id of layers.get(r)!) {
+				const neighbors = downward ? mainParents.get(id)! : mainChildren(id);
+				if (neighbors.length) {
+					desired.set(id, neighbors.reduce((sum, n) => sum + center(n), 0) / neighbors.length);
+				}
+			}
+			placeRow(layers.get(r)!, desired);
+		}
+	}
+
+	// 7. Write the main flow as top-left anchors, normalized so the left edge is 0.
+	const minX = mainIds.length ? Math.min(...mainIds.map(id => x.get(id)!)) : 0;
+	for (const id of mainIds) setPosition(byId.get(id)!, Math.round(x.get(id)! - minX), rank.get(id)! * ROW_STEP);
+
+	// 8. Place catch nodes in a lane to the right, each centered on its feeders'
+	//    rows and stacked so they never overlap.
+	if (sideHandlers.length) {
+		const mainRight = mainIds.length ? Math.max(...mainIds.map(id => x.get(id)! - minX + width(id))) : 0;
+		const laneX = mainRight + LANE_GAP;
+		const centroidY = (id: string): number => {
+			const feeders = forwardParents.get(id)!.filter(p => mainSet.has(p));
+			const source = feeders.length ? feeders.map(p => rank.get(p)!) : [rankAll.get(id)!];
+			return (source.reduce((sum, r) => sum + r, 0) / source.length) * ROW_STEP;
+		};
+		let prevBottom = -Infinity;
+		for (const id of [...sideHandlers].sort((a, b) => centroidY(a) - centroidY(b))) {
+			const y = Math.max(Math.round(centroidY(id)), prevBottom + V_GAP);
+			setPosition(byId.get(id)!, laneX, y);
+			prevBottom = y + NODE_HEIGHT;
+		}
+	}
+}
+
 function isActionIdShape(value: string): boolean {
 	return /^[0-9a-fA-F]{32}$/.test(value) || /^[0-9a-fA-F-]{36}$/.test(value);
 }
@@ -380,6 +688,10 @@ export function applyOperations(
 				if (typeof operation.join === 'number') task.join = operation.join;
 				if (typeof operation.timeout === 'number') task.timeout = operation.timeout;
 				if (operation.with && typeof operation.with === 'object') task.with = operation.with as RawTask['with'];
+				// Explicit position wins; otherwise layoutNewTasks places it below its parent.
+				if (typeof operation.x === 'number' && typeof operation.y === 'number') {
+					setPosition(task, operation.x, operation.y);
+				}
 				next.push(task);
 				applied.push(`add_task ${name} (${id}) action=${action}`);
 				break;
@@ -471,20 +783,26 @@ export function applyOperations(
 				break;
 			}
 			case 'reposition': {
-				const fromRef = str(operation.from);
-				if (!fromRef) throw new Error('reposition requires "from".');
-				const from = resolveTask(next, fromRef);
-				const transition = findTransition(next, from, operation);
-				if (typeof operation.top === 'number') transition.top = operation.top;
-				if (typeof operation.left === 'number') transition.left = operation.left;
-				if (str(operation.orientation)) transition.orientation = str(operation.orientation);
-				applied.push(`reposition transition on ${from.name}`);
+				const ref = str(operation.task) ?? str(operation.id) ?? str(operation.name);
+				if (!ref) throw new Error('reposition requires "task" (a task id or name).');
+				if (typeof operation.x !== 'number' || typeof operation.y !== 'number') {
+					throw new Error('reposition requires numeric "x" and "y" canvas coordinates.');
+				}
+				const task = resolveTask(next, ref);
+				setPosition(task, operation.x, operation.y);
+				applied.push(`reposition ${task.name} -> (${operation.x}, ${operation.y})`);
+				break;
+			}
+			case 'autolayout': {
+				autoLayout(next);
+				applied.push(`autolayout (${next.length} node(s) re-arranged)`);
 				break;
 			}
 			default:
 				throw new Error(`Unknown operation "${op}".`);
 		}
 	}
+	layoutNewTasks(next);
 	return { tasks: next, applied };
 }
 
@@ -608,6 +926,8 @@ function summarizeWorkflow(w: RawWorkflow): string {
 		if (t.publishResultAs) node.publishResultAs = t.publishResultAs;
 		if (t.transitionMode && t.transitionMode !== 'FOLLOW_ALL') node.transitionMode = t.transitionMode;
 		if (t.with && (t.with.items || t.with.concurrency)) node.with = t.with;
+		const position = positionOf(t);
+		if (position) node.position = position;
 		return node;
 	});
 
@@ -634,13 +954,14 @@ function summarizeWorkflow(w: RawWorkflow): string {
 			name: w.name,
 			description: w.description ?? undefined,
 			orgId: w.orgId,
+			orgName: w.organization?.name ?? undefined,
 			type: w.type ?? undefined,
 			inputs: w.input ?? [],
 			versionToken: w.updatedAt,
 		},
 		nodes,
 		edges,
-		note: 'Edit with rewst_workflow_edit using task names from "nodes"; the version token is handled for you.',
+		note: 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y.',
 	};
 	return cap(JSON.stringify(summary, null, 1));
 }
@@ -705,44 +1026,48 @@ async function runActionSearch(request: ToolRequest, deps: GraphqlToolDeps): Pro
 	);
 }
 
-async function runWorkflowEdit(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
-	const workflowId = asStringArg(request.args, 'workflowId');
-	const orgId = asStringArg(request.args, 'orgId');
-	const missing = MUTATION_SCOPE_KEYS.filter(key => !asStringArg(request.args, key));
+/** Validates the four scope fields a workflow mutation must carry. */
+function requireScopeFields(toolName: string, args: Record<string, unknown>): { workflowId: string; orgId: string } {
+	const missing = MUTATION_SCOPE_KEYS.filter(key => !asStringArg(args, key));
 	if (missing.length > 0) {
 		throw new Error(
-			`rewst_workflow_edit requires non-empty ${MUTATION_SCOPE_KEYS.join(', ')} (get them from rewst_workflow_get). Missing: ${missing.join(', ')}.`,
+			`${toolName} requires non-empty ${MUTATION_SCOPE_KEYS.join(', ')} (get them from rewst_workflow_get). Missing: ${missing.join(', ')}.`,
 		);
 	}
-	const operations = request.args.operations;
-	if (!Array.isArray(operations) || operations.length === 0) {
-		throw new Error('rewst_workflow_edit requires a non-empty "operations" array.');
-	}
-	const comment = asStringArg(request.args, 'comment') ?? 'Edited by Cage-Free Rewsty';
+	return { workflowId: asStringArg(args, 'workflowId')!, orgId: asStringArg(args, 'orgId')! };
+}
 
-	const workflow = await fetchWorkflow(deps, workflowId!, orgId!);
-	const actionIdByRef = await resolveActionIds(deps, orgId!, actionRefsIn(operations as WorkflowOperation[]));
+/**
+ * The shared workflow write pipeline: resolve any action refs, read the current
+ * workflow, apply the operations to the whole graph, and save with the correct
+ * openedAt token — retrying once on a version conflict by re-reading and
+ * re-applying (operations are relative). Used by both the edit and autolayout
+ * tools.
+ */
+async function applyWorkflowMutation(
+	deps: GraphqlToolDeps,
+	workflowId: string,
+	orgId: string,
+	operations: WorkflowOperation[],
+	comment: string,
+): Promise<string> {
+	const actionIdByRef = await resolveActionIds(deps, orgId, actionRefsIn(operations));
+	const apply = (source: RawWorkflow) => applyOperations(source.tasks, operations, actionIdByRef);
 
-	const apply = (source: RawWorkflow) =>
-		applyOperations(source.tasks, operations as WorkflowOperation[], actionIdByRef);
-
+	const workflow = await fetchWorkflow(deps, workflowId, orgId);
 	let { tasks, applied } = apply(workflow);
-	let input = workflowToInput(workflow, tasks);
 	let result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
-		workflow: input,
+		workflow: workflowToInput(workflow, tasks),
 		openedAt: workflow.updatedAt,
 		comment,
 	});
 
-	// Conflict: someone saved between our read and write. Re-read fresh state,
-	// re-apply the same operations (they are relative), and retry once.
 	let error = firstErrorMessage(result);
 	if (error && /newer version/i.test(error)) {
-		const fresh = await fetchWorkflow(deps, workflowId!, orgId!);
+		const fresh = await fetchWorkflow(deps, workflowId, orgId);
 		({ tasks, applied } = apply(fresh));
-		input = workflowToInput(fresh, tasks);
 		result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
-			workflow: input,
+			workflow: workflowToInput(fresh, tasks),
 			openedAt: fresh.updatedAt,
 			comment,
 		});
@@ -750,8 +1075,25 @@ async function runWorkflowEdit(request: ToolRequest, deps: GraphqlToolDeps): Pro
 	}
 	if (error) throw new Error(`updateWorkflow failed: ${error}`);
 
-	const updated = (result.data as { updateWorkflow?: { updatedAt?: string } } | undefined)?.updateWorkflow;
+	const updated = (result.data as { updateWorkflow?: { name?: string; updatedAt?: string } } | undefined)
+		?.updateWorkflow;
 	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.`;
+}
+
+async function runWorkflowEdit(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
+	const { workflowId, orgId } = requireScopeFields('rewst_workflow_edit', request.args);
+	const operations = request.args.operations;
+	if (!Array.isArray(operations) || operations.length === 0) {
+		throw new Error('rewst_workflow_edit requires a non-empty "operations" array.');
+	}
+	const comment = asStringArg(request.args, 'comment') ?? 'Edited by Cage-Free Rewsty';
+	return applyWorkflowMutation(deps, workflowId, orgId, operations as WorkflowOperation[], comment);
+}
+
+async function runWorkflowAutolayout(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
+	const { workflowId, orgId } = requireScopeFields(WORKFLOW_AUTOLAYOUT_TOOL_NAME, request.args);
+	const comment = asStringArg(request.args, 'comment') ?? 'Auto-laid out by Cage-Free Rewsty';
+	return applyWorkflowMutation(deps, workflowId, orgId, [{ op: 'autolayout' }], comment);
 }
 
 export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
@@ -763,6 +1105,8 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 			return runActionSearch(request, bound);
 		case WORKFLOW_EDIT_TOOL_NAME:
 			return runWorkflowEdit(request, bound);
+		case WORKFLOW_AUTOLAYOUT_TOOL_NAME:
+			return runWorkflowAutolayout(request, bound);
 		default:
 			throw new Error(`Unknown workflow tool "${request.tool}".`);
 	}
@@ -772,9 +1116,12 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 // Mutation approval integration (mirrors graphqlTool's scope machinery)
 // ---------------------------------------------------------------------------
 
-/** The org+workflow a rewst_workflow_edit request targets, if fully specified. */
+/** Tool names that mutate a workflow and share the per-workflow approval scope. */
+const WORKFLOW_MUTATION_TOOLS = new Set<string>([WORKFLOW_EDIT_TOOL_NAME, WORKFLOW_AUTOLAYOUT_TOOL_NAME]);
+
+/** The org+workflow a workflow-mutation request targets, if fully specified. */
 export function workflowEditScope(name: string, input: unknown): MutationScope | undefined {
-	if (name !== WORKFLOW_EDIT_TOOL_NAME) return undefined;
+	if (!WORKFLOW_MUTATION_TOOLS.has(name)) return undefined;
 	const args = asObject(input);
 	const workflowId = str(args.workflowId);
 	const workflowName = str(args.workflowName);
@@ -804,13 +1151,18 @@ export function workflowEditConfirmation(name: string, input: unknown): GraphqlM
 	const scope = workflowEditScope(name, input);
 	if (!scope || isMutationScopeApproved(scope)) return undefined;
 	const args = asObject(input);
-	const operations = Array.isArray(args.operations) ? (args.operations as WorkflowOperation[]) : [];
-	const lines = [
-		`Edit workflow **${scope.scopeName}** (\`${scope.scopeId}\`) in org **${scope.orgName}** (\`${scope.orgId}\`)? Approving also lets further edits to this same workflow run for the rest of this session without asking again.`,
-		'',
-		'Operations:',
-		...operations.map(operation => `- ${describeOperation(operation)}`),
-	];
+	const lead = `workflow **${scope.scopeName}** (\`${scope.scopeId}\`) in org **${scope.orgName}** (\`${scope.orgId}\`)? Approving also lets further edits to this same workflow run for the rest of this session without asking again.`;
+	const lines =
+		name === WORKFLOW_AUTOLAYOUT_TOOL_NAME
+			? [`Auto-layout ${lead}`, '', 'This re-arranges every task position on the canvas.']
+			: [
+					`Edit ${lead}`,
+					'',
+					'Operations:',
+					...(Array.isArray(args.operations) ? (args.operations as WorkflowOperation[]) : []).map(
+						operation => `- ${describeOperation(operation)}`,
+					),
+				];
 	return {
 		title: 'Cage-Free Rewsty wants to edit a Rewst workflow',
 		message: lines.join('\n'),

@@ -181,12 +181,12 @@ if (flags.includes('--probe-add')) {
 		name: 'probe_temp_node',
 		actionId: 'cf6cc66e-a149-4f06-82f5-59f4d72ba93e', // core.noop
 		input: {},
-		metadata: {},
+		metadata: { x: 480, y: 960 },
 		transitionMode: 'FOLLOW_ALL',
 		next: [],
 	});
-	// connect: add a transition from "success" to the new node (duplicate-safe; success already -> noop_end)
-	const fromTask = input.tasks.find(t => t.name === 'success');
+	// connect from an existing node so the new node isn't an orphan (reversible).
+	const fromTask = input.tasks.find(t => t.name === 'can_proceed') ?? input.tasks[0];
 	fromTask.next.push({ when: '{{ SUCCEEDED }}', label: 'probe_edge', do: [newId], publish: [] });
 	console.log(`\nadding orphan-ish task ${newId} (probe_temp_node) + edge success->it`);
 }
@@ -196,6 +196,181 @@ if (flags.includes('--probe-remove')) {
 	input.tasks = input.tasks.filter(t => t.name !== 'probe_temp_node');
 	for (const t of input.tasks) t.next = (t.next ?? []).filter(n => n.label !== 'probe_edge');
 	console.log(`\nremoving probe_temp_node + probe_edge (${before2} -> ${input.tasks.length} tasks)`);
+}
+
+if (flags.includes('--autolayout')) {
+	// Mirror of src/ui/chat/tools/workflowTools.ts autoLayout (layered + right lane).
+	const HEIGHT = 88,
+		HGAP = 80,
+		VGAP = 80,
+		ROW = HEIGHT + VGAP,
+		LANE_GAP = 2 * HGAP;
+	const MIN_FEEDERS = 2,
+		MIN_SPAN = 5;
+	const w = t => 209 + 127 * Math.max(1, (t.next ?? []).length);
+	const ids = new Set(input.tasks.map(t => t.id));
+	const byId = new Map(input.tasks.map(t => [t.id, t]));
+	const wid = id => w(byId.get(id));
+	const ek = (u, v) => `${u} ${v}`;
+	const children = new Map(
+		input.tasks.map(t => {
+			const seen = new Set(),
+				out = [];
+			for (const tr of t.next ?? [])
+				for (const dd of tr.do ?? [])
+					if (ids.has(dd) && !seen.has(dd)) {
+						seen.add(dd);
+						out.push(dd);
+					}
+			return [t.id, out];
+		}),
+	);
+	const back = new Set(),
+		vis = new Set(),
+		stk = new Set();
+	const dfs = u => {
+		vis.add(u);
+		stk.add(u);
+		for (const v of children.get(u)) {
+			if (stk.has(v)) back.add(ek(u, v));
+			else if (!vis.has(v)) dfs(v);
+		}
+		stk.delete(u);
+	};
+	const indeg = new Map(input.tasks.map(t => [t.id, 0]));
+	for (const t of input.tasks) for (const v of children.get(t.id)) indeg.set(v, indeg.get(v) + 1);
+	const roots = input.tasks.filter(t => indeg.get(t.id) === 0).map(t => t.id);
+	for (const r of roots.length ? roots : [input.tasks[0].id]) if (!vis.has(r)) dfs(r);
+	for (const t of input.tasks) if (!vis.has(t.id)) dfs(t.id);
+	const fwd = u => children.get(u).filter(v => !back.has(ek(u, v)));
+	const fpar = new Map(input.tasks.map(t => [t.id, []]));
+	for (const t of input.tasks) for (const v of fwd(t.id)) fpar.get(v).push(t.id);
+	const ranksOf = members => {
+		const rank = new Map(),
+			pend = new Map();
+		for (const id of members) {
+			rank.set(id, 0);
+			pend.set(id, 0);
+		}
+		for (const id of members) for (const v of fwd(id)) if (members.has(v)) pend.set(v, pend.get(v) + 1);
+		const q = [...members].filter(id => pend.get(id) === 0);
+		while (q.length) {
+			const u = q.shift();
+			for (const v of fwd(u)) {
+				if (!members.has(v)) continue;
+				if (rank.get(v) < rank.get(u) + 1) rank.set(v, rank.get(u) + 1);
+				pend.set(v, pend.get(v) - 1);
+				if (pend.get(v) === 0) q.push(v);
+			}
+		}
+		return rank;
+	};
+	const rankAll = ranksOf(ids);
+	const isSide = id => {
+		const f = fpar.get(id);
+		if (f.length <= MIN_FEEDERS) return false;
+		if (fwd(id).length > 1) return false;
+		const fr = f.map(p => rankAll.get(p));
+		return Math.max(...fr) - Math.min(...fr) >= MIN_SPAN;
+	};
+	const side = input.tasks.filter(t => isSide(t.id)).map(t => t.id);
+	const sideSet = new Set(side);
+	const mainSet = new Set(input.tasks.filter(t => !sideSet.has(t.id)).map(t => t.id));
+	const mainIds = [...mainSet];
+	const rank = mainSet.size ? ranksOf(mainSet) : new Map();
+	for (const key of back) {
+		const [u, v] = key.split(' ');
+		if (mainSet.has(u) && mainSet.has(v)) rank.set(u, rank.get(v));
+	}
+	const seq = new Map();
+	let c = 0;
+	const ord = u => {
+		if (seq.has(u)) return;
+		seq.set(u, c++);
+		for (const v of fwd(u)) if (mainSet.has(v)) ord(v);
+	};
+	const mIndeg = new Map(mainIds.map(id => [id, 0]));
+	for (const id of mainIds) for (const v of fwd(id)) if (mainSet.has(v)) mIndeg.set(v, mIndeg.get(v) + 1);
+	const mRoots = mainIds.filter(id => mIndeg.get(id) === 0);
+	for (const r of mRoots.length ? mRoots : mainIds) ord(r);
+	for (const id of mainIds) ord(id);
+	const layers = new Map();
+	for (const id of mainIds) {
+		const r = rank.get(id);
+		if (!layers.has(r)) layers.set(r, []);
+		layers.get(r).push(id);
+	}
+	for (const l of layers.values()) l.sort((a, b) => seq.get(a) - seq.get(b));
+	const x = new Map();
+	const ranks = [...layers.keys()].sort((a, b) => a - b);
+	for (const r of ranks) {
+		let cur = 0;
+		for (const id of layers.get(r)) {
+			x.set(id, cur);
+			cur += wid(id) + HGAP;
+		}
+	}
+	const mChildren = id => fwd(id).filter(v => mainSet.has(v));
+	const mPar = new Map(mainIds.map(id => [id, []]));
+	for (const id of mainIds) for (const v of mChildren(id)) mPar.get(v).push(id);
+	const cen = id => x.get(id) + wid(id) / 2;
+	const place = (row, des) => {
+		let pr = -Infinity;
+		for (const id of row) {
+			const tg = des.has(id) ? des.get(id) : cen(id);
+			const left = Math.max(tg - wid(id) / 2, pr + HGAP);
+			x.set(id, left);
+			pr = left + wid(id);
+		}
+	};
+	for (let s = 0; s < 8; s++) {
+		const down = s % 2 === 0;
+		for (const r of down ? ranks : [...ranks].reverse()) {
+			const des = new Map();
+			for (const id of layers.get(r)) {
+				const nb = down ? mPar.get(id) : mChildren(id);
+				if (nb.length) des.set(id, nb.reduce((a, n) => a + cen(n), 0) / nb.length);
+			}
+			place(layers.get(r), des);
+		}
+	}
+	const minX = mainIds.length ? Math.min(...mainIds.map(id => x.get(id))) : 0;
+	for (const id of mainIds)
+		byId.get(id).metadata = {
+			...(byId.get(id).metadata ?? {}),
+			x: Math.round(x.get(id) - minX),
+			y: rank.get(id) * ROW,
+		};
+	if (side.length) {
+		const mainRight = mainIds.length ? Math.max(...mainIds.map(id => x.get(id) - minX + wid(id))) : 0;
+		const laneX = mainRight + LANE_GAP;
+		const cY = id => {
+			const f = fpar.get(id).filter(p => mainSet.has(p));
+			const srcRanks = f.length ? f.map(p => rank.get(p)) : [rankAll.get(id)];
+			return (srcRanks.reduce((a, r) => a + r, 0) / srcRanks.length) * ROW;
+		};
+		let prevB = -Infinity;
+		for (const id of [...side].sort((a, b) => cY(a) - cY(b))) {
+			const y = Math.max(Math.round(cY(id)), prevB + VGAP);
+			byId.get(id).metadata = { ...(byId.get(id).metadata ?? {}), x: laneX, y };
+			prevB = y + HEIGHT;
+		}
+	}
+	const ob = input.tasks.map(t => ({ x: t.metadata.x, y: t.metadata.y, w: w(t), h: HEIGHT }));
+	let overlaps = 0;
+	for (let i = 0; i < ob.length; i++)
+		for (let j = i + 1; j < ob.length; j++) {
+			const a = ob[i],
+				b = ob[j];
+			if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) overlaps++;
+		}
+	console.log('\n=== AUTOLAYOUT (layered + right lane) ===');
+	console.log(`side-lane catches: ${side.map(id => byId.get(id).name).join(', ') || '(none)'}`);
+	for (const t of [...input.tasks].sort((a, b) => a.metadata.y - b.metadata.y || a.metadata.x - b.metadata.x))
+		console.log(
+			`  ${sideSet.has(t.id) ? '[LANE]' : 'rank=' + rank.get(t.id)}\t${t.name.slice(0, 28).padEnd(28)} x=${t.metadata.x} y=${t.metadata.y}`,
+		);
+	console.log(`overlaps: ${overlaps}; mainCount=${mainIds.length}; laneCount=${side.length}`);
 }
 
 if (flags.includes('--clear-probe')) {

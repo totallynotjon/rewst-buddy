@@ -4,9 +4,11 @@ import { initTestEnvironment } from '@test';
 import { _resetApprovedMutationScopes, approveMutationScope, type GraphqlToolDeps } from './graphqlTool';
 import {
 	applyOperations,
+	autoLayout,
 	isWorkflowTool,
 	normalizePublish,
 	runWorkflowTool,
+	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	workflowEditConfirmation,
 	workflowEditScope,
@@ -25,9 +27,18 @@ function sampleTasks() {
 			actionId: 'noop-id',
 			action: { ref: 'core.noop' },
 			input: {},
+			metadata: { x: 0, y: 0 },
 			next: [{ when: '{{ SUCCEEDED }}', label: '', do: ['bb02'], publish: [] }],
 		},
-		{ id: 'bb02', name: 'end', actionId: 'noop-id', action: { ref: 'core.noop' }, input: {}, next: [] },
+		{
+			id: 'bb02',
+			name: 'end',
+			actionId: 'noop-id',
+			action: { ref: 'core.noop' },
+			input: {},
+			metadata: { x: 0, y: 120 },
+			next: [],
+		},
 	];
 }
 
@@ -36,6 +47,7 @@ function sampleWorkflow() {
 		id: 'wf-1',
 		name: 'Sample',
 		orgId: 'org-1',
+		organization: { id: 'org-1', name: 'Test Org' },
 		updatedAt: '1000',
 		tasks: sampleTasks(),
 	};
@@ -139,12 +151,37 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(tasks.find(t => t.name === 'start')!.next![0].label, 'go');
 		});
 
-		test('reposition sets layout offsets', () => {
-			const ops: WorkflowOperation[] = [{ op: 'reposition', from: 'start', top: 12, left: 34 }];
+		test('reposition moves a task to exact (un-snapped) canvas coordinates', () => {
+			const ops: WorkflowOperation[] = [{ op: 'reposition', task: 'start', x: 50.5, y: 130 }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
-			const edge = tasks.find(t => t.name === 'start')!.next![0];
-			assert.strictEqual(edge.top, 12);
-			assert.strictEqual(edge.left, 34);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.metadata as object, { x: 50.5, y: 130 });
+		});
+
+		test('a new connected task is auto-placed one node-height-plus-gap below its parent', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'notify', action: 'core.noop' },
+				{ op: 'connect', from: 'end', to: 'notify' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const end = tasks.find(t => t.name === 'end')!.metadata as { x: number; y: number };
+			const notify = tasks.find(t => t.name === 'notify')!.metadata as { x: number; y: number };
+			assert.strictEqual(notify.x, end.x, 'same column as its parent');
+			// NODE_HEIGHT (88) + V_GAP (80) below the parent's top.
+			assert.strictEqual(notify.y, end.y + 168, 'placed below its parent with a gap');
+		});
+
+		test('add_task honors an explicit position verbatim', () => {
+			const ops: WorkflowOperation[] = [{ op: 'add_task', name: 'notify', action: 'core.noop', x: 312, y: 205 }];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'notify')!.metadata as object, { x: 312, y: 205 });
+		});
+
+		test('an unconnected new task drops below the lowest existing node', () => {
+			const ops: WorkflowOperation[] = [{ op: 'add_task', name: 'orphan', action: 'core.noop' }];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const orphan = tasks.find(t => t.name === 'orphan')!.metadata as { x: number; y: number };
+			// lowest node bottom is end (y=120 + height 88 = 208) + V_GAP (80) = 288.
+			assert.strictEqual(orphan.y, 288);
 		});
 
 		test('does not mutate the input task list', () => {
@@ -171,6 +208,126 @@ suite('Unit: workflowTools', () => {
 					),
 				/resolve action/,
 			);
+		});
+	});
+
+	suite('autoLayout()', () => {
+		// Node footprint for overlap checks, mirroring the tool's geometry.
+		const box = (t: { metadata: unknown; next?: { do?: string[] }[] }) => {
+			const m = t.metadata as { x: number; y: number };
+			return { x: m.x, y: m.y, w: 209 + 127 * Math.max(1, (t.next ?? []).length), h: 88 };
+		};
+		const overlap = (a: ReturnType<typeof box>, b: ReturnType<typeof box>) =>
+			a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+		test('positions every task with finite, non-overlapping coordinates', () => {
+			const tasks = sampleTasks();
+			autoLayout(tasks as never);
+			for (const t of tasks) {
+				const m = t.metadata as { x: number; y: number };
+				assert.ok(Number.isFinite(m.x) && Number.isFinite(m.y), `${t.name} has finite coordinates`);
+			}
+			for (let i = 0; i < tasks.length; i++) {
+				for (let j = i + 1; j < tasks.length; j++) {
+					assert.ok(!overlap(box(tasks[i]), box(tasks[j])), `${tasks[i].name} overlaps ${tasks[j].name}`);
+				}
+			}
+		});
+
+		test('is deterministic for identical input', () => {
+			const a = sampleTasks();
+			const b = sampleTasks();
+			autoLayout(a as never);
+			autoLayout(b as never);
+			assert.deepStrictEqual(
+				a.map(t => t.metadata),
+				b.map(t => t.metadata),
+			);
+		});
+
+		test('handles a cycle without runaway coordinates', () => {
+			const cyclic = sampleTasks();
+			cyclic[1].next = [{ when: '{{ SUCCEEDED }}', label: '', do: ['aa01'], publish: [] }]; // end -> start
+			autoLayout(cyclic as never);
+			for (const t of cyclic) {
+				const m = t.metadata as { x: number; y: number };
+				assert.ok(Math.abs(m.x) < 100000 && Math.abs(m.y) < 100000, `${t.name} stays bounded`);
+			}
+		});
+
+		test('orders a rank by transition order and floats a loop node to its target rank', () => {
+			// start -> executions -> can_proceed -> {drop, maxretry, delay, noop_end};
+			// delay loops back to executions.
+			const node = (id: string, dos: string[][] = []) => ({
+				id,
+				name: id,
+				actionId: 'noop-id',
+				action: { ref: 'core.noop' },
+				input: {},
+				metadata: {} as { x: number; y: number },
+				next: dos.map(d => ({ when: '{{ SUCCEEDED }}', label: '', do: d, publish: [] })),
+			});
+			const tasks = [
+				node('start', [['executions']]),
+				node('executions', [['can_proceed']]),
+				node('can_proceed', [['drop'], ['maxretry'], ['delay'], ['noop_end']]),
+				node('drop'),
+				node('maxretry'),
+				node('delay', [['executions']]),
+				node('noop_end'),
+			];
+			autoLayout(tasks as never);
+			const pos = Object.fromEntries(tasks.map(t => [t.id, t.metadata as { x: number; y: number }]));
+
+			// The loop node shares its target's rank, not the exit row below can_proceed.
+			assert.strictEqual(pos.delay.y, pos.executions.y, 'delay floats to executions row');
+			assert.ok(pos.delay.y < pos.drop.y, 'delay is above the exit row');
+
+			// can_proceed's non-loop children share one rank, ordered by transition order.
+			assert.strictEqual(pos.drop.y, pos.maxretry.y);
+			assert.strictEqual(pos.maxretry.y, pos.noop_end.y);
+			assert.ok(pos.drop.x < pos.maxretry.x, 'drop (transition 0) left of maxretry (transition 1)');
+			assert.ok(pos.maxretry.x < pos.noop_end.x, 'maxretry left of noop_end (later transition)');
+		});
+
+		test('routes a terminal catch fed by many ranks into the right lane', () => {
+			const node = (id: string, dos: string[][] = []) => ({
+				id,
+				name: id,
+				actionId: 'noop-id',
+				action: { ref: 'core.noop' },
+				input: {},
+				metadata: {} as { x: number; y: number },
+				next: dos.map(d => ({ when: '{{ SUCCEEDED }}', label: '', do: d, publish: [] })),
+			});
+			// A 7-node chain n0..n6; n0,n2,n4,n6 also feed a shared "catch" -> end.
+			const tasks = [
+				node('n0', [['n1'], ['catch']]),
+				node('n1', [['n2']]),
+				node('n2', [['n3'], ['catch']]),
+				node('n3', [['n4']]),
+				node('n4', [['n5'], ['catch']]),
+				node('n5', [['n6']]),
+				node('n6', [['end'], ['catch']]),
+				node('catch', [['end']]),
+				node('end'),
+			];
+			autoLayout(tasks as never);
+			const pos = Object.fromEntries(tasks.map(t => [t.id, t.metadata as { x: number; y: number }]));
+			const mainMaxX = Math.max(...['n0', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'end'].map(id => pos[id].x));
+			assert.ok(pos.catch.x > mainMaxX, 'the catch is in a lane to the right of the whole main flow');
+			// end is fed by only 2 (n6 + catch), so it stays in the main column, not the lane.
+			assert.ok(pos.end.x <= mainMaxX, 'the natural end node stays in the main flow');
+		});
+
+		test('the autolayout operation recomputes positions from a messy layout', () => {
+			const messy = sampleTasks();
+			messy[0].metadata = { x: 9999, y: -9999 };
+			const { tasks, applied } = applyOperations(messy as never, [{ op: 'autolayout' }], NO_ACTIONS);
+			const start = tasks.find(t => t.name === 'start')!.metadata as { x: number; y: number };
+			assert.notDeepStrictEqual(start, { x: 9999, y: -9999 }, 'the stale position was replaced');
+			assert.ok(Number.isFinite(start.x) && Number.isFinite(start.y));
+			assert.match(applied[0], /autolayout/);
 		});
 	});
 
@@ -214,6 +371,20 @@ suite('Unit: workflowTools', () => {
 			approveMutationScope({ scopeId: 'wf-1', scopeName: 'WF', orgId: 'org-1', orgName: 'Acme' });
 			assert.strictEqual(workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, fullArgs), undefined);
 		});
+
+		test('the autolayout tool shares the per-workflow scope and prompt', () => {
+			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme' };
+			assert.deepStrictEqual(workflowEditScope(WORKFLOW_AUTOLAYOUT_TOOL_NAME, args), {
+				scopeId: 'wf-1',
+				scopeName: 'WF',
+				orgId: 'org-1',
+				orgName: 'Acme',
+			});
+			const confirmation = workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, args);
+			assert.ok(confirmation);
+			assert.match(confirmation!.message, /Auto-layout/);
+			assert.match(confirmation!.message, /re-arranges every task/i);
+		});
 	});
 
 	suite('runWorkflowTool()', () => {
@@ -251,7 +422,9 @@ suite('Unit: workflowTools', () => {
 			);
 			const parsed = JSON.parse(output);
 			assert.strictEqual(parsed.workflow.name, 'Sample');
+			assert.strictEqual(parsed.workflow.orgName, 'Test Org', 'org name is surfaced for the edit/approval args');
 			assert.strictEqual(parsed.nodes.length, 2);
+			assert.deepStrictEqual(parsed.nodes[0].position, { x: 0, y: 0 }, 'node position is surfaced');
 			assert.strictEqual(parsed.edges[0].from, 'start');
 			assert.deepStrictEqual(parsed.edges[0].to, ['end (bb02)']);
 		});
@@ -310,6 +483,23 @@ suite('Unit: workflowTools', () => {
 			const updates = calls.filter(c => c.query.includes('RewstBuddyWorkflowUpdate'));
 			assert.strictEqual(updates.length, 2, 'retried once');
 			assert.strictEqual(updates[1].variables!.openedAt, '1500', 'retry uses the re-read token');
+		});
+
+		test('rewst_workflow_autolayout re-arranges and saves', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+					args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+				},
+				deps,
+			);
+			assert.match(output, /autolayout/);
+			assert.match(output, /2000/);
+			assert.ok(
+				calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')),
+				'it saved',
+			);
 		});
 
 		test('rewst_workflow_edit refuses when scope fields are missing', async () => {

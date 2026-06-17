@@ -11,7 +11,7 @@ const WORKFLOW_ID = process.env.REWST_TEST_WORKFLOW_ID ?? '019ecc4c-b826-70b0-a8
 const ORG_ID = process.env.REWST_TEST_WORKFLOW_ORG_ID ?? '01940973-8a88-7109-8ba7-d64bfbb18950';
 
 interface GraphSummary {
-	workflow: { id: string; name: string; orgId: string };
+	workflow: { id: string; name: string; orgId: string; orgName?: string };
 	nodes: { id: string; name: string; action: string }[];
 	edges: { from: string; to: string[]; label?: string }[];
 }
@@ -91,6 +91,16 @@ suite('Integration: workflowTools', function () {
 		assert.ok('parameters' in action, 'describe mode returns parameters');
 	});
 
+	test('rewst_workflow_get surfaces the org name for the approval args', async () => {
+		const summary = JSON.parse(
+			await runWorkflowTool(
+				{ tool: 'rewst_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
+				deps,
+			),
+		) as GraphSummary;
+		assert.ok(summary.workflow.orgName && summary.workflow.orgName !== ORG_ID, 'orgName is a name, not the id');
+	});
+
 	test('rewst_workflow_edit round-trips a transition label (content-neutral)', async () => {
 		const before = JSON.parse(
 			await runWorkflowTool(
@@ -115,7 +125,7 @@ suite('Integration: workflowTools', function () {
 						workflowId: WORKFLOW_ID,
 						workflowName: before.workflow.name,
 						orgId: ORG_ID,
-						orgName: 'Sandbox',
+						orgName: before.workflow.orgName ?? ORG_ID,
 						operations: [{ op: 'set_transition', from: target!.from, set: { label } }],
 					},
 				},

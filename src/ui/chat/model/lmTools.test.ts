@@ -15,8 +15,8 @@ function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
 }
 
 suite('Unit: lmTools', () => {
-	test('exposes all 7 protocol tools with input schemas', () => {
-		assert.strictEqual(ALL_TOOL_SPECS.length, 7);
+	test('exposes all 8 protocol tools with input schemas', () => {
+		assert.strictEqual(ALL_TOOL_SPECS.length, 8);
 		for (const spec of ALL_TOOL_SPECS) {
 			assert.ok(spec.inputSchema, `${spec.name} carries an inputSchema`);
 		}
@@ -39,12 +39,13 @@ suite('Unit: lmTools', () => {
 			]);
 			assert.deepStrictEqual([...enabledToolNames(settings({ enableWorkflowTools: true }))].sort(), [
 				'rewst_action_search',
+				'rewst_workflow_autolayout',
 				'rewst_workflow_edit',
 				'rewst_workflow_get',
 			]);
 		});
 
-		test('everything enabled yields all 7', () => {
+		test('everything enabled yields all 8', () => {
 			const names = enabledToolNames(
 				settings({
 					enableWorkspaceTools: true,
@@ -53,7 +54,7 @@ suite('Unit: lmTools', () => {
 					enableWorkflowTools: true,
 				}),
 			);
-			assert.strictEqual(names.size, 7);
+			assert.strictEqual(names.size, 8);
 		});
 	});
 
