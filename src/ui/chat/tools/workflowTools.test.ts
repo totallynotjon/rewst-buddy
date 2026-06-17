@@ -626,7 +626,7 @@ suite('Unit: workflowTools', () => {
 			return { deps, calls };
 		}
 
-		test('buddy_workflow_get returns a normalized graph', async () => {
+		test('buddy_workflow_get returns a concise analysis graph by default (no ids/positions)', async () => {
 			const { deps } = makeDeps();
 			const output = await runWorkflowTool(
 				{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
@@ -635,15 +635,32 @@ suite('Unit: workflowTools', () => {
 			const parsed = JSON.parse(output);
 			assert.strictEqual(parsed.workflow.name, 'Sample');
 			assert.strictEqual(parsed.workflow.orgName, 'Test Org', 'org name is surfaced for the edit/approval args');
+			assert.strictEqual(parsed.workflow.id, 'wf-1', 'workflow id is kept (needed for follow-up calls)');
+			assert.ok(!('versionToken' in parsed.workflow), 'version token omitted in the analysis view');
 			assert.deepStrictEqual(
 				parsed.workflow.inputs,
 				[{ name: 'email', type: 'string', title: 'Email', required: true, description: 'addr' }],
 				'inputs are surfaced from action.parameters',
 			);
 			assert.strictEqual(parsed.nodes.length, 2);
-			assert.deepStrictEqual(parsed.nodes[0].position, { x: 0, y: 0 }, 'node position is surfaced');
+			assert.ok(!('id' in parsed.nodes[0]), 'task ids omitted in the analysis view');
+			assert.ok(!('position' in parsed.nodes[0]), 'canvas position omitted in the analysis view');
 			assert.strictEqual(parsed.edges[0].from, 'start');
-			assert.deepStrictEqual(parsed.edges[0].to, ['end (bb02)']);
+			assert.deepStrictEqual(parsed.edges[0].to, ['end'], 'targets referenced by name, no id');
+			assert.ok(!('transitionId' in parsed.edges[0]), 'transition ids omitted in the analysis view');
+		});
+
+		test('buddy_workflow_get with detail "full" restores ids, positions, and the version token', async () => {
+			const { deps } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1', detail: 'full' } },
+				deps,
+			);
+			const parsed = JSON.parse(output);
+			assert.strictEqual(parsed.workflow.versionToken, '1000', 'version token present in full view');
+			assert.strictEqual(parsed.nodes[0].id, 'aa01', 'task id present in full view');
+			assert.deepStrictEqual(parsed.nodes[0].position, { x: 0, y: 0 }, 'position present in full view');
+			assert.deepStrictEqual(parsed.edges[0].to, ['end (bb02)'], 'targets carry the id in full view');
 		});
 
 		test('buddy_workflow_get surfaces a deliberate FOLLOW_ALL and non-default join, hides the safe default', async () => {

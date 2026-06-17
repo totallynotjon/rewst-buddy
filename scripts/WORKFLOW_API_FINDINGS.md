@@ -209,10 +209,17 @@ in-chat per-workflow mutation-approval flow. They require `workflowId`,
 four (including **`orgName`** via `organization { name }`) so the assistant passes
 real names, not ids.
 
-1. **`buddy_workflow_get`** `{ workflowId, orgId }` → normalized graph: workflow
-   (id, name, orgId, orgName, **inputs** from `action.parameters`, version token),
-   nodes (id, name, action ref, input, position), edges (`from`, when, label, `to[]`
-   task names, publish). One call instead of schema-introspect + query + reshape.
+1. **`buddy_workflow_get`** `{ workflowId, orgId, detail? }` → normalized graph: workflow
+   (id, name, orgId, orgName, **inputs** from `action.parameters`), nodes (name, action ref,
+   input, publishResultAs, non-default transitionMode/join, loop `with`), edges (`from`, `when`,
+   `label`, `to[]` task names, `publish`). One call instead of schema-introspect + query + reshape.
+   **`detail` defaults to `"summary"` — a concise ANALYSIS view that omits the edit/layout plumbing
+   (task ids, transition ids, canvas `x/y`, version token) and refers to tasks/edges by name**, which
+   is what `buddy_workflow_edit` ops use, so you can edit straight from it. `detail:"full"` adds task
+   ids, transition ids, and positions — needed only to reposition a task or target one specific
+   transition by id. The concise view is the default because the plumbing is pure noise for "what
+   does this workflow do" analysis and the edit path resolves tasks by name + handles ids/version
+   internally.
 2. **`buddy_action_search`** `{ orgId, query, limit, includeDeprecated }` → ranked,
    deduped action matches (ref, id, category); describe mode `{ orgId, ref|actionId }`
    → `parameters` + `outputSchema` so the assistant can fill task `input` correctly.

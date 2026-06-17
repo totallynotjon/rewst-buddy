@@ -40,14 +40,20 @@ const MUTATION_SCOPE_KEYS = ['workflowId', 'workflowName', 'orgId', 'orgName'] a
 export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	{
 		name: 'buddy_workflow_get',
-		args: '{"workflowId": string, "orgId": string}',
+		args: '{"workflowId": string, "orgId": string, "detail"?: "summary" | "full"}',
 		description:
-			'Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what buddy_workflow_edit operations expect. Use this before editing a workflow.',
+			'Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what buddy_workflow_edit operations expect. By default (detail "summary") it returns a concise ANALYSIS view: task ids, transition ids, canvas x/y positions, and the version token are OMITTED and tasks/edges are referenced by name — ideal for understanding what a workflow does with far fewer tokens, and enough to edit (operations resolve tasks by name). Pass detail "full" only when you need those ids/positions, e.g. to reposition a task or target one specific transition by its id. Use this before editing a workflow.',
 		inputSchema: {
 			type: 'object',
 			properties: {
 				workflowId: { type: 'string', description: 'The workflow id.' },
 				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
+				detail: {
+					type: 'string',
+					enum: ['summary', 'full'],
+					description:
+						'"summary" (default): concise analysis view, no ids/positions/version token. "full": adds task ids, transition ids, and canvas positions for repositioning or targeting a specific transition.',
+				},
 			},
 			required: ['workflowId', 'orgId'],
 		},
@@ -1210,12 +1216,17 @@ function cap(text: string): string {
 	return text.length > MAX_OUTPUT_CHARS ? text.slice(0, MAX_OUTPUT_CHARS) + '\n…(output truncated)' : text;
 }
 
-function summarizeWorkflow(w: RawWorkflow): string {
+function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary'): string {
+	const full = detail === 'full';
 	const nameById = new Map(w.tasks.map(t => [t.id, t.name]));
-	const label = (id: string): string => `${nameById.get(id) ?? '?'} (${id})`;
+	// In the analysis view, refer to targets by name; full view appends the id.
+	const targetRef = (id: string): string => (full ? `${nameById.get(id) ?? '?'} (${id})` : (nameById.get(id) ?? '?'));
 
 	const nodes = w.tasks.map(t => {
-		const node: Record<string, unknown> = { id: t.id, name: t.name, action: t.action?.ref ?? t.actionId };
+		const node: Record<string, unknown> = {};
+		if (full) node.id = t.id;
+		node.name = t.name;
+		node.action = t.action?.ref ?? t.actionId;
 		if (t.input && Object.keys(t.input as object).length > 0) node.input = t.input;
 		if (t.publishResultAs) node.publishResultAs = t.publishResultAs;
 		// The tool normalizes every saved task to FOLLOW_FIRST + join 1, so only
@@ -1224,15 +1235,17 @@ function summarizeWorkflow(w: RawWorkflow): string {
 		if (t.transitionMode === 'FOLLOW_ALL') node.transitionMode = 'FOLLOW_ALL';
 		if (t.join != null && t.join !== 1) node.join = t.join;
 		if (t.with && (t.with.items || t.with.concurrency)) node.with = t.with;
-		const position = positionOf(t);
-		if (position) node.position = position;
+		if (full) {
+			const position = positionOf(t);
+			if (position) node.position = position;
+		}
 		return node;
 	});
 
 	const edges: Record<string, unknown>[] = [];
 	for (const t of w.tasks) {
 		for (const transition of t.next ?? []) {
-			const targets = (transition.do ?? []).map(label);
+			const targets = (transition.do ?? []).map(targetRef);
 			const publish = normalizePublish(transition.publish);
 			const edge: Record<string, unknown> = {
 				from: t.name,
@@ -1241,7 +1254,7 @@ function summarizeWorkflow(w: RawWorkflow): string {
 			};
 			if (transition.label) edge.label = transition.label;
 			if (publish.length > 0) edge.publish = publish;
-			if (transition.id) edge.transitionId = transition.id;
+			if (full && transition.id) edge.transitionId = transition.id;
 			edges.push(edge);
 		}
 	}
@@ -1263,22 +1276,22 @@ function summarizeWorkflow(w: RawWorkflow): string {
 		return entry;
 	});
 
-	const summary = {
-		workflow: {
-			id: w.id,
-			name: w.name,
-			description: w.description ?? undefined,
-			orgId: w.orgId,
-			orgName: w.organization?.name ?? undefined,
-			type: w.type ?? undefined,
-			inputs,
-			versionToken: w.updatedAt,
-		},
-		nodes,
-		edges,
-		note: 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). When troubleshooting a condition or expression, render it against a recent execution with buddy_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").',
+	const workflow: Record<string, unknown> = {
+		id: w.id,
+		name: w.name,
+		description: w.description ?? undefined,
+		orgId: w.orgId,
+		orgName: w.organization?.name ?? undefined,
+		type: w.type ?? undefined,
+		inputs,
 	};
-	return cap(JSON.stringify(summary, null, 1));
+	if (full) workflow.versionToken = w.updatedAt;
+
+	const note = full
+		? 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). When troubleshooting a condition or expression, render it against a recent execution with buddy_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").'
+		: 'Analysis view: task ids, transition ids, canvas positions, and the version token are omitted, and tasks/edges are referenced by NAME — which is exactly what buddy_workflow_edit operations use, so you can edit straight from this view. Call buddy_workflow_get again with detail:"full" only to reposition a task or target one specific transition by its id. To edit or run, pass workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). Before changing a condition or expression, confirm it with buddy_render_jinja against a recent execution (types matter: a boolean is not the string "true").';
+
+	return cap(JSON.stringify({ workflow, nodes, edges, note }, null, 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -1302,7 +1315,8 @@ async function runWorkflowGet(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	const workflowId = asStringArg(request.args, 'workflowId');
 	const orgId = asStringArg(request.args, 'orgId');
 	if (!workflowId || !orgId) throw new Error('buddy_workflow_get requires "workflowId" and "orgId".');
-	return summarizeWorkflow(await fetchWorkflow(deps, workflowId, orgId));
+	const detail = asStringArg(request.args, 'detail') === 'full' ? 'full' : 'summary';
+	return summarizeWorkflow(await fetchWorkflow(deps, workflowId, orgId), detail);
 }
 
 async function runActionSearch(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {

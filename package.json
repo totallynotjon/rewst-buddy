@@ -81,7 +81,7 @@
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what buddy_workflow_edit operations expect. Use this before editing a workflow.",
+				"modelDescription": "Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what buddy_workflow_edit operations expect. By default (detail \"summary\") it returns a concise ANALYSIS view: task ids, transition ids, canvas x/y positions, and the version token are OMITTED and tasks/edges are referenced by name — ideal for understanding what a workflow does with far fewer tokens, and enough to edit (operations resolve tasks by name). Pass detail \"full\" only when you need those ids/positions, e.g. to reposition a task or target one specific transition by its id. Use this before editing a workflow.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -92,6 +92,14 @@
 						"orgId": {
 							"type": "string",
 							"description": "The id of the org that owns the workflow."
+						},
+						"detail": {
+							"type": "string",
+							"enum": [
+								"summary",
+								"full"
+							],
+							"description": "\"summary\" (default): concise analysis view, no ids/positions/version token. \"full\": adds task ids, transition ids, and canvas positions for repositioning or targeting a specific transition."
 						}
 					},
 					"required": [
