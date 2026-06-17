@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.43.6] - 2026-06-16
+
+### Added
+
+- **Context-usage status bar indicator** - the Rewst backend reports real context-window usage mid-turn, but VS Code's native "Context Window" gauge can't be driven by a third-party model provider (its response stream has no usage channel — see [microsoft/vscode#309207](https://github.com/microsoft/vscode/issues/309207) and [#313458](https://github.com/microsoft/vscode/issues/313458)), so it always reads `0 / 144K` for Cage-Free Rewsty. The extension now surfaces that usage as a native status bar item in the bottom-right (`$(dashboard) 42%`), with a hover tooltip showing the token breakdown and organization. It appears after the first turn that reports usage and tracks the most recent turn. (#29)
+
 ## [0.43.5] - 2026-06-16
 
 ### Changed

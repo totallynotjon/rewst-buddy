@@ -27,6 +27,10 @@ export type ConversationEvent =
 	// render it as a card-like line; `label` stays as the plain-text fallback
 	// and the dedupe key for collapsing back-to-back repeats.
 	| { kind: 'status'; label: string; activity?: boolean; tool?: { name: string; args?: string } }
+	// Real context-window usage the backend reports mid-turn (context_usage). VS
+	// Code's native gauge can't be driven by a third-party model provider, so the
+	// chat surfaces this as its own inline indicator instead.
+	| { kind: 'usage'; totalTokens: number; maxTokens: number; percent: number }
 	| { kind: 'chunk'; text: string }
 	| {
 			kind: 'complete';
@@ -66,9 +70,9 @@ const STATUS_LABELS: Record<string, string> = {
 // Statuses that represent real work (vs. housekeeping like thinking/summarizing).
 const ACTIVITY_STATUSES = new Set(['searching']);
 
-// Statuses with no UI mapping (context_usage, summarization_complete,
-// search_complete, TOOL_CALL_COMPLETE, TOOL_SPECIFIC_EVENT, resume_*) fall
-// through the switch default and are dropped.
+// Statuses with no UI mapping (summarization_complete, search_complete,
+// TOOL_CALL_COMPLETE, TOOL_SPECIFIC_EVENT, resume_*) fall through the switch
+// default and are dropped.
 const TERMINAL_ERROR_MESSAGES: Record<string, string> = {
 	interrupted: 'The request was interrupted.',
 	conversation_killed: 'The conversation was stopped by another client.',
@@ -76,6 +80,10 @@ const TERMINAL_ERROR_MESSAGES: Record<string, string> = {
 
 function asString(value: unknown): string | undefined {
 	return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+	return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function parseSources(metadata: Record<string, unknown> | null | undefined): ConversationSource[] {
@@ -176,6 +184,16 @@ export class ConversationEventMapper {
 					requestId: asString(metadata?.requestId) ?? this.lastRequestId,
 					raw: metadata ?? {},
 				});
+				break;
+			}
+			case 'context_usage': {
+				// Needs both the running total and the window size to be meaningful;
+				// percent is computed when the backend omits it.
+				const totalTokens = asNumber(metadata?.totalTokens);
+				const maxTokens = asNumber(metadata?.maxTokens);
+				if (totalTokens === undefined || maxTokens === undefined || maxTokens <= 0) break;
+				const percent = asNumber(metadata?.percent) ?? Math.round((totalTokens / maxTokens) * 100);
+				events.push({ kind: 'usage', totalTokens, maxTokens, percent });
 				break;
 			}
 			case 'streaming_response': {
