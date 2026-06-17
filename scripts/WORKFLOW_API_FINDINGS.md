@@ -214,3 +214,7 @@ real names, not ids.
    and the execution-contexts query returns an array of snapshots (the last is the most
    complete). This is the fix for the recurring failure mode where the assistant guesses
    a Jinja change (boolean vs `'true'`, `CTX.x` vs `CTX.<alias>.x`) and ships it wrong.
+6. **`rewst_workflow_run`** `{ workflowId, workflowName, orgId, orgName, input? }` → triggers a
+   run via the `testWorkflow` mutation (`testWorkflow(id, orgId, input) { executionId }`) and
+   returns the new `executionId` — which feeds straight into `rewst_render_jinja` to inspect
+   what the run produced. Approval-gated per workflow (it executes real automation).

@@ -10,6 +10,7 @@ import {
 	runWorkflowTool,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
+	WORKFLOW_RUN_TOOL_NAME,
 	workflowEditConfirmation,
 	workflowEditScope,
 	workflowToInput,
@@ -508,6 +509,9 @@ suite('Unit: workflowTools', () => {
 					const vars = variables?.vars as { proceed?: unknown } | undefined;
 					return { data: { renderJinja: { result: vars?.proceed } } };
 				}
+				if (query.includes('RewstBuddyTestWorkflow')) {
+					return { data: { testWorkflow: { executionId: 'exec-new' } } };
+				}
 				return { data: {} };
 			};
 			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
@@ -672,6 +676,35 @@ suite('Unit: workflowTools', () => {
 				calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')),
 				'it saved',
 			);
+		});
+
+		test('rewst_workflow_run triggers testWorkflow and returns the execution id', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_RUN_TOOL_NAME,
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						input: { email: 'x@y.z' },
+					},
+				},
+				deps,
+			);
+			assert.match(output, /exec-new/, 'returns the execution id');
+			const call = calls.find(c => c.query.includes('RewstBuddyTestWorkflow'))!;
+			assert.deepStrictEqual(call.variables!.input, { email: 'x@y.z' }, 'passes the run input through');
+		});
+
+		test('rewst_workflow_run is scope-gated with a "run" confirmation', () => {
+			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme', input: { a: 1 } };
+			assert.ok(workflowEditScope(WORKFLOW_RUN_TOOL_NAME, args), 'shares the per-workflow scope');
+			const confirmation = workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args);
+			assert.ok(confirmation);
+			assert.match(confirmation!.message, /Run workflow/);
+			assert.match(confirmation!.message, /executes the workflow/i);
 		});
 
 		test('rewst_workflow_edit refuses when scope fields are missing', async () => {

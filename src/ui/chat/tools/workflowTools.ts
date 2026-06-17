@@ -30,6 +30,7 @@ const MAX_OUTPUT_CHARS = 8_000;
 
 export const WORKFLOW_EDIT_TOOL_NAME = 'rewst_workflow_edit';
 export const WORKFLOW_AUTOLAYOUT_TOOL_NAME = 'rewst_workflow_autolayout';
+export const WORKFLOW_RUN_TOOL_NAME = 'rewst_workflow_run';
 
 /** Identifying fields a workflow-mutation request must carry (org + workflow). */
 const MUTATION_SCOPE_KEYS = ['workflowId', 'workflowName', 'orgId', 'orgName'] as const;
@@ -105,6 +106,23 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
 				orgName: { type: 'string', description: 'The org name, shown in the approval prompt.' },
 				comment: { type: 'string', description: 'Optional patch comment describing the change.' },
+			},
+			required: ['workflowId', 'workflowName', 'orgId', 'orgName'],
+		},
+	},
+	{
+		name: WORKFLOW_RUN_TOOL_NAME,
+		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "input"?: object}',
+		description:
+			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from rewst_workflow_get's workflow.inputs). Returns the started execution's id, which you can feed to rewst_render_jinja (executionId) to inspect what the run produced. This actually executes the workflow's automation, so it requires user approval, remembered per workflow for the session.",
+		inputSchema: {
+			type: 'object',
+			properties: {
+				workflowId: { type: 'string', description: 'The workflow id to run.' },
+				workflowName: { type: 'string', description: 'The workflow name, shown in the approval prompt.' },
+				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
+				orgName: { type: 'string', description: 'The org name, shown in the approval prompt.' },
+				input: { type: 'object', description: "The workflow's run inputs (maps input name to value)." },
 			},
 			required: ['workflowId', 'workflowName', 'orgId', 'orgName'],
 		},
@@ -995,6 +1013,12 @@ const RENDER_JINJA_MUTATION = `mutation RewstBuddyRenderJinja($orgId: ID!, $temp
 	renderJinja(orgId: $orgId, template: $template, vars: $vars)
 }`;
 
+const TEST_WORKFLOW_MUTATION = `mutation RewstBuddyTestWorkflow($id: ID!, $orgId: ID!, $input: JSON) {
+	testWorkflow(id: $id, orgId: $orgId, input: $input) {
+		executionId
+	}
+}`;
+
 async function searchActions(
 	deps: GraphqlToolDeps,
 	orgId: string,
@@ -1285,6 +1309,18 @@ async function runWorkflowAutolayout(request: ToolRequest, deps: GraphqlToolDeps
 	return applyWorkflowMutation(deps, workflowId, orgId, [{ op: 'autolayout' }], comment);
 }
 
+async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
+	const { workflowId, orgId } = requireScopeFields(WORKFLOW_RUN_TOOL_NAME, request.args);
+	const input = request.args.input && typeof request.args.input === 'object' ? request.args.input : undefined;
+	const result = await deps.execute(TEST_WORKFLOW_MUTATION, { id: workflowId, orgId, input });
+	const error = firstErrorMessage(result);
+	if (error) throw new Error(`testWorkflow failed: ${error}`);
+	const executionId = (result.data as { testWorkflow?: { executionId?: string } } | undefined)?.testWorkflow
+		?.executionId;
+	if (!executionId) throw new Error('testWorkflow returned no execution id.');
+	return `Started a run of "${asStringArg(request.args, 'workflowName')}". executionId: ${executionId}\n\nInspect what it produced with rewst_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}.`;
+}
+
 export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
 	const bound = requireDeps(deps);
 	switch (request.tool) {
@@ -1298,6 +1334,8 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 			return runWorkflowEdit(request, bound);
 		case WORKFLOW_AUTOLAYOUT_TOOL_NAME:
 			return runWorkflowAutolayout(request, bound);
+		case WORKFLOW_RUN_TOOL_NAME:
+			return runWorkflowRun(request, bound);
 		default:
 			throw new Error(`Unknown workflow tool "${request.tool}".`);
 	}
@@ -1307,8 +1345,12 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 // Mutation approval integration (mirrors graphqlTool's scope machinery)
 // ---------------------------------------------------------------------------
 
-/** Tool names that mutate a workflow and share the per-workflow approval scope. */
-const WORKFLOW_MUTATION_TOOLS = new Set<string>([WORKFLOW_EDIT_TOOL_NAME, WORKFLOW_AUTOLAYOUT_TOOL_NAME]);
+/** Tool names that act on a workflow and share the per-workflow approval scope. */
+const WORKFLOW_MUTATION_TOOLS = new Set<string>([
+	WORKFLOW_EDIT_TOOL_NAME,
+	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_RUN_TOOL_NAME,
+]);
 
 /** The org+workflow a workflow-mutation request targets, if fully specified. */
 export function workflowEditScope(name: string, input: unknown): MutationScope | undefined {
@@ -1342,20 +1384,26 @@ export function workflowEditConfirmation(name: string, input: unknown): GraphqlM
 	const scope = workflowEditScope(name, input);
 	if (!scope || isMutationScopeApproved(scope)) return undefined;
 	const args = asObject(input);
-	const lead = `workflow **${scope.scopeName}** (\`${scope.scopeId}\`) in org **${scope.orgName}** (\`${scope.orgId}\`)? Approving also lets further edits to this same workflow run for the rest of this session without asking again.`;
-	const lines =
-		name === WORKFLOW_AUTOLAYOUT_TOOL_NAME
-			? [`Auto-layout ${lead}`, '', 'This re-arranges every task position on the canvas.']
-			: [
-					`Edit ${lead}`,
-					'',
-					'Operations:',
-					...(Array.isArray(args.operations) ? (args.operations as WorkflowOperation[]) : []).map(
-						operation => `- ${describeOperation(operation)}`,
-					),
-				];
-	return {
-		title: 'Cage-Free Rewsty wants to edit a Rewst workflow',
-		message: lines.join('\n'),
-	};
+	const lead = `workflow **${scope.scopeName}** (\`${scope.scopeId}\`) in org **${scope.orgName}** (\`${scope.orgId}\`)? Approving also lets further actions on this same workflow run for the rest of this session without asking again.`;
+	let lines: string[];
+	let title = 'Cage-Free Rewsty wants to edit a Rewst workflow';
+	if (name === WORKFLOW_AUTOLAYOUT_TOOL_NAME) {
+		lines = [`Auto-layout ${lead}`, '', 'This re-arranges every task position on the canvas.'];
+	} else if (name === WORKFLOW_RUN_TOOL_NAME) {
+		title = 'Cage-Free Rewsty wants to run a Rewst workflow';
+		const runInput = asObject(args.input);
+		lines = [`Run ${lead}`, '', 'This executes the workflow.'];
+		if (Object.keys(runInput).length > 0)
+			lines.push('', 'Input:', `\`\`\`json\n${JSON.stringify(runInput, null, 2)}\n\`\`\``);
+	} else {
+		lines = [
+			`Edit ${lead}`,
+			'',
+			'Operations:',
+			...(Array.isArray(args.operations) ? (args.operations as WorkflowOperation[]) : []).map(
+				operation => `- ${describeOperation(operation)}`,
+			),
+		];
+	}
+	return { title, message: lines.join('\n') };
 }

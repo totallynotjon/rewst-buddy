@@ -272,6 +272,47 @@
 				}
 			},
 			{
+				"name": "rewst_workflow_run",
+				"displayName": "Run Rewst Workflow",
+				"toolReferenceName": "rewstWorkflowRun",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from rewst_workflow_get's workflow.inputs). Returns the started execution's id, which you can feed to rewst_render_jinja (executionId) to inspect what the run produced. This actually executes the workflow's automation, so it requires user approval, remembered per workflow for the session.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"workflowId": {
+							"type": "string",
+							"description": "The workflow id to run."
+						},
+						"workflowName": {
+							"type": "string",
+							"description": "The workflow name, shown in the approval prompt."
+						},
+						"orgId": {
+							"type": "string",
+							"description": "The id of the org that owns the workflow."
+						},
+						"orgName": {
+							"type": "string",
+							"description": "The org name, shown in the approval prompt."
+						},
+						"input": {
+							"type": "object",
+							"description": "The workflow's run inputs (maps input name to value)."
+						}
+					},
+					"required": [
+						"workflowId",
+						"workflowName",
+						"orgId",
+						"orgName"
+					]
+				}
+			},
+			{
 				"name": "rewst_graphql_schema",
 				"displayName": "Inspect Rewst GraphQL Schema",
 				"toolReferenceName": "rewstGraphqlSchema",
