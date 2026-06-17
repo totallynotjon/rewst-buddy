@@ -10,6 +10,8 @@ import { BrowserRequest, Response, ServerConfig } from './types';
 export const Server = new (class _ implements vscode.Disposable {
 	private server: http.Server | null = null;
 	private isRunning = false;
+	/** In-flight bind, so concurrent start() calls share one listen (no self-collision). */
+	private startPromise: Promise<boolean> | null = null;
 	private disposables: vscode.Disposable[] = [];
 	private readonly statusEmitter = new vscode.EventEmitter<boolean>();
 	/** Fires true when the server binds, false when it stops or fails to bind. */
@@ -53,12 +55,30 @@ export const Server = new (class _ implements vscode.Disposable {
 	}
 
 	async start(): Promise<boolean> {
-		log.trace('Server.start: starting');
-
 		if (this.isRunning) {
 			log.warn('Server.start: already running');
 			return true;
 		}
+		// Activation calls start() twice in quick succession (Server.init and
+		// McpServerController.init), both before isRunning flips true. Without this
+		// guard each opens its own listen on the same port; the second loses with
+		// EADDRINUSE and its error handler tears down the server the first just
+		// bound — which also deletes the MCP discovery file. Sharing one in-flight
+		// promise makes the second caller await the first bind instead of racing it.
+		if (this.startPromise) {
+			log.trace('Server.start: bind already in progress; awaiting it');
+			return this.startPromise;
+		}
+		this.startPromise = this.bind();
+		try {
+			return await this.startPromise;
+		} finally {
+			this.startPromise = null;
+		}
+	}
+
+	private async bind(): Promise<boolean> {
+		log.trace('Server.start: starting');
 
 		const config = getServerConfig();
 		log.debug('Server.start: config', { host: config.host, port: config.port });
@@ -66,7 +86,7 @@ export const Server = new (class _ implements vscode.Disposable {
 		try {
 			this.server = http.createServer(this.handleRequest.bind(this));
 
-			return new Promise(resolve => {
+			return await new Promise<boolean>(resolve => {
 				this.server!.listen(config.port, config.host, () => {
 					this.isRunning = true;
 					log.info(`Server.start: listening on ${config.host}:${config.port}`);
