@@ -5,7 +5,7 @@
 ### Changed
 
 - **GraphQL mutations confirm in the chat, not in an OS dialog** - approving a `rewst_graphql` mutation now uses VS Code's native inline chat confirmation (Continue / Cancel) showing the full operation and variables, the same approval surface as Cage-Free Rewsty's other Rewst-side actions, instead of a separate operating-system modal popping over the editor. Declining simply skips the mutation; queries and schema reads still run without a prompt. (#25)
-- **GraphQL mutations are scoped to the resource they change** - every `rewst_graphql` mutation must now declare a `scopeId` (a stable id of the single resource it changes, e.g. the workflow id); a mutation without one is refused. Approval is remembered per `scopeId` for the session, so confirming one change to a resource lets further mutations to that same resource run without re-asking, while a different resource — or any non-mutation — is confirmed separately. (#25)
+- **GraphQL mutations are scoped to the resource they change** - every `rewst_graphql` mutation must now declare four identifying fields: `scopeId` and `scopeName` (the id and name of the single resource it changes, e.g. a workflow's id and name) plus `orgId` and `orgName`; a mutation missing any of them is refused. Approval is remembered for the session by the ids only (org + resource) — the names are shown in the confirmation so you can recognize what is changing — so confirming one change to a resource lets further mutations to that same resource run without re-asking, while a different resource (or the same resource id in another org) is confirmed separately. (#25)
 
 ## [0.43.4] - 2026-06-16
 

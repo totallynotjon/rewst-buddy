@@ -6,7 +6,7 @@ import {
 	approveMutationScope,
 	createGraphqlDeps,
 	graphqlMutationConfirmation,
-	graphqlMutationScopeId,
+	graphqlMutationScope,
 	GRAPHQL_TOOL_SPECS,
 } from '../tools/graphqlTool';
 import { describeRequestBrief, type ToolSpec } from '../tools/toolProtocol';
@@ -250,8 +250,8 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 				// invoke only runs once VS Code has accepted the confirmation (or none
 				// was needed), so reaching here for a scoped mutation means the user
 				// permitted this resource — remember it so repeat edits skip the prompt.
-				const scopeId = graphqlMutationScopeId(name, options.input);
-				if (scopeId) approveMutationScope(scopeId);
+				const scope = graphqlMutationScope(name, options.input);
+				if (scope) approveMutationScope(scope);
 				const session = resolveGraphqlSession();
 				const [result] = await runToolRequests(
 					[{ tool: name, args: options.input ?? {} }],
