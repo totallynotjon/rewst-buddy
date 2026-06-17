@@ -295,7 +295,7 @@
 				"rewst-buddy.ai.enableGraphqlTool": {
 					"type": "boolean",
 					"default": false,
-					"description": "Let Cage-Free Rewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval in a dialog showing the full operation. Off by default because the session can read and change anything you can in Rewst."
+					"description": "Let Cage-Free Rewsty compose and run GraphQL operations against your Rewst instance using your session. Queries run directly; mutations always require your approval through VS Code's inline chat confirmation (Continue / Cancel) showing the full operation, must declare the resource and org they change (scopeId, scopeName, orgId, orgName), and approval is remembered for the session by the ids. Off by default because the session can read and change anything you can in Rewst."
 				}
 			}
 		},

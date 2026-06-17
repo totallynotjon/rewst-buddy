@@ -98,6 +98,17 @@ suite('Unit: graphqlTool', () => {
 			assert.doesNotMatch(confirmation.message, /Variables:/);
 		});
 
+		test('widens the fence so backticks in the operation cannot close it early', () => {
+			const confirmation = graphqlMutationConfirmation(
+				'rewst_graphql',
+				scopedMutation({ query: 'mutation M { x(body: "```danger```") { id } }' }),
+			);
+			assert.ok(confirmation);
+			// The inner ``` run forces a 4-backtick fence around the operation.
+			assert.match(confirmation.message, /````graphql\n/);
+			assert.match(confirmation.message, /\n````/);
+		});
+
 		test('returns undefined for queries and schema reads', () => {
 			assert.strictEqual(
 				graphqlMutationConfirmation('rewst_graphql', scopedMutation({ query: '{ user { id } }' })),

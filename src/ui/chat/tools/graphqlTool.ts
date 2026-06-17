@@ -327,6 +327,17 @@ export function graphqlMutationScope(name: string, input: unknown): MutationScop
 	return parseMutation(name, input)?.scope;
 }
 
+/**
+ * Wraps content in a fenced code block whose backtick run is one longer than any
+ * run inside the content, so a model-supplied query or variables value
+ * containing ``` cannot close the fence early and distort the approval prompt.
+ */
+function fencedBlock(language: string, content: string): string {
+	const longestRun = Math.max(0, ...[...content.matchAll(/`+/g)].map(match => match[0].length));
+	const fence = '`'.repeat(Math.max(3, longestRun + 1));
+	return `${fence}${language}\n${content}\n${fence}`;
+}
+
 /** Confirmation copy the chat surface renders inline for a mutation. */
 export interface GraphqlMutationConfirmation {
 	title: string;
@@ -351,12 +362,10 @@ export function graphqlMutationConfirmation(name: string, input: unknown): Graph
 	const lines = [
 		`Run this mutation against **${scopeName}** (\`${scopeId}\`) in org **${orgName}** (\`${orgId}\`)? Approving also lets further changes to this same resource run for the rest of this session without asking again.`,
 		'',
-		'```graphql',
-		mutation.query,
-		'```',
+		fencedBlock('graphql', mutation.query),
 	];
 	if (mutation.variables) {
-		lines.push('', 'Variables:', '```json', JSON.stringify(mutation.variables, null, 2), '```');
+		lines.push('', 'Variables:', fencedBlock('json', JSON.stringify(mutation.variables, null, 2)));
 	}
 	return {
 		title: 'Cage-Free Rewsty wants to change a Rewst resource',
