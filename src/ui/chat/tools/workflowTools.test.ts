@@ -214,6 +214,29 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(tasks.find(t => t.name === 'merge')!.join, 0);
 		});
 
+		test('every existing task is normalized to an explicit FOLLOW_FIRST + join 1 on save', () => {
+			// sampleTasks() leave transitionMode/join unset (Rewst would treat that as
+			// FOLLOW_ALL at runtime); any edit must make the safe default explicit.
+			const { tasks } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'set_transition', from: 'start', set: { label: 'go' } }],
+				NO_ACTIONS,
+			);
+			for (const task of tasks) {
+				assert.strictEqual(task.transitionMode, 'FOLLOW_FIRST', `${task.name} mode made explicit`);
+				assert.strictEqual(task.join, 1, `${task.name} join made explicit`);
+			}
+		});
+
+		test('normalization is fill-only: an explicit FOLLOW_ALL fan-out and join 0 survive', () => {
+			const tasksIn = sampleTasks();
+			(tasksIn[0] as { transitionMode?: string }).transitionMode = 'FOLLOW_ALL';
+			(tasksIn[1] as { join?: number }).join = 0;
+			const { tasks } = applyOperations(tasksIn as never, [], NO_ACTIONS);
+			assert.strictEqual(tasks.find(t => t.name === 'start')!.transitionMode, 'FOLLOW_ALL', 'fan-out preserved');
+			assert.strictEqual(tasks.find(t => t.name === 'end')!.join, 0, 'explicit join preserved');
+		});
+
 		test('update_task merges set fields', () => {
 			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: { msg: 'hi' } } }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
@@ -601,6 +624,51 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(parsed.nodes[0].position, { x: 0, y: 0 }, 'node position is surfaced');
 			assert.strictEqual(parsed.edges[0].from, 'start');
 			assert.deepStrictEqual(parsed.edges[0].to, ['end (bb02)']);
+		});
+
+		test('rewst_workflow_get surfaces a deliberate FOLLOW_ALL and non-default join, hides the safe default', async () => {
+			const task = (over: Record<string, unknown>) => ({
+				id: String(over.name),
+				actionId: 'x',
+				action: { ref: 'core.noop' },
+				next: [],
+				...over,
+			});
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					return {
+						data: {
+							workflow: {
+								id: 'wf-1',
+								name: 'Sample',
+								orgId: 'org-1',
+								organization: { id: 'org-1', name: 'Test Org' },
+								input: [],
+								action: { parameters: {} },
+								updatedAt: '1000',
+								tasks: [
+									task({ name: 'fanout', transitionMode: 'FOLLOW_ALL', join: 1 }),
+									task({ name: 'merge', transitionMode: 'FOLLOW_FIRST', join: 0 }),
+									task({ name: 'plain', transitionMode: 'FOLLOW_FIRST', join: 1 }),
+								],
+							},
+						},
+					};
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			const parsed = JSON.parse(
+				await runWorkflowTool(
+					{ tool: 'rewst_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
+					deps,
+				),
+			);
+			const byName = (n: string) => parsed.nodes.find((x: { name: string }) => x.name === n);
+			assert.strictEqual(byName('fanout').transitionMode, 'FOLLOW_ALL', 'deliberate FOLLOW_ALL surfaced');
+			assert.strictEqual(byName('merge').join, 0, 'non-default join surfaced');
+			assert.ok(!('transitionMode' in byName('plain')), 'FOLLOW_FIRST default is not surfaced');
+			assert.ok(!('join' in byName('plain')), 'join 1 default is not surfaced');
 		});
 
 		test('rewst_action_search returns ranked matches', async () => {

@@ -175,9 +175,18 @@ description}}`), and `inputSchema` (a JSON-Schema mirror) together. Setting only
 
 So the assistant produces well-behaved tasks rather than copying odd UI defaults:
 
-- A new task defaults to `transitionMode: FOLLOW_FIRST` (take the first transition
-  whose condition is met) and `join: 1` (proceed on one inbound path). Set `join: 0`
-  explicitly for an actual join/merge task that waits on multiple inbound paths.
+- **Every saved task carries an explicit `transitionMode` and `join`.** Rewst's
+  runtime default for an _unset_ `transitionMode` is `FOLLOW_ALL` (every matching
+  transition fires in parallel) — which the assistant kept misreading as
+  `FOLLOW_FIRST`, then branching on a task whose conditions all fire at once. Rather
+  than rely on prompting to remind the model, the edit tool enforces the default in
+  code (`ensureTaskDefaults`): it fills `FOLLOW_FIRST` + `join: 1` on any task missing
+  them, fill-only so an intentional `FOLLOW_ALL` fan-out or an explicit `join` value is
+  never clobbered. Since edits resend the whole workflow, every task's mode becomes
+  explicit over time. The model only sets `transitionMode`/`join` for a non-default:
+  `FOLLOW_ALL` for a parallel fan-out, or `join: 0` for a real join/merge that waits on
+  multiple inbound paths. (`rewst_workflow_get` surfaces `transitionMode`/`join` only
+  when they are a deliberate non-default, so it never re-introduces the noise.)
 - **Every task ends up with at least one outgoing transition.** When nothing connects
   out of a task (a freshly added leaf, or a task left edgeless after a delete), the
   edit tool adds a terminal `{{ SUCCEEDED }}` transition with an empty `do` — the same

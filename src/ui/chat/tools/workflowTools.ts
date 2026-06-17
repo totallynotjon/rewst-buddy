@@ -73,7 +73,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the "{{ SUCCEEDED }}" success catch-all (with FOLLOW_FIRST a success transition placed first would shadow every custom condition after it, so the custom Jinja would never evaluate). A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the "{{ SUCCEEDED }}" success catch-all (with FOLLOW_FIRST a success transition placed first would shadow every custom condition after it, so the custom Jinja would never evaluate). The tool also writes a safe default transitionMode (FOLLOW_FIRST) and join (1) on any task missing them, so you only set transitionMode/join when you want a non-default (transitionMode "FOLLOW_ALL" for a parallel fan-out, or join for a real join/merge). A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -980,8 +980,26 @@ export function applyOperations(
 	}
 	ensureTerminalTransitions(next);
 	orderTransitionsByCondition(next);
+	ensureTaskDefaults(next);
 	layoutNewTasks(next);
 	return { tasks: next, applied, workflow };
+}
+
+/**
+ * Rewst's runtime default for an UNSET transitionMode is FOLLOW_ALL (run every
+ * matching transition in parallel) and an unset join is treated as no-join —
+ * defaults the assistant repeatedly misreads as FOLLOW_FIRST, then branches on a
+ * task whose every condition fires at once. To kill that footgun, every saved
+ * task carries an EXPLICIT transitionMode and join: we fill the safe defaults
+ * (FOLLOW_FIRST, join 1) only where they are unset, so an intentional FOLLOW_ALL
+ * fan-out or a join's explicit join value is never clobbered. Because edits
+ * resend the whole workflow, this makes every task's mode explicit over time.
+ */
+function ensureTaskDefaults(tasks: RawTask[]): void {
+	for (const task of tasks) {
+		if (!task.transitionMode) task.transitionMode = 'FOLLOW_FIRST';
+		if (task.join == null) task.join = 1;
+	}
 }
 
 /**
@@ -1166,7 +1184,11 @@ function summarizeWorkflow(w: RawWorkflow): string {
 		const node: Record<string, unknown> = { id: t.id, name: t.name, action: t.action?.ref ?? t.actionId };
 		if (t.input && Object.keys(t.input as object).length > 0) node.input = t.input;
 		if (t.publishResultAs) node.publishResultAs = t.publishResultAs;
-		if (t.transitionMode && t.transitionMode !== 'FOLLOW_ALL') node.transitionMode = t.transitionMode;
+		// The tool normalizes every saved task to FOLLOW_FIRST + join 1, so only
+		// surface a deliberately non-default mode/join (a FOLLOW_ALL fan-out or a
+		// join's value). An unset task is omitted — it becomes FOLLOW_FIRST on save.
+		if (t.transitionMode === 'FOLLOW_ALL') node.transitionMode = 'FOLLOW_ALL';
+		if (t.join != null && t.join !== 1) node.join = t.join;
 		if (t.with && (t.with.items || t.with.concurrency)) node.with = t.with;
 		const position = positionOf(t);
 		if (position) node.position = position;
