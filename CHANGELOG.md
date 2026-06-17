@@ -1,5 +1,11 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **GraphQL mutations confirm in the chat, not in an OS dialog** - approving a `rewst_graphql` mutation now uses VS Code's native inline chat confirmation (Continue / Cancel) showing the full operation and variables, the same approval surface as Cage-Free Rewsty's other Rewst-side actions, instead of a separate operating-system modal popping over the editor. Declining simply skips the mutation; queries and schema reads still run without a prompt. (#25)
+
 ## [0.43.4] - 2026-06-16
 
 ### Fixed

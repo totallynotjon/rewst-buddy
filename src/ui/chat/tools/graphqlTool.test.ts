@@ -1,7 +1,13 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
-import { detectOperationType, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
+import {
+	detectOperationType,
+	graphqlMutationConfirmation,
+	isGraphqlTool,
+	runGraphqlTool,
+	type GraphqlToolDeps,
+} from './graphqlTool';
 
 const { suite, test, setup } = Mocha;
 
@@ -47,6 +53,41 @@ suite('Unit: graphqlTool', () => {
 			assert.strictEqual(detectOperationType('query Q { search(term: "mutation") { id } }'), 'query');
 			assert.strictEqual(detectOperationType('# mutation in a comment\nquery Q { user { id } }'), 'query');
 			assert.strictEqual(detectOperationType('{ mutation { id } }'), 'query');
+		});
+	});
+
+	suite('graphqlMutationConfirmation()', () => {
+		test('returns confirmation copy for a mutation, with the operation and variables', () => {
+			const confirmation = graphqlMutationConfirmation('rewst_graphql', {
+				query: 'mutation U($id: ID!) { updateTemplate(id: $id) { id } }',
+				variables: { id: 't-1' },
+			});
+			assert.ok(confirmation, 'a mutation needs confirmation');
+			assert.match(confirmation.title, /mutation/i);
+			assert.match(confirmation.message, /```graphql/);
+			assert.match(confirmation.message, /mutation U/);
+			assert.match(confirmation.message, /Variables:/);
+			assert.match(confirmation.message, /"id": "t-1"/);
+		});
+
+		test('omits the variables block when there are none', () => {
+			const confirmation = graphqlMutationConfirmation('rewst_graphql', {
+				query: 'mutation D { deleteTemplate { id } }',
+			});
+			assert.ok(confirmation);
+			assert.doesNotMatch(confirmation.message, /Variables:/);
+		});
+
+		test('returns undefined for queries and schema reads', () => {
+			assert.strictEqual(graphqlMutationConfirmation('rewst_graphql', { query: '{ user { id } }' }), undefined);
+			assert.strictEqual(graphqlMutationConfirmation('rewst_graphql_schema', {}), undefined);
+		});
+
+		test('returns undefined for other tools and missing or invalid queries', () => {
+			assert.strictEqual(graphqlMutationConfirmation('read_file', { query: 'mutation D { x }' }), undefined);
+			assert.strictEqual(graphqlMutationConfirmation('rewst_graphql', {}), undefined);
+			assert.strictEqual(graphqlMutationConfirmation('rewst_graphql', { query: '   ' }), undefined);
+			assert.strictEqual(graphqlMutationConfirmation('rewst_graphql', undefined), undefined);
 		});
 	});
 

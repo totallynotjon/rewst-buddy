@@ -12,8 +12,9 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
  *   - Off by default (rewst-buddy.ai.enableGraphqlTool): the session can read
  *     and change anything the user can in Rewst.
  *   - Queries run directly once enabled; mutations always require explicit
- *     user approval in a modal showing the full operation — there is no
- *     auto-approve escape hatch.
+ *     user approval — VS Code's native inline chat confirmation (Continue /
+ *     Cancel) showing the full operation, gated at the tool's prepareInvocation
+ *     (see lmTools.ts). There is no auto-approve escape hatch.
  *   - Subscriptions are rejected (the tool protocol is request/response).
  */
 
@@ -58,7 +59,13 @@ export function isGraphqlTool(name: string): boolean {
 
 export interface GraphqlToolDeps {
 	isEnabled(): boolean;
-	/** Shows the mutation approval modal; returns true to run. */
+	/**
+	 * Final say on whether a mutation runs; returns true to run. In production
+	 * this is already true by the time the tool executes — the user confirmed it
+	 * through VS Code's inline chat confirmation at prepareInvocation time (see
+	 * graphqlMutationConfirmation + lmTools.ts). Kept as a seam so runGraphqlTool
+	 * stays independently testable and gated.
+	 */
 	confirmMutation(operation: string): Promise<boolean>;
 	execute(query: string, variables?: Record<string, unknown>): Promise<{ data?: unknown; errors?: unknown }>;
 }
@@ -202,15 +209,47 @@ const TYPE_NAMES_QUERY = `query RewstBuddySchemaTypeNames($includeDeprecated: Bo
 export function createGraphqlDeps(session: Session): GraphqlToolDeps {
 	return {
 		isEnabled: () => vscode.workspace.getConfiguration(`${extPrefix}.ai`).get<boolean>('enableGraphqlTool', false),
-		confirmMutation: async operation => {
-			const choice = await vscode.window.showWarningMessage(
-				'Cage-Free Rewsty wants to run a GraphQL mutation on your Rewst instance:',
-				{ modal: true, detail: operation },
-				'Run',
-			);
-			return choice === 'Run';
-		},
+		// The mutation prompt is VS Code's inline chat confirmation, shown at
+		// prepareInvocation before the tool runs (see graphqlMutationConfirmation +
+		// lmTools.ts). By the time execution reaches here the user has already said
+		// yes, so there is nothing left to ask — a second OS modal would be the
+		// jarring double-prompt this replaced (#25).
+		confirmMutation: async () => true,
 		execute: (query, variables) => session.rawGraphql(query, variables),
+	};
+}
+
+/** Confirmation copy the chat surface renders inline for a mutation. */
+export interface GraphqlMutationConfirmation {
+	title: string;
+	/** Markdown body: the prompt plus the full operation in fenced blocks. */
+	message: string;
+}
+
+/**
+ * The inline mutation confirmation for a tool request, or undefined when the
+ * request needs none — anything but a `rewst_graphql` mutation (queries, schema
+ * reads, and other tools run without a prompt). Lets lmTools.ts gate mutations
+ * through VS Code's native chat confirmation instead of an OS modal (#25).
+ */
+export function graphqlMutationConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
+	if (name !== 'rewst_graphql') return undefined;
+	const args = (typeof input === 'object' && input !== null ? input : {}) as {
+		query?: unknown;
+		variables?: unknown;
+	};
+	const query = typeof args.query === 'string' ? args.query.trim() : '';
+	if (query.length === 0 || detectOperationType(query) !== 'mutation') return undefined;
+
+	const variables =
+		args.variables && typeof args.variables === 'object' && !Array.isArray(args.variables)
+			? (args.variables as Record<string, unknown>)
+			: undefined;
+	const lines = ['Run this mutation on your Rewst instance?', '', '```graphql', query, '```'];
+	if (variables) lines.push('', 'Variables:', '```json', JSON.stringify(variables, null, 2), '```');
+	return {
+		title: 'Cage-Free Rewsty wants to run a GraphQL mutation',
+		message: lines.join('\n'),
 	};
 }
 

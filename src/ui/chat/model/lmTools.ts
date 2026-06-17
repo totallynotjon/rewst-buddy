@@ -2,7 +2,7 @@ import { extPrefix } from '@global';
 import { SessionManager, type Session } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { createGraphqlDeps, GRAPHQL_TOOL_SPECS } from '../tools/graphqlTool';
+import { createGraphqlDeps, graphqlMutationConfirmation, GRAPHQL_TOOL_SPECS } from '../tools/graphqlTool';
 import { describeRequestBrief, type ToolSpec } from '../tools/toolProtocol';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
 import { WEB_TOOL_SPECS } from '../tools/webTools';
@@ -225,10 +225,21 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 	private makeTool(name: string): vscode.LanguageModelTool<Record<string, unknown>> {
 		return {
 			// Surface what the tool is accessing (its args) in the chat's running
-			// indicator instead of just the bare tool name (#22).
-			prepareInvocation: async options => ({
-				invocationMessage: describeRequestBrief({ tool: name, args: options.input ?? {} }),
-			}),
+			// indicator instead of just the bare tool name (#22). A GraphQL mutation
+			// also gets VS Code's native inline confirmation (Continue / Cancel)
+			// here, replacing the OS modal — decline simply skips invoke (#25).
+			prepareInvocation: async options => {
+				const invocationMessage = describeRequestBrief({ tool: name, args: options.input ?? {} });
+				const confirmation = graphqlMutationConfirmation(name, options.input);
+				if (!confirmation) return { invocationMessage };
+				return {
+					invocationMessage,
+					confirmationMessages: {
+						title: confirmation.title,
+						message: new vscode.MarkdownString(confirmation.message),
+					},
+				};
+			},
 			invoke: async (options, _token) => {
 				const session = resolveGraphqlSession();
 				const [result] = await runToolRequests(
