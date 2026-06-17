@@ -159,6 +159,11 @@ description}}`), and `inputSchema` (a JSON-Schema mirror) together. Setting only
   are Jinja-expression strings** (`"{{ false }}"`, `"{{ 5 }}"`, `"{{ CTX.x }}"`) — a
   raw boolean/number default does not render in the UI, so `set_inputs` wraps raw
   scalars as `{{ value }}` and passes strings through.
+- **`CTX` is callable in a live workflow.** Read a field as `{{ CTX.field }}`; dump the
+  whole context with `{{ CTX() }}` (parentheses). Bare `{{ CTX }}` does not work at
+  runtime (it is the function itself). Note `renderJinja` with an inline `vars` dict
+  treats CTX as a plain object, so `{{ CTX }}` _appears_ to work there — prefer
+  `{{ CTX() }}` to match real workflow behavior.
 - **Data flow: branch on a task's output with `RESULT.<field>`** in that task's own
   outgoing transitions, or `CTX.<alias>.<field>` when the task sets
   `publishResultAs: <alias>`. A task's (or sub-workflow's) internally published
