@@ -189,6 +189,29 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!('varsSchema' in workflow), 'varsSchema is never touched by set_inputs');
 		});
 
+		test('a new task defaults to FOLLOW_FIRST + join 1 and gets a terminal transition', () => {
+			const { tasks } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'add_task', name: 'leaf', action: 'core.noop' }],
+				NOOP_REF,
+			);
+			const leaf = tasks.find(t => t.name === 'leaf')!;
+			assert.strictEqual(leaf.transitionMode, 'FOLLOW_FIRST');
+			assert.strictEqual(leaf.join, 1);
+			assert.strictEqual(leaf.next!.length, 1, 'unconnected task gets a success transition');
+			assert.strictEqual(leaf.next![0].when, '{{ SUCCEEDED }}');
+			assert.deepStrictEqual(leaf.next![0].do, []);
+		});
+
+		test('add_task honors an explicit join (e.g. 0 for a join task)', () => {
+			const { tasks } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'add_task', name: 'merge', action: 'core.noop', join: 0 }],
+				NOOP_REF,
+			);
+			assert.strictEqual(tasks.find(t => t.name === 'merge')!.join, 0);
+		});
+
 		test('update_task merges set fields', () => {
 			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: { msg: 'hi' } } }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
@@ -199,14 +222,19 @@ suite('Unit: workflowTools', () => {
 			const ops: WorkflowOperation[] = [{ op: 'delete_task', name: 'end' }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
 			assert.ok(!tasks.some(t => t.name === 'end'), 'end removed');
-			// start's only edge pointed at end, so it is dropped.
-			assert.strictEqual(tasks.find(t => t.name === 'start')!.next!.length, 0);
+			// start's only edge pointed at end and is dropped; it then gets a terminal transition.
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next!.length, 1, 'start gets a terminal transition after losing its only edge');
+			assert.deepStrictEqual(start.next![0].do, []);
+			assert.strictEqual(start.next![0].when, '{{ SUCCEEDED }}');
 		});
 
-		test('disconnect removes the edge to a target', () => {
+		test('disconnect removes the edge to a target (task keeps a terminal transition)', () => {
 			const ops: WorkflowOperation[] = [{ op: 'disconnect', from: 'start', to: 'end' }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
-			assert.strictEqual(tasks.find(t => t.name === 'start')!.next!.length, 0);
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next!.length, 1);
+			assert.deepStrictEqual(start.next![0].do, []);
 		});
 
 		test('set_transition edits the single transition', () => {

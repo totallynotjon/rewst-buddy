@@ -728,11 +728,14 @@ export function applyOperations(
 					actionId: subWorkflowId ?? resolveActionId(action!),
 					input: asObject(operation.input),
 					metadata: {},
-					transitionMode: str(operation.transitionMode) ?? 'FOLLOW_ALL',
+					// FOLLOW_FIRST is the sane default (take the first transition whose
+					// condition is met). join defaults to 1 (proceed on one inbound path);
+					// set join: 0 explicitly for an actual join/merge task.
+					transitionMode: str(operation.transitionMode) ?? 'FOLLOW_FIRST',
+					join: typeof operation.join === 'number' ? operation.join : 1,
 					next: [],
 				};
 				if (str(operation.publishResultAs) != null) task.publishResultAs = str(operation.publishResultAs);
-				if (typeof operation.join === 'number') task.join = operation.join;
 				if (typeof operation.timeout === 'number') task.timeout = operation.timeout;
 				if (operation.with && typeof operation.with === 'object') task.with = operation.with as RawTask['with'];
 				// Explicit position wins; otherwise layoutNewTasks places it below its parent.
@@ -905,8 +908,23 @@ export function applyOperations(
 				throw new Error(`Unknown operation "${op}".`);
 		}
 	}
+	ensureTerminalTransitions(next);
 	layoutNewTasks(next);
 	return { tasks: next, applied, workflow };
+}
+
+/**
+ * Every task must have at least one outgoing transition. A task that nothing
+ * connects out of gets a terminal "{{ SUCCEEDED }}" transition with no targets —
+ * the same shape Rewst uses for an end-of-branch task — so added/edited tasks are
+ * never left with zero transitions.
+ */
+function ensureTerminalTransitions(tasks: RawTask[]): void {
+	for (const task of tasks) {
+		if ((task.next ?? []).length === 0) {
+			task.next = [{ when: '{{ SUCCEEDED }}', label: '', do: [], publish: [] }];
+		}
+	}
 }
 
 /** Locates a transition on a task by transitionId, then by target ref. */

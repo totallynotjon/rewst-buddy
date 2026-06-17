@@ -166,6 +166,18 @@ description}}`), and `inputSchema` (a JSON-Schema mirror) together. Setting only
   publishes `proceed` is read as `RESULT.proceed` / `CTX.<alias>.proceed`, never
   `CTX.proceed`.
 
+## Task-creation conventions (enforced by `add_task` / the edit tool)
+
+So the assistant produces well-behaved tasks rather than copying odd UI defaults:
+
+- A new task defaults to `transitionMode: FOLLOW_FIRST` (take the first transition
+  whose condition is met) and `join: 1` (proceed on one inbound path). Set `join: 0`
+  explicitly for an actual join/merge task that waits on multiple inbound paths.
+- **Every task ends up with at least one outgoing transition.** When nothing connects
+  out of a task (a freshly added leaf, or a task left edgeless after a delete), the
+  edit tool adds a terminal `{{ SUCCEEDED }}` transition with an empty `do` — the same
+  shape Rewst uses for an end-of-branch task.
+
 ## Native tools (implemented; replace many GraphQL turns with one call each)
 
 All four are in `src/ui/chat/tools/workflowTools.ts`, gated by the
