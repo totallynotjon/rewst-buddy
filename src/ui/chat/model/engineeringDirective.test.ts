@@ -73,9 +73,30 @@ suite('Unit: engineeringDirective', () => {
 	test('graphql tools add the priority bullet and the activation rule', () => {
 		const directive = buildEngineeringDirective(new Set(['rewst_graphql', 'rewst_graphql_schema']));
 		assert.ok(directive.includes('# Tool selection'));
-		assert.ok(directive.includes('Live Rewst data → GraphQL first'));
+		assert.ok(directive.includes('GraphQL, before native wrappers'));
 		assert.ok(directive.includes('# Tool-call discipline'));
 		assert.ok(directive.includes('activate_rewst_graphql_tools'));
+	});
+
+	test('workflow tools add a priority bullet ranked above GraphQL', () => {
+		const directive = buildEngineeringDirective(
+			new Set(['rewst_workflow_get', 'rewst_workflow_edit', 'rewst_graphql', 'rewst_graphql_schema']),
+		);
+		assert.ok(directive.includes('# Tool selection'));
+		const workflowIdx = directive.indexOf('purpose-built workflow tools');
+		const graphqlIdx = directive.indexOf('GraphQL, before native wrappers');
+		assert.ok(workflowIdx >= 0, 'workflow bullet present');
+		assert.ok(graphqlIdx >= 0, 'graphql bullet present');
+		assert.ok(workflowIdx < graphqlIdx, 'workflow tools are ranked before GraphQL');
+		assert.ok(directive.includes('rewst_execution_logs'), 'names the execution-logs tool');
+		assert.ok(directive.includes('rewst_workflow_get'), 'names the workflow read tool');
+	});
+
+	test('workflow tools alone (no graphql) still emit the priority section', () => {
+		const directive = buildEngineeringDirective(new Set(['rewst_workflow_get', 'rewst_workflow_edit']));
+		assert.ok(directive.includes('# Tool selection'));
+		assert.ok(directive.includes('purpose-built workflow tools'));
+		assert.ok(!directive.includes('activate_rewst_graphql_tools'), 'graphql rule withheld without graphql tools');
 	});
 
 	test('web tools add their priority bullet', () => {
