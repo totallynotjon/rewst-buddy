@@ -82,7 +82,7 @@ export function isToolPermitted(name: string, settings: AiToolSettings): boolean
  * confirmationMessages); confirming allow-lists the tool(s) and the provider
  * resumes the original request, then reverts the allow-listing after the turn.
  */
-export const APPROVAL_TOOL_NAME = 'rewst_approval';
+export const APPROVAL_TOOL_NAME = 'buddy_approval';
 
 export const APPROVAL_TOOL_SPEC: ToolSpec = {
 	name: APPROVAL_TOOL_NAME,

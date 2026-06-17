@@ -61,10 +61,10 @@ suite('Unit: workspaceTools', () => {
 			assert.strictEqual(result.ok, false);
 			assert.match(result.output, /Unknown tool "delete_everything"/);
 			assert.match(result.output, /list_template_links/);
-			assert.match(result.output, /rewst_graphql/);
+			assert.match(result.output, /buddy_graphql/);
 		});
 
-		test('routes rewst_graphql through GraphQL deps', async () => {
+		test('routes buddy_graphql through GraphQL deps', async () => {
 			const calls: { query: string; variables?: Record<string, unknown> }[] = [];
 			const graphqlDeps: GraphqlToolDeps = {
 				isEnabled: () => true,
@@ -77,7 +77,7 @@ suite('Unit: workspaceTools', () => {
 			const [result] = await runToolRequests(
 				[
 					{
-						tool: 'rewst_graphql',
+						tool: 'buddy_graphql',
 						args: { query: 'query U($id: ID!) { user(id: $id) { id } }', variables: { id: 'u-1' } },
 					},
 				],

@@ -78,10 +78,10 @@ suite('Unit: workflowTools', () => {
 	});
 
 	test('isWorkflowTool recognizes the workflow tools', () => {
-		assert.ok(isWorkflowTool('rewst_workflow_get'));
-		assert.ok(isWorkflowTool('rewst_action_search'));
-		assert.ok(isWorkflowTool('rewst_workflow_edit'));
-		assert.ok(!isWorkflowTool('rewst_graphql'));
+		assert.ok(isWorkflowTool('buddy_workflow_get'));
+		assert.ok(isWorkflowTool('buddy_action_search'));
+		assert.ok(isWorkflowTool('buddy_workflow_edit'));
+		assert.ok(!isWorkflowTool('buddy_graphql'));
 	});
 
 	suite('normalizePublish()', () => {
@@ -500,7 +500,7 @@ suite('Unit: workflowTools', () => {
 		test('undefined when a field is missing or wrong tool', () => {
 			assert.strictEqual(workflowEditScope(WORKFLOW_EDIT_TOOL_NAME, { workflowId: 'wf-1' }), undefined);
 			assert.strictEqual(
-				workflowEditScope('rewst_graphql', { workflowId: 'a', workflowName: 'b', orgId: 'c', orgName: 'd' }),
+				workflowEditScope('buddy_graphql', { workflowId: 'a', workflowName: 'b', orgId: 'c', orgName: 'd' }),
 				undefined,
 			);
 		});
@@ -606,10 +606,10 @@ suite('Unit: workflowTools', () => {
 			return { deps, calls };
 		}
 
-		test('rewst_workflow_get returns a normalized graph', async () => {
+		test('buddy_workflow_get returns a normalized graph', async () => {
 			const { deps } = makeDeps();
 			const output = await runWorkflowTool(
-				{ tool: 'rewst_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
+				{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
 				deps,
 			);
 			const parsed = JSON.parse(output);
@@ -626,7 +626,7 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(parsed.edges[0].to, ['end (bb02)']);
 		});
 
-		test('rewst_workflow_get surfaces a deliberate FOLLOW_ALL and non-default join, hides the safe default', async () => {
+		test('buddy_workflow_get surfaces a deliberate FOLLOW_ALL and non-default join, hides the safe default', async () => {
 			const task = (over: Record<string, unknown>) => ({
 				id: String(over.name),
 				actionId: 'x',
@@ -660,7 +660,7 @@ suite('Unit: workflowTools', () => {
 			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
 			const parsed = JSON.parse(
 				await runWorkflowTool(
-					{ tool: 'rewst_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
+					{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
 					deps,
 				),
 			);
@@ -671,30 +671,30 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!('join' in byName('plain')), 'join 1 default is not surfaced');
 		});
 
-		test('rewst_action_search returns ranked matches', async () => {
+		test('buddy_action_search returns ranked matches', async () => {
 			const { deps } = makeDeps();
 			const output = await runWorkflowTool(
-				{ tool: 'rewst_action_search', args: { orgId: 'org-1', query: 'noop' } },
+				{ tool: 'buddy_action_search', args: { orgId: 'org-1', query: 'noop' } },
 				deps,
 			);
 			assert.match(output, /core\.noop/);
 		});
 
-		test('rewst_action_search steers a run-workflow query to the sub-workflow pattern', async () => {
+		test('buddy_action_search steers a run-workflow query to the sub-workflow pattern', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
-				{ tool: 'rewst_action_search', args: { orgId: 'org-1', query: 'run workflow' } },
+				{ tool: 'buddy_action_search', args: { orgId: 'org-1', query: 'run workflow' } },
 				deps,
 			);
 			assert.match(output, /sub-workflow|subWorkflowId/i);
 			assert.strictEqual(calls.length, 0, 'short-circuits without hitting the API');
 		});
 
-		test('rewst_render_jinja renders against an execution (last snapshot) and returns only the result', async () => {
+		test('buddy_render_jinja renders against an execution (last snapshot) and returns only the result', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
 				{
-					tool: 'rewst_render_jinja',
+					tool: 'buddy_render_jinja',
 					args: { orgId: 'org-1', executionId: 'exec-1', template: '{{ CTX.proceed }}' },
 				},
 				deps,
@@ -707,11 +707,11 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('rewst_render_jinja honors contextIndex', async () => {
+		test('buddy_render_jinja honors contextIndex', async () => {
 			const { deps } = makeDeps();
 			const output = await runWorkflowTool(
 				{
-					tool: 'rewst_render_jinja',
+					tool: 'buddy_render_jinja',
 					args: { orgId: 'org-1', executionId: 'exec-1', template: '{{ CTX.proceed }}', contextIndex: 0 },
 				},
 				deps,
@@ -719,11 +719,11 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /Rendered: false/);
 		});
 
-		test('rewst_render_jinja renders ad-hoc vars without an execution', async () => {
+		test('buddy_render_jinja renders ad-hoc vars without an execution', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
 				{
-					tool: 'rewst_render_jinja',
+					tool: 'buddy_render_jinja',
 					args: { orgId: 'org-1', vars: { proceed: true }, template: '{{ CTX.proceed }}' },
 				},
 				deps,
@@ -735,23 +735,23 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('rewst_render_jinja requires an execution or vars', async () => {
+		test('buddy_render_jinja requires an execution or vars', async () => {
 			const { deps } = makeDeps();
 			await assert.rejects(
 				() =>
 					runWorkflowTool(
-						{ tool: 'rewst_render_jinja', args: { orgId: 'org-1', template: '{{ 1 }}' } },
+						{ tool: 'buddy_render_jinja', args: { orgId: 'org-1', template: '{{ 1 }}' } },
 						deps,
 					),
 				/executionId.*vars|vars/,
 			);
 		});
 
-		test('rewst_workflow_edit applies ops and reports the new version token', async () => {
+		test('buddy_workflow_edit applies ops and reports the new version token', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
 				{
-					tool: 'rewst_workflow_edit',
+					tool: 'buddy_workflow_edit',
 					args: {
 						workflowId: 'wf-1',
 						workflowName: 'Sample',
@@ -768,7 +768,7 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(update.variables!.openedAt, '1000', 'openedAt is the updatedAt read at fetch');
 		});
 
-		test('rewst_workflow_edit retries once on a version conflict with the fresh token', async () => {
+		test('buddy_workflow_edit retries once on a version conflict with the fresh token', async () => {
 			const { deps, calls } = makeDeps({
 				updateResults: [
 					{ errors: [{ message: 'A newer version of this workflow exists.' }] },
@@ -777,7 +777,7 @@ suite('Unit: workflowTools', () => {
 			});
 			const output = await runWorkflowTool(
 				{
-					tool: 'rewst_workflow_edit',
+					tool: 'buddy_workflow_edit',
 					args: {
 						workflowId: 'wf-1',
 						workflowName: 'Sample',
@@ -794,7 +794,7 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(updates[1].variables!.openedAt, '1500', 'retry uses the re-read token');
 		});
 
-		test('rewst_workflow_autolayout re-arranges and saves', async () => {
+		test('buddy_workflow_autolayout re-arranges and saves', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
 				{
@@ -811,10 +811,10 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('rewst_workflow_executions lists failed runs newest-first and passes the status filter', async () => {
+		test('buddy_workflow_executions lists failed runs newest-first and passes the status filter', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
-				{ tool: 'rewst_workflow_executions', args: { workflowId: 'wf-1', orgId: 'org-1', status: 'failed' } },
+				{ tool: 'buddy_workflow_executions', args: { workflowId: 'wf-1', orgId: 'org-1', status: 'failed' } },
 				deps,
 			);
 			assert.match(output, /ex-2/);
@@ -825,7 +825,7 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(call.variables!.order, [['createdAt', 'desc']], 'requests newest-first');
 		});
 
-		test('rewst_workflow_run with wait:false returns the execution id without polling', async () => {
+		test('buddy_workflow_run with wait:false returns the execution id without polling', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
 				{
@@ -847,7 +847,7 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!calls.some(c => c.query.includes('RewstBuddyExecutions')), 'wait:false does not poll');
 		});
 
-		test('rewst_workflow_run waits and surfaces the failing task on a failed run', async () => {
+		test('buddy_workflow_run waits and surfaces the failing task on a failed run', async () => {
 			const { deps, calls } = makeDeps({
 				pollStatus: 'failed',
 				taskLogs: [
@@ -882,7 +882,7 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('rewst_workflow_run waits and reports success without fetching logs', async () => {
+		test('buddy_workflow_run waits and reports success without fetching logs', async () => {
 			const { deps, calls } = makeDeps({ pollStatus: 'succeeded' });
 			const output = await runWorkflowTool(
 				{
@@ -895,7 +895,7 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!calls.some(c => c.query.includes('RewstBuddyTaskLogs')), 'no log fetch on success');
 		});
 
-		test('rewst_execution_logs summarizes tasks and details failed ones', async () => {
+		test('buddy_execution_logs summarizes tasks and details failed ones', async () => {
 			const { deps } = makeDeps({
 				taskLogs: [
 					{
@@ -920,7 +920,7 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!output.includes('"ok":true'), "succeeded task's result is hidden by default");
 		});
 
-		test('rewst_execution_logs failedOnly lists only failed tasks', async () => {
+		test('buddy_execution_logs failedOnly lists only failed tasks', async () => {
 			const { deps } = makeDeps({
 				taskLogs: [
 					{ originalWorkflowTaskName: 'executions', status: 'failed', message: 'boom' },
@@ -935,7 +935,7 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!output.includes('start: succeeded'), 'omits non-failed tasks');
 		});
 
-		test('rewst_execution_logs includeResult shows every task result', async () => {
+		test('buddy_execution_logs includeResult shows every task result', async () => {
 			const { deps } = makeDeps({
 				taskLogs: [{ originalWorkflowTaskName: 'start', status: 'succeeded', result: { ok: true } }],
 			});
@@ -947,7 +947,7 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /"ok":true/);
 		});
 
-		test('rewst_execution_logs requires an executionId', async () => {
+		test('buddy_execution_logs requires an executionId', async () => {
 			const { deps } = makeDeps();
 			await assert.rejects(
 				() => runWorkflowTool({ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: {} }, deps),
@@ -955,10 +955,10 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('rewst_render_jinja keys lists the context top-level keys instead of rendering', async () => {
+		test('buddy_render_jinja keys lists the context top-level keys instead of rendering', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
-				{ tool: 'rewst_render_jinja', args: { orgId: 'org-1', executionId: 'exec-1', keys: true } },
+				{ tool: 'buddy_render_jinja', args: { orgId: 'org-1', executionId: 'exec-1', keys: true } },
 				deps,
 			);
 			// Last snapshot in the mock is { proceed: true }.
@@ -968,24 +968,24 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!calls.some(c => c.query.includes('RewstBuddyRenderJinja')), 'keys mode does not render');
 		});
 
-		test('rewst_render_jinja keys works with ad-hoc vars', async () => {
+		test('buddy_render_jinja keys works with ad-hoc vars', async () => {
 			const { deps } = makeDeps();
 			const output = await runWorkflowTool(
-				{ tool: 'rewst_render_jinja', args: { orgId: 'org-1', vars: { alpha: 1, beta: 2 }, keys: true } },
+				{ tool: 'buddy_render_jinja', args: { orgId: 'org-1', vars: { alpha: 1, beta: 2 }, keys: true } },
 				deps,
 			);
 			assert.match(output, /alpha, beta/);
 		});
 
-		test('rewst_render_jinja requires a template unless keys is set', async () => {
+		test('buddy_render_jinja requires a template unless keys is set', async () => {
 			const { deps } = makeDeps();
 			await assert.rejects(
-				() => runWorkflowTool({ tool: 'rewst_render_jinja', args: { orgId: 'org-1', vars: { a: 1 } } }, deps),
+				() => runWorkflowTool({ tool: 'buddy_render_jinja', args: { orgId: 'org-1', vars: { a: 1 } } }, deps),
 				/template/,
 			);
 		});
 
-		test('rewst_workflow_run is scope-gated with a "run" confirmation', () => {
+		test('buddy_workflow_run is scope-gated with a "run" confirmation', () => {
 			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme', input: { a: 1 } };
 			assert.ok(workflowEditScope(WORKFLOW_RUN_TOOL_NAME, args), 'shares the per-workflow scope');
 			const confirmation = workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args);
@@ -994,12 +994,12 @@ suite('Unit: workflowTools', () => {
 			assert.match(confirmation!.message, /executes the workflow/i);
 		});
 
-		test('rewst_workflow_edit refuses when scope fields are missing', async () => {
+		test('buddy_workflow_edit refuses when scope fields are missing', async () => {
 			const { deps } = makeDeps();
 			await assert.rejects(
 				() =>
 					runWorkflowTool(
-						{ tool: 'rewst_workflow_edit', args: { workflowId: 'wf-1', operations: [{ op: 'add_task' }] } },
+						{ tool: 'buddy_workflow_edit', args: { workflowId: 'wf-1', operations: [{ op: 'add_task' }] } },
 						deps,
 					),
 				/requires non-empty/,

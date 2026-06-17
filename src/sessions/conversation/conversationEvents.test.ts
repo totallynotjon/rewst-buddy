@@ -68,10 +68,10 @@ suite('Unit: ConversationEventMapper', () => {
 	test('TOOL_CALL_IN_PROGRESS truncates oversized args', () => {
 		const events = mapper.map({
 			status: 'TOOL_CALL_IN_PROGRESS',
-			metadata: { toolCalls: [{ name: 'rewst_graphql', args: { query: 'q'.repeat(500) }, id: 't3' }] },
+			metadata: { toolCalls: [{ name: 'buddy_graphql', args: { query: 'q'.repeat(500) }, id: 't3' }] },
 		});
 		const label = events[0].kind === 'status' ? events[0].label : '';
-		assert.ok(label.startsWith('Running Rewst tool: rewst_graphql {"query":"qqq'), 'keeps the head of the args');
+		assert.ok(label.startsWith('Running Rewst tool: buddy_graphql {"query":"qqq'), 'keeps the head of the args');
 		assert.ok(label.endsWith('…'), 'ends with the truncation marker');
 		assert.ok(label.length < 140, `label is bounded, got ${label.length}`);
 	});
@@ -98,7 +98,10 @@ suite('Unit: ConversationEventMapper', () => {
 	test('context_usage drops payloads missing the total or window size', () => {
 		assert.deepStrictEqual(mapper.map({ status: 'context_usage', metadata: { totalTokens: 100 } }), []);
 		assert.deepStrictEqual(mapper.map({ status: 'context_usage', metadata: { maxTokens: 144000 } }), []);
-		assert.deepStrictEqual(mapper.map({ status: 'context_usage', metadata: { totalTokens: 100, maxTokens: 0 } }), []);
+		assert.deepStrictEqual(
+			mapper.map({ status: 'context_usage', metadata: { totalTokens: 100, maxTokens: 0 } }),
+			[],
+		);
 		assert.deepStrictEqual(mapper.map({ status: 'context_usage' }), []);
 	});
 

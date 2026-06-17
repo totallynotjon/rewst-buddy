@@ -13,9 +13,9 @@ import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
  * calls, so the assistant does not have to rediscover the API's quirks every
  * turn (see scripts/WORKFLOW_API_FINDINGS.md for the disparities these encode):
  *
- *   - rewst_workflow_get      read a workflow as a normalized node/edge graph.
- *   - rewst_action_search     find actions, or describe one action's inputs.
- *   - rewst_workflow_edit     apply high-level operations to a workflow safely.
+ *   - buddy_workflow_get      read a workflow as a normalized node/edge graph.
+ *   - buddy_action_search     find actions, or describe one action's inputs.
+ *   - buddy_workflow_edit     apply high-level operations to a workflow safely.
  *
  * The edit tool always resends the FULL workflow (updateWorkflow replaces, it
  * does not merge), carries the correct optimistic-concurrency token (openedAt
@@ -23,25 +23,25 @@ import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
  * change is reversible. New task ids are de-dashed hex because the server
  * strips dashes from task ids but not from the `do` references that point at
  * them. Reads run directly; the edit is a mutation gated by the same in-chat
- * approval flow as rewst_graphql (see workflowEditConfirmation + lmTools.ts).
+ * approval flow as buddy_graphql (see workflowEditConfirmation + lmTools.ts).
  */
 
 const MAX_OUTPUT_CHARS = 8_000;
 
-export const WORKFLOW_EDIT_TOOL_NAME = 'rewst_workflow_edit';
-export const WORKFLOW_AUTOLAYOUT_TOOL_NAME = 'rewst_workflow_autolayout';
-export const WORKFLOW_RUN_TOOL_NAME = 'rewst_workflow_run';
-export const WORKFLOW_EXECUTION_LOGS_TOOL_NAME = 'rewst_execution_logs';
+export const WORKFLOW_EDIT_TOOL_NAME = 'buddy_workflow_edit';
+export const WORKFLOW_AUTOLAYOUT_TOOL_NAME = 'buddy_workflow_autolayout';
+export const WORKFLOW_RUN_TOOL_NAME = 'buddy_workflow_run';
+export const WORKFLOW_EXECUTION_LOGS_TOOL_NAME = 'buddy_execution_logs';
 
 /** Identifying fields a workflow-mutation request must carry (org + workflow). */
 const MUTATION_SCOPE_KEYS = ['workflowId', 'workflowName', 'orgId', 'orgName'] as const;
 
 export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	{
-		name: 'rewst_workflow_get',
+		name: 'buddy_workflow_get',
 		args: '{"workflowId": string, "orgId": string}',
 		description:
-			'Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what rewst_workflow_edit operations expect. Use this before editing a workflow.',
+			'Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what buddy_workflow_edit operations expect. Use this before editing a workflow.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -52,7 +52,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		},
 	},
 	{
-		name: 'rewst_action_search',
+		name: 'buddy_action_search',
 		args: '{"orgId": string, "query"?: string, "ref"?: string, "actionId"?: string, "limit"?: number, "includeDeprecated"?: boolean}',
 		description:
 			"Find Rewst actions for an org, or describe one action's inputs. Search mode (pass query) matches action name and ref, ranks core/common actions first, dedupes, and returns each match's ref, id, and category. Describe mode (pass ref or actionId) returns the action's parameters (the input schema you fill into a task's input) and output schema. Use describe mode before adding a task so you know which inputs the action accepts.",
@@ -73,7 +73,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the "{{ SUCCEEDED }}" success catch-all (with FOLLOW_FIRST a success transition placed first would shadow every custom condition after it, so the custom Jinja would never evaluate). The tool also writes a safe default transitionMode (FOLLOW_FIRST) and join (1) on any task missing them, so you only set transitionMode/join when you want a non-default (transitionMode "FOLLOW_ALL" for a parallel fan-out, or join for a real join/merge). A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the "{{ SUCCEEDED }}" success catch-all (with FOLLOW_FIRST a success transition placed first would shadow every custom condition after it, so the custom Jinja would never evaluate). The tool also writes a safe default transitionMode (FOLLOW_FIRST) and join (1) on any task missing them, so you only set transitionMode/join when you want a non-default (transitionMode "FOLLOW_ALL" for a parallel fan-out, or join for a real join/merge). A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -98,7 +98,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "comment"?: string}',
 		description:
-			'Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use rewst_workflow_edit with a reposition operation instead.',
+			'Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use buddy_workflow_edit with a reposition operation instead.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -115,7 +115,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_RUN_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "input"?: object, "wait"?: boolean}',
 		description:
-			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from rewst_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate rewst_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to rewst_execution_logs or rewst_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval, remembered per workflow for the session.",
+			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from buddy_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate buddy_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to buddy_execution_logs or buddy_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval, remembered per workflow for the session.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -134,10 +134,10 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		},
 	},
 	{
-		name: 'rewst_workflow_executions',
+		name: 'buddy_workflow_executions',
 		args: '{"workflowId": string, "orgId": string, "status"?: string, "limit"?: number}',
 		description:
-			'List a workflow\'s recent executions, most recent first — typically to find recent FAILED runs to debug. Pass status to filter (e.g. "failed", "succeeded", "running"; lowercase). Returns each execution\'s id, status, time, and successful-task count. Feed a failed execution\'s id to rewst_render_jinja (executionId) to inspect the context it produced and see why a condition or expression went wrong.',
+			'List a workflow\'s recent executions, most recent first — typically to find recent FAILED runs to debug. Pass status to filter (e.g. "failed", "succeeded", "running"; lowercase). Returns each execution\'s id, status, time, and successful-task count. Feed a failed execution\'s id to buddy_render_jinja (executionId) to inspect the context it produced and see why a condition or expression went wrong.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -157,7 +157,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 		args: '{"executionId": string, "failedOnly"?: boolean, "includeResult"?: boolean}',
 		description:
-			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from rewst_workflow_run or rewst_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }).",
+			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }).",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -172,7 +172,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		},
 	},
 	{
-		name: 'rewst_render_jinja',
+		name: 'buddy_render_jinja',
 		args: '{"orgId": string, "template"?: string, "executionId"?: string, "vars"?: object, "contextIndex"?: number, "keys"?: boolean}',
 		description:
 			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. By default the last context snapshot of the run is used; contextIndex picks another. Returns the rendered value, or the Jinja error if it fails.",
@@ -1242,7 +1242,7 @@ function summarizeWorkflow(w: RawWorkflow): string {
 		},
 		nodes,
 		edges,
-		note: 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). When troubleshooting a condition or expression, render it against a recent execution with rewst_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").',
+		note: 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). When troubleshooting a condition or expression, render it against a recent execution with buddy_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").',
 	};
 	return cap(JSON.stringify(summary, null, 1));
 }
@@ -1267,13 +1267,13 @@ function requireDeps(deps: GraphqlToolDeps | undefined): GraphqlToolDeps {
 async function runWorkflowGet(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const workflowId = asStringArg(request.args, 'workflowId');
 	const orgId = asStringArg(request.args, 'orgId');
-	if (!workflowId || !orgId) throw new Error('rewst_workflow_get requires "workflowId" and "orgId".');
+	if (!workflowId || !orgId) throw new Error('buddy_workflow_get requires "workflowId" and "orgId".');
 	return summarizeWorkflow(await fetchWorkflow(deps, workflowId, orgId));
 }
 
 async function runActionSearch(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const orgId = asStringArg(request.args, 'orgId');
-	if (!orgId) throw new Error('rewst_action_search requires "orgId".');
+	if (!orgId) throw new Error('buddy_action_search requires "orgId".');
 	const ref = asStringArg(request.args, 'ref');
 	const actionId = asStringArg(request.args, 'actionId');
 
@@ -1286,10 +1286,10 @@ async function runActionSearch(request: ToolRequest, deps: GraphqlToolDeps): Pro
 	}
 
 	const query = asStringArg(request.args, 'query');
-	if (!query) throw new Error('rewst_action_search requires "query" (search) or "ref"/"actionId" (describe).');
+	if (!query) throw new Error('buddy_action_search requires "query" (search) or "ref"/"actionId" (describe).');
 	// Calling another workflow isn't an action — steer away from the dead-end search.
 	if (/\b(sub.?workflow|run.?workflow|call.?workflow|execute.?workflow)\b/i.test(query)) {
-		return "Calling another workflow is not an action — there is no run-workflow action. To call a workflow as a sub-workflow, add a task with rewst_workflow_edit add_task and set subWorkflowId to the target workflow's id (a workflow's id is its action id). Find the target workflow id with your workflow-search tool.";
+		return "Calling another workflow is not an action — there is no run-workflow action. To call a workflow as a sub-workflow, add a task with buddy_workflow_edit add_task and set subWorkflowId to the target workflow's id (a workflow's id is its action id). Find the target workflow id with your workflow-search tool.";
 	}
 	const includeDeprecated = request.args.includeDeprecated === true;
 	const limit = typeof request.args.limit === 'number' ? Math.max(1, Math.min(50, request.args.limit)) : 15;
@@ -1307,7 +1307,7 @@ async function runActionSearch(request: ToolRequest, deps: GraphqlToolDeps): Pro
 			`- ${row.ref} — ${row.name}${row.category ? ` [${row.category}]` : ''}${row.deprecated ? ' (deprecated)' : ''} (id ${row.id})`,
 	);
 	return cap(
-		`Actions matching "${query}":\n${lines.join('\n')}\n\nDescribe one with rewst_action_search {"orgId","ref"} to see its input parameters.`,
+		`Actions matching "${query}":\n${lines.join('\n')}\n\nDescribe one with buddy_action_search {"orgId","ref"} to see its input parameters.`,
 	);
 }
 
@@ -1315,9 +1315,9 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	const orgId = asStringArg(request.args, 'orgId');
 	const template = asStringArg(request.args, 'template');
 	const keysMode = request.args.keys === true;
-	if (!orgId) throw new Error('rewst_render_jinja requires "orgId".');
+	if (!orgId) throw new Error('buddy_render_jinja requires "orgId".');
 	if (!keysMode && !template) {
-		throw new Error('rewst_render_jinja requires "template" (or pass keys:true to list the context keys).');
+		throw new Error('buddy_render_jinja requires "template" (or pass keys:true to list the context keys).');
 	}
 
 	// Resolve the render context (CTX). An executionId is fetched server-side so the
@@ -1338,7 +1338,7 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	}
 	if (!vars) {
 		throw new Error(
-			'rewst_render_jinja requires "executionId" (a run to use as context) or "vars" (an inline context).',
+			'buddy_render_jinja requires "executionId" (a run to use as context) or "vars" (an inline context).',
 		);
 	}
 
@@ -1365,7 +1365,7 @@ function requireScopeFields(toolName: string, args: Record<string, unknown>): { 
 	const missing = MUTATION_SCOPE_KEYS.filter(key => !asStringArg(args, key));
 	if (missing.length > 0) {
 		throw new Error(
-			`${toolName} requires non-empty ${MUTATION_SCOPE_KEYS.join(', ')} (get them from rewst_workflow_get). Missing: ${missing.join(', ')}.`,
+			`${toolName} requires non-empty ${MUTATION_SCOPE_KEYS.join(', ')} (get them from buddy_workflow_get). Missing: ${missing.join(', ')}.`,
 		);
 	}
 	return { workflowId: asStringArg(args, 'workflowId')!, orgId: asStringArg(args, 'orgId')! };
@@ -1415,10 +1415,10 @@ async function applyWorkflowMutation(
 }
 
 async function runWorkflowEdit(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
-	const { workflowId, orgId } = requireScopeFields('rewst_workflow_edit', request.args);
+	const { workflowId, orgId } = requireScopeFields('buddy_workflow_edit', request.args);
 	const operations = request.args.operations;
 	if (!Array.isArray(operations) || operations.length === 0) {
-		throw new Error('rewst_workflow_edit requires a non-empty "operations" array.');
+		throw new Error('buddy_workflow_edit requires a non-empty "operations" array.');
 	}
 	const comment = asStringArg(request.args, 'comment') ?? 'Edited by Cage-Free Rewsty';
 	return applyWorkflowMutation(deps, workflowId, orgId, operations as WorkflowOperation[], comment);
@@ -1434,7 +1434,7 @@ async function runWorkflowAutolayout(request: ToolRequest, deps: GraphqlToolDeps
 // Task logs: per-task status/input/result for one execution. The fastest way to
 // see WHY a run failed without the agent hand-writing taskLogs GraphQL (and
 // rediscovering that the field is originalWorkflowTaskName, the arg is order
-// not orderBy, etc.). Shared by rewst_execution_logs and run-and-wait.
+// not orderBy, etc.). Shared by buddy_execution_logs and run-and-wait.
 // ---------------------------------------------------------------------------
 
 interface TaskLogRow {
@@ -1494,7 +1494,7 @@ function formatTaskLogs(rows: TaskLogRow[], opts: { failedOnly?: boolean; includ
 
 async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const executionId = asStringArg(request.args, 'executionId');
-	if (!executionId) throw new Error('rewst_execution_logs requires "executionId".');
+	if (!executionId) throw new Error('buddy_execution_logs requires "executionId".');
 	const failedOnly = request.args.failedOnly === true;
 	const includeResult = request.args.includeResult === true;
 	const rows = await fetchTaskLogs(deps, executionId);
@@ -1553,21 +1553,21 @@ async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	const name = asStringArg(request.args, 'workflowName');
 
 	if (request.args.wait === false) {
-		return `Started a run of "${name}". executionId: ${executionId}\n\nWatch it with rewst_execution_logs {"executionId": "${executionId}"}, or inspect context with rewst_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}.`;
+		return `Started a run of "${name}". executionId: ${executionId}\n\nWatch it with buddy_execution_logs {"executionId": "${executionId}"}, or inspect context with buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}.`;
 	}
 
 	const { status, timedOut } = await pollExecutionStatus(deps, executionId);
 	if (timedOut) {
-		return `Started a run of "${name}". executionId: ${executionId}\nStill ${status ?? 'running'} after ${Math.round(RUN_MAX_WAIT_MS / 1000)}s — check back with rewst_execution_logs {"executionId": "${executionId}"}.`;
+		return `Started a run of "${name}". executionId: ${executionId}\nStill ${status ?? 'running'} after ${Math.round(RUN_MAX_WAIT_MS / 1000)}s — check back with buddy_execution_logs {"executionId": "${executionId}"}.`;
 	}
 	const head = `Run of "${name}" finished: ${(status ?? 'unknown').toUpperCase()}. executionId: ${executionId}`;
 	if (isFailedStatus(status)) {
 		const rows = await fetchTaskLogs(deps, executionId);
 		return cap(
-			`${head}\n\nFailing task(s):\n${formatTaskLogs(rows, { failedOnly: true })}\n\nFull logs: rewst_execution_logs {"executionId": "${executionId}"}.`,
+			`${head}\n\nFailing task(s):\n${formatTaskLogs(rows, { failedOnly: true })}\n\nFull logs: buddy_execution_logs {"executionId": "${executionId}"}.`,
 		);
 	}
-	return `${head}\n\nInspect what it produced with rewst_execution_logs {"executionId": "${executionId}", "includeResult": true} or rewst_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}.`;
+	return `${head}\n\nInspect what it produced with buddy_execution_logs {"executionId": "${executionId}", "includeResult": true} or buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}.`;
 }
 
 interface ExecutionRow {
@@ -1580,7 +1580,7 @@ interface ExecutionRow {
 async function runWorkflowExecutions(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const workflowId = asStringArg(request.args, 'workflowId');
 	const orgId = asStringArg(request.args, 'orgId');
-	if (!workflowId || !orgId) throw new Error('rewst_workflow_executions requires "workflowId" and "orgId".');
+	if (!workflowId || !orgId) throw new Error('buddy_workflow_executions requires "workflowId" and "orgId".');
 	const status = asStringArg(request.args, 'status');
 	const limit = typeof request.args.limit === 'number' ? Math.max(1, Math.min(50, request.args.limit)) : 10;
 	const where = { workflowId, orgId, ...(status ? { status } : {}) };
@@ -1597,18 +1597,18 @@ async function runWorkflowExecutions(request: ToolRequest, deps: GraphqlToolDeps
 		return `- ${e.id}  ${e.status}  ${when}  (${e.numSuccessfulTasks ?? '?'} task(s) ok)`;
 	};
 	return cap(
-		`${rows.length} ${status ?? 'recent'} execution(s), newest first:\n${rows.map(fmt).join('\n')}\n\nInspect one with rewst_render_jinja {"executionId": "<id>", "template": "{{ CTX.<field> }}"}.`,
+		`${rows.length} ${status ?? 'recent'} execution(s), newest first:\n${rows.map(fmt).join('\n')}\n\nInspect one with buddy_render_jinja {"executionId": "<id>", "template": "{{ CTX.<field> }}"}.`,
 	);
 }
 
 export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
 	const bound = requireDeps(deps);
 	switch (request.tool) {
-		case 'rewst_workflow_get':
+		case 'buddy_workflow_get':
 			return runWorkflowGet(request, bound);
-		case 'rewst_action_search':
+		case 'buddy_action_search':
 			return runActionSearch(request, bound);
-		case 'rewst_render_jinja':
+		case 'buddy_render_jinja':
 			return runRenderJinja(request, bound);
 		case WORKFLOW_EDIT_TOOL_NAME:
 			return runWorkflowEdit(request, bound);
@@ -1616,7 +1616,7 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 			return runWorkflowAutolayout(request, bound);
 		case WORKFLOW_RUN_TOOL_NAME:
 			return runWorkflowRun(request, bound);
-		case 'rewst_workflow_executions':
+		case 'buddy_workflow_executions':
 			return runWorkflowExecutions(request, bound);
 		case WORKFLOW_EXECUTION_LOGS_TOOL_NAME:
 			return runExecutionLogs(request, bound);
@@ -1659,7 +1659,7 @@ function describeOperation(operation: WorkflowOperation): string {
 }
 
 /**
- * The inline approval prompt for a rewst_workflow_edit request, or undefined
+ * The inline approval prompt for a buddy_workflow_edit request, or undefined
  * when no prompt is needed (not an edit, already approved this session, or
  * missing scope fields — refused downstream). Summarizes the operations so the
  * user sees what will change before approving.

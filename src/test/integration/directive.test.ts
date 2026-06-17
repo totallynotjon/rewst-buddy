@@ -89,7 +89,7 @@ suite('Integration: engineering directive steering', function () {
 		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
 		const tools = requests.map(request => request.tool);
 		assert.ok(
-			tools.every(tool => tool === 'rewst_graphql_schema' || tool === 'rewst_graphql'),
+			tools.every(tool => tool === 'buddy_graphql_schema' || tool === 'buddy_graphql'),
 			`expected only GraphQL tools, got: ${tools.join(', ')}`,
 		);
 	});
@@ -122,7 +122,7 @@ suite('Integration: engineering directive steering', function () {
 		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
 		const tools = requests.map(request => request.tool);
 		assert.ok(
-			tools.every(tool => tool === 'rewst_graphql_schema' || tool === 'rewst_graphql'),
+			tools.every(tool => tool === 'buddy_graphql_schema' || tool === 'buddy_graphql'),
 			`expected only GraphQL tools, got: ${tools.join(', ')}`,
 		);
 	});

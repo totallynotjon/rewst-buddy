@@ -50,7 +50,7 @@ suite('Integration: workflowTools', function () {
 		// Confirm the configured workflow is reachable; otherwise skip the suite.
 		try {
 			const out = await runWorkflowTool(
-				{ tool: 'rewst_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
+				{ tool: 'buddy_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
 				deps,
 			);
 			available = (JSON.parse(out) as GraphSummary).workflow.id === WORKFLOW_ID;
@@ -61,9 +61,9 @@ suite('Integration: workflowTools', function () {
 		if (!available) this.skip();
 	});
 
-	test('rewst_workflow_get returns a normalized node/edge graph', async () => {
+	test('buddy_workflow_get returns a normalized node/edge graph', async () => {
 		const out = await runWorkflowTool(
-			{ tool: 'rewst_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
+			{ tool: 'buddy_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
 			deps,
 		);
 		const summary = JSON.parse(out) as GraphSummary;
@@ -75,15 +75,15 @@ suite('Integration: workflowTools', function () {
 		);
 	});
 
-	test('rewst_action_search finds core.noop and describes its parameters', async () => {
+	test('buddy_action_search finds core.noop and describes its parameters', async () => {
 		const search = await runWorkflowTool(
-			{ tool: 'rewst_action_search', args: { orgId: ORG_ID, query: 'noop' } },
+			{ tool: 'buddy_action_search', args: { orgId: ORG_ID, query: 'noop' } },
 			deps,
 		);
 		assert.match(search, /core\.noop/);
 
 		const describe = await runWorkflowTool(
-			{ tool: 'rewst_action_search', args: { orgId: ORG_ID, ref: 'core.noop' } },
+			{ tool: 'buddy_action_search', args: { orgId: ORG_ID, ref: 'core.noop' } },
 			deps,
 		);
 		const action = JSON.parse(describe) as { ref: string; parameters: unknown };
@@ -91,10 +91,10 @@ suite('Integration: workflowTools', function () {
 		assert.ok('parameters' in action, 'describe mode returns parameters');
 	});
 
-	test('rewst_render_jinja evaluates a template (against a recent execution if one exists)', async () => {
+	test('buddy_render_jinja evaluates a template (against a recent execution if one exists)', async () => {
 		// Plain arithmetic proves the renderer works regardless of context.
 		const plain = await runWorkflowTool(
-			{ tool: 'rewst_render_jinja', args: { orgId: ORG_ID, template: '{{ 1 + 1 }}', vars: {} } },
+			{ tool: 'buddy_render_jinja', args: { orgId: ORG_ID, template: '{{ 1 + 1 }}', vars: {} } },
 			deps,
 		);
 		assert.match(plain, /Rendered: 2/);
@@ -108,7 +108,7 @@ suite('Integration: workflowTools', function () {
 		if (executionId) {
 			const out = await runWorkflowTool(
 				{
-					tool: 'rewst_render_jinja',
+					tool: 'buddy_render_jinja',
 					args: { orgId: ORG_ID, executionId, template: '{{ CTX.execution_id }}' },
 				},
 				deps,
@@ -117,16 +117,16 @@ suite('Integration: workflowTools', function () {
 		}
 	});
 
-	test('rewst_workflow_executions lists recent runs without error', async () => {
+	test('buddy_workflow_executions lists recent runs without error', async () => {
 		const out = await runWorkflowTool(
-			{ tool: 'rewst_workflow_executions', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID, limit: 3 } },
+			{ tool: 'buddy_workflow_executions', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID, limit: 3 } },
 			deps,
 		);
 		// Either some executions or a clean "no executions" message — never an error.
 		assert.ok(/execution\(s\)|No .* executions/.test(out), out);
 	});
 
-	test("rewst_execution_logs reads a real execution's task logs (validates the taskLogs query)", async () => {
+	test("buddy_execution_logs reads a real execution's task logs (validates the taskLogs query)", async () => {
 		// Find a recent execution to inspect; skip cleanly if the workflow has none.
 		const execs = (await deps.execute(
 			'query ($where: WorkflowExecutionWhereInput) { workflowExecutions(where: $where, limit: 1) { id } }',
@@ -134,28 +134,28 @@ suite('Integration: workflowTools', function () {
 		)) as { data?: { workflowExecutions?: ({ id?: string } | null)[] } };
 		const executionId = execs.data?.workflowExecutions?.[0]?.id;
 		if (!executionId) {
-			console.log('rewst_execution_logs: no executions to inspect — skipping');
+			console.log('buddy_execution_logs: no executions to inspect — skipping');
 			return;
 		}
-		const out = await runWorkflowTool({ tool: 'rewst_execution_logs', args: { executionId } }, deps);
+		const out = await runWorkflowTool({ tool: 'buddy_execution_logs', args: { executionId } }, deps);
 		// Real field names (originalWorkflowTaskName, order arg) resolved without a GraphQL error.
 		assert.match(out, new RegExp(`Execution ${executionId}: \\d+ task\\(s\\), \\d+ failed`), out);
 	});
 
-	test('rewst_workflow_get surfaces the org name for the approval args', async () => {
+	test('buddy_workflow_get surfaces the org name for the approval args', async () => {
 		const summary = JSON.parse(
 			await runWorkflowTool(
-				{ tool: 'rewst_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
+				{ tool: 'buddy_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
 				deps,
 			),
 		) as GraphSummary;
 		assert.ok(summary.workflow.orgName && summary.workflow.orgName !== ORG_ID, 'orgName is a name, not the id');
 	});
 
-	test('rewst_workflow_edit round-trips a transition label (content-neutral)', async () => {
+	test('buddy_workflow_edit round-trips a transition label (content-neutral)', async () => {
 		const before = JSON.parse(
 			await runWorkflowTool(
-				{ tool: 'rewst_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
+				{ tool: 'buddy_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
 				deps,
 			),
 		) as GraphSummary;
@@ -171,7 +171,7 @@ suite('Integration: workflowTools', function () {
 		const edit = (label: string) =>
 			runWorkflowTool(
 				{
-					tool: 'rewst_workflow_edit',
+					tool: 'buddy_workflow_edit',
 					args: {
 						workflowId: WORKFLOW_ID,
 						workflowName: before.workflow.name,
@@ -187,7 +187,7 @@ suite('Integration: workflowTools', function () {
 			assert.match(await edit(probeLabel), /Applied 1 operation/);
 			const mid = JSON.parse(
 				await runWorkflowTool(
-					{ tool: 'rewst_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
+					{ tool: 'buddy_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
 					deps,
 				),
 			) as GraphSummary;

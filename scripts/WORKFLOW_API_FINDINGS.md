@@ -88,8 +88,8 @@ shows e.g. `metadata: { x: 696, y: -912, clonedFromId: ... }`. Key points:
 **Calibrated geometry** (measured from a hand-arranged workflow where nodes were
 placed flush to expose their size): node **height ≈ 88px**; node **width ≈ 209 +
 127 × (outgoing transition count)** (≈ 335 at one transition — each transition adds
-an output port and widens the node). Used for spacing in `rewst_workflow_edit`
-placement and `rewst_workflow_autolayout`.
+an output port and widens the node). Used for spacing in `buddy_workflow_edit`
+placement and `buddy_workflow_autolayout`.
 
 **Layout algorithm** (`autoLayout` in `workflowTools.ts`, hand-rolled, dependency-free,
 deterministic): break cycles by DFS (back-edge = edge to a node on the stack);
@@ -185,7 +185,7 @@ So the assistant produces well-behaved tasks rather than copying odd UI defaults
   never clobbered. Since edits resend the whole workflow, every task's mode becomes
   explicit over time. The model only sets `transitionMode`/`join` for a non-default:
   `FOLLOW_ALL` for a parallel fan-out, or `join: 0` for a real join/merge that waits on
-  multiple inbound paths. (`rewst_workflow_get` surfaces `transitionMode`/`join` only
+  multiple inbound paths. (`buddy_workflow_get` surfaces `transitionMode`/`join` only
   when they are a deliberate non-default, so it never re-introduces the noise.)
 - **Every task ends up with at least one outgoing transition.** When nothing connects
   out of a task (a freshly added leaf, or a task left edgeless after a delete), the
@@ -205,19 +205,19 @@ So the assistant produces well-behaved tasks rather than copying odd UI defaults
 All are in `src/ui/chat/tools/workflowTools.ts`, gated by the
 `rewst-buddy.ai.enableWorkflowTools` setting; the two mutating tools reuse the
 in-chat per-workflow mutation-approval flow. They require `workflowId`,
-`workflowName`, `orgId`, `orgName` for approval — `rewst_workflow_get` surfaces all
+`workflowName`, `orgId`, `orgName` for approval — `buddy_workflow_get` surfaces all
 four (including **`orgName`** via `organization { name }`) so the assistant passes
 real names, not ids.
 
-1. **`rewst_workflow_get`** `{ workflowId, orgId }` → normalized graph: workflow
+1. **`buddy_workflow_get`** `{ workflowId, orgId }` → normalized graph: workflow
    (id, name, orgId, orgName, **inputs** from `action.parameters`, version token),
    nodes (id, name, action ref, input, position), edges (`from`, when, label, `to[]`
    task names, publish). One call instead of schema-introspect + query + reshape.
-2. **`rewst_action_search`** `{ orgId, query, limit, includeDeprecated }` → ranked,
+2. **`buddy_action_search`** `{ orgId, query, limit, includeDeprecated }` → ranked,
    deduped action matches (ref, id, category); describe mode `{ orgId, ref|actionId }`
    → `parameters` + `outputSchema` so the assistant can fill task `input` correctly.
    A "run/call workflow" query short-circuits to the sub-workflow guidance.
-3. **`rewst_workflow_edit`** `{ workflowId, workflowName, orgId, orgName, operations[] }`
+3. **`buddy_workflow_edit`** `{ workflowId, workflowName, orgId, orgName, operations[] }`
    → fetches full state, applies high-level ops (`add_task` [supports `subWorkflowId`],
    `update_task`, `delete_task`, `connect`, `disconnect`, `set_transition`, `reposition`,
    `set_inputs`) in memory, sends the **complete** `WorkflowInput` with correct
@@ -225,10 +225,10 @@ real names, not ids.
    id-normalization, action-ref resolution, sub-workflow calls, input definitions
    (`set_inputs` writes `input` + `parameters` + `inputSchema`), and conflict handling
    are native.
-4. **`rewst_workflow_autolayout`** `{ workflowId, workflowName, orgId, orgName }` →
+4. **`buddy_workflow_autolayout`** `{ workflowId, workflowName, orgId, orgName }` →
    re-arranges every node with the layered algorithm above (strict transition order,
    loop nodes kept compact, terminal catches sent to a right lane) and saves.
-5. **`rewst_render_jinja`** `{ orgId, template, executionId? | vars?, contextIndex? }` →
+5. **`buddy_render_jinja`** `{ orgId, template, executionId? | vars?, contextIndex? }` →
    renders a Jinja template via the `renderJinja` mutation against a real execution's
    context (fetched server-side from `workflowExecutionContexts`, so the large context
    never enters the chat) and returns only the result. Lets the assistant **confirm a
@@ -236,18 +236,18 @@ real names, not ids.
    and the execution-contexts query returns an array of snapshots (the last is the most
    complete). This is the fix for the recurring failure mode where the assistant guesses
    a Jinja change (boolean vs `'true'`, `CTX.x` vs `CTX.<alias>.x`) and ships it wrong.
-6. **`rewst_workflow_run`** `{ workflowId, workflowName, orgId, orgName, input?, wait? }` →
+6. **`buddy_workflow_run`** `{ workflowId, workflowName, orgId, orgName, input?, wait? }` →
    triggers a run via the `testWorkflow` mutation (`testWorkflow(id, orgId, input) { executionId }`).
    By default it **waits** for the run to reach a terminal state (polling
    `workflowExecutions(where: { id })` until status leaves running/queued/pending) and reports the
    outcome; on failure it auto-fetches the failing task's log so the cause comes back in one call.
    `wait: false` returns immediately with just the `executionId`. Approval-gated per workflow.
-7. **`rewst_workflow_executions`** `{ workflowId, orgId, status?, limit? }` → lists recent
+7. **`buddy_workflow_executions`** `{ workflowId, orgId, status?, limit? }` → lists recent
    executions newest-first via `workflowExecutions(where: { workflowId, orgId, status }, order:
 [["createdAt","desc"]])`. `status` is a lowercase string (`"failed"`, `"succeeded"`,
    `"running"`); results come back oldest-first without the explicit `order`, so it always
-   requests `createdAt desc`. Pairs with `rewst_execution_logs` / `rewst_render_jinja` to debug.
-8. **`rewst_execution_logs`** `{ executionId, failedOnly?, includeResult? }` → per-task logs for
+   requests `createdAt desc`. Pairs with `buddy_execution_logs` / `buddy_render_jinja` to debug.
+8. **`buddy_execution_logs`** `{ executionId, failedOnly?, includeResult? }` → per-task logs for
    one execution via `taskLogs(where: { workflowExecutionId }, order: [["createdAt","ASC"]])`
    (note the field is **`originalWorkflowTaskName`**, the arg is **`order`** not `orderBy`, and
    pagination is `limit`/`offset` not `take`). Returns each task's status, and for failed tasks
@@ -260,15 +260,15 @@ real names, not ids.
 
 - **`renderJinja` runs against the STORED context snapshot, which is the `CTX` namespace only.**
   The live runtime objects `WORKFLOW`, `ORG`, `USER`, `RESULT` do **not** exist there, so
-  `{{ WORKFLOW.id }}` / `{{ WORKFLOW.execution_id }}` render empty in `rewst_render_jinja`. Their
+  `{{ WORKFLOW.id }}` / `{{ WORKFLOW.execution_id }}` render empty in `buddy_render_jinja`. Their
   CTX equivalents: execution id = `CTX.execution_id`, org id = `CTX.organization.id`, and the
   running workflow's own id = `CTX.trigger_instance.trigger.workflow_id`. (Even `WORKFLOW.workflow_id`
   does not exist at runtime — Rewst's docs only list `WORKFLOW.org_id`, `WORKFLOW.name`,
-  `WORKFLOW.timeout`, `WORKFLOW.type`.) `rewst_render_jinja` with `keys: true` dumps the context's
+  `WORKFLOW.timeout`, `WORKFLOW.type`.) `buddy_render_jinja` with `keys: true` dumps the context's
   top-level keys so the agent discovers what's available instead of guessing field paths.
 - **Read a task's `result` before assuming a wrapper key.** Some actions (e.g.
   `rewst.generic_graph_request`) return the list/value **directly**, not wrapped in
-  `{ <fieldName>: [...] }`. `rewst_execution_logs` shows the real shape.
+  `{ <fieldName>: [...] }`. `buddy_execution_logs` shows the real shape.
 - **A default referenced in a publish/transition expression isn't in `CTX` until it's set.** A
   required input with a UI default (`5`) is still missing from `CTX` while an upstream transition
   runs, so `CTX.ignore_threshhold_minutes | int` is `0` there — add the same `| d(5)` in the

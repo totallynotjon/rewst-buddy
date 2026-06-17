@@ -40,7 +40,7 @@
 			{
 				"name": "list_template_links",
 				"displayName": "List Template Links",
-				"toolReferenceName": "rewstListTemplateLinks",
+				"toolReferenceName": "buddyListTemplateLinks",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
@@ -54,7 +54,7 @@
 			{
 				"name": "web_search",
 				"displayName": "Web Search",
-				"toolReferenceName": "rewstWebSearch",
+				"toolReferenceName": "buddyWebSearch",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
@@ -74,14 +74,14 @@
 				}
 			},
 			{
-				"name": "rewst_workflow_get",
+				"name": "buddy_workflow_get",
 				"displayName": "Read Rewst Workflow",
-				"toolReferenceName": "rewstWorkflowGet",
+				"toolReferenceName": "buddyWorkflowGet",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what rewst_workflow_edit operations expect. Use this before editing a workflow.",
+				"modelDescription": "Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what buddy_workflow_edit operations expect. Use this before editing a workflow.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -101,9 +101,9 @@
 				}
 			},
 			{
-				"name": "rewst_action_search",
+				"name": "buddy_action_search",
 				"displayName": "Search Rewst Actions",
-				"toolReferenceName": "rewstActionSearch",
+				"toolReferenceName": "buddyActionSearch",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
@@ -143,14 +143,14 @@
 				}
 			},
 			{
-				"name": "rewst_workflow_edit",
+				"name": "buddy_workflow_edit",
 				"displayName": "Edit Rewst Workflow",
-				"toolReferenceName": "rewstWorkflowEdit",
+				"toolReferenceName": "buddyWorkflowEdit",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an \"op\" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow's run/call inputs; an input default is a Jinja expression like \"{{ false }}\" or \"{{ CTX.x }}\" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task's own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task's or sub-workflow's internally published variables are NOT in this workflow's CTX. when defaults to \"{{ SUCCEEDED }}\"; the tool automatically orders each task's transitions so custom conditions come before the \"{{ SUCCEEDED }}\" success catch-all (with FOLLOW_FIRST a success transition placed first would shadow every custom condition after it, so the custom Jinja would never evaluate). The tool also writes a safe default transitionMode (FOLLOW_FIRST) and join (1) on any task missing them, so you only set transitionMode/join when you want a non-default (transitionMode \"FOLLOW_ALL\" for a parallel fan-out, or join for a real join/merge). A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session.",
+				"modelDescription": "Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an \"op\" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow's run/call inputs; an input default is a Jinja expression like \"{{ false }}\" or \"{{ CTX.x }}\" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task's own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task's or sub-workflow's internally published variables are NOT in this workflow's CTX. when defaults to \"{{ SUCCEEDED }}\"; the tool automatically orders each task's transitions so custom conditions come before the \"{{ SUCCEEDED }}\" success catch-all (with FOLLOW_FIRST a success transition placed first would shadow every custom condition after it, so the custom Jinja would never evaluate). The tool also writes a safe default transitionMode (FOLLOW_FIRST) and join (1) on any task missing them, so you only set transitionMode/join when you want a non-default (transitionMode \"FOLLOW_ALL\" for a parallel fan-out, or join for a real join/merge). A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -192,14 +192,14 @@
 				}
 			},
 			{
-				"name": "rewst_workflow_autolayout",
+				"name": "buddy_workflow_autolayout",
 				"displayName": "Auto-Layout Rewst Workflow",
-				"toolReferenceName": "rewstWorkflowAutolayout",
+				"toolReferenceName": "buddyWorkflowAutolayout",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from rewst_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use rewst_workflow_edit with a reposition operation instead.",
+				"modelDescription": "Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use buddy_workflow_edit with a reposition operation instead.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -233,9 +233,9 @@
 				}
 			},
 			{
-				"name": "rewst_render_jinja",
+				"name": "buddy_render_jinja",
 				"displayName": "Render Rewst Jinja",
-				"toolReferenceName": "rewstRenderJinja",
+				"toolReferenceName": "buddyRenderJinja",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
@@ -275,14 +275,14 @@
 				}
 			},
 			{
-				"name": "rewst_workflow_run",
+				"name": "buddy_workflow_run",
 				"displayName": "Run Rewst Workflow",
-				"toolReferenceName": "rewstWorkflowRun",
+				"toolReferenceName": "buddyWorkflowRun",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from rewst_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate rewst_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to rewst_execution_logs or rewst_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval, remembered per workflow for the session.",
+				"modelDescription": "Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from buddy_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate buddy_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to buddy_execution_logs or buddy_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval, remembered per workflow for the session.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -320,14 +320,14 @@
 				}
 			},
 			{
-				"name": "rewst_workflow_executions",
+				"name": "buddy_workflow_executions",
 				"displayName": "List Rewst Workflow Executions",
-				"toolReferenceName": "rewstWorkflowExecutions",
+				"toolReferenceName": "buddyWorkflowExecutions",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "List a workflow's recent executions, most recent first — typically to find recent FAILED runs to debug. Pass status to filter (e.g. \"failed\", \"succeeded\", \"running\"; lowercase). Returns each execution's id, status, time, and successful-task count. Feed a failed execution's id to rewst_render_jinja (executionId) to inspect the context it produced and see why a condition or expression went wrong.",
+				"modelDescription": "List a workflow's recent executions, most recent first — typically to find recent FAILED runs to debug. Pass status to filter (e.g. \"failed\", \"succeeded\", \"running\"; lowercase). Returns each execution's id, status, time, and successful-task count. Feed a failed execution's id to buddy_render_jinja (executionId) to inspect the context it produced and see why a condition or expression went wrong.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -355,14 +355,14 @@
 				}
 			},
 			{
-				"name": "rewst_execution_logs",
+				"name": "buddy_execution_logs",
 				"displayName": "Inspect Rewst Execution Logs",
-				"toolReferenceName": "rewstExecutionLogs",
+				"toolReferenceName": "buddyExecutionLogs",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from rewst_workflow_run or rewst_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }).",
+				"modelDescription": "Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }).",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -385,9 +385,9 @@
 				}
 			},
 			{
-				"name": "rewst_graphql_schema",
+				"name": "buddy_graphql_schema",
 				"displayName": "Inspect Rewst GraphQL Schema",
-				"toolReferenceName": "rewstGraphqlSchema",
+				"toolReferenceName": "buddyGraphqlSchema",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
@@ -412,9 +412,9 @@
 				}
 			},
 			{
-				"name": "rewst_approval",
+				"name": "buddy_approval",
 				"displayName": "Approve Rewst Action",
-				"toolReferenceName": "rewstApprove",
+				"toolReferenceName": "buddyApprove",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
@@ -451,14 +451,14 @@
 				}
 			},
 			{
-				"name": "rewst_graphql",
+				"name": "buddy_graphql",
 				"displayName": "Run Rewst GraphQL Operation",
-				"toolReferenceName": "rewstGraphql",
+				"toolReferenceName": "buddyGraphql",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include four identifying fields: scopeId and scopeName (the id and human-readable name of the single resource the mutation changes, e.g. a workflow's id and name) plus orgId and orgName (the id and name of the org it runs in). A mutation missing any of them is refused. Reuse the exact same scopeId and orgId for every change to that same object — approval is remembered per resource for the session, so approving one mutation lets later mutations to that same resource run without re-asking, while a different resource is confirmed separately. The names are shown to the user in the approval prompt so they can recognize what is changing; only the ids are used to remember approval. Subscriptions are not supported.",
+				"modelDescription": "Run a GraphQL operation against the user's Rewst instance with their session. Prefer buddy_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include four identifying fields: scopeId and scopeName (the id and human-readable name of the single resource the mutation changes, e.g. a workflow's id and name) plus orgId and orgName (the id and name of the org it runs in). A mutation missing any of them is refused. Reuse the exact same scopeId and orgId for every change to that same object — approval is remembered per resource for the session, so approving one mutation lets later mutations to that same resource run without re-asking, while a different resource is confirmed separately. The names are shown to the user in the approval prompt so they can recognize what is changing; only the ids are used to remember approval. Subscriptions are not supported.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {

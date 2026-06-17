@@ -34,18 +34,18 @@ suite('Unit: lmTools', () => {
 			);
 			assert.deepStrictEqual([...enabledToolNames(settings({ enableWebTools: true }))].sort(), ['web_search']);
 			assert.deepStrictEqual([...enabledToolNames(settings({ enableGraphqlTool: true }))].sort(), [
-				'rewst_graphql',
-				'rewst_graphql_schema',
+				'buddy_graphql',
+				'buddy_graphql_schema',
 			]);
 			assert.deepStrictEqual([...enabledToolNames(settings({ enableWorkflowTools: true }))].sort(), [
-				'rewst_action_search',
-				'rewst_execution_logs',
-				'rewst_render_jinja',
-				'rewst_workflow_autolayout',
-				'rewst_workflow_edit',
-				'rewst_workflow_executions',
-				'rewst_workflow_get',
-				'rewst_workflow_run',
+				'buddy_action_search',
+				'buddy_execution_logs',
+				'buddy_render_jinja',
+				'buddy_workflow_autolayout',
+				'buddy_workflow_edit',
+				'buddy_workflow_executions',
+				'buddy_workflow_get',
+				'buddy_workflow_run',
 			]);
 		});
 
@@ -66,7 +66,7 @@ suite('Unit: lmTools', () => {
 		test('governed tools follow their setting', () => {
 			assert.strictEqual(isToolPermitted('list_template_links', settings()), false);
 			assert.strictEqual(isToolPermitted('list_template_links', settings({ enableWorkspaceTools: true })), true);
-			assert.strictEqual(isToolPermitted('rewst_graphql', settings()), false);
+			assert.strictEqual(isToolPermitted('buddy_graphql', settings()), false);
 		});
 
 		test('names outside the rewst set are not governed', () => {

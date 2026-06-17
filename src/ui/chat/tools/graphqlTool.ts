@@ -3,7 +3,7 @@ import { isAiToolEnabled } from './aiToolSettings';
 import type { ToolRequest, ToolSpec } from './toolProtocol';
 
 /**
- * rewst_graphql lets RoboRewsty compose and run GraphQL operations against the
+ * buddy_graphql lets RoboRewsty compose and run GraphQL operations against the
  * user's own Rewst instance, authenticated with their session cookie. The
  * assistant already knows Rewst's domain; this gives it live access to the
  * same API the extension itself uses.
@@ -29,7 +29,7 @@ const MAX_OUTPUT_CHARS = 8_000;
 
 export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
 	{
-		name: 'rewst_graphql_schema',
+		name: 'buddy_graphql_schema',
 		args: '{"typeName"?: string, "search"?: string, "includeDeprecated"?: boolean}',
 		description:
 			'Inspect the Rewst GraphQL schema with the user session before composing operations. With no args, lists root Query/Mutation/Subscription fields. Use typeName to inspect fields/input fields/enum values for one type. Use search to find matching type names and root operation fields.',
@@ -43,10 +43,10 @@ export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
 		},
 	},
 	{
-		name: 'rewst_graphql',
+		name: 'buddy_graphql',
 		args: '{"query": string, "variables"?: object, "scopeId"?: string, "scopeName"?: string, "orgId"?: string, "orgName"?: string}',
 		description:
-			"Run a GraphQL operation against the user's Rewst instance with their session. Prefer rewst_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include four identifying fields: scopeId and scopeName (the id and human-readable name of the single resource the mutation changes, e.g. a workflow's id and name) plus orgId and orgName (the id and name of the org it runs in). A mutation missing any of them is refused. Reuse the exact same scopeId and orgId for every change to that same object — approval is remembered per resource for the session, so approving one mutation lets later mutations to that same resource run without re-asking, while a different resource is confirmed separately. The names are shown to the user in the approval prompt so they can recognize what is changing; only the ids are used to remember approval. Subscriptions are not supported.",
+			"Run a GraphQL operation against the user's Rewst instance with their session. Prefer buddy_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include four identifying fields: scopeId and scopeName (the id and human-readable name of the single resource the mutation changes, e.g. a workflow's id and name) plus orgId and orgName (the id and name of the org it runs in). A mutation missing any of them is refused. Reuse the exact same scopeId and orgId for every change to that same object — approval is remembered per resource for the session, so approving one mutation lets later mutations to that same resource run without re-asking, while a different resource is confirmed separately. The names are shown to the user in the approval prompt so they can recognize what is changing; only the ids are used to remember approval. Subscriptions are not supported.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -298,9 +298,9 @@ function trimmedString(value: unknown): string | undefined {
 	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-/** Parses a `rewst_graphql` request as a mutation, or undefined if it isn't one. */
+/** Parses a `buddy_graphql` request as a mutation, or undefined if it isn't one. */
 function parseMutation(name: string, input: unknown): ParsedMutation | undefined {
-	if (name !== 'rewst_graphql') return undefined;
+	if (name !== 'buddy_graphql') return undefined;
 	const args = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
 	const query = typeof args.query === 'string' ? args.query.trim() : '';
 	if (query.length === 0 || detectOperationType(query) !== 'mutation') return undefined;
@@ -317,7 +317,7 @@ function parseMutation(name: string, input: unknown): ParsedMutation | undefined
 }
 
 /**
- * The declared scope for a `rewst_graphql` mutation request, or undefined when
+ * The declared scope for a `buddy_graphql` mutation request, or undefined when
  * the request is not a mutation or is missing any scope field. lmTools.ts
  * records this once the invocation is permitted, so repeat edits to the same
  * resource skip the prompt.
@@ -346,7 +346,7 @@ export interface GraphqlMutationConfirmation {
 
 /**
  * The inline mutation confirmation for a tool request, or undefined when no
- * prompt is needed: anything but a `rewst_graphql` mutation (queries, schema
+ * prompt is needed: anything but a `buddy_graphql` mutation (queries, schema
  * reads, other tools), a mutation whose org+resource scope is already approved
  * this session, or a mutation missing any scope field (it is refused downstream
  * in runGraphqlTool, so there is nothing to approve). Lets lmTools.ts gate
@@ -452,7 +452,7 @@ function formatRootSchema(schema: GraphqlRootSchema): string {
 		sections.push(`## ${label} (${type.name ?? 'unknown'})\n${lines.length ? lines.join('\n') : '(no fields)'}`);
 	}
 	sections.push(
-		'Use rewst_graphql_schema with {"typeName": "TypeName"} to inspect return/input types, or {"search": "term"} to find likely operations.',
+		'Use buddy_graphql_schema with {"typeName": "TypeName"} to inspect return/input types, or {"search": "term"} to find likely operations.',
 	);
 	return sections.join('\n\n');
 }
@@ -506,7 +506,7 @@ function formatSchemaSearch(schema: GraphqlRootSchema & { types?: GraphqlTypeDet
 	const sections = [`Search: ${term}`];
 	sections.push(`Types:\n${typeMatches.length ? typeMatches.join('\n') : '(none)'}`);
 	sections.push(`Root fields:\n${fieldMatches.length ? fieldMatches.join('\n') : '(none)'}`);
-	sections.push('Use rewst_graphql_schema with {"typeName": "TypeName"} for details before calling rewst_graphql.');
+	sections.push('Use buddy_graphql_schema with {"typeName": "TypeName"} for details before calling buddy_graphql.');
 	return sections.join('\n\n');
 }
 
@@ -515,13 +515,13 @@ async function runSchemaTool(request: ToolRequest, deps: GraphqlToolDeps): Promi
 	const typeName = request.args.typeName;
 	const search = request.args.search;
 	if (typeName !== undefined && (typeof typeName !== 'string' || typeName.trim().length === 0)) {
-		throw new Error('rewst_graphql_schema "typeName" must be a non-empty string when provided.');
+		throw new Error('buddy_graphql_schema "typeName" must be a non-empty string when provided.');
 	}
 	if (search !== undefined && (typeof search !== 'string' || search.trim().length === 0)) {
-		throw new Error('rewst_graphql_schema "search" must be a non-empty string when provided.');
+		throw new Error('buddy_graphql_schema "search" must be a non-empty string when provided.');
 	}
 	if (typeName !== undefined && search !== undefined) {
-		throw new Error('rewst_graphql_schema accepts either "typeName" or "search", not both.');
+		throw new Error('buddy_graphql_schema accepts either "typeName" or "search", not both.');
 	}
 
 	if (typeof typeName === 'string') {
@@ -557,26 +557,26 @@ export async function runGraphqlTool(request: ToolRequest, deps: GraphqlToolDeps
 		);
 	}
 
-	if (request.tool === 'rewst_graphql_schema') {
+	if (request.tool === 'buddy_graphql_schema') {
 		return runSchemaTool(request, deps);
 	}
 
 	const query = request.args.query;
 	if (typeof query !== 'string' || query.trim().length === 0) {
-		throw new Error('rewst_graphql requires a "query" argument containing a GraphQL document.');
+		throw new Error('buddy_graphql requires a "query" argument containing a GraphQL document.');
 	}
 	const rawVariables = request.args.variables;
 	if (
 		rawVariables !== undefined &&
 		(typeof rawVariables !== 'object' || rawVariables === null || Array.isArray(rawVariables))
 	) {
-		throw new Error('rewst_graphql "variables" must be a JSON object when provided.');
+		throw new Error('buddy_graphql "variables" must be a JSON object when provided.');
 	}
 	const variables = rawVariables as Record<string, unknown> | undefined;
 
 	const kind = detectOperationType(query);
 	if (kind === 'subscription') {
-		throw new Error('rewst_graphql does not support subscriptions; use a query or mutation.');
+		throw new Error('buddy_graphql does not support subscriptions; use a query or mutation.');
 	}
 	if (kind === 'mutation') {
 		const missing = MUTATION_SCOPE_FIELDS.filter(field => {
@@ -585,7 +585,7 @@ export async function runGraphqlTool(request: ToolRequest, deps: GraphqlToolDeps
 		});
 		if (missing.length > 0) {
 			throw new Error(
-				`rewst_graphql mutations require non-empty ${MUTATION_SCOPE_FIELDS.join(', ')} (the id and name of the resource being changed plus its org id and name). Missing: ${missing.join(', ')}. Add them and retry.`,
+				`buddy_graphql mutations require non-empty ${MUTATION_SCOPE_FIELDS.join(', ')} (the id and name of the resource being changed plus its org id and name). Missing: ${missing.join(', ')}. Add them and retry.`,
 			);
 		}
 		const scopeId = (request.args.scopeId as string).trim();
