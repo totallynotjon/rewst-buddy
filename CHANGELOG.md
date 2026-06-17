@@ -1,13 +1,13 @@
 # Changelog
 
-## [Unreleased]
+## [0.43.4] - 2026-06-16
 
 ### Fixed
 
-- **Editor tool requests survive Markdown fences inside their arguments** - `vscode-tool` parsing now treats only a closing fence on its own line as the end of the tool block, so edit requests that insert fenced code blocks (for example README updates with triple backticks) still become VS Code tool calls instead of silently stopping the conversation. (#27)
+- **Editor tool requests survive Markdown fences inside their arguments** - `vscode-tool` parsing now treats only a closing fence on its own line as the end of the tool block, so edit requests that insert fenced code blocks (for example README updates with triple backticks) still become VS Code tool calls instead of silently stopping the conversation. The opening fence is honored only when it begins its own line with the exact `vscode-tool` tag (not a longer word like `vscode-tooling`), and CRLF line endings are handled. (#27)
 - **Editor edit tools stay on the VS Code tool protocol at chat start** - the opening steering text now uses a neutral VS Code context note instead of an XML-style directive wrapper, and the concrete tool manifest states that fenced `vscode-tool` blocks are intercepted and executed by the extension through VS Code's normal approval flow. Edit/write tools such as `insert_edit_into_file` now route to fenced blocks instead of being refused or attempted as native/Rewst function calls. (#27)
 - **Tool blocks tolerate omitted `args` wrappers** - when Cage-Free Rewsty emits a `vscode-tool` block with request fields beside `tool` instead of nested under `args`, the parser now treats those fields as the request args instead of running the tool with `{}`. (#27)
-- **Targeted VS Code tests actually target** - test scripts now pass `--grep` directly to `vscode-test` instead of after an extra `--`, and new `test:grep` / `test:grep:integration` scripts make one-off unit or live steering checks explicit. (#27)
+- **Targeted VS Code tests actually target** - test scripts now pass `--grep` directly to `vscode-test` instead of after an extra `--`, and new `test:grep` / `test:grep:integration` scripts make one-off unit or live steering checks explicit. The integration grep script sets its env var through `cross-env` so it runs on Windows shells too. (#27)
 
 ## [0.43.3] - 2026-06-16
 
