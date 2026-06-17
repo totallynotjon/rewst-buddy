@@ -25,15 +25,17 @@ jobs:
         permissions:
             contents: write # create the GitHub release
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
                   fetch-depth: 0
                   persist-credentials: false
 
-            - uses: actions/setup-node@v4
+            # No dependency cache in this release job: restoring a cache populated by a
+            # less-privileged PR run is a cache-poisoning vector for a job that holds a
+            # publish token.
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: 22
-                  cache: npm
 
             - run: npm ci
 
@@ -57,6 +59,10 @@ jobs:
                     grab && /^## \[/ {exit}
                     grab {print}
                   ' CHANGELOG.md > /tmp/notes.md
+                  if ! grep -q '[^[:space:]]' /tmp/notes.md; then
+                    echo "::error::No release notes found for ${GITHUB_REF_NAME} in CHANGELOG.md."
+                    exit 1
+                  fi
                   echo "--- release notes ---"; cat /tmp/notes.md
 
             - name: Create GitHub release
@@ -75,7 +81,6 @@ jobs:
 
             # Open VSX (optional). Configure OVSX_PAT in the release environment to enable.
             # - name: Publish to Open VSX
-            #   if: ${{ env.OVSX_PAT != '' }}
             #   env:
             #     OVSX_PAT: ${{ secrets.OVSX_PAT }}
             #   run: npx --yes ovsx publish "rewst-buddy-${GITHUB_REF_NAME}.vsix" -p "$OVSX_PAT"

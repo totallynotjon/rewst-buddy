@@ -93,8 +93,11 @@ export async function loadNotes(dir = NOTES_DIR) {
 	let entries;
 	try {
 		entries = await readdir(dir);
-	} catch {
-		return [];
+	} catch (err) {
+		if (err.code === 'ENOENT') {
+			return [];
+		}
+		throw err;
 	}
 	const files = entries
 		.filter(f => f.endsWith('.md') && f.toLowerCase() !== 'readme.md')

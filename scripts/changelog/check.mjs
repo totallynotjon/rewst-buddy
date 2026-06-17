@@ -26,13 +26,15 @@ function git(...gitArgs) {
 	return execFileSync('git', gitArgs, { encoding: 'utf8' });
 }
 
+let ref = `origin/${baseRef}`;
 try {
 	git('fetch', '--quiet', 'origin', baseRef);
 } catch {
-	console.warn(`warning: could not fetch origin/${baseRef}; using local ref`);
+	console.warn(`warning: could not fetch origin/${baseRef}; falling back to local ${baseRef}`);
+	ref = baseRef;
 }
 
-const diff = git('diff', '--name-only', '--diff-filter=A', `origin/${baseRef}...HEAD`, '--', `${NOTES_DIR}/`);
+const diff = git('diff', '--name-only', '--diff-filter=A', `${ref}...HEAD`, '--', `${NOTES_DIR}/`);
 const added = diff
 	.split('\n')
 	.map(s => s.trim())

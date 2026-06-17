@@ -1144,6 +1144,7 @@
 		"changelog:new": "node scripts/changelog/new.mjs",
 		"changelog:check": "node scripts/changelog/check.mjs",
 		"changelog:build": "node scripts/changelog/build.mjs",
+		"test:changelog": "node --test scripts/changelog/*.test.mjs",
 		"release:tag": "git tag v$npm_package_version && git push origin v$npm_package_version"
 	},
 	"devDependencies": {

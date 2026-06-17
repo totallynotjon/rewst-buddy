@@ -8,7 +8,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { stdin, stdout } from 'node:process';
 
-import { CATEGORY_ORDER, NOTES_DIR } from './lib.mjs';
+import { CATEGORY_ORDER, NOTES_DIR, canonicalCategory } from './lib.mjs';
 
 function tryExec(cmd, cmdArgs) {
 	try {
@@ -74,7 +74,13 @@ try {
 	const catChoice = ((await ask('Choose [1]: ')) ?? '').trim() || '1';
 	let category;
 	if (catChoice === '4') {
-		category = ((await ask('Category name: ')) ?? '').trim();
+		const raw = ((await ask('Category name: ')) ?? '').trim();
+		const canon = canonicalCategory(raw);
+		if (!canon) {
+			console.error(`"${raw}" is not a valid category (expected one of ${CATEGORY_ORDER.join(', ')}). Aborting.`);
+			process.exit(1);
+		}
+		category = canon;
 	} else {
 		category = COMMON[Number(catChoice) - 1] ?? 'Added';
 	}

@@ -32,20 +32,24 @@ jobs:
             VERSION: ${{ github.event.inputs.version }}
             DATE: ${{ github.event.inputs.date }}
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
                   ref: main
                   fetch-depth: 0
                   persist-credentials: true
 
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: 22
 
-            - name: Guard against an existing release
+            - name: Guard against an existing release or tag
               run: |
                   if gh release view "v${VERSION}" >/dev/null 2>&1; then
                     echo "::error::Release v${VERSION} already exists."
+                    exit 1
+                  fi
+                  if git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" >/dev/null 2>&1; then
+                    echo "::error::Tag v${VERSION} already exists on origin."
                     exit 1
                   fi
 

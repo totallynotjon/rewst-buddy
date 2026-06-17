@@ -19,10 +19,10 @@ jobs:
         name: Lint, type-check, build, test
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4 # pin to a SHA to harden (see docs/releasing.md)
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
                   persist-credentials: false
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: 22
                   cache: npm
@@ -36,6 +36,8 @@ jobs:
             # vscode-test runs a headless VS Code; Linux needs a virtual display.
             - name: Unit tests
               run: xvfb-run -a npm run test:unit
+            - name: Changelog tooling tests
+              run: npm run test:changelog
 
     changelog:
         name: Changelog note
@@ -48,11 +50,11 @@ jobs:
             && github.event.pull_request.user.login != 'github-actions[bot]'
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
                   fetch-depth: 0
                   persist-credentials: false
-            - uses: actions/setup-node@v4
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
                   node-version: 22
             - name: Require & validate a changelog note
