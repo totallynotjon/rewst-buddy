@@ -2,7 +2,16 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
 import vscode from 'vscode';
-import { ConversationMap, MAX_ENTRIES, nextTurnKey, prefixKey, serializeHistory, spineDepth } from './conversationMap';
+import {
+	ConversationMap,
+	MAX_ENTRIES,
+	nextTurnKey,
+	prefixKey,
+	serializeHistory,
+	spineDepth,
+	type ConversationMapStorage,
+	type PersistedConversationMap,
+} from './conversationMap';
 
 const { suite, test, setup } = Mocha;
 
@@ -179,6 +188,83 @@ suite('Unit: conversationMap', () => {
 			assert.strictEqual(map.lookup('key-1'), undefined);
 			assert.strictEqual(map.lookupByCallIds(['call-1']), undefined);
 			assert.strictEqual(map.breadcrumbFollowable('conv-1', 2), false);
+		});
+	});
+
+	suite('persistence', () => {
+		function fakeStorage(initial?: PersistedConversationMap): {
+			storage: ConversationMapStorage;
+			saved: () => PersistedConversationMap | undefined;
+		} {
+			let state = initial;
+			return {
+				storage: {
+					load: () => state,
+					save: snapshot => {
+						state = snapshot;
+					},
+				},
+				saved: () => state,
+			};
+		}
+
+		const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+		test('hydrate restores entries, tips, and callId bindings', () => {
+			const map = new ConversationMap();
+			const { storage } = fakeStorage({
+				entries: [
+					['key-turn-1', { conversationId: 'conv-1', depth: 1 }],
+					['key-turn-2', { conversationId: 'conv-1', depth: 2 }],
+				],
+				tipDepth: [['conv-1', 2]],
+				byCallId: [['call-1', 'conv-1']],
+			});
+			map.hydrate(storage);
+
+			assert.deepStrictEqual(map.lookup('key-turn-2'), { conversationId: 'conv-1', followable: true });
+			assert.strictEqual(map.lookup('key-turn-1')?.followable, false, 'behind-tip prefix survives the reload');
+			assert.strictEqual(map.lookupByCallIds(['call-1']), 'conv-1');
+			assert.strictEqual(map.breadcrumbFollowable('conv-1', 2), true);
+		});
+
+		test('hydrate on a fresh store with no snapshot is a no-op', () => {
+			const map = new ConversationMap();
+			const { storage } = fakeStorage(undefined);
+			map.hydrate(storage);
+			assert.strictEqual(map.lookup('anything'), undefined);
+		});
+
+		test('mutations are persisted (debounced) once a store is attached', async () => {
+			const map = new ConversationMap();
+			const { storage, saved } = fakeStorage();
+			map.hydrate(storage);
+
+			map.store('key-1', 'conv-1', 1);
+			map.storeByCallIds(['call-1'], 'conv-1');
+			assert.strictEqual(saved(), undefined, 'write is debounced, not synchronous');
+
+			await wait(400);
+			const snapshot = saved();
+			assert.ok(snapshot, 'snapshot was written after the debounce window');
+			assert.deepStrictEqual(snapshot?.entries, [['key-1', { conversationId: 'conv-1', depth: 1 }]]);
+			assert.deepStrictEqual(snapshot?.byCallId, [['call-1', 'conv-1']]);
+
+			// A reload from the written snapshot reconstructs the same map.
+			const reloaded = new ConversationMap();
+			reloaded.hydrate({ load: () => snapshot, save: () => {} });
+			assert.strictEqual(reloaded.lookup('key-1')?.conversationId, 'conv-1');
+			assert.strictEqual(reloaded.lookupByCallIds(['call-1']), 'conv-1');
+		});
+
+		test('without a store, mutations never attempt to persist', () => {
+			const map = new ConversationMap();
+			// No hydrate(): schedulePersist must short-circuit and not throw.
+			assert.doesNotThrow(() => {
+				map.store('key-1', 'conv-1', 1);
+				map.storeByCallIds(['call-1'], 'conv-1');
+				map.forget('conv-1');
+			});
 		});
 	});
 });

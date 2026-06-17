@@ -12,7 +12,7 @@ import { log } from '@utils';
 import vscode from 'vscode';
 import { ChunkGate } from '../tools/chunkGate';
 import { stripToolRequestBlocks } from '../tools/toolProtocol';
-import { buildWorkspaceOverview } from '../tools/workspaceTools';
+import { createCachedWorkspaceOverview, wireWorkspaceOverviewInvalidation } from '../tools/workspaceTools';
 import { prependInstructions } from '../promptContext';
 import { buildEngineeringDirective, buildNativeToolReminder } from './engineeringDirective';
 import { conversationMap, nextTurnKey, prefixKey, spineDepth } from './conversationMap';
@@ -55,6 +55,8 @@ export interface ProviderDeps {
 	sessionForOrg(orgId: string): Session;
 	confirmApproval(tools: ApprovalTool[]): Promise<ApprovalChoice>;
 	workspaceOverview(): Promise<string | undefined>;
+	/** Marks the cached workspace overview stale; absent in tests (no-op). */
+	invalidateOverview?(): void;
 	workspaceRoot(): string | undefined;
 	aiConfig(): { customInstructions: string; conversationType: string; showActivity: boolean };
 	toolSettings(): AiToolSettings;
@@ -103,12 +105,15 @@ async function confirmApprovalModal(tools: ApprovalTool[]): Promise<ApprovalChoi
 	return 'cancel';
 }
 
+const defaultOverviewCache = createCachedWorkspaceOverview();
+
 export const defaultProviderDeps: ProviderDeps = {
 	ask: askRewstAi,
 	sessions: () => SessionManager.getActiveSessions(),
 	sessionForOrg: orgId => SessionManager.getSessionForOrg(orgId),
 	confirmApproval: confirmApprovalModal,
-	workspaceOverview: () => buildWorkspaceOverview(),
+	workspaceOverview: () => defaultOverviewCache.get(),
+	invalidateOverview: () => defaultOverviewCache.invalidate(),
 	workspaceRoot: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
 	aiConfig: () => {
 		const config = vscode.workspace.getConfiguration(`${extPrefix}.ai`);
@@ -136,14 +141,61 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 
 	private registration: vscode.Disposable | undefined;
 	private sessionListener: vscode.Disposable | undefined;
+	private overviewInvalidation: vscode.Disposable | undefined;
+
+	// The directive, native-tool reminder, and tool-instruction text are pure
+	// functions of the permitted-tool set, but get rebuilt (heavy string
+	// assembly) every turn. Memoize by a sorted tool-name key; the set is stable
+	// across a chat, so these almost always hit.
+	private directiveCache = new Map<string, string>();
+	private nativeReminderCache = new Map<string, string>();
+	private toolInstructionsCache = new Map<string, string>();
 
 	constructor(private readonly deps: ProviderDeps = defaultProviderDeps) {}
 
 	init(): this {
 		this.registration = vscode.lm.registerLanguageModelChatProvider(VENDOR, this);
 		this.sessionListener = SessionManager.onSessionChange(() => this.changeEmitter.fire());
+		// Keep the cached workspace overview fresh: invalidate it on top-level file
+		// and template-link changes, with the cache's TTL as the backstop.
+		if (this.deps.invalidateOverview) {
+			this.overviewInvalidation = wireWorkspaceOverviewInvalidation(() => this.deps.invalidateOverview?.());
+		}
 		log.debug('RoboRewstyChatModelProvider: registered', VENDOR);
 		return this;
+	}
+
+	private cachedEngineeringDirective(permittedNames: ReadonlySet<string>): string {
+		const key = [...permittedNames].sort().join('|');
+		let value = this.directiveCache.get(key);
+		if (value === undefined) {
+			value = buildEngineeringDirective(permittedNames);
+			this.directiveCache.set(key, value);
+		}
+		return value;
+	}
+
+	private cachedNativeToolReminder(permittedNames: ReadonlySet<string>): string {
+		const key = [...permittedNames].sort().join('|');
+		let value = this.nativeReminderCache.get(key);
+		if (value === undefined) {
+			value = buildNativeToolReminder(permittedNames);
+			this.nativeReminderCache.set(key, value);
+		}
+		return value;
+	}
+
+	private cachedToolInstructions(tools: readonly vscode.LanguageModelChatTool[]): string {
+		const key = tools
+			.map(tool => tool.name)
+			.sort()
+			.join('|');
+		let value = this.toolInstructionsCache.get(key);
+		if (value === undefined) {
+			value = buildInstructionsForChatTools(tools);
+			this.toolInstructionsCache.set(key, value);
+		}
+		return value;
 	}
 
 	dispose(): void {
@@ -151,6 +203,8 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		this.registration = undefined;
 		this.sessionListener?.dispose();
 		this.sessionListener = undefined;
+		this.overviewInvalidation?.dispose();
+		this.overviewInvalidation = undefined;
 		this.changeEmitter.dispose();
 	}
 
@@ -562,8 +616,8 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			const root = this.deps.workspaceRoot();
 			if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
 		}
-		if (tools.length > 0) message += `\n\n${buildInstructionsForChatTools(tools)}`;
-		message += `\n\n${buildNativeToolReminder(permittedNames)}`;
+		if (tools.length > 0) message += `\n\n${this.cachedToolInstructions(tools)}`;
+		message += `\n\n${this.cachedNativeToolReminder(permittedNames)}`;
 		return message;
 	}
 
@@ -593,11 +647,11 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			const root = this.deps.workspaceRoot();
 			if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
 		}
-		if (tools.length > 0) message += `\n\n${buildInstructionsForChatTools(tools)}`;
-		message = [buildEngineeringDirective(permittedNames), message].filter(Boolean).join('\n\n');
+		if (tools.length > 0) message += `\n\n${this.cachedToolInstructions(tools)}`;
+		message = [this.cachedEngineeringDirective(permittedNames), message].filter(Boolean).join('\n\n');
 		// Highest-recency line: the directive sits far above the latest user turn
 		// (buried in the transcript), so repeat the native-tool curb last.
-		message += `\n\n${buildNativeToolReminder(permittedNames)}`;
+		message += `\n\n${this.cachedNativeToolReminder(permittedNames)}`;
 		return message;
 	}
 }

@@ -117,6 +117,28 @@ interface Entry {
 	depth: number;
 }
 
+/**
+ * Serializable snapshot of the map, so warm conversations survive a window
+ * reload / extension restart instead of every chat downgrading to a stateless
+ * full-transcript resend on its next turn.
+ */
+export interface PersistedConversationMap {
+	entries: [string, Entry][];
+	tipDepth: [string, number][];
+	byCallId: [string, string][];
+}
+
+/**
+ * Backing store for persistence (a VS Code Memento in production). Kept abstract
+ * so the map stays unit-testable without a vscode runtime dependency.
+ */
+export interface ConversationMapStorage {
+	load(): PersistedConversationMap | undefined;
+	save(state: PersistedConversationMap): void;
+}
+
+const PERSIST_DEBOUNCE_MS = 300;
+
 /** Result of a spine-hash lookup: the matched conversation and whether it is still followable. */
 export interface ConversationMatch {
 	conversationId: string;
@@ -129,6 +151,38 @@ export class ConversationMap {
 	/** Deepest stored spine per conversation — the conversation's tip. */
 	private tipDepth = new Map<string, number>();
 	private byCallId = new Map<string, string>();
+
+	private storage: ConversationMapStorage | undefined;
+	private persistTimer: ReturnType<typeof setTimeout> | undefined;
+
+	/**
+	 * Attach a backing store and load any persisted snapshot. Called once at
+	 * activation; absent in unit tests, where persistence is simply inert.
+	 */
+	hydrate(storage: ConversationMapStorage): void {
+		this.storage = storage;
+		const saved = storage.load();
+		if (!saved) return;
+		// Insertion order in the persisted arrays carries LRU recency; the size
+		// caps re-apply defensively in case the stored snapshot predates a lower cap.
+		for (const [key, entry] of saved.entries.slice(-MAX_ENTRIES)) this.entries.set(key, entry);
+		for (const [id, depth] of saved.tipDepth.slice(-MAX_ENTRIES)) this.tipDepth.set(id, depth);
+		for (const [callId, id] of saved.byCallId.slice(-MAX_ENTRIES)) this.byCallId.set(callId, id);
+	}
+
+	/** Debounced, fire-and-forget snapshot write; inert until hydrated. */
+	private schedulePersist(): void {
+		if (!this.storage) return;
+		if (this.persistTimer) clearTimeout(this.persistTimer);
+		this.persistTimer = setTimeout(() => {
+			this.persistTimer = undefined;
+			this.storage?.save({
+				entries: [...this.entries],
+				tipDepth: [...this.tipDepth],
+				byCallId: [...this.byCallId],
+			});
+		}, PERSIST_DEBOUNCE_MS);
+	}
 
 	/**
 	 * The backend conversation a request prefix belongs to, if known, plus
@@ -177,6 +231,7 @@ export class ConversationMap {
 			if (oldest === undefined) break;
 			this.tipDepth.delete(oldest);
 		}
+		this.schedulePersist();
 	}
 
 	/**
@@ -196,6 +251,7 @@ export class ConversationMap {
 			if (oldest === undefined) break;
 			this.byCallId.delete(oldest);
 		}
+		this.schedulePersist();
 	}
 
 	/** The backend conversation that emitted any of these tool calls, if known. */
@@ -220,6 +276,7 @@ export class ConversationMap {
 		for (const [callId, id] of this.byCallId) {
 			if (id === conversationId) this.byCallId.delete(callId);
 		}
+		this.schedulePersist();
 	}
 
 	/** Clears all state between tests. */
@@ -227,6 +284,9 @@ export class ConversationMap {
 		this.entries.clear();
 		this.tipDepth.clear();
 		this.byCallId.clear();
+		if (this.persistTimer) clearTimeout(this.persistTimer);
+		this.persistTimer = undefined;
+		this.storage = undefined;
 	}
 }
 

@@ -10,6 +10,11 @@ export {
 export { ContextUsageStatusBar } from './ContextUsageStatusBar';
 export { LmToolRegistry } from './chat/model/lmTools';
 export { RoboRewstyChatModelProvider } from './chat/model/RoboRewstyChatModelProvider';
+export {
+	conversationMap,
+	type ConversationMapStorage,
+	type PersistedConversationMap,
+} from './chat/model/conversationMap';
 export { ProposedContentProvider, PROPOSED_SCHEME } from './chat/ProposedContentProvider';
 export * from './pickers';
 export { StatusBar } from './StatusBarIcon';
