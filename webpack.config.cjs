@@ -13,6 +13,7 @@ const glob = require('glob');
 /**@type {import('webpack').Configuration}*/
 const aliases = {
 	'@models': path.resolve(__dirname, 'src/models/index.ts'),
+	'@capabilities': path.resolve(__dirname, 'src/capabilities/index.ts'),
 	'@commands': path.resolve(__dirname, 'src/commands/index.ts'),
 	'@sessions': path.resolve(__dirname, 'src/sessions/index.ts'),
 	'@utils': path.resolve(__dirname, 'src/utils/index.ts'),
