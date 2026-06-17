@@ -12,6 +12,8 @@ import {
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
+	WORKFLOW_SEARCH_TOOL_NAME,
+	_resetWorkflowIndexForTesting,
 	workflowEditConfirmation,
 	workflowEditScope,
 	workflowToInput,
@@ -75,6 +77,7 @@ suite('Unit: workflowTools', () => {
 	setup(() => {
 		initTestEnvironment();
 		_resetApprovedMutationScopes();
+		_resetWorkflowIndexForTesting();
 	});
 
 	test('isWorkflowTool recognizes the workflow tools', () => {
@@ -549,6 +552,7 @@ suite('Unit: workflowTools', () => {
 				updateResults: { data?: unknown; errors?: unknown }[];
 				pollStatus: string;
 				taskLogs: unknown[];
+				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
 			}> = {},
 		) {
 			const calls: { query: string; variables?: Record<string, unknown> }[] = [];
@@ -599,6 +603,22 @@ suite('Unit: workflowTools', () => {
 				}
 				if (query.includes('RewstBuddyTaskLogs')) {
 					return { data: { taskLogs: over.taskLogs ?? [] } };
+				}
+				if (query.includes('RewstBuddyWorkflowsIndex')) {
+					const all = over.indexWorkflows ?? [
+						{ id: 'wf-aaa', name: 'Onboarding', orgId: 'org-1', orgName: 'Primary Org' },
+						{ id: 'wf-bbb', name: 'Offboarding', orgId: 'org-1', orgName: 'Primary Org' },
+						{ id: 'wf-ccc', name: 'Acme Onboarding', orgId: 'org-2', orgName: 'Acme Corp' },
+					];
+					const offset = (variables?.offset as number | undefined) ?? 0;
+					const limit = (variables?.limit as number | undefined) ?? all.length;
+					const page = all.slice(offset, offset + limit).map(w => ({
+						id: w.id,
+						name: w.name,
+						orgId: w.orgId,
+						organization: { id: w.orgId, name: w.orgName },
+					}));
+					return { data: { workflows: page } };
 				}
 				return { data: {} };
 			};
@@ -953,6 +973,66 @@ suite('Unit: workflowTools', () => {
 				() => runWorkflowTool({ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: {} }, deps),
 				/executionId/,
 			);
+		});
+
+		test('buddy_workflow_search indexes every accessible org and shows the org name', async () => {
+			const { deps } = makeDeps();
+			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'onboarding' } }, deps);
+			assert.match(out, /Onboarding {2}\(id: wf-aaa\) {2}org: Primary Org \(org-1\)/);
+			assert.match(out, /Acme Onboarding {2}\(id: wf-ccc\) {2}org: Acme Corp \(org-2\)/);
+			assert.ok(!out.includes('Offboarding'), 'only the matching workflows are listed');
+			assert.match(out, /across 2 org/, 'reports how many orgs were indexed');
+		});
+
+		test('buddy_workflow_search ranks an exact name match first', async () => {
+			const { deps } = makeDeps();
+			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'onboarding' } }, deps);
+			// "Onboarding" (exact) must sort before "Acme Onboarding" (contains).
+			assert.ok(out.indexOf('wf-aaa') < out.indexOf('wf-ccc'), 'exact match ranked first');
+		});
+
+		test('buddy_workflow_search caches the index and reuses it on the next search', async () => {
+			const { deps, calls } = makeDeps();
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, deps); // builds
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'off' } }, deps); // cached
+			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
+			assert.strictEqual(indexCalls, 1, 'the workflow list was fetched once, not per search');
+		});
+
+		test('buddy_workflow_search refresh rebuilds the index', async () => {
+			const { deps, calls } = makeDeps();
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, deps);
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { refresh: true } }, deps);
+			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
+			assert.strictEqual(indexCalls, 2, 'refresh re-listed the workflows');
+		});
+
+		test('buddy_workflow_search scopes to a single org with orgId', async () => {
+			const { deps } = makeDeps();
+			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { orgId: 'org-2' } }, deps);
+			assert.match(out, /Acme Onboarding/);
+			assert.ok(!out.includes('wf-aaa'), 'org-1 workflows excluded');
+		});
+
+		test('buddy_workflow_search reports a clean no-match message', async () => {
+			const { deps } = makeDeps();
+			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'zzz-nope' } }, deps);
+			assert.match(out, /No matches/);
+			assert.match(out, /refresh:true/, 'suggests refresh for a newly created workflow');
+		});
+
+		test('buddy_workflow_search indexes sub-orgs the same as managed orgs (one cross-org query)', async () => {
+			// org-3 stands in for a sub-org that org enumeration would miss; the
+			// unscoped workflows query returns it like any other.
+			const { deps } = makeDeps({
+				indexWorkflows: [
+					{ id: 'wf-aaa', name: 'Onboarding', orgId: 'org-1', orgName: 'Primary Org' },
+					{ id: 'wf-sub', name: 'Sub Onboarding', orgId: 'org-3', orgName: 'Sub Org' },
+				],
+			});
+			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'onboarding' } }, deps);
+			assert.match(out, /Sub Onboarding {2}\(id: wf-sub\) {2}org: Sub Org \(org-3\)/);
+			assert.match(out, /across 2 org/);
 		});
 
 		test('buddy_render_jinja keys lists the context top-level keys instead of rendering', async () => {

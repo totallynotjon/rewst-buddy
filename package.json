@@ -101,6 +101,37 @@
 				}
 			},
 			{
+				"name": "buddy_workflow_search",
+				"displayName": "Search Rewst Workflows",
+				"toolReferenceName": "buddyWorkflowSearch",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Find Rewst workflows by name (or id) across every org you can access — the reliable way to resolve a workflow instead of guessing its id or paging through GraphQL. On first use it builds and CACHES an index of all workflows (id, name, org id, org name) reachable from your session — managed orgs and sub-orgs alike — then answers this and later searches from the cache with no re-listing. Pass query to match by name, id, or org name (case-insensitive substring); orgId to scope to one org; limit to cap results (default 25); refresh:true to rebuild the cache after workflows are created or renamed. Each result shows the workflow name, its id, and the ORG NAME (with org id) — feed those straight into buddy_workflow_get / buddy_workflow_edit / buddy_workflow_run.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"query": {
+							"type": "string",
+							"description": "Case-insensitive substring matched against workflow name, id, and org name. Omit to list."
+						},
+						"orgId": {
+							"type": "string",
+							"description": "Restrict results to one org id."
+						},
+						"refresh": {
+							"type": "boolean",
+							"description": "Rebuild the cached index from the API before searching (default false)."
+						},
+						"limit": {
+							"type": "number",
+							"description": "Max results to return (default 25)."
+						}
+					}
+				}
+			},
+			{
 				"name": "buddy_action_search",
 				"displayName": "Search Rewst Actions",
 				"toolReferenceName": "buddyActionSearch",

@@ -142,6 +142,25 @@ suite('Integration: workflowTools', function () {
 		assert.match(out, new RegExp(`Execution ${executionId}: \\d+ task\\(s\\), \\d+ failed`), out);
 	});
 
+	test('buddy_workflow_search builds the cross-org index and finds a workflow with its org name', async () => {
+		// First call builds the cache (validates the accessible-orgs + workflows-list queries live).
+		const all = await runWorkflowTool({ tool: 'buddy_workflow_search', args: { refresh: true } }, deps);
+		assert.match(all, /index: \d+ workflows across \d+ org\(s\)/, all);
+
+		// The configured sandbox workflow should be findable; results carry the org name.
+		const name = (
+			JSON.parse(
+				await runWorkflowTool(
+					{ tool: 'buddy_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
+					deps,
+				),
+			) as GraphSummary
+		).workflow.name;
+		const hit = await runWorkflowTool({ tool: 'buddy_workflow_search', args: { query: name } }, deps);
+		assert.ok(hit.includes(WORKFLOW_ID), `search should surface the workflow id\n${hit}`);
+		assert.match(hit, /org: .+ \(/, 'each result shows the org name');
+	});
+
 	test('buddy_workflow_get surfaces the org name for the approval args', async () => {
 		const summary = JSON.parse(
 			await runWorkflowTool(

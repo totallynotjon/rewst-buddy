@@ -255,6 +255,20 @@ real names, not ids.
    "**why did it fail**" tool — it replaces the agent hand-writing `taskLogs` GraphQL and
    rediscovering those field names every time. A failed task's `input` shows exactly what it got
    (an empty-string id ⇒ the caller passed nothing); its `result` shows the real output shape.
+9. **`buddy_workflow_search`** `{ query?, orgId?, refresh?, limit? }` → resolve a workflow by name
+   instead of guessing its id. On first call it builds a **session-lived cache** from a single
+   **un-scoped** workflows query, paginated:
+   `workflows(limit, offset, order:[["name","asc"]]) { id name orgId organization { id name } }`.
+   Key finding: with **no `where`/orgId**, this returns workflows across the **entire accessible
+   hierarchy — managed orgs AND sub-orgs**, each carrying its `organization { name }`. Per-org
+   enumeration (`user { managedOrgs }` then `workflows(where:{orgId})`) is **wrong**: `managedOrgs`
+   does **not** list sub-orgs the session can still read (verified live — Jon's Sandbox is reachable
+   yet absent from `managedOrgs`), so it silently drops them. The un-scoped query catches everything
+   and needs no separate org-name lookup. Searches match name/id/org-name (case-insensitive
+   substring, exact-name first) and return each hit's **name, id, and org name (+ org id)**. The
+   cache is built lazily on the first search (never at startup) and reused until `refresh: true`.
+   This replaces the "guess an id and fail" loop; "list the workflows" is this tool, not raw GraphQL
+   or the native `listWorkflow`.
 
 ## Troubleshooting knowledge (baked into tool prompts)
 

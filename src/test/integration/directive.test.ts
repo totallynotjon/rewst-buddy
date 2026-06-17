@@ -117,13 +117,14 @@ suite('Integration: engineering directive steering', function () {
 		);
 	});
 
-	test('workflow listing routes to GraphQL, not native platform tools', async () => {
+	test('workflow listing routes to the workflow search tool, not GraphQL or native platform tools', async () => {
 		const { requests } = await turn('List the workflows in this org.');
 		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
 		const tools = requests.map(request => request.tool);
+		assert.ok(tools.includes('buddy_workflow_search'), `expected buddy_workflow_search, got: ${tools.join(', ')}`);
 		assert.ok(
-			tools.every(tool => tool === 'buddy_graphql_schema' || tool === 'buddy_graphql'),
-			`expected only GraphQL tools, got: ${tools.join(', ')}`,
+			!tools.some(tool => tool === 'listWorkflow' || tool === 'searchWorkflows'),
+			`must not use native wrappers, got: ${tools.join(', ')}`,
 		);
 	});
 

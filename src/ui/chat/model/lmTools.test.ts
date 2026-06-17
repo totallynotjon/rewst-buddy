@@ -15,8 +15,8 @@ function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
 }
 
 suite('Unit: lmTools', () => {
-	test('exposes all 12 protocol tools with input schemas', () => {
-		assert.strictEqual(ALL_TOOL_SPECS.length, 12);
+	test('exposes all 13 protocol tools with input schemas', () => {
+		assert.strictEqual(ALL_TOOL_SPECS.length, 13);
 		for (const spec of ALL_TOOL_SPECS) {
 			assert.ok(spec.inputSchema, `${spec.name} carries an inputSchema`);
 		}
@@ -46,10 +46,11 @@ suite('Unit: lmTools', () => {
 				'buddy_workflow_executions',
 				'buddy_workflow_get',
 				'buddy_workflow_run',
+				'buddy_workflow_search',
 			]);
 		});
 
-		test('everything enabled yields all 12', () => {
+		test('everything enabled yields all 13', () => {
 			const names = enabledToolNames(
 				settings({
 					enableWorkspaceTools: true,
@@ -58,7 +59,7 @@ suite('Unit: lmTools', () => {
 					enableWorkflowTools: true,
 				}),
 			);
-			assert.strictEqual(names.size, 12);
+			assert.strictEqual(names.size, 13);
 		});
 	});
 

@@ -32,6 +32,7 @@ export const WORKFLOW_EDIT_TOOL_NAME = 'buddy_workflow_edit';
 export const WORKFLOW_AUTOLAYOUT_TOOL_NAME = 'buddy_workflow_autolayout';
 export const WORKFLOW_RUN_TOOL_NAME = 'buddy_workflow_run';
 export const WORKFLOW_EXECUTION_LOGS_TOOL_NAME = 'buddy_execution_logs';
+export const WORKFLOW_SEARCH_TOOL_NAME = 'buddy_workflow_search';
 
 /** Identifying fields a workflow-mutation request must carry (org + workflow). */
 const MUTATION_SCOPE_KEYS = ['workflowId', 'workflowName', 'orgId', 'orgName'] as const;
@@ -49,6 +50,28 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
 			},
 			required: ['workflowId', 'orgId'],
+		},
+	},
+	{
+		name: WORKFLOW_SEARCH_TOOL_NAME,
+		args: '{"query"?: string, "orgId"?: string, "refresh"?: boolean, "limit"?: number}',
+		description:
+			'Find Rewst workflows by name (or id) across every org you can access — the reliable way to resolve a workflow instead of guessing its id or paging through GraphQL. On first use it builds and CACHES an index of all workflows (id, name, org id, org name) reachable from your session — managed orgs and sub-orgs alike — then answers this and later searches from the cache with no re-listing. Pass query to match by name, id, or org name (case-insensitive substring); orgId to scope to one org; limit to cap results (default 25); refresh:true to rebuild the cache after workflows are created or renamed. Each result shows the workflow name, its id, and the ORG NAME (with org id) — feed those straight into buddy_workflow_get / buddy_workflow_edit / buddy_workflow_run.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				query: {
+					type: 'string',
+					description:
+						'Case-insensitive substring matched against workflow name, id, and org name. Omit to list.',
+				},
+				orgId: { type: 'string', description: 'Restrict results to one org id.' },
+				refresh: {
+					type: 'boolean',
+					description: 'Rebuild the cached index from the API before searching (default false).',
+				},
+				limit: { type: 'number', description: 'Max results to return (default 25).' },
+			},
 		},
 	},
 	{
@@ -1125,6 +1148,17 @@ const TASK_LOGS_QUERY = `query RewstBuddyTaskLogs($where: TaskLogWhereInput) {
 	}
 }`;
 
+// Every workflow the session can reach, in one paginated query. Crucially this
+// is NOT scoped by orgId: with no `where` the API returns workflows across the
+// whole accessible hierarchy — managed orgs AND sub-orgs (which `managedOrgs`
+// does not even list) — each carrying its `organization { name }`, so the index
+// gets org names without any per-org lookup. Paginated via limit/offset.
+const WORKFLOWS_INDEX_QUERY = `query RewstBuddyWorkflowsIndex($limit: Int, $offset: Int) {
+	workflows(limit: $limit, offset: $offset, order: [["name", "asc"]]) {
+		id name orgId organization { id name }
+	}
+}`;
+
 async function searchActions(
 	deps: GraphqlToolDeps,
 	orgId: string,
@@ -1601,6 +1635,128 @@ async function runWorkflowExecutions(request: ToolRequest, deps: GraphqlToolDeps
 	);
 }
 
+// ---------------------------------------------------------------------------
+// Workflow search: a session-lived index of every workflow (id, name, org) the
+// session can reach, so the assistant resolves a workflow by name in ONE call
+// instead of guessing ids or paging GraphQL. Built lazily on the first search
+// (never at startup) and reused until refreshed.
+// ---------------------------------------------------------------------------
+
+interface WorkflowIndexEntry {
+	id: string;
+	name: string;
+	orgId: string;
+	orgName: string;
+}
+
+interface WorkflowIndex {
+	entries: WorkflowIndexEntry[];
+	orgCount: number;
+	builtAt: number;
+	truncated: boolean;
+}
+
+let workflowIndexCache: WorkflowIndex | undefined;
+
+/** Test seam: drop the cached index so a build runs fresh. */
+export function _resetWorkflowIndexForTesting(): void {
+	workflowIndexCache = undefined;
+}
+
+const WORKFLOW_INDEX_PAGE_SIZE = 2000;
+const WORKFLOW_INDEX_MAX_PAGES = 25; // safety bound (~50k workflows) against a runaway loop
+
+interface RawIndexWorkflow {
+	id?: string | null;
+	name?: string | null;
+	orgId?: string | null;
+	organization?: { id?: string | null; name?: string | null } | null;
+}
+
+async function buildWorkflowIndex(deps: GraphqlToolDeps): Promise<WorkflowIndex> {
+	const entries: WorkflowIndexEntry[] = [];
+	const orgIds = new Set<string>();
+	let truncated = false;
+	for (let page = 0; page < WORKFLOW_INDEX_MAX_PAGES; page++) {
+		const result = await deps.execute(WORKFLOWS_INDEX_QUERY, {
+			limit: WORKFLOW_INDEX_PAGE_SIZE,
+			offset: page * WORKFLOW_INDEX_PAGE_SIZE,
+		});
+		const error = firstErrorMessage(result);
+		if (error) {
+			if (page === 0) throw new Error(`Failed to list workflows: ${error}`);
+			break; // a later page failing must not discard the workflows already gathered
+		}
+		const rows = (result.data as { workflows?: (RawIndexWorkflow | null)[] } | undefined)?.workflows ?? [];
+		for (const w of rows) {
+			if (!w?.id) continue;
+			const orgId = w.orgId ?? w.organization?.id ?? '';
+			orgIds.add(orgId);
+			entries.push({
+				id: w.id,
+				name: w.name ?? '(unnamed)',
+				orgId,
+				orgName: w.organization?.name ?? orgId ?? '(unknown org)',
+			});
+		}
+		if (rows.length < WORKFLOW_INDEX_PAGE_SIZE) break;
+		if (page === WORKFLOW_INDEX_MAX_PAGES - 1) truncated = true;
+	}
+	entries.sort((a, b) => a.name.localeCompare(b.name));
+	return { entries, orgCount: orgIds.size, builtAt: Date.now(), truncated };
+}
+
+function ageString(ms: number): string {
+	const seconds = Math.round((Date.now() - ms) / 1000);
+	if (seconds < 60) return `${seconds}s ago`;
+	const minutes = Math.round(seconds / 60);
+	if (minutes < 60) return `${minutes}m ago`;
+	return `${Math.round(minutes / 60)}h ago`;
+}
+
+async function runWorkflowSearch(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
+	const refresh = request.args.refresh === true;
+	if (refresh || !workflowIndexCache) {
+		workflowIndexCache = await buildWorkflowIndex(deps);
+	}
+	const index = workflowIndexCache;
+
+	const query = (asStringArg(request.args, 'query') ?? '').trim().toLowerCase();
+	const orgId = asStringArg(request.args, 'orgId');
+	const limit = typeof request.args.limit === 'number' ? Math.max(1, Math.min(200, request.args.limit)) : 25;
+
+	let matches = index.entries;
+	if (orgId) matches = matches.filter(entry => entry.orgId === orgId);
+	if (query) {
+		matches = matches.filter(entry => `${entry.name} ${entry.id} ${entry.orgName}`.toLowerCase().includes(query));
+		// Surface the strongest name matches first: exact, then prefix, then the rest.
+		matches = [...matches].sort((a, b) => matchRank(a, query) - matchRank(b, query));
+	}
+
+	const header =
+		`${matches.length} workflow(s)${query ? ` matching "${query}"` : ''}` +
+		` (index: ${index.entries.length} workflows across ${index.orgCount} org(s)${index.truncated ? ', truncated at the page cap' : ''}, built ${ageString(index.builtAt)}; refresh:true to rebuild).`;
+	if (matches.length === 0) {
+		return `${header}\nNo matches. Try a shorter query, drop orgId, or refresh:true if the workflow is new.`;
+	}
+	const shown = matches.slice(0, limit);
+	const lines = shown.map(entry => `- ${entry.name}  (id: ${entry.id})  org: ${entry.orgName} (${entry.orgId})`);
+	const more =
+		matches.length > shown.length
+			? `\n…and ${matches.length - shown.length} more; raise limit or narrow the query.`
+			: '';
+	return cap(`${header}\n${lines.join('\n')}${more}`);
+}
+
+/** Lower is better: 0 exact name, 1 name starts-with, 2 name contains, 3 other field. */
+function matchRank(entry: WorkflowIndexEntry, query: string): number {
+	const name = entry.name.toLowerCase();
+	if (name === query) return 0;
+	if (name.startsWith(query)) return 1;
+	if (name.includes(query)) return 2;
+	return 3;
+}
+
 export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
 	const bound = requireDeps(deps);
 	switch (request.tool) {
@@ -1620,6 +1776,8 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 			return runWorkflowExecutions(request, bound);
 		case WORKFLOW_EXECUTION_LOGS_TOOL_NAME:
 			return runExecutionLogs(request, bound);
+		case WORKFLOW_SEARCH_TOOL_NAME:
+			return runWorkflowSearch(request, bound);
 		default:
 			throw new Error(`Unknown workflow tool "${request.tool}".`);
 	}
