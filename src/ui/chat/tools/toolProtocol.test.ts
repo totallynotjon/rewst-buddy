@@ -83,6 +83,21 @@ suite('Unit: toolProtocol', () => {
 			]);
 		});
 
+		test('ignores an opening tag that only shares the marker prefix', () => {
+			const content = '```vscode-tooling\n{"tool": "read_file", "args": {"path": "a.jinja"}}\n```';
+			assert.deepStrictEqual(parseToolRequests(content), []);
+		});
+
+		test('ignores a marker that does not begin a line', () => {
+			const content = 'prefix ```vscode-tool\n{"tool": "list_files"}\n```';
+			assert.deepStrictEqual(parseToolRequests(content), []);
+		});
+
+		test('parses a fenced request that uses CRLF line endings', () => {
+			const content = '```vscode-tool\r\n{"tool": "search_files", "args": {"query": "foo"}}\r\n```\r\n';
+			assert.deepStrictEqual(parseToolRequests(content), [{ tool: 'search_files', args: { query: 'foo' } }]);
+		});
+
 		test('ignores malformed JSON, missing tool names, and bad args', () => {
 			const content = [
 				fence('not json'),

@@ -110,12 +110,27 @@ interface ToolFenceBlock {
 	end: number;
 }
 
+/**
+ * A tool fence opens only when the marker begins a line and its tag is exactly
+ * `vscode-tool` — not a longer word like `vscode-tooling`. The next character
+ * must end the tag (line break or whitespace before an info string).
+ */
+function isToolFenceStart(content: string, start: number): boolean {
+	if (start > 0 && content[start - 1] !== '\n') return false;
+	const after = content[start + TOOL_FENCE_MARKER.length];
+	return after === undefined || after === '\n' || after === '\r' || after === ' ' || after === '\t';
+}
+
 function toolFenceBlocks(content: string): ToolFenceBlock[] {
 	const blocks: ToolFenceBlock[] = [];
 	let searchStart = 0;
 	for (;;) {
 		const start = content.indexOf(TOOL_FENCE_MARKER, searchStart);
 		if (start < 0) return blocks;
+		if (!isToolFenceStart(content, start)) {
+			searchStart = start + TOOL_FENCE_MARKER.length;
+			continue;
+		}
 		const openingLineEnd = content.indexOf('\n', start + TOOL_FENCE_MARKER.length);
 		if (openingLineEnd < 0) return blocks;
 		const bodyStart = openingLineEnd + 1;
@@ -147,7 +162,7 @@ function closingFenceRange(content: string, fenceStart: number): { bodyEnd: numb
 
 	const lineEnd = content.indexOf('\n', fenceStart + 3);
 	const afterFence = lineEnd < 0 ? content.slice(fenceStart + 3) : content.slice(fenceStart + 3, lineEnd);
-	if (!/^[ \t]*$/.test(afterFence)) return undefined;
+	if (!/^[ \t\r]*$/.test(afterFence)) return undefined;
 
 	return {
 		bodyEnd: lineStart > 0 ? lineStart - 1 : lineStart,
