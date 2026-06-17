@@ -187,6 +187,29 @@ suite('Unit: workspaceTools', () => {
 			assert.strictEqual(builds, 2);
 		});
 
+		test('a scan invalidated mid-flight is not re-cached', async () => {
+			let builds = 0;
+			const releases: ((value: string) => void)[] = [];
+			const cache = createCachedWorkspaceOverview(
+				() => {
+					builds++;
+					return new Promise<string>(resolve => releases.push(resolve));
+				},
+				30_000,
+				() => 1000, // clock frozen inside the TTL
+			);
+
+			const first = cache.get(); // scan #1 starts
+			cache.invalidate(); // a file changed while scan #1 was in flight
+			releases[0]('stale');
+			assert.strictEqual(await first, 'stale', 'the original caller still receives its result');
+
+			const second = cache.get(); // must rebuild, not serve the pre-invalidation scan
+			releases[1]('fresh');
+			assert.strictEqual(await second, 'fresh');
+			assert.strictEqual(builds, 2, 'the stale scan was discarded, not re-cached');
+		});
+
 		test('concurrent callers share a single in-flight scan', async () => {
 			let builds = 0;
 			let release!: (value: string) => void;

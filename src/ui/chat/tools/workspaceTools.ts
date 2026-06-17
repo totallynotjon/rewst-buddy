@@ -176,22 +176,32 @@ export function createCachedWorkspaceOverview(
 	let cachedAt = Number.NEGATIVE_INFINITY;
 	let value: string | undefined;
 	let inFlight: Promise<string | undefined> | undefined;
+	// Bumped on every invalidation; a scan whose generation no longer matches
+	// started before the invalidation, so its result must not be (re-)cached.
+	let generation = 0;
 	return {
 		async get() {
 			if (now() - cachedAt < ttlMs) return value;
 			if (inFlight) return inFlight;
-			inFlight = build();
+			const gen = generation;
+			const pending = build();
+			inFlight = pending;
 			try {
-				value = await inFlight;
-				cachedAt = now();
-				return value;
+				const result = await pending;
+				if (gen === generation) {
+					value = result;
+					cachedAt = now();
+				}
+				return result;
 			} finally {
-				inFlight = undefined;
+				if (inFlight === pending) inFlight = undefined;
 			}
 		},
 		invalidate() {
+			generation++;
 			cachedAt = Number.NEGATIVE_INFINITY;
 			value = undefined;
+			inFlight = undefined;
 		},
 	};
 }
@@ -208,13 +218,32 @@ export function wireWorkspaceOverviewInvalidation(
 	invalidate: () => void,
 	folders: readonly vscode.WorkspaceFolder[] = vscode.workspace.workspaceFolders ?? [],
 ): vscode.Disposable {
-	const disposables: vscode.Disposable[] = [];
+	let folderWatchers: vscode.Disposable[] = [];
 	// Non-recursive `*` pattern: only the folder's direct children matter, since
 	// that is all the overview lists. Renames surface as delete + create.
-	for (const folder of folders.slice(0, 3)) {
-		const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, '*'));
-		disposables.push(watcher, watcher.onDidCreate(invalidate), watcher.onDidDelete(invalidate));
-	}
-	disposables.push(LinkManager.onLinksSaved(invalidate), vscode.workspace.onDidChangeWorkspaceFolders(invalidate));
-	return { dispose: () => disposables.forEach(d => d.dispose()) };
+	const registerFolderWatchers = (current: readonly vscode.WorkspaceFolder[]): void => {
+		folderWatchers.forEach(d => d.dispose());
+		folderWatchers = [];
+		for (const folder of current.slice(0, 3)) {
+			const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, '*'));
+			folderWatchers.push(watcher, watcher.onDidCreate(invalidate), watcher.onDidDelete(invalidate));
+		}
+	};
+	registerFolderWatchers(folders);
+
+	const subscriptions = [
+		LinkManager.onLinksSaved(invalidate),
+		// A changed folder set both alters the overview's folder list AND means the
+		// old watchers point at stale folders — rebind them, then invalidate.
+		vscode.workspace.onDidChangeWorkspaceFolders(() => {
+			registerFolderWatchers(vscode.workspace.workspaceFolders ?? []);
+			invalidate();
+		}),
+	];
+	return {
+		dispose: () => {
+			folderWatchers.forEach(d => d.dispose());
+			subscriptions.forEach(d => d.dispose());
+		},
+	};
 }

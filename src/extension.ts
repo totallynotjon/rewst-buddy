@@ -69,7 +69,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	const conversationMapKey = 'RewstConversationMap';
 	conversationMap.hydrate({
 		load: () => context.workspaceState.get<PersistedConversationMap>(conversationMapKey),
-		save: state => void context.workspaceState.update(conversationMapKey, state),
+		save: state =>
+			void Promise.resolve(context.workspaceState.update(conversationMapKey, state)).catch(error =>
+				log.debug('conversationMap: persist failed', error),
+			),
 	});
 	context.subscriptions.push(new RoboRewstyChatModelProvider().init());
 	context.subscriptions.push(LmToolRegistry.init());
