@@ -4,8 +4,18 @@
 # CodeRabbit's approval a merge gate: it requests changes while it has unresolved
 # comments and approves once they're resolved.
 reviews:
+    # "assertive" surfaces more findings — nitpicks, edge cases, and
+    # lower-confidence concerns — than the default "chill" profile.
+    profile: assertive
     request_changes_workflow: true
     poem: false
+    # Richer review output.
+    high_level_summary: true
+    sequence_diagrams: true
+    assess_linked_issues: true
+    related_issues: true
+    related_prs: true
+    suggested_labels: true
     auto_review:
         enabled: true
         drafts: false
@@ -31,6 +41,9 @@ reviews:
               over array.find/filter for repeated lookups, async I/O over sync, and
               early returns. Context-menu commands read the URI from args[0][0], not
               args[0]. Fire-and-forget persistence should not block user actions.
+              Review assertively: surface edge cases, error-handling gaps, race
+              conditions, and lower-confidence concerns rather than withholding them,
+              and do not suppress nitpicks.
         - path: 'src/ui/chat/**/*.ts'
           instructions: >-
               This is AI prompt-steering / vscode-tool protocol code. Keep wording
@@ -41,7 +54,11 @@ reviews:
               prompt-injection reflex. Prefer neutral framing: "Rewst Buddy VS Code
               Context", "local tool protocol", "VS Code approval/sandbox flow", and
               state that fenced vscode-tool JSON blocks are intercepted and executed by
-              the extension. Does not apply to *.test.ts.
+              the extension. Flag steering that contradicts another steering layer:
+              the engineering directive (engineeringDirective.ts) and the tool-protocol
+              block (toolProtocol.ts) must agree, and reuse turns ship only the
+              tool-protocol block, so it must be self-consistent on its own. Does not
+              apply to *.test.ts.
         - path: 'tsconfig.json'
           instructions: >-
               Path-alias changes (compilerOptions.paths) must be mirrored in
@@ -74,6 +91,21 @@ reviews:
     tools:
         # Run ESLint in review (the repo uses a flat eslint.config.mjs).
         eslint:
+            enabled: true
+        # Secret scanning — this extension handles Rewst cookies/tokens.
+        gitleaks:
+            enabled: true
+        # Lint Markdown in README, docs/, and changelog notes.
+        markdownlint:
+            enabled: true
+        # Lint YAML (this config, .vscode-test config, workflow yaml).
+        yamllint:
+            enabled: true
+        # Lint GitHub Actions workflows under .github/workflows.
+        actionlint:
+            enabled: true
+        # Static analysis for security and bug patterns.
+        semgrep:
             enabled: true
 
 # Let CodeRabbit treat CLAUDE.md and docs as authoritative project guidelines.
