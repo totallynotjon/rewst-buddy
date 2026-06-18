@@ -530,6 +530,40 @@
 						"query"
 					]
 				}
+			},
+			{
+				"name": "buddy_result_read",
+				"displayName": "Read Cached Tool Result",
+				"toolReferenceName": "buddyResultRead",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Read more of an oversized Rewst Buddy tool result that was cached in memory. When a tool result is too large to return inline, Rewst Buddy returns a preview plus a short id; pass that id here to page through the full text (offset/limit) or to find lines within it (search). The cache is in-memory only and is never written to disk, so an id can be evicted under memory pressure — if it is gone, rerun the original tool.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"id": {
+							"type": "string",
+							"description": "The cached-result id from an oversized tool result."
+						},
+						"offset": {
+							"type": "number",
+							"description": "Character offset to start reading from (default 0)."
+						},
+						"limit": {
+							"type": "number",
+							"description": "Maximum characters to return in a slice (default 6000)."
+						},
+						"search": {
+							"type": "string",
+							"description": "If set, return matching lines with line numbers instead of a slice."
+						}
+					},
+					"required": [
+						"id"
+					]
+				}
 			}
 		],
 		"configuration": {
@@ -648,6 +682,12 @@
 						]
 					},
 					"markdownDescription": "Extra AI tools Cage-Free Rewsty may use — check the ones to enable. `workspace` shares a workspace overview and the template-link list; `web`, `graphql`, and `workflows` let the assistant act against the web or your Rewst instance, where GraphQL and workflow **edits always require your approval**."
+				},
+				"rewst-buddy.ai.toolResultCacheLimitMB": {
+					"type": "number",
+					"default": 500,
+					"minimum": 1,
+					"markdownDescription": "Memory budget (in MB) for caching oversized Cage-Free Rewsty tool results. When a tool returns more than fits inline, the full result is kept in memory so the assistant can page or search it via `buddy_result_read` instead of rerunning the request. Nothing is written to disk; the cache evicts the oldest results once this budget is reached and is cleared when the window reloads."
 				}
 			}
 		},

@@ -10,6 +10,7 @@ import {
 	GRAPHQL_TOOL_SPECS,
 } from '../tools/graphqlTool';
 import { enabledAiTools } from '../tools/aiToolSettings';
+import { RESULT_READ_TOOL_SPECS } from '../tools/toolOutputCache';
 import { describeRequestBrief, type ToolSpec } from '../tools/toolProtocol';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
 import { WEB_TOOL_SPECS } from '../tools/webTools';
@@ -43,6 +44,13 @@ export const GOVERNED_TOOL_SPECS: GovernedSpec[] = [
 	...WEB_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWebTools })),
 	...WORKFLOW_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkflowTools })),
 	...GRAPHQL_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableGraphqlTool })),
+	// Available whenever any tool can run, since any of them can produce the
+	// oversized cached output this one reads back.
+	...RESULT_READ_TOOL_SPECS.map(spec => ({
+		spec,
+		enabled: (s: AiToolSettings) =>
+			s.enableWorkspaceTools || s.enableWebTools || s.enableGraphqlTool || s.enableWorkflowTools,
+	})),
 ];
 
 export const ALL_TOOL_SPECS: ToolSpec[] = GOVERNED_TOOL_SPECS.map(entry => entry.spec);

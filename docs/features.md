@@ -120,6 +120,8 @@ Off by default because they let a remote assistant direct activity on your machi
     - `buddy_execution_logs` shows one execution's per-task logs — each task's status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see **why** a run failed without reading the whole context
     - Reads run directly; **edits and auto-layout require the same inline chat confirmation** as a GraphQL mutation, showing what will change, and approval is remembered per workflow for the session. Off by default because the session can change any workflow you can in Rewst
 
+When any Rewst Buddy AI tool returns a large result, the chat shows a preview and keeps the full output in an in-memory cache (never written to disk), returning a short result id. Cage-Free Rewsty can then page through or search that result with the `buddy_result_read` tool instead of rerunning the Rewst request. The cache size is configurable via `rewst-buddy.ai.toolResultCacheLimitMB` (default 500 MB) and is cleared when the window reloads.
+
 A tool whose setting is off is never offered to the assistant — even if it appears in the chat's tool picker.
 
 ### Approving Rewst actions

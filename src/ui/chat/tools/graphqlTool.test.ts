@@ -319,13 +319,14 @@ suite('Unit: graphqlTool', () => {
 		assert.ok(!output.includes('"data"'));
 	});
 
-	test('truncates oversized responses', async () => {
+	test('returns oversized responses intact for the shared tool-output formatter', async () => {
+		const big = 'x'.repeat(20_000);
 		const output = await runGraphqlTool(
 			{ tool: 'buddy_graphql', args: { query: '{ big }' } },
-			deps({ execute: async () => ({ data: { big: 'x'.repeat(20_000) } }) }),
+			deps({ execute: async () => ({ data: { big } }) }),
 		);
-		assert.ok(output.length < 9_000);
-		assert.match(output, /output truncated/);
+		assert.ok(output.includes(big));
+		assert.doesNotMatch(output, /output truncated/);
 	});
 
 	suite('buddy_graphql_schema', () => {

@@ -25,8 +25,6 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
  *   - Subscriptions are rejected (the tool protocol is request/response).
  */
 
-const MAX_OUTPUT_CHARS = 8_000;
-
 export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
 	{
 		name: 'buddy_graphql_schema',
@@ -555,7 +553,7 @@ async function runSchemaTool(request: ToolRequest, deps: GraphqlToolDeps): Promi
 }
 
 function formatResultText(text: string): string {
-	return text.length > MAX_OUTPUT_CHARS ? text.slice(0, MAX_OUTPUT_CHARS) + '\n…(output truncated)' : text;
+	return text;
 }
 
 export async function runGraphqlTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
