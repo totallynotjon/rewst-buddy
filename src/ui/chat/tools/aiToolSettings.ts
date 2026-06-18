@@ -7,9 +7,9 @@ import vscode from 'vscode';
  * replaced the individual `enable…Tools` booleans. `workspace` is on by default;
  * `web`, `graphql`, and `workflows` are opt-in.
  */
-export type AiToolCapability = 'workspace' | 'web' | 'graphql' | 'workflows';
+const ALL_CAPABILITIES = ['workspace', 'web', 'graphql', 'workflows'] as const;
 
-const ALL_CAPABILITIES: AiToolCapability[] = ['workspace', 'web', 'graphql', 'workflows'];
+export type AiToolCapability = (typeof ALL_CAPABILITIES)[number];
 
 const DEFAULT_TOOLS: AiToolCapability[] = ['workspace'];
 
