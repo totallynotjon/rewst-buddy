@@ -10,14 +10,13 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
  *
  *   - Off by default (enable "graphql" in rewst-buddy.ai.tools): the session can
  *     read and change anything the user can in Rewst.
- *   - Queries run directly once enabled; mutations always require explicit
- *     user approval — VS Code's native inline chat confirmation (Continue /
- *     Cancel) showing the full operation, gated at the tool's prepareInvocation
- *     (see lmTools.ts). The extension does not remember approvals, and it ships
- *     `buddyGraphql` as not eligible for auto-approval (package.json
- *     configurationDefaults → chat.tools.eligibleForAutoApproval), so every
- *     mutation is confirmed each time and cannot be auto-approved away (short of
- *     the user's own Autopilot / Bypass-Approvals mode).
+ *   - Queries run directly once enabled; mutations always require explicit user
+ *     approval — a notification with Allow / Cancel buttons that the extension
+ *     pops every time the tool runs (see graphqlMutationConfirmation +
+ *     lmTools.ts). Because the prompt is the extension's own UI shown from inside
+ *     the tool call, not VS Code's tool-confirmation affordance, it cannot be
+ *     auto-approved or allow-listed away — even when another agent (e.g. Copilot
+ *     agent mode) drives the tool.
  *   - Every mutation MUST carry four scope fields the assistant supplies:
  *     scopeId + scopeName (id and name of the single resource it changes, e.g. a
  *     workflow's id and name) and orgId + orgName. The names are shown in the
@@ -89,9 +88,9 @@ export interface GraphqlToolDeps {
 	/**
 	 * Final say on whether a mutation runs; returns true to run. In production
 	 * this is already true by the time the tool executes — the user confirmed it
-	 * through VS Code's inline chat confirmation at prepareInvocation time (see
-	 * graphqlMutationConfirmation + lmTools.ts). Kept as a seam so runGraphqlTool
-	 * stays independently testable and gated.
+	 * through the Allow / Cancel notification lmTools.invoke pops before running
+	 * the tool (see graphqlMutationConfirmation + lmTools.ts). Kept as a seam so
+	 * runGraphqlTool stays independently testable and gated.
 	 */
 	confirmMutation(operation: string): Promise<boolean>;
 	execute(query: string, variables?: Record<string, unknown>): Promise<{ data?: unknown; errors?: unknown }>;
@@ -242,11 +241,11 @@ const TYPE_NAMES_QUERY = `query RewstBuddySchemaTypeNames($includeDeprecated: Bo
 export function createGraphqlDeps(session: Session): GraphqlToolDeps {
 	return {
 		isEnabled: () => isAiToolEnabled('graphql'),
-		// The mutation prompt is VS Code's inline chat confirmation, shown at
-		// prepareInvocation before the tool runs (see graphqlMutationConfirmation +
-		// lmTools.ts). By the time execution reaches here the user has already said
-		// yes, so there is nothing left to ask — a second OS modal would be the
-		// jarring double-prompt this replaced (#25).
+		// The mutation prompt is the Allow / Cancel notification lmTools.invoke pops
+		// before the tool runs (see graphqlMutationConfirmation + lmTools.ts). By the
+		// time execution reaches here the user has already said yes, so there is
+		// nothing left to ask — this seam stays as the final, testable gate for
+		// direct/fallback callers.
 		confirmMutation: async () => true,
 		execute: (query, variables) => session.rawGraphql(query, variables),
 		// Partition per-session caches by the org behind this session.
@@ -300,49 +299,19 @@ function parseMutation(name: string, input: unknown): ParsedMutation | undefined
 }
 
 /**
- * Wraps content in a fenced code block whose backtick run is one longer than any
- * run inside the content, so a model-supplied query or variables value
- * containing ``` cannot close the fence early and distort the approval prompt.
+ * The plain-text approval prompt for a `buddy_graphql` mutation, or undefined
+ * when no prompt is needed: anything but a mutation (queries, schema reads, other
+ * tools), or a mutation missing any scope field (it is refused downstream in
+ * runGraphqlTool, so there is nothing to approve). Shown for every mutation — the
+ * extension does not remember approvals; lmTools.invoke pops it as an Allow /
+ * Cancel notification, named for the resource and org the assistant declares it
+ * is changing (#44).
  */
-function fencedBlock(language: string, content: string): string {
-	const longestRun = Math.max(0, ...[...content.matchAll(/`+/g)].map(match => match[0].length));
-	const fence = '`'.repeat(Math.max(3, longestRun + 1));
-	return `${fence}${language}\n${content}\n${fence}`;
-}
-
-/** Confirmation copy the chat surface renders inline for a mutation. */
-export interface GraphqlMutationConfirmation {
-	title: string;
-	/** Markdown body: the prompt plus the full operation in fenced blocks. */
-	message: string;
-}
-
-/**
- * The inline mutation confirmation for a tool request, or undefined when no
- * prompt is needed: anything but a `buddy_graphql` mutation (queries, schema
- * reads, other tools), or a mutation missing any scope field (it is refused
- * downstream in runGraphqlTool, so there is nothing to approve). Shown for every
- * mutation — the extension does not remember approvals; lmTools.ts gates the
- * mutation through VS Code's native chat confirmation instead of an OS modal,
- * named for the resource and org the assistant declares it is changing (#25).
- */
-export function graphqlMutationConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
+export function graphqlMutationConfirmation(name: string, input: unknown): string | undefined {
 	const mutation = parseMutation(name, input);
 	if (!mutation?.scope) return undefined;
-	const { scopeName, scopeId, orgName, orgId } = mutation.scope;
-
-	const lines = [
-		`Run this mutation against **${scopeName}** (\`${scopeId}\`) in org **${orgName}** (\`${orgId}\`)?`,
-		'',
-		fencedBlock('graphql', mutation.query),
-	];
-	if (mutation.variables) {
-		lines.push('', 'Variables:', fencedBlock('json', JSON.stringify(mutation.variables, null, 2)));
-	}
-	return {
-		title: 'Cage-Free Rewsty wants to change a Rewst resource',
-		message: lines.join('\n'),
-	};
+	const { scopeName, orgName } = mutation.scope;
+	return `Run a GraphQL mutation against "${scopeName}" in org "${orgName}"?`;
 }
 
 /**

@@ -107,10 +107,9 @@ All settings live under the `rewst-buddy.*` namespace. Edit via VS Code Settings
 
 ## Tool Approvals
 
-Cage-Free Rewsty's Rewst-changing tools — `buddy_graphql` (mutations), `buddy_workflow_edit`, `buddy_workflow_autolayout`, and `buddy_workflow_run` — show an inline confirmation before they run, **every time**. The extension does not remember approvals, and it ships these four tools as **not eligible for auto-approval** (a `chat.tools.eligibleForAutoApproval` default), so the confirmation can't be allow-listed away with "Allow in this Session". This holds whether the tools are driven by Cage-Free Rewsty or another agent (e.g. Copilot agent mode).
+Cage-Free Rewsty's Rewst-changing tools — `buddy_graphql` (mutations), `buddy_workflow_edit`, `buddy_workflow_autolayout`, and `buddy_workflow_run` — pop an **Allow / Cancel** notification before they run, **every time**. The notification names the resource and org being changed or run; clicking **Allow** proceeds, **Cancel** (or dismissing it) declines.
 
-- To allow auto-approving one of them anyway, set its reference name to `true` in your settings, e.g. `"chat.tools.eligibleForAutoApproval": { "buddyWorkflowRun": true }`.
-- VS Code's **Autopilot** and **Bypass Approvals** modes approve everything regardless — that is a deliberate "no approvals" choice on your side and overrides the per-tool default.
+The prompt is the extension's own UI, shown from inside the tool call rather than through VS Code's tool-confirmation affordance. That means it can't be auto-approved, allow-listed with "Allow in this Session", or skipped by an agent's auto-approval — the confirmation appears whether the tool is driven by Cage-Free Rewsty or another agent (e.g. Copilot agent mode), and there is no setting that turns it off.
 
 ## Multi-Region Setup
 

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { type GraphqlMutationConfirmation, type GraphqlToolDeps, type MutationScope } from './graphqlTool';
+import { type GraphqlToolDeps, type MutationScope } from './graphqlTool';
 import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
 
 /**
@@ -17,8 +17,9 @@ import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
  * must equal the updatedAt read at fetch time), and snapshots a patch so every
  * change is reversible. New task ids are de-dashed hex because the server
  * strips dashes from task ids but not from the `do` references that point at
- * them. Reads run directly; the edit is a mutation gated by the same in-chat
- * approval flow as buddy_graphql (see workflowEditConfirmation + lmTools.ts).
+ * them. Reads run directly; edits, auto-layouts, and runs are mutations gated by
+ * the same Allow / Cancel notification as buddy_graphql, popped every time from
+ * inside the tool call (see workflowEditConfirmation + lmTools.ts).
  */
 
 const MAX_OUTPUT_CHARS = 8_000;
@@ -1905,47 +1906,22 @@ function workflowScope(input: unknown): MutationScope | undefined {
 	return { scopeId: workflowId, scopeName: workflowName, orgId, orgName };
 }
 
-function describeOperation(operation: WorkflowOperation): string {
-	const op = operation.op;
-	const from = str(operation.from);
-	const to = str(operation.to);
-	const detail = str(operation.name) ?? (from && to ? `${from}->${to}` : from) ?? str(operation.id);
-	return detail ? `${op} ${detail}` : String(op);
-}
-
 /**
- * The inline approval prompt for a workflow-mutation request, or undefined when
- * no prompt is needed (not a workflow mutation, or missing scope fields —
+ * The plain-text approval prompt for a workflow-mutation request, or undefined
+ * when no prompt is needed (not a workflow mutation, or missing scope fields —
  * refused downstream). Shown for every edit, auto-layout, and run: the extension
- * does not remember approvals, so each one is confirmed individually (VS Code's
- * own auto-approve affordance on the confirmation is the way to allow-list a tool
- * for the session).
+ * does not remember approvals; lmTools.invoke pops it as an Allow / Cancel
+ * notification before the tool runs, so each one is confirmed individually and
+ * cannot be auto-approved away (#44).
  */
-export function workflowEditConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
+export function workflowEditConfirmation(name: string, input: unknown): string | undefined {
 	if (!WORKFLOW_MUTATION_TOOLS.has(name)) return undefined;
 	const scope = workflowScope(input);
 	if (!scope) return undefined;
-	const args = asObject(input);
-	const target = `workflow **${scope.scopeName}** (\`${scope.scopeId}\`) in org **${scope.orgName}** (\`${scope.orgId}\`)?`;
-	let lines: string[];
-	let title = 'Cage-Free Rewsty wants to edit a Rewst workflow';
-	if (name === WORKFLOW_AUTOLAYOUT_TOOL_NAME) {
-		lines = [`Auto-layout ${target}`, '', 'This re-arranges every task position on the canvas.'];
-	} else if (name === WORKFLOW_RUN_TOOL_NAME) {
-		title = 'Cage-Free Rewsty wants to run a Rewst workflow';
-		const runInput = asObject(args.input);
-		lines = [`Run ${target}`, '', 'This executes the workflow.'];
-		if (Object.keys(runInput).length > 0)
-			lines.push('', 'Input:', `\`\`\`json\n${JSON.stringify(runInput, null, 2)}\n\`\`\``);
-	} else {
-		lines = [
-			`Edit ${target}`,
-			'',
-			'Operations:',
-			...(Array.isArray(args.operations) ? (args.operations as WorkflowOperation[]) : []).map(
-				operation => `- ${describeOperation(operation)}`,
-			),
-		];
-	}
-	return { title, message: lines.join('\n') };
+	const target = `workflow "${scope.scopeName}" in org "${scope.orgName}"?`;
+	if (name === WORKFLOW_AUTOLAYOUT_TOOL_NAME) return `Auto-layout ${target}`;
+	if (name === WORKFLOW_RUN_TOOL_NAME) return `Run ${target}`;
+	const operations = asObject(input).operations;
+	const count = Array.isArray(operations) ? operations.length : 0;
+	return `Apply ${count} change(s) to ${target}`;
 }

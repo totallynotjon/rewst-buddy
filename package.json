@@ -532,14 +532,6 @@
 				}
 			}
 		],
-		"configurationDefaults": {
-			"chat.tools.eligibleForAutoApproval": {
-				"buddyWorkflowRun": false,
-				"buddyWorkflowEdit": false,
-				"buddyWorkflowAutolayout": false,
-				"buddyGraphql": false
-			}
-		},
 		"configuration": {
 			"title": "Settings Editor Rewst-Buddy",
 			"type": "object",

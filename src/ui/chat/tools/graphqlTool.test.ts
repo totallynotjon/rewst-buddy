@@ -65,7 +65,7 @@ suite('Unit: graphqlTool', () => {
 	});
 
 	suite('graphqlMutationConfirmation()', () => {
-		test('names the resource and org and shows the operation and variables', () => {
+		test('names the resource and org in a plain-text prompt', () => {
 			const confirmation = graphqlMutationConfirmation(
 				'buddy_graphql',
 				scopedMutation({
@@ -74,34 +74,10 @@ suite('Unit: graphqlTool', () => {
 				}),
 			);
 			assert.ok(confirmation, 'an unapproved mutation needs confirmation');
-			assert.match(confirmation.message, /My Workflow/);
-			assert.match(confirmation.message, /wf-1/);
-			assert.match(confirmation.message, /Acme/);
-			assert.match(confirmation.message, /org-1/);
-			assert.match(confirmation.message, /```graphql/);
-			assert.match(confirmation.message, /mutation U/);
-			assert.match(confirmation.message, /Variables:/);
-			assert.match(confirmation.message, /"id": "t-1"/);
-		});
-
-		test('omits the variables block when there are none', () => {
-			const confirmation = graphqlMutationConfirmation(
-				'buddy_graphql',
-				scopedMutation({ query: 'mutation D { deleteTemplate { id } }' }),
-			);
-			assert.ok(confirmation);
-			assert.doesNotMatch(confirmation.message, /Variables:/);
-		});
-
-		test('widens the fence so backticks in the operation cannot close it early', () => {
-			const confirmation = graphqlMutationConfirmation(
-				'buddy_graphql',
-				scopedMutation({ query: 'mutation M { x(body: "```danger```") { id } }' }),
-			);
-			assert.ok(confirmation);
-			// The inner ``` run forces a 4-backtick fence around the operation.
-			assert.match(confirmation.message, /````graphql\n/);
-			assert.match(confirmation.message, /\n````/);
+			assert.match(confirmation, /My Workflow/);
+			assert.match(confirmation, /Acme/);
+			// It is a concise notification prompt, not the markdown/operation dump.
+			assert.doesNotMatch(confirmation, /```/);
 		});
 
 		test('returns undefined for queries and schema reads', () => {

@@ -144,6 +144,20 @@ function resolveGraphqlSession(): Session | undefined {
 }
 
 /**
+ * The extension's own approval surface for a Rewst-changing tool call: a
+ * notification with Allow / Cancel buttons the user must answer every time.
+ * Shown from inside the tool's invoke (not VS Code's tool-confirmation
+ * affordance), so tool auto-approval — including another agent's — cannot bypass
+ * it (#44). Returns true only when the user clicks Allow; Cancel or dismissing
+ * the notification declines.
+ */
+async function confirmRewstToolCall(message: string): Promise<boolean> {
+	const allow = 'Allow';
+	const choice = await vscode.window.showWarningMessage(message, { modal: false }, allow, 'Cancel');
+	return choice === allow;
+}
+
+/**
  * Registers every settings-enabled tool with vscode.lm and keeps the
  * registrations in step with configuration changes. Execution-time setting
  * checks inside the tools themselves stay as a second enforcement layer.
@@ -230,30 +244,28 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 	private makeTool(name: string): vscode.LanguageModelTool<Record<string, unknown>> {
 		return {
 			// Surface what the tool is accessing (its args) in the chat's running
-			// indicator instead of just the bare tool name (#22). A GraphQL mutation
-			// also gets VS Code's native inline confirmation (Continue / Cancel)
-			// here, replacing the OS modal — decline simply skips invoke (#25).
-			prepareInvocation: async options => {
-				const invocationMessage = describeRequestBrief({ tool: name, args: options.input ?? {} });
-				const confirmation =
-					graphqlMutationConfirmation(name, options.input) ?? workflowEditConfirmation(name, options.input);
-				if (!confirmation) return { invocationMessage };
-				return {
-					invocationMessage,
-					confirmationMessages: {
-						title: confirmation.title,
-						message: new vscode.MarkdownString(confirmation.message),
-					},
-				};
-			},
+			// indicator instead of just the bare tool name (#22).
+			prepareInvocation: async options => ({
+				invocationMessage: describeRequestBrief({ tool: name, args: options.input ?? {} }),
+			}),
 			invoke: async (options, _token) => {
-				// invoke only runs once VS Code has accepted the confirmation (or none
-				// was needed). The extension does not remember mutation approvals, so
-				// each mutation is confirmed again next time (VS Code's own auto-approve
-				// affordance on the confirmation is what allow-lists a tool for a session).
+				const input = options.input ?? {};
+				// Rewst-changing tools (GraphQL mutations, workflow edit/autolayout/run)
+				// must be confirmed EVERY time. We pop our own Allow / Cancel
+				// notification from inside invoke — not VS Code's tool-confirmation
+				// affordance — so it cannot be auto-approved or allow-listed away, even
+				// when another agent (e.g. Copilot agent mode) drives the tool (#44).
+				const confirmation = graphqlMutationConfirmation(name, input) ?? workflowEditConfirmation(name, input);
+				if (confirmation && !(await confirmRewstToolCall(confirmation))) {
+					return new vscode.LanguageModelToolResult([
+						new vscode.LanguageModelTextPart(
+							'The user declined this action. Do not retry it; ask what they would prefer.',
+						),
+					]);
+				}
 				const session = resolveGraphqlSession();
 				const [result] = await runToolRequests(
-					[{ tool: name, args: options.input ?? {} }],
+					[{ tool: name, args: input }],
 					undefined,
 					undefined,
 					session ? createGraphqlDeps(session) : undefined,

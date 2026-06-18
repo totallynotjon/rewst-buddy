@@ -523,11 +523,12 @@ suite('Unit: workflowTools', () => {
 			operations: [{ op: 'add_task', name: 'notify', action: 'core.noop' }],
 		};
 
-		test('summarizes operations and names the workflow', () => {
+		test('counts the operations and names the workflow and org', () => {
 			const confirmation = workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, fullArgs);
 			assert.ok(confirmation);
-			assert.match(confirmation!.message, /WF/);
-			assert.match(confirmation!.message, /add_task notify/);
+			assert.match(confirmation, /WF/);
+			assert.match(confirmation, /Acme/);
+			assert.match(confirmation, /1 change/);
 		});
 
 		test('confirms every time — approvals are not remembered', () => {
@@ -545,8 +546,8 @@ suite('Unit: workflowTools', () => {
 			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme' };
 			const confirmation = workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, args);
 			assert.ok(confirmation);
-			assert.match(confirmation!.message, /Auto-layout/);
-			assert.match(confirmation!.message, /re-arranges every task/i);
+			assert.match(confirmation, /Auto-layout/);
+			assert.match(confirmation, /WF/);
 		});
 	});
 
@@ -1197,8 +1198,8 @@ suite('Unit: workflowTools', () => {
 			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme', input: { a: 1 } };
 			const confirmation = workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args);
 			assert.ok(confirmation);
-			assert.match(confirmation!.message, /Run workflow/);
-			assert.match(confirmation!.message, /executes the workflow/i);
+			assert.match(confirmation, /Run workflow/);
+			assert.match(confirmation, /WF/);
 			// Nothing is remembered, so a second request still prompts.
 			assert.ok(workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args), 'run still asks the next time');
 		});
