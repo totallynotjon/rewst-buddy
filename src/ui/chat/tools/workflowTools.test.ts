@@ -14,6 +14,7 @@ import {
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
+	WORKFLOW_TOOL_SPECS,
 	_resetWorkflowIndexForTesting,
 	workflowEditConfirmation,
 	workflowEditScope,
@@ -87,6 +88,17 @@ suite('Unit: workflowTools', () => {
 		assert.ok(isWorkflowTool('buddy_action_search'));
 		assert.ok(isWorkflowTool('buddy_workflow_edit'));
 		assert.ok(!isWorkflowTool('buddy_graphql'));
+	});
+
+	test('buddy_workflow_get spec reserves full detail for ids and positions, not ordinary edits', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === 'buddy_workflow_get');
+		assert.ok(spec, 'buddy_workflow_get spec exists');
+		assert.match(spec.args, /"summary" \(default\)/);
+		assert.match(spec.description, /summary.*sufficient.*name-based edits/i);
+		assert.match(spec.description, /full.*task ids, transition ids, or canvas positions/i);
+		assert.doesNotMatch(spec.description, /full" only when you are preparing to make workflow edits/i);
+		const detail = (spec.inputSchema as { properties: { detail: { description: string } } }).properties.detail;
+		assert.match(detail.description, /full.*only when you need task ids, transition ids, or canvas positions/i);
 	});
 
 	suite('normalizePublish()', () => {

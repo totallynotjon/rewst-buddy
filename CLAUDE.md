@@ -37,6 +37,10 @@ For edit/write tools specifically (`insert_edit_into_file`, `replace_string_in_f
 
 Live regression coverage for this behavior lives in `src/test/integration/directive.test.ts` under `an explicit insert edit tool request is a vscode-tool block, not a native call`.
 
+When editing AI tool steering, keep all tool metadata surfaces in sync. Runtime specs such as `WORKFLOW_TOOL_SPECS` are mirrored into `package.json` `contributes.languageModelTools`; after changing a tool description or `inputSchema`, run `npm run test:grep -- "Unit: package manifest"` and fix any drift instead of leaving VS Code's contributed metadata stale.
+
+For `buddy_workflow_get` detail steering specifically, do **not** say or imply that `detail:"full"` is needed for ordinary workflow edit prep. The summary view is enough for understanding and most name-based `buddy_workflow_edit` operations because edits resolve tasks by name. Reserve `detail:"full"` only for cases that actually need task ids, transition ids, or canvas positions, such as repositioning or targeting one specific transition by id. Regression coverage for this wording lives in `src/ui/chat/tools/workflowTools.test.ts` under `buddy_workflow_get spec reserves full detail for ids and positions, not ordinary edits`.
+
 ## Directory Structure
 
 ```
