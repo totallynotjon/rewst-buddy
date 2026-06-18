@@ -323,6 +323,34 @@ suite('Unit: graphqlTool', () => {
 		}
 	});
 
+	test('refuses a mutation whose scope fields are blank or whitespace-only', async () => {
+		for (const [field, value] of [
+			['scopeId', ''],
+			['scopeName', '   '],
+			['orgId', '\t'],
+			['orgName', '\n'],
+		] as const) {
+			let ran = false;
+			await assert.rejects(
+				runGraphqlTool(
+					{
+						tool: MUTATE_TOOL,
+						args: scopedMutation({ query: 'mutation D { deleteTemplate { id } }', [field]: value }),
+					},
+					deps({
+						execute: async () => {
+							ran = true;
+							return {};
+						},
+					}),
+				),
+				new RegExp(field),
+				`blank ${field} is refused`,
+			);
+			assert.strictEqual(ran, false, `${field}: nothing ran`);
+		}
+	});
+
 	test('does not run a declined mutation', async () => {
 		let ran = false;
 		await assert.rejects(
