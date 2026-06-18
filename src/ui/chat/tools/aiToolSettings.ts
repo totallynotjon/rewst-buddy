@@ -9,6 +9,8 @@ import vscode from 'vscode';
  */
 export type AiToolCapability = 'workspace' | 'web' | 'graphql' | 'workflows';
 
+const ALL_CAPABILITIES: AiToolCapability[] = ['workspace', 'web', 'graphql', 'workflows'];
+
 const DEFAULT_TOOLS: AiToolCapability[] = ['workspace'];
 
 /** The set of enabled tool capabilities from `rewst-buddy.ai.tools`. */
@@ -21,7 +23,8 @@ export function isAiToolEnabled(capability: AiToolCapability): boolean {
 	return enabledAiTools().has(capability);
 }
 
-/** Whether any tool capability is enabled at all. */
+/** Whether any known tool capability is enabled (unknown config values don't count). */
 export function anyAiToolEnabled(): boolean {
-	return enabledAiTools().size > 0;
+	const tools = enabledAiTools();
+	return ALL_CAPABILITIES.some(capability => tools.has(capability));
 }
