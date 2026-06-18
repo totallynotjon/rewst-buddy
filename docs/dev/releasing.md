@@ -42,6 +42,22 @@ note` status checks; block direct pushes and force-pushes. CodeRabbit's
   Marketplace PAT for the `JBramley` publisher) there — not as a repo-wide secret.
   Optionally add `OVSX_PAT` for Open VSX and uncomment that step in
   `publish.yml`.
+- **Release-bot GitHub App** (for the Prepare release PR): the default
+  `GITHUB_TOKEN` cannot open a PR, and a PR it opened would not trigger the
+  required CI checks. So `release.yml` mints a short-lived token from a GitHub
+  App instead. One-time setup:
+    1. Settings → Developer settings → **GitHub Apps → New GitHub App**. Name it
+       (e.g. `rewst-buddy-release-bot`), set any Homepage URL, and **uncheck
+       Webhook → Active**.
+    2. **Repository permissions**: `Contents: Read and write` and
+       `Pull requests: Read and write` (Metadata read-only is implied). Install
+       target: **Only on this account**. Create the app.
+    3. On the app's page, note the **App ID** and **Generate a private key**
+       (downloads a `.pem`).
+    4. **Install App** → this account → **Only select repositories** →
+       `rewst-buddy`.
+    5. Store the credentials as repo secrets: **`RELEASE_APP_ID`** (the App ID)
+       and **`RELEASE_APP_PRIVATE_KEY`** (the `.pem` contents).
 
 ## Hardening notes
 

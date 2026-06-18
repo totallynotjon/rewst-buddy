@@ -43,11 +43,22 @@ jobs:
             VERSION_INPUT: ${{ github.event.inputs.version }}
             DATE: ${{ github.event.inputs.date }}
         steps:
+            # The default GITHUB_TOKEN cannot open a PR (and PRs it opens never
+            # trigger CI), so mint a short-lived token from the release-bot
+            # GitHub App. The PR it opens triggers the required pull_request checks.
+            - name: Generate a token from the release-bot GitHub App
+              id: app-token
+              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+              with:
+                  app-id: ${{ secrets.RELEASE_APP_ID }}
+                  private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
             - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
                   ref: main
                   fetch-depth: 0
                   persist-credentials: true
+                  token: ${{ steps.app-token.outputs.token }}
 
             - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
               with:
@@ -89,6 +100,8 @@ jobs:
                   npm version "$VERSION" --no-git-tag-version
 
             - name: Open release PR
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
               run: |
                   git config user.name 'github-actions[bot]'
                   git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
