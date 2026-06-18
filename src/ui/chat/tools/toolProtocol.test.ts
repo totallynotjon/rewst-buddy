@@ -172,6 +172,28 @@ suite('Unit: toolProtocol', () => {
 			assert.ok(/resend the whole graph so nothing is dropped/i.test(text));
 		});
 
+		test('keeps workflow requests on workflow tools when GraphQL is also available', () => {
+			const text = buildToolInstructions([
+				{ name: 'buddy_workflow_search', args: '{}', description: 'Search workflows.' },
+				{ name: 'buddy_workflow_get', args: '{}', description: 'Read a workflow.' },
+				{ name: 'buddy_workflow_edit', args: '{}', description: 'Edit a workflow.' },
+				{ name: 'buddy_action_search', args: '{}', description: 'Search actions.' },
+				{ name: 'buddy_graphql_schema', args: '{}', description: 'Inspect schema.' },
+				{ name: 'buddy_graphql', args: '{"query": string}', description: 'Run GraphQL.' },
+			]);
+
+			assert.ok(text.includes('buddy_workflow_search'), 'workflow search remains advertised');
+			assert.ok(
+				!/GraphQL tools take priority[^.]*workflows/i.test(text),
+				'GraphQL guidance must not claim priority for workflows when workflow tools exist',
+			);
+			assert.ok(
+				!/live Rewst platform data \(workflows/i.test(text),
+				'the final high-recency rule must not name workflows as GraphQL-first data',
+			);
+			assert.ok(!/listing workflows/i.test(text), 'GraphQL must not be suggested for listing workflows');
+		});
+
 		test('omits workflow-tool guidance when the workflow tools are absent', () => {
 			const text = buildToolInstructions([{ name: 'read_file', args: '{}', description: 'Read.' }]);
 			assert.ok(!text.includes('buddy_workflow_edit'));

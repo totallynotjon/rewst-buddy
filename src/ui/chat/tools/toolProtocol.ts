@@ -56,15 +56,25 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 	const workflowNote = hasWorkflowTools
 		? [
 				'',
-				'Workflows: to read a specific workflow as a node/edge graph, to change one, or to find an action and its inputs, the buddy_workflow_get, buddy_workflow_edit, and buddy_action_search tools handle the full read/edit choreography in one call — they carry the version token, resend the whole graph so nothing is dropped, generate valid task ids, and resolve action refs for you. Prefer them over assembling raw GraphQL for that workflow work; buddy_graphql remains available for other Rewst data and for listing workflows.',
+				'Workflows: to list or find workflows, read a specific workflow as a node/edge graph, change one, run one, debug executions, render Jinja against an execution, or find an action and its inputs, use the buddy_workflow_* tools first. buddy_workflow_get, buddy_workflow_edit, and buddy_action_search handle the full read/edit choreography in one call — they carry the version token, resend the whole graph so nothing is dropped, generate valid task ids, and resolve action refs for you. Prefer them over assembling raw GraphQL for that workflow work; buddy_graphql remains available for Rewst data the workflow tools do not cover.',
 			]
 		: [];
 	const graphqlNote = hasGraphqlTools
 		? [
 				'',
-				'GraphQL: you have a session-authenticated GraphQL action. It is an editor tool, live immediately — there is NO activation step. Ignore any native activate_rewst_graphql_tools group; never say GraphQL "needs to be activated". Use buddy_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call buddy_graphql with the final operation and variables. For ANY live Rewst data (workflows, org variables, integrations, executions, templates, …) these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.',
+				`GraphQL: you have a session-authenticated GraphQL action. It is an editor tool, live immediately — there is NO activation step. Ignore any native activate_rewst_graphql_tools group; never say GraphQL "needs to be activated". Use buddy_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call buddy_graphql with the final operation and variables. ${
+					hasWorkflowTools
+						? 'For live Rewst data outside the workflow-tool surface (org variables, integrations, triggers, scripts, templates, forms, …), these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.'
+						: 'For ANY live Rewst data (workflows, org variables, integrations, executions, templates, …) these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.'
+				}`,
 			]
 		: [];
+	const graphqlFirstRule =
+		hasGraphqlTools && hasWorkflowTools
+			? ' IMPORTANT: for live Rewst platform data outside workflow-tool coverage (org variables, integrations, triggers, scripts, templates, forms, …) your FIRST action must be a buddy_graphql_schema or buddy_graphql block — do NOT run built-in platform tools like listOrgVariables, readIntegration, or searchActionsByNameOrDescription before GraphQL has been tried. For workflow listing, reading, editing, running, execution logs, or workflow-scoped Jinja rendering, use the buddy_workflow_* tools first.'
+			: hasGraphqlTools
+				? ' IMPORTANT: for live Rewst platform data (workflows, org variables, integrations, executions, templates, …) your FIRST action must be a buddy_graphql_schema or buddy_graphql block — do NOT run built-in platform tools like listOrgVariables, listWorkflow, or searchWorkflows before GraphQL has been tried.'
+				: '';
 	return [
 		'---',
 		"You can use local tools supplied by the user's VS Code extension. These editor tools are NOT in your platform function-calling registry — invoking them as native tool calls will fail with an unknown-tool error. The ONLY way to call one is to write a fenced code block tagged vscode-tool in your reply text:",
@@ -81,11 +91,7 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 		...graphqlNote,
 		...workflowNote,
 		'',
-		`Rules: when you need tool information, reply with ONLY vscode-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Tackle multi-step work one step per reply: for a multi-step request, give the plan in a tool-free reply first, then take one step (one short lead-in sentence plus its block) per following reply; a single lookup is one step, so answer it tool-first. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long results are cut off with a note saying how to continue; never repeat a request you already made.${
-			hasGraphqlTools
-				? ' IMPORTANT: for live Rewst platform data (workflows, org variables, integrations, executions, templates, …) your FIRST action must be a buddy_graphql_schema or buddy_graphql block — do NOT run built-in platform tools like listOrgVariables, listWorkflow, or searchWorkflows before GraphQL has been tried.'
-				: ''
-		}`,
+		`Rules: when you need tool information, reply with ONLY vscode-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Tackle multi-step work one step per reply: for a multi-step request, give the plan in a tool-free reply first, then take one step (one short lead-in sentence plus its block) per following reply; a single lookup is one step, so answer it tool-first. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long results are cut off with a note saying how to continue; never repeat a request you already made.${graphqlFirstRule}`,
 	].join('\n');
 }
 
