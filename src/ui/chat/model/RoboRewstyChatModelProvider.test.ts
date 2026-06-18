@@ -16,7 +16,7 @@ const { User, Assistant } = vscode.LanguageModelChatMessageRole;
 const allSettings: AiToolSettings = {
 	enableWorkspaceTools: true,
 	enableWebTools: true,
-	enableGraphqlTool: true,
+	enableGraphqlUnsafeTool: true,
 	enableWorkflowTools: true,
 };
 
@@ -254,12 +254,12 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 	});
 
 	test('a tool request with no tools available surfaces the rejection note', async () => {
-		const reply = '```vscode-tool\n{"tool": "buddy_graphql", "args": {"query": "{ workflows { id } }"}}\n```';
+		const reply = '```vscode-tool\n{"tool": "buddy_graphql_read", "args": {"query": "{ workflows { id } }"}}\n```';
 		const harness = makeHarness([completeTurn(reply)]);
 		await harness.run([message(User, [text('list workflows')])]);
 
 		assert.strictEqual(callsOf(harness.parts).length, 0);
-		assert.ok(textOf(harness.parts).includes('buddy_graphql'), 'rejection note names the tool');
+		assert.ok(textOf(harness.parts).includes('buddy_graphql_read'), 'rejection note names the tool');
 		assert.ok(textOf(harness.parts).includes('rewst-buddy.ai'), 'note points at the settings');
 	});
 

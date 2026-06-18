@@ -68,12 +68,15 @@ suite('Unit: ConversationEventMapper', () => {
 	test('TOOL_CALL_IN_PROGRESS truncates oversized args', () => {
 		const events = mapper.map({
 			status: 'TOOL_CALL_IN_PROGRESS',
-			metadata: { toolCalls: [{ name: 'buddy_graphql', args: { query: 'q'.repeat(500) }, id: 't3' }] },
+			metadata: { toolCalls: [{ name: 'buddy_graphql_read', args: { query: 'q'.repeat(500) }, id: 't3' }] },
 		});
 		const label = events[0].kind === 'status' ? events[0].label : '';
-		assert.ok(label.startsWith('Running Rewst tool: buddy_graphql {"query":"qqq'), 'keeps the head of the args');
+		assert.ok(
+			label.startsWith('Running Rewst tool: buddy_graphql_read {"query":"qqq'),
+			'keeps the head of the args',
+		);
 		assert.ok(label.endsWith('…'), 'ends with the truncation marker');
-		assert.ok(label.length < 140, `label is bounded, got ${label.length}`);
+		assert.ok(label.length < 150, `label is bounded, got ${label.length}`);
 	});
 
 	test('ignores bookkeeping statuses', () => {

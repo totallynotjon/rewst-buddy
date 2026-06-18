@@ -23,7 +23,7 @@ import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
  * change is reversible. New task ids are de-dashed hex because the server
  * strips dashes from task ids but not from the `do` references that point at
  * them. Reads run directly; the edit is a mutation gated by the same in-chat
- * approval flow as buddy_graphql (see workflowEditConfirmation + lmTools.ts).
+ * approval flow as buddy_graphql_mutate (see workflowEditConfirmation + lmTools.ts).
  */
 
 export const WORKFLOW_EDIT_TOOL_NAME = 'buddy_workflow_edit';

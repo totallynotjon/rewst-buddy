@@ -21,7 +21,7 @@ suite('Unit: toolOutputCache', () => {
 	suite('formatToolOutput()', () => {
 		test('returns short output inline without caching', () => {
 			const cache = new ToolOutputCache(SMALL_LIMIT);
-			const out = formatToolOutput('buddy_graphql', 'tiny', cache);
+			const out = formatToolOutput('buddy_graphql_read', 'tiny', cache);
 			assert.strictEqual(out, 'tiny');
 			assert.strictEqual(cache.size, 0);
 		});
@@ -29,7 +29,7 @@ suite('Unit: toolOutputCache', () => {
 		test('caches oversized output and returns a preview plus an id', () => {
 			const cache = new ToolOutputCache(SMALL_LIMIT);
 			const big = 'z'.repeat(20_000);
-			const out = formatToolOutput('buddy_graphql', big, cache);
+			const out = formatToolOutput('buddy_graphql_read', big, cache);
 			assert.match(out, /cached in memory as id "([0-9a-f]+)"/);
 			assert.match(out, /buddy_result_read/);
 			assert.ok(out.includes('z'.repeat(8_000)), 'includes the 8000-char preview');
@@ -48,7 +48,7 @@ suite('Unit: toolOutputCache', () => {
 		test('falls back to a truncated preview when output exceeds the cache budget', () => {
 			const cache = new ToolOutputCache(() => 1_000); // 1 KB budget
 			const big = 'z'.repeat(20_000);
-			const out = formatToolOutput('buddy_graphql', big, cache);
+			const out = formatToolOutput('buddy_graphql_read', big, cache);
 			assert.match(out, /exceeds the in-memory tool-result cache limit/);
 			assert.match(out, /toolResultCacheLimitMB/);
 			assert.strictEqual(cache.size, 0);
@@ -58,9 +58,9 @@ suite('Unit: toolOutputCache', () => {
 	suite('ToolOutputCache eviction', () => {
 		test('evicts the oldest entries to stay within the byte budget', () => {
 			const cache = new ToolOutputCache(() => 25_000); // fits ~2 of the 12k entries
-			const first = cache.store('buddy_graphql', 'a'.repeat(12_000));
-			const second = cache.store('buddy_graphql', 'b'.repeat(12_000));
-			const third = cache.store('buddy_graphql', 'c'.repeat(12_000));
+			const first = cache.store('buddy_graphql_read', 'a'.repeat(12_000));
+			const second = cache.store('buddy_graphql_read', 'b'.repeat(12_000));
+			const third = cache.store('buddy_graphql_read', 'c'.repeat(12_000));
 			assert.ok('id' in first && 'id' in second && 'id' in third);
 			assert.strictEqual(cache.get(first.id), undefined, 'oldest entry evicted');
 			assert.ok(cache.get(second.id), 'second entry retained');
@@ -72,7 +72,7 @@ suite('Unit: toolOutputCache', () => {
 	suite('runResultReadTool()', () => {
 		function cacheWith(text: string): { cache: ToolOutputCache; id: string } {
 			const cache = new ToolOutputCache(SMALL_LIMIT);
-			const stored = cache.store('buddy_graphql', text);
+			const stored = cache.store('buddy_graphql_read', text);
 			assert.ok('id' in stored);
 			return { cache, id: stored.id };
 		}
@@ -93,7 +93,7 @@ suite('Unit: toolOutputCache', () => {
 		test('search returns matching lines with line numbers', () => {
 			const cache = new ToolOutputCache(SMALL_LIMIT);
 			const text = ['alpha row', 'beta row', 'alpha again', 'gamma'].join('\n') + '\n' + 'pad'.repeat(4_000);
-			const stored = cache.store('buddy_graphql', text);
+			const stored = cache.store('buddy_graphql_read', text);
 			assert.ok('id' in stored);
 			const out = runResultReadTool(
 				{ tool: 'buddy_result_read', args: { id: stored.id, search: 'alpha' } },

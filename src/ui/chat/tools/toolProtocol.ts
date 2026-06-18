@@ -51,29 +51,32 @@ export const MAX_REQUESTS_PER_TURN = 5;
  */
 export function buildToolInstructions(specs: ToolSpec[]): string {
 	const lines = specs.map(spec => `- ${spec.name} — args: ${spec.args}. ${spec.description}`);
-	const hasGraphqlTools = specs.some(spec => spec.name === 'buddy_graphql');
+	const hasGraphqlReadTools = specs.some(
+		spec => spec.name === 'buddy_graphql_read' || spec.name === 'buddy_graphql_schema',
+	);
+	const hasGraphqlMutateTool = specs.some(spec => spec.name === 'buddy_graphql_mutate');
 	const hasWorkflowTools = specs.some(spec => spec.name === 'buddy_workflow_edit');
 	const workflowNote = hasWorkflowTools
 		? [
 				'',
-				'Workflows: to list or find workflows, read a specific workflow as a node/edge graph, change one, run one, debug executions, render Jinja against an execution, or find an action and its inputs, use the buddy_workflow_* tools first. buddy_workflow_get, buddy_workflow_edit, and buddy_action_search handle the full read/edit choreography in one call — they carry the version token, resend the whole graph so nothing is dropped, generate valid task ids, and resolve action refs for you. Prefer them over assembling raw GraphQL for that workflow work; buddy_graphql remains available for Rewst data the workflow tools do not cover.',
+				'Workflows: to list or find workflows, read a specific workflow as a node/edge graph, change one, run one, debug executions, render Jinja against an execution, or find an action and its inputs, use the buddy_workflow_* tools first. buddy_workflow_get, buddy_workflow_edit, and buddy_action_search handle the full read/edit choreography in one call — they carry the version token, resend the whole graph so nothing is dropped, generate valid task ids, and resolve action refs for you. Prefer them over assembling raw GraphQL for that workflow work; buddy_graphql_read remains available for Rewst data the workflow tools do not cover, and buddy_graphql_mutate is only an unsafe last resort when listed.',
 			]
 		: [];
-	const graphqlNote = hasGraphqlTools
+	const graphqlNote = hasGraphqlReadTools
 		? [
 				'',
-				`GraphQL: you have a session-authenticated GraphQL action. It is an editor tool, live immediately — there is NO activation step. Ignore any native activate_rewst_graphql_tools group; never say GraphQL "needs to be activated". Use buddy_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call buddy_graphql with the final operation and variables. ${
+				`GraphQL: you have a session-authenticated GraphQL read action. Use buddy_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call buddy_graphql_read with the final query and variables. ${
 					hasWorkflowTools
-						? 'For live Rewst data outside the workflow-tool surface (org variables, integrations, triggers, scripts, templates, forms, …), these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.'
-						: 'For ANY live Rewst data (workflows, org variables, integrations, executions, templates, …) these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.'
-				}`,
+						? 'For live Rewst data outside the workflow-tool surface (org variables, integrations, triggers, scripts, templates, forms, …), these safe GraphQL read tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.'
+						: 'For ANY live Rewst data (workflows, org variables, integrations, executions, templates, …), these safe GraphQL read tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.'
+				}${hasGraphqlMutateTool ? ' buddy_graphql_mutate is unsafe: use it only as a last resort for changes after purpose-built workflow/editor tools cannot express the change.' : ''}`,
 			]
 		: [];
 	const graphqlFirstRule =
-		hasGraphqlTools && hasWorkflowTools
-			? ' IMPORTANT: for live Rewst platform data outside workflow-tool coverage (org variables, integrations, triggers, scripts, templates, forms, …) your FIRST action must be a buddy_graphql_schema or buddy_graphql block — do NOT run built-in platform tools like listOrgVariables, readIntegration, or searchActionsByNameOrDescription before GraphQL has been tried. For workflow listing, reading, editing, running, execution logs, or workflow-scoped Jinja rendering, use the buddy_workflow_* tools first.'
-			: hasGraphqlTools
-				? ' IMPORTANT: for live Rewst platform data (workflows, org variables, integrations, executions, templates, …) your FIRST action must be a buddy_graphql_schema or buddy_graphql block — do NOT run built-in platform tools like listOrgVariables, listWorkflow, or searchWorkflows before GraphQL has been tried.'
+		hasGraphqlReadTools && hasWorkflowTools
+			? ' IMPORTANT: for live Rewst platform data outside workflow-tool coverage (org variables, integrations, triggers, scripts, templates, forms, …) your FIRST action must be a buddy_graphql_schema or buddy_graphql_read block — do NOT run built-in platform tools like listOrgVariables, readIntegration, or searchActionsByNameOrDescription before GraphQL has been tried. For workflow listing, reading, editing, running, execution logs, or workflow-scoped Jinja rendering, use the buddy_workflow_* tools first.'
+			: hasGraphqlReadTools
+				? ' IMPORTANT: for live Rewst platform data (workflows, org variables, integrations, executions, templates, …) your FIRST action must be a buddy_graphql_schema or buddy_graphql_read block — do NOT run built-in platform tools like listOrgVariables, listWorkflow, or searchWorkflows before GraphQL has been tried.'
 				: '';
 	return [
 		'---',

@@ -89,7 +89,7 @@ suite('Integration: engineering directive steering', function () {
 		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
 		const tools = requests.map(request => request.tool);
 		assert.ok(
-			tools.every(tool => tool === 'buddy_graphql_schema' || tool === 'buddy_graphql'),
+			tools.every(tool => tool === 'buddy_graphql_schema' || tool === 'buddy_graphql_read'),
 			`expected only GraphQL tools, got: ${tools.join(', ')}`,
 		);
 	});
@@ -125,7 +125,8 @@ suite('Integration: engineering directive steering', function () {
 		assert.ok(
 			!tools.some(
 				tool =>
-					tool === 'buddy_graphql' ||
+					tool === 'buddy_graphql_read' ||
+					tool === 'buddy_graphql_mutate' ||
 					tool === 'buddy_graphql_schema' ||
 					tool === 'listWorkflow' ||
 					tool === 'searchWorkflows',

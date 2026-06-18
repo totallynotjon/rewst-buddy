@@ -431,7 +431,7 @@
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Inspect the Rewst GraphQL schema with the user session before composing operations. With no args, lists root Query/Mutation/Subscription fields. Use typeName to inspect fields/input fields/enum values for one type. Use search to find matching type names and root operation fields.",
+				"modelDescription": "Inspect the Rewst GraphQL schema with the user session before composing read operations. This safe tool is available without a settings gate. With no args, lists root Query/Mutation/Subscription fields. Use typeName to inspect fields/input fields/enum values for one type. Use search to find matching type names and root operation fields.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
@@ -490,20 +490,46 @@
 				}
 			},
 			{
-				"name": "buddy_graphql",
-				"displayName": "Run Rewst GraphQL Operation",
-				"toolReferenceName": "buddyGraphql",
+				"name": "buddy_graphql_read",
+				"displayName": "Read Rewst GraphQL",
+				"toolReferenceName": "buddyGraphqlRead",
 				"canBeReferencedInPrompt": true,
 				"tags": [
 					"rewst"
 				],
-				"modelDescription": "Run a GraphQL operation against the user's Rewst instance with their session. Prefer buddy_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include four identifying fields: scopeId and scopeName (the id and human-readable name of the single resource the mutation changes, e.g. a workflow's id and name) plus orgId and orgName (the id and name of the org it runs in). A mutation missing any of them is refused. Reuse the exact same scopeId and orgId for every change to that same object — approval is remembered per resource for the session, so approving one mutation lets later mutations to that same resource run without re-asking, while a different resource is confirmed separately. The names are shown to the user in the approval prompt so they can recognize what is changing; only the ids are used to remember approval. Subscriptions are not supported.",
+				"modelDescription": "Run a read-only GraphQL query against the user's Rewst instance with their session. This safe tool is available without a settings gate. Prefer buddy_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations and subscriptions are refused; use purpose-built workflow tools for workflow work, and use buddy_graphql_mutate only as an unsafe last resort when no safer tool can make the change.",
 				"inputSchema": {
 					"type": "object",
 					"properties": {
 						"query": {
 							"type": "string",
 							"description": "GraphQL operation text."
+						},
+						"variables": {
+							"type": "object",
+							"description": "Operation variables."
+						}
+					},
+					"required": [
+						"query"
+					]
+				}
+			},
+			{
+				"name": "buddy_graphql_mutate",
+				"displayName": "Mutate Rewst GraphQL (Unsafe)",
+				"toolReferenceName": "buddyGraphqlMutate",
+				"canBeReferencedInPrompt": true,
+				"tags": [
+					"rewst"
+				],
+				"modelDescription": "Unsafe last-resort mutation tool: run a GraphQL mutation against the user's Rewst instance with their session when no purpose-built workflow/editor tool can make the change. Requires the user to enable GraphQL Unsafe and approve the mutation inline. Prefer workflow tools for workflows and buddy_graphql_read for data lookup. Mutations MUST include four identifying fields: scopeId and scopeName (the id and human-readable name of the single resource the mutation changes, e.g. a workflow's id and name) plus orgId and orgName (the id and name of the org it runs in). A mutation missing any of them is refused. Reuse the exact same scopeId and orgId for every change to that same object — approval is remembered per resource for the session, so approving one mutation lets later mutations to that same resource run without re-asking, while a different resource is confirmed separately. The names are shown to the user in the approval prompt so they can recognize what is changing; only the ids are used to remember approval. Queries and subscriptions are not supported.",
+				"inputSchema": {
+					"type": "object",
+					"properties": {
+						"query": {
+							"type": "string",
+							"description": "GraphQL mutation text."
 						},
 						"variables": {
 							"type": "object",
@@ -527,7 +553,11 @@
 						}
 					},
 					"required": [
-						"query"
+						"query",
+						"scopeId",
+						"scopeName",
+						"orgId",
+						"orgName"
 					]
 				}
 			},
@@ -671,17 +701,17 @@
 						"enum": [
 							"workspace",
 							"web",
-							"graphql",
+							"graphqlUnsafe",
 							"workflows"
 						],
 						"enumDescriptions": [
 							"Workspace context: a compact workspace overview plus the list of files linked to Rewst templates.",
 							"Web search: let Cage-Free Rewsty search the public web (private/loopback hosts are always blocked).",
-							"GraphQL: compose and run GraphQL operations against your Rewst instance using your session (mutations require your approval).",
+							"GraphQL Unsafe: let Cage-Free Rewsty run last-resort raw GraphQL mutations against your Rewst instance (requires inline approval). Safe GraphQL schema/read tools are available without this.",
 							"Workflows: read and edit Rewst workflows, search actions, and render Jinja against executions (edits require your approval)."
 						]
 					},
-					"markdownDescription": "Extra AI tools Cage-Free Rewsty may use — check the ones to enable. `workspace` shares a workspace overview and the template-link list; `web`, `graphql`, and `workflows` let the assistant act against the web or your Rewst instance, where GraphQL and workflow **edits always require your approval**."
+					"markdownDescription": "Extra AI tools Cage-Free Rewsty may use — check the ones to enable. `workspace` shares a workspace overview and the template-link list; `web` lets the assistant search the public web; `workflows` lets it read and edit Rewst workflows; `graphqlUnsafe` allows last-resort raw GraphQL mutations. Safe GraphQL schema/read tools are available without a settings gate. Rewst-side edits always require your approval."
 				},
 				"rewst-buddy.ai.toolResultCacheLimitMB": {
 					"type": "number",

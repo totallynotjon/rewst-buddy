@@ -87,7 +87,7 @@ suite('Unit: workflowTools', () => {
 		assert.ok(isWorkflowTool('buddy_workflow_get'));
 		assert.ok(isWorkflowTool('buddy_action_search'));
 		assert.ok(isWorkflowTool('buddy_workflow_edit'));
-		assert.ok(!isWorkflowTool('buddy_graphql'));
+		assert.ok(!isWorkflowTool('buddy_graphql_read'));
 	});
 
 	test('buddy_workflow_get spec reserves full detail for ids and positions, not ordinary edits', () => {
@@ -542,7 +542,7 @@ suite('Unit: workflowTools', () => {
 		test('undefined when a field is missing or wrong tool', () => {
 			assert.strictEqual(workflowEditScope(WORKFLOW_EDIT_TOOL_NAME, { workflowId: 'wf-1' }), undefined);
 			assert.strictEqual(
-				workflowEditScope('buddy_graphql', { workflowId: 'a', workflowName: 'b', orgId: 'c', orgName: 'd' }),
+				workflowEditScope('buddy_graphql_read', { workflowId: 'a', workflowName: 'b', orgId: 'c', orgName: 'd' }),
 				undefined,
 			);
 		});

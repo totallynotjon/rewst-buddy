@@ -66,7 +66,7 @@ suite('Unit: toolProtocol', () => {
 		test('uses top-level request fields as args when the args wrapper is omitted', () => {
 			const content = fence(
 				JSON.stringify({
-					tool: 'buddy_graphql',
+					tool: 'buddy_graphql_read',
 					query: 'query CurrentUser { currentUser { id } }',
 					variables: { includeDisabled: false },
 				}),
@@ -74,7 +74,7 @@ suite('Unit: toolProtocol', () => {
 
 			assert.deepStrictEqual(parseToolRequests(content), [
 				{
-					tool: 'buddy_graphql',
+					tool: 'buddy_graphql_read',
 					args: {
 						query: 'query CurrentUser { currentUser { id } }',
 						variables: { includeDisabled: false },
@@ -155,11 +155,13 @@ suite('Unit: toolProtocol', () => {
 		test('adds explicit GraphQL guidance when GraphQL tools are available', () => {
 			const text = buildToolInstructions([
 				{ name: 'buddy_graphql_schema', args: '{}', description: 'Inspect schema.' },
-				{ name: 'buddy_graphql', args: '{"query": string}', description: 'Run GraphQL.' },
+				{ name: 'buddy_graphql_read', args: '{"query": string}', description: 'Read GraphQL.' },
+				{ name: 'buddy_graphql_mutate', args: '{"query": string}', description: 'Mutate GraphQL.' },
 			]);
-			assert.ok(text.includes('session-authenticated GraphQL action'));
+			assert.ok(text.includes('session-authenticated GraphQL read action'));
 			assert.ok(text.includes('Use buddy_graphql_schema first'));
-			assert.ok(text.includes('then call buddy_graphql'));
+			assert.ok(text.includes('then call buddy_graphql_read'));
+			assert.ok(text.includes('buddy_graphql_mutate is unsafe'));
 		});
 
 		test('adds workflow-tool guidance when the workflow edit tool is available', () => {
@@ -179,7 +181,8 @@ suite('Unit: toolProtocol', () => {
 				{ name: 'buddy_workflow_edit', args: '{}', description: 'Edit a workflow.' },
 				{ name: 'buddy_action_search', args: '{}', description: 'Search actions.' },
 				{ name: 'buddy_graphql_schema', args: '{}', description: 'Inspect schema.' },
-				{ name: 'buddy_graphql', args: '{"query": string}', description: 'Run GraphQL.' },
+				{ name: 'buddy_graphql_read', args: '{"query": string}', description: 'Read GraphQL.' },
+				{ name: 'buddy_graphql_mutate', args: '{"query": string}', description: 'Mutate GraphQL.' },
 			]);
 
 			assert.ok(text.includes('buddy_workflow_search'), 'workflow search remains advertised');
@@ -234,9 +237,9 @@ suite('Unit: toolProtocol', () => {
 		});
 
 		test('truncates labels past the cap with an ellipsis', () => {
-			const brief = describeRequestBrief({ tool: 'buddy_graphql', args: { query: 'q'.repeat(300) } }, 40);
+			const brief = describeRequestBrief({ tool: 'buddy_graphql_read', args: { query: 'q'.repeat(300) } }, 40);
 			assert.strictEqual(brief.length, 40);
-			assert.ok(brief.startsWith('buddy_graphql {"query":"qqq'));
+			assert.ok(brief.startsWith('buddy_graphql_read {"query":"qqq'));
 			assert.ok(brief.endsWith('…'));
 		});
 

@@ -29,7 +29,7 @@ import { WORKFLOW_TOOL_SPECS, workflowEditConfirmation, workflowEditScope } from
 export interface AiToolSettings {
 	enableWorkspaceTools: boolean;
 	enableWebTools: boolean;
-	enableGraphqlTool: boolean;
+	enableGraphqlUnsafeTool: boolean;
 	enableWorkflowTools: boolean;
 }
 
@@ -43,13 +43,15 @@ export const GOVERNED_TOOL_SPECS: GovernedSpec[] = [
 	...WORKSPACE_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkspaceTools })),
 	...WEB_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWebTools })),
 	...WORKFLOW_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkflowTools })),
-	...GRAPHQL_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableGraphqlTool })),
+	...GRAPHQL_TOOL_SPECS.map(spec => ({
+		spec,
+		enabled: (s: AiToolSettings) => spec.name !== 'buddy_graphql_mutate' || s.enableGraphqlUnsafeTool,
+	})),
 	// Available whenever any tool can run, since any of them can produce the
 	// oversized cached output this one reads back.
 	...RESULT_READ_TOOL_SPECS.map(spec => ({
 		spec,
-		enabled: (s: AiToolSettings) =>
-			s.enableWorkspaceTools || s.enableWebTools || s.enableGraphqlTool || s.enableWorkflowTools,
+		enabled: () => true,
 	})),
 ];
 
@@ -63,7 +65,7 @@ export function readAiToolSettings(): AiToolSettings {
 		// Workspace tools also need a workspace folder to be meaningful.
 		enableWorkspaceTools: tools.has('workspace') && (vscode.workspace.workspaceFolders?.length ?? 0) > 0,
 		enableWebTools: tools.has('web'),
-		enableGraphqlTool: tools.has('graphql'),
+		enableGraphqlUnsafeTool: tools.has('graphqlUnsafe'),
 		enableWorkflowTools: tools.has('workflows'),
 	};
 }

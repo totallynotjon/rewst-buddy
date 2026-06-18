@@ -19,7 +19,7 @@ function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
 	return {
 		enableWorkspaceTools: false,
 		enableWebTools: false,
-		enableGraphqlTool: false,
+		enableGraphqlUnsafeTool: false,
 		enableWorkflowTools: false,
 		...overrides,
 	};
