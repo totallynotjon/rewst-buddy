@@ -7,12 +7,14 @@ import { SessionManager } from '@sessions';
 import {
 	BundleTreeDataProvider,
 	ContextUsageStatusBar,
+	conversationMap,
 	LmToolRegistry,
 	ProposedContentProvider,
 	RewstViewProvider,
 	RoboRewstyChatModelProvider,
 	SessionTreeDataProvider,
 	StatusBar,
+	type PersistedConversationMap,
 } from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
@@ -62,6 +64,16 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(TemplateBundleManager.init());
 	context.subscriptions.push(Server.init());
+	// Persist chat continuity across window reloads so warm conversations are
+	// reused instead of every chat re-shipping its full transcript statelessly.
+	const conversationMapKey = 'RewstConversationMap';
+	conversationMap.hydrate({
+		load: () => context.workspaceState.get<PersistedConversationMap>(conversationMapKey),
+		save: state =>
+			void Promise.resolve(context.workspaceState.update(conversationMapKey, state)).catch(error =>
+				log.debug('conversationMap: persist failed', error),
+			),
+	});
 	context.subscriptions.push(new RoboRewstyChatModelProvider().init());
 	context.subscriptions.push(LmToolRegistry.init());
 	context.subscriptions.push(ProposedContentProvider.init());

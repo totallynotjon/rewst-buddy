@@ -4,7 +4,13 @@ import { initTestEnvironment } from '@test';
 import type { TemplateLink } from '@models';
 import vscode from 'vscode';
 import type { GraphqlToolDeps } from './graphqlTool';
-import { buildWorkspaceOverview, runToolRequests, type WorkspaceToolDeps } from './workspaceTools';
+import {
+	buildWorkspaceOverview,
+	createCachedWorkspaceOverview,
+	runToolRequests,
+	wireWorkspaceOverviewInvalidation,
+	type WorkspaceToolDeps,
+} from './workspaceTools';
 
 const { suite, test, setup } = Mocha;
 
@@ -132,6 +138,113 @@ suite('Unit: workspaceTools', () => {
 			assert.ok(overview.includes('Workspace folder "ws": package.json, src/'));
 			assert.ok(overview.includes('1 file(s) are linked to Rewst templates'));
 			assert.ok(!overview.includes('.git'));
+		});
+	});
+
+	suite('createCachedWorkspaceOverview()', () => {
+		test('serves a cached value within the TTL instead of rebuilding', async () => {
+			let builds = 0;
+			let clock = 1000;
+			const cache = createCachedWorkspaceOverview(
+				async () => `overview-${++builds}`,
+				30_000,
+				() => clock,
+			);
+
+			assert.strictEqual(await cache.get(), 'overview-1');
+			clock += 10_000; // still inside the TTL
+			assert.strictEqual(await cache.get(), 'overview-1', 'second call within TTL is cached');
+			assert.strictEqual(builds, 1, 'the underlying scan ran once');
+		});
+
+		test('rebuilds after the TTL elapses', async () => {
+			let builds = 0;
+			let clock = 1000;
+			const cache = createCachedWorkspaceOverview(
+				async () => `overview-${++builds}`,
+				30_000,
+				() => clock,
+			);
+
+			assert.strictEqual(await cache.get(), 'overview-1');
+			clock += 30_001; // past the TTL
+			assert.strictEqual(await cache.get(), 'overview-2');
+			assert.strictEqual(builds, 2);
+		});
+
+		test('invalidate() forces a rebuild on the next get, even within the TTL', async () => {
+			let builds = 0;
+			const cache = createCachedWorkspaceOverview(
+				async () => `overview-${++builds}`,
+				30_000,
+				() => 1000, // clock frozen inside the TTL
+			);
+
+			assert.strictEqual(await cache.get(), 'overview-1');
+			assert.strictEqual(await cache.get(), 'overview-1', 'cached while fresh');
+			cache.invalidate();
+			assert.strictEqual(await cache.get(), 'overview-2', 'rebuilt after invalidation');
+			assert.strictEqual(builds, 2);
+		});
+
+		test('a scan invalidated mid-flight is not re-cached', async () => {
+			let builds = 0;
+			const releases: ((value: string) => void)[] = [];
+			const cache = createCachedWorkspaceOverview(
+				() => {
+					builds++;
+					return new Promise<string>(resolve => releases.push(resolve));
+				},
+				30_000,
+				() => 1000, // clock frozen inside the TTL
+			);
+
+			const first = cache.get(); // scan #1 starts
+			cache.invalidate(); // a file changed while scan #1 was in flight
+			releases[0]('stale');
+			assert.strictEqual(await first, 'stale', 'the original caller still receives its result');
+
+			const second = cache.get(); // must rebuild, not serve the pre-invalidation scan
+			releases[1]('fresh');
+			assert.strictEqual(await second, 'fresh');
+			assert.strictEqual(builds, 2, 'the stale scan was discarded, not re-cached');
+		});
+
+		test('concurrent callers share a single in-flight scan', async () => {
+			let builds = 0;
+			let release!: (value: string) => void;
+			const cache = createCachedWorkspaceOverview(
+				() => {
+					builds++;
+					return new Promise<string>(resolve => {
+						release = resolve;
+					});
+				},
+				30_000,
+				() => 1000,
+			);
+
+			const first = cache.get();
+			const second = cache.get();
+			release('overview');
+			assert.strictEqual(await first, 'overview');
+			assert.strictEqual(await second, 'overview');
+			assert.strictEqual(builds, 1, 'only one scan started for the overlapping calls');
+		});
+	});
+
+	suite('wireWorkspaceOverviewInvalidation()', () => {
+		test('registers file/link/folder watchers and disposes cleanly', () => {
+			// Exercises the real VS Code watcher API (createFileSystemWatcher +
+			// RelativePattern) so a misuse surfaces here rather than at runtime.
+			const wiring = wireWorkspaceOverviewInvalidation(() => {}, [folder]);
+			assert.strictEqual(typeof wiring.dispose, 'function');
+			assert.doesNotThrow(() => wiring.dispose());
+		});
+
+		test('no workspace folders still wires link/folder invalidation without throwing', () => {
+			const wiring = wireWorkspaceOverviewInvalidation(() => {}, []);
+			assert.doesNotThrow(() => wiring.dispose());
 		});
 	});
 });
