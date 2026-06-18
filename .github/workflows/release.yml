@@ -52,6 +52,12 @@ jobs:
               with:
                   app-id: ${{ secrets.RELEASE_APP_ID }}
                   private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+                  # Scope the minted token to only this repo and only the
+                  # permissions this workflow uses, so broadening the App's
+                  # install later cannot silently widen this token.
+                  repositories: rewst-buddy
+                  permission-contents: write
+                  permission-pull-requests: write
 
             - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
