@@ -3,7 +3,7 @@
 	"name": "rewst-buddy",
 	"displayName": "rewst-buddy",
 	"description": "Unofficial community VS Code extension for editing Rewst templates locally. Not affiliated with Rewst LLC.",
-	"version": "0.44.0",
+	"version": "0.44.1",
 	"icon": "media/rewst-buddy.png",
 	"engines": {
 		"vscode": "^1.122.0"

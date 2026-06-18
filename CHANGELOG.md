@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.44.1] - 2026-06-18
+
+### Changed
+
+- **Chat continuity survives a window reload** - the conversation map that lets a chat reuse one warm backend conversation (instead of re-shipping its whole transcript plus the engineering directive every turn) was in-memory only, so reloading the window forced every existing chat to downgrade to a stateless, full-transcript turn. It is now persisted to workspace storage (debounced, fire-and-forget) and restored on activation; stale server-side conversations still fall back cleanly through the existing error→downgrade path. (#38)
+- **Workspace overview is no longer re-scanned every turn** - the first-message workspace overview (a `readDirectory` scan) was rebuilt before every backend call; it is now cached, removing a filesystem round-trip from the front of each turn. Freshness is event-driven — the cache is invalidated when a top-level workspace file is created/removed/renamed, when the linked-template set changes, or when workspace folders change — with a TTL backstop for changes no event reports, and overlapping turns share a single in-flight scan.
+- **Prompt assembly is memoized** - the engineering directive, native-tool reminder, and tool-instruction text are pure functions of the permitted-tool set but were rebuilt (heavy string assembly) every turn; they are now cached per tool set, which is stable across a chat.
+
 ## [0.44.0] - 2026-06-17
 
 ### Added
