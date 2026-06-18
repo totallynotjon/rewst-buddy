@@ -1610,13 +1610,19 @@ async function pollExecutionStatus(
 async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const { workflowId, orgId } = requireScopeFields(WORKFLOW_RUN_TOOL_NAME, request.args);
 	const input = request.args.input && typeof request.args.input === 'object' ? request.args.input : undefined;
+	const name = asStringArg(request.args, 'workflowName');
+	// Final gate before triggering automation, mirroring applyWorkflowMutation. In
+	// production this is already true (the user approved at prepareInvocation), but
+	// a direct/fallback caller can decline.
+	if (!(await deps.confirmMutation(`run workflow "${name ?? workflowId}"`))) {
+		throw new Error('Workflow run was not confirmed.');
+	}
 	const result = await deps.execute(TEST_WORKFLOW_MUTATION, { id: workflowId, orgId, input });
 	const error = firstErrorMessage(result);
 	if (error) throw new Error(`testWorkflow failed: ${error}`);
 	const executionId = (result.data as { testWorkflow?: { executionId?: string } } | undefined)?.testWorkflow
 		?.executionId;
 	if (!executionId) throw new Error('testWorkflow returned no execution id.');
-	const name = asStringArg(request.args, 'workflowName');
 
 	if (request.args.wait === false) {
 		return `Started a run of "${name}". executionId: ${executionId}\n\nWatch it with buddy_execution_logs {"executionId": "${executionId}"}, or inspect context with buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}.`;

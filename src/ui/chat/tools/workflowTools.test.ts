@@ -962,6 +962,23 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!calls.some(c => c.query.includes('RewstBuddyTaskLogs')), 'no log fetch on success');
 		});
 
+		test('buddy_workflow_run does not execute when the mutation is not confirmed', async () => {
+			const { deps, calls } = makeDeps({ pollStatus: 'succeeded' });
+			const declining: GraphqlToolDeps = { ...deps, confirmMutation: async () => false };
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{
+							tool: WORKFLOW_RUN_TOOL_NAME,
+							args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+						},
+						declining,
+					),
+				/not confirmed/,
+			);
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyTestWorkflow')), 'no run when declined');
+		});
+
 		test('buddy_workflow_run surfaces a polling error instead of looping to the timeout', async () => {
 			const { deps } = makeDeps({ pollError: 'permission denied' });
 			await assert.rejects(
