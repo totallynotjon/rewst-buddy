@@ -13,15 +13,15 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
  *   - Queries run directly once enabled; mutations always require explicit
  *     user approval — VS Code's native inline chat confirmation (Continue /
  *     Cancel) showing the full operation, gated at the tool's prepareInvocation
- *     (see lmTools.ts). There is no auto-approve escape hatch.
+ *     (see lmTools.ts). The extension does not remember approvals: every mutation
+ *     is confirmed each time. To stop being asked, use VS Code's own auto-approve
+ *     affordance on the confirmation ("Allow in this Session" and friends), which
+ *     allow-lists the tool itself.
  *   - Every mutation MUST carry four scope fields the assistant supplies:
  *     scopeId + scopeName (id and name of the single resource it changes, e.g. a
- *     workflow's id and name) and orgId + orgName. Approval is remembered for the
- *     session by the ids only (org + resource); the names are shown in the prompt
- *     so the user can recognize what is changing. Confirming one change to a
- *     resource lets further mutations to that same org+resource run without
- *     re-asking, while a different resource is gated again. A mutation missing any
- *     of the four fields is refused.
+ *     workflow's id and name) and orgId + orgName. The names are shown in the
+ *     prompt so the user can recognize what is changing; a mutation missing any of
+ *     the four fields is refused.
  *   - Subscriptions are rejected (the tool protocol is request/response).
  */
 
@@ -46,7 +46,7 @@ export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
 		name: 'buddy_graphql',
 		args: '{"query": string, "variables"?: object, "scopeId"?: string, "scopeName"?: string, "orgId"?: string, "orgName"?: string}',
 		description:
-			"Run a GraphQL operation against the user's Rewst instance with their session. Prefer buddy_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include four identifying fields: scopeId and scopeName (the id and human-readable name of the single resource the mutation changes, e.g. a workflow's id and name) plus orgId and orgName (the id and name of the org it runs in). A mutation missing any of them is refused. Reuse the exact same scopeId and orgId for every change to that same object — approval is remembered per resource for the session, so approving one mutation lets later mutations to that same resource run without re-asking, while a different resource is confirmed separately. The names are shown to the user in the approval prompt so they can recognize what is changing; only the ids are used to remember approval. Subscriptions are not supported.",
+			"Run a GraphQL operation against the user's Rewst instance with their session. Prefer buddy_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include four identifying fields: scopeId and scopeName (the id and human-readable name of the single resource the mutation changes, e.g. a workflow's id and name) plus orgId and orgName (the id and name of the org it runs in). A mutation missing any of them is refused. Every mutation is confirmed each time it runs; the four fields name the resource and org in the approval prompt so the user can recognize what is changing. Subscriptions are not supported.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -55,7 +55,7 @@ export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
 				scopeId: {
 					type: 'string',
 					description:
-						'Required for mutations: a stable id of the resource being changed (e.g. the workflow id). Approval is remembered per resource for the session; reuse the same id for repeated edits to the same object.',
+						'Required for mutations: a stable id of the resource being changed (e.g. the workflow id), shown in the approval prompt.',
 				},
 				scopeName: {
 					type: 'string',
@@ -255,8 +255,9 @@ export function createGraphqlDeps(session: Session): GraphqlToolDeps {
 
 /**
  * The resource + org a mutation declares it changes. The assistant supplies all
- * four: the ids drive session approval, the names are shown in the prompt so the
- * user can recognize what is being changed.
+ * four; the names are shown in the prompt so the user can recognize what is being
+ * changed (the extension does not remember approvals — every mutation is
+ * confirmed each time).
  */
 export interface MutationScope {
 	scopeId: string;
@@ -267,33 +268,6 @@ export interface MutationScope {
 
 /** Names of the four scope fields a mutation must carry, for error messages. */
 export const MUTATION_SCOPE_FIELDS = ['scopeId', 'scopeName', 'orgId', 'orgName'] as const;
-
-// Approval is remembered only by the ids (org + resource), so a friendlier or
-// differently-cased name can't widen what was approved. A JSON tuple keeps the
-// two ids distinct so no pair can collide with another.
-function scopeKey(scope: MutationScope): string {
-	return JSON.stringify([scope.orgId, scope.scopeId]);
-}
-
-// Resource scopes the user has approved this session. Confirming a mutation for
-// a scope records it here so later mutations to the same org+resource run
-// without re-asking; cleared on window reload (process-lifetime "session").
-const approvedMutationScopes = new Set<string>();
-
-/** Whether this org+resource scope has already been approved this session. */
-export function isMutationScopeApproved(scope: MutationScope): boolean {
-	return approvedMutationScopes.has(scopeKey(scope));
-}
-
-/** Records that the user approved mutations for this org+resource this session. */
-export function approveMutationScope(scope: MutationScope): void {
-	approvedMutationScopes.add(scopeKey(scope));
-}
-
-/** Clears all session approvals (tests). */
-export function _resetApprovedMutationScopes(): void {
-	approvedMutationScopes.clear();
-}
 
 interface ParsedMutation {
 	query: string;
@@ -325,16 +299,6 @@ function parseMutation(name: string, input: unknown): ParsedMutation | undefined
 }
 
 /**
- * The declared scope for a `buddy_graphql` mutation request, or undefined when
- * the request is not a mutation or is missing any scope field. lmTools.ts
- * records this once the invocation is permitted, so repeat edits to the same
- * resource skip the prompt.
- */
-export function graphqlMutationScope(name: string, input: unknown): MutationScope | undefined {
-	return parseMutation(name, input)?.scope;
-}
-
-/**
  * Wraps content in a fenced code block whose backtick run is one longer than any
  * run inside the content, so a model-supplied query or variables value
  * containing ``` cannot close the fence early and distort the approval prompt.
@@ -355,19 +319,19 @@ export interface GraphqlMutationConfirmation {
 /**
  * The inline mutation confirmation for a tool request, or undefined when no
  * prompt is needed: anything but a `buddy_graphql` mutation (queries, schema
- * reads, other tools), a mutation whose org+resource scope is already approved
- * this session, or a mutation missing any scope field (it is refused downstream
- * in runGraphqlTool, so there is nothing to approve). Lets lmTools.ts gate
- * mutations through VS Code's native chat confirmation instead of an OS modal,
+ * reads, other tools), or a mutation missing any scope field (it is refused
+ * downstream in runGraphqlTool, so there is nothing to approve). Shown for every
+ * mutation — the extension does not remember approvals; lmTools.ts gates the
+ * mutation through VS Code's native chat confirmation instead of an OS modal,
  * named for the resource and org the assistant declares it is changing (#25).
  */
 export function graphqlMutationConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
 	const mutation = parseMutation(name, input);
-	if (!mutation?.scope || isMutationScopeApproved(mutation.scope)) return undefined;
+	if (!mutation?.scope) return undefined;
 	const { scopeName, scopeId, orgName, orgId } = mutation.scope;
 
 	const lines = [
-		`Run this mutation against **${scopeName}** (\`${scopeId}\`) in org **${orgName}** (\`${orgId}\`)? Approving also lets further changes to this same resource run for the rest of this session without asking again.`,
+		`Run this mutation against **${scopeName}** (\`${scopeId}\`) in org **${orgName}** (\`${orgId}\`)?`,
 		'',
 		fencedBlock('graphql', mutation.query),
 	];

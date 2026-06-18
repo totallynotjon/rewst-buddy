@@ -2,18 +2,12 @@ import { extPrefix } from '@global';
 import { SessionManager, type Session } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
-import {
-	approveMutationScope,
-	createGraphqlDeps,
-	graphqlMutationConfirmation,
-	graphqlMutationScope,
-	GRAPHQL_TOOL_SPECS,
-} from '../tools/graphqlTool';
+import { createGraphqlDeps, graphqlMutationConfirmation, GRAPHQL_TOOL_SPECS } from '../tools/graphqlTool';
 import { enabledAiTools } from '../tools/aiToolSettings';
 import { describeRequestBrief, type ToolSpec } from '../tools/toolProtocol';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
 import { WEB_TOOL_SPECS } from '../tools/webTools';
-import { WORKFLOW_TOOL_SPECS, workflowEditConfirmation, workflowEditScope } from '../tools/workflowTools';
+import { WORKFLOW_TOOL_SPECS, workflowEditConfirmation } from '../tools/workflowTools';
 
 /**
  * Exposes every vscode-tool protocol tool as a registered VS Code language
@@ -254,10 +248,9 @@ export const LmToolRegistry = new (class LmToolRegistry implements vscode.Dispos
 			},
 			invoke: async (options, _token) => {
 				// invoke only runs once VS Code has accepted the confirmation (or none
-				// was needed), so reaching here for a scoped mutation means the user
-				// permitted this resource — remember it so repeat edits skip the prompt.
-				const scope = graphqlMutationScope(name, options.input) ?? workflowEditScope(name, options.input);
-				if (scope) approveMutationScope(scope);
+				// was needed). The extension does not remember mutation approvals, so
+				// each mutation is confirmed again next time (VS Code's own auto-approve
+				// affordance on the confirmation is what allow-lists a tool for a session).
 				const session = resolveGraphqlSession();
 				const [result] = await runToolRequests(
 					[{ tool: name, args: options.input ?? {} }],

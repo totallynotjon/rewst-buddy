@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
 import { SessionManager } from '@sessions';
-import { _resetApprovedMutationScopes, approveMutationScope, type GraphqlToolDeps } from './graphqlTool';
+import { type GraphqlToolDeps } from './graphqlTool';
 import {
 	applyOperations,
 	autoLayout,
@@ -16,7 +16,6 @@ import {
 	WORKFLOW_SEARCH_TOOL_NAME,
 	_resetWorkflowIndexForTesting,
 	workflowEditConfirmation,
-	workflowEditScope,
 	workflowToInput,
 	type WorkflowOperation,
 } from './workflowTools';
@@ -78,7 +77,6 @@ suite('Unit: workflowTools', () => {
 	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
-		_resetApprovedMutationScopes();
 		_resetWorkflowIndexForTesting();
 	});
 
@@ -516,26 +514,6 @@ suite('Unit: workflowTools', () => {
 		});
 	});
 
-	suite('workflowEditScope()', () => {
-		test('returns the scope when all four fields are present', () => {
-			const scope = workflowEditScope(WORKFLOW_EDIT_TOOL_NAME, {
-				workflowId: 'wf-1',
-				workflowName: 'WF',
-				orgId: 'org-1',
-				orgName: 'Acme',
-				operations: [],
-			});
-			assert.deepStrictEqual(scope, { scopeId: 'wf-1', scopeName: 'WF', orgId: 'org-1', orgName: 'Acme' });
-		});
-		test('undefined when a field is missing or wrong tool', () => {
-			assert.strictEqual(workflowEditScope(WORKFLOW_EDIT_TOOL_NAME, { workflowId: 'wf-1' }), undefined);
-			assert.strictEqual(
-				workflowEditScope('buddy_graphql', { workflowId: 'a', workflowName: 'b', orgId: 'c', orgName: 'd' }),
-				undefined,
-			);
-		});
-	});
-
 	suite('workflowEditConfirmation()', () => {
 		const fullArgs = {
 			workflowId: 'wf-1',
@@ -552,19 +530,19 @@ suite('Unit: workflowTools', () => {
 			assert.match(confirmation!.message, /add_task notify/);
 		});
 
-		test('undefined once the workflow scope is approved this session', () => {
-			approveMutationScope({ scopeId: 'wf-1', scopeName: 'WF', orgId: 'org-1', orgName: 'Acme' });
-			assert.strictEqual(workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, fullArgs), undefined);
+		test('confirms every time — approvals are not remembered', () => {
+			// Calling twice must keep returning a prompt; nothing is recorded between calls.
+			assert.ok(workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, fullArgs), 'first time prompts');
+			assert.ok(workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, fullArgs), 'still prompts the next time');
 		});
 
-		test('the autolayout tool shares the per-workflow scope and prompt', () => {
+		test('undefined for a non-workflow tool or missing scope fields', () => {
+			assert.strictEqual(workflowEditConfirmation('buddy_graphql', fullArgs), undefined);
+			assert.strictEqual(workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, { workflowId: 'wf-1' }), undefined);
+		});
+
+		test('the autolayout tool prompts with its own message', () => {
 			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme' };
-			assert.deepStrictEqual(workflowEditScope(WORKFLOW_AUTOLAYOUT_TOOL_NAME, args), {
-				scopeId: 'wf-1',
-				scopeName: 'WF',
-				orgId: 'org-1',
-				orgName: 'Acme',
-			});
 			const confirmation = workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, args);
 			assert.ok(confirmation);
 			assert.match(confirmation!.message, /Auto-layout/);
@@ -1198,25 +1176,14 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('buddy_workflow_run confirms with a "run" prompt and is never remembered', () => {
+		test('buddy_workflow_run confirms with a "run" prompt every time', () => {
 			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme', input: { a: 1 } };
-			// A run's approval is never recorded, so lmTools has no scope to remember.
-			assert.strictEqual(workflowEditScope(WORKFLOW_RUN_TOOL_NAME, args), undefined);
 			const confirmation = workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args);
 			assert.ok(confirmation);
 			assert.match(confirmation!.message, /Run workflow/);
 			assert.match(confirmation!.message, /executes the workflow/i);
-			assert.match(confirmation!.message, /confirmed individually/i);
-		});
-
-		test('buddy_workflow_run prompts every time, even after the workflow scope is approved', () => {
-			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme', input: { a: 1 } };
-			// Approving an edit on this workflow must not silence run confirmations.
-			approveMutationScope({ scopeId: 'wf-1', scopeName: 'WF', orgId: 'org-1', orgName: 'Acme' });
-			assert.strictEqual(workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, args), undefined);
-			const confirmation = workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args);
-			assert.ok(confirmation, 'run still asks once the edit scope is approved');
-			assert.match(confirmation!.message, /Run workflow/);
+			// Nothing is remembered, so a second request still prompts.
+			assert.ok(workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args), 'run still asks the next time');
 		});
 
 		test('buddy_workflow_edit refuses when scope fields are missing', async () => {

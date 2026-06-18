@@ -2,13 +2,9 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
 import {
-	_resetApprovedMutationScopes,
-	approveMutationScope,
 	detectOperationType,
 	graphqlMutationConfirmation,
-	graphqlMutationScope,
 	isGraphqlTool,
-	isMutationScopeApproved,
 	runGraphqlTool,
 	type GraphqlToolDeps,
 	type MutationScope,
@@ -35,7 +31,6 @@ function scopedMutation(over: Record<string, unknown> = {}): Record<string, unkn
 suite('Unit: graphqlTool', () => {
 	setup(() => {
 		initTestEnvironment();
-		_resetApprovedMutationScopes();
 	});
 
 	test('isGraphqlTool recognizes buddy_graphql', () => {
@@ -136,49 +131,10 @@ suite('Unit: graphqlTool', () => {
 			}
 		});
 
-		test('an already-approved scope needs no further confirmation, a new resource does', () => {
+		test('confirms every mutation — approvals are not remembered', () => {
+			// Approvals are never recorded, so the same mutation keeps prompting.
 			assert.ok(graphqlMutationConfirmation('buddy_graphql', scopedMutation()), 'first time prompts');
-
-			approveMutationScope(SCOPE);
-			assert.strictEqual(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation()),
-				undefined,
-				'same resource no longer prompts',
-			);
-			assert.ok(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation({ scopeId: 'wf-2' })),
-				'a different resource still prompts',
-			);
-			assert.ok(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation({ orgId: 'org-2' })),
-				'the same resource id in another org still prompts',
-			);
-		});
-	});
-
-	suite('graphqlMutationScope() + scope approval', () => {
-		test('reports the full scope only for a complete scoped mutation', () => {
-			assert.deepStrictEqual(graphqlMutationScope('buddy_graphql', scopedMutation()), SCOPE);
-			assert.strictEqual(
-				graphqlMutationScope('buddy_graphql', scopedMutation({ scopeName: undefined })),
-				undefined,
-			);
-			assert.strictEqual(
-				graphqlMutationScope('buddy_graphql', scopedMutation({ query: '{ user { id } }' })),
-				undefined,
-			);
-		});
-
-		test('approval is keyed on org + resource ids, not names', () => {
-			assert.strictEqual(isMutationScopeApproved(SCOPE), false);
-			approveMutationScope(SCOPE);
-			assert.strictEqual(isMutationScopeApproved(SCOPE), true);
-			// A different display name for the same ids is still approved.
-			assert.strictEqual(isMutationScopeApproved({ ...SCOPE, scopeName: 'Renamed', orgName: 'Acme Inc' }), true);
-			// A different id is not.
-			assert.strictEqual(isMutationScopeApproved({ ...SCOPE, scopeId: 'wf-2' }), false);
-			_resetApprovedMutationScopes();
-			assert.strictEqual(isMutationScopeApproved(SCOPE), false);
+			assert.ok(graphqlMutationConfirmation('buddy_graphql', scopedMutation()), 'same mutation still prompts');
 		});
 	});
 

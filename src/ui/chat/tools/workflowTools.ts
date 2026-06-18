@@ -1,10 +1,5 @@
 import { randomUUID } from 'crypto';
-import {
-	type GraphqlMutationConfirmation,
-	type GraphqlToolDeps,
-	isMutationScopeApproved,
-	type MutationScope,
-} from './graphqlTool';
+import { type GraphqlMutationConfirmation, type GraphqlToolDeps, type MutationScope } from './graphqlTool';
 import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
 
 /**
@@ -102,7 +97,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the "{{ SUCCEEDED }}" success catch-all (with FOLLOW_FIRST a success transition placed first would shadow every custom condition after it, so the custom Jinja would never evaluate). The tool also writes a safe default transitionMode (FOLLOW_FIRST) and join (1) on any task missing them, so you only set transitionMode/join when you want a non-default (transitionMode "FOLLOW_ALL" for a parallel fan-out, or join for a real join/merge). A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the "{{ SUCCEEDED }}" success catch-all (with FOLLOW_FIRST a success transition placed first would shadow every custom condition after it, so the custom Jinja would never evaluate). The tool also writes a safe default transitionMode (FOLLOW_FIRST) and join (1) on any task missing them, so you only set transitionMode/join when you want a non-default (transitionMode "FOLLOW_ALL" for a parallel fan-out, or join for a real join/merge). A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval each time it runs.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -127,7 +122,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "comment"?: string}',
 		description:
-			'Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use buddy_workflow_edit with a reposition operation instead.',
+			'Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval each time it runs. For positioning a single task, use buddy_workflow_edit with a reposition operation instead.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -144,7 +139,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_RUN_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "input"?: object, "wait"?: boolean}',
 		description:
-			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from buddy_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate buddy_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to buddy_execution_logs or buddy_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval EACH time it runs (unlike editing, a run is never remembered — every run is confirmed individually).",
+			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from buddy_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate buddy_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to buddy_execution_logs or buddy_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval each time it runs.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -1886,18 +1881,12 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 // Mutation approval integration (mirrors graphqlTool's scope machinery)
 // ---------------------------------------------------------------------------
 
-/**
- * Workflow-editing tools whose approval is REMEMBERED per workflow for the
- * session: approving one edit (or layout) lets later edits to the same workflow
- * run without re-asking. They change the workflow definition.
- */
-const WORKFLOW_REMEMBERED_MUTATION_TOOLS = new Set<string>([
+/** Tool names that act on a workflow and require user approval before running. */
+const WORKFLOW_MUTATION_TOOLS = new Set<string>([
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_RUN_TOOL_NAME,
 ]);
-
-/** Every workflow tool that requires user approval before it runs. */
-const WORKFLOW_MUTATION_TOOLS = new Set<string>([...WORKFLOW_REMEMBERED_MUTATION_TOOLS, WORKFLOW_RUN_TOOL_NAME]);
 
 /** The org+workflow a workflow-mutation request targets, if fully specified. */
 function workflowScope(input: unknown): MutationScope | undefined {
@@ -1908,17 +1897,6 @@ function workflowScope(input: unknown): MutationScope | undefined {
 	const orgName = str(args.orgName);
 	if (!workflowId || !workflowName || !orgId || !orgName) return undefined;
 	return { scopeId: workflowId, scopeName: workflowName, orgId, orgName };
-}
-
-/**
- * The org+workflow scope lmTools records once a request is permitted, so repeat
- * edits to the same workflow skip the prompt. Only the remembered editing tools
- * return a scope: running a workflow executes automation and is confirmed every
- * time (see workflowEditConfirmation), so its approval is never remembered.
- */
-export function workflowEditScope(name: string, input: unknown): MutationScope | undefined {
-	if (!WORKFLOW_REMEMBERED_MUTATION_TOOLS.has(name)) return undefined;
-	return workflowScope(input);
 }
 
 function describeOperation(operation: WorkflowOperation): string {
@@ -1932,33 +1910,30 @@ function describeOperation(operation: WorkflowOperation): string {
 /**
  * The inline approval prompt for a workflow-mutation request, or undefined when
  * no prompt is needed (not a workflow mutation, or missing scope fields —
- * refused downstream). The editing tools (edit, autolayout) skip the prompt once
- * their workflow scope is approved this session; running a workflow executes its
- * automation, so it is confirmed EVERY time and ignores the remembered scope.
+ * refused downstream). Shown for every edit, auto-layout, and run: the extension
+ * does not remember approvals, so each one is confirmed individually (VS Code's
+ * own auto-approve affordance on the confirmation is the way to allow-list a tool
+ * for the session).
  */
 export function workflowEditConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
 	if (!WORKFLOW_MUTATION_TOOLS.has(name)) return undefined;
 	const scope = workflowScope(input);
 	if (!scope) return undefined;
-	const isRun = name === WORKFLOW_RUN_TOOL_NAME;
-	if (!isRun && isMutationScopeApproved(scope)) return undefined;
 	const args = asObject(input);
 	const target = `workflow **${scope.scopeName}** (\`${scope.scopeId}\`) in org **${scope.orgName}** (\`${scope.orgId}\`)?`;
-	// Editing approval is remembered per workflow; a run is always re-confirmed.
-	const editLead = `${target} Approving also lets further edits to this same workflow run for the rest of this session without asking again.`;
 	let lines: string[];
 	let title = 'Cage-Free Rewsty wants to edit a Rewst workflow';
 	if (name === WORKFLOW_AUTOLAYOUT_TOOL_NAME) {
-		lines = [`Auto-layout ${editLead}`, '', 'This re-arranges every task position on the canvas.'];
-	} else if (isRun) {
+		lines = [`Auto-layout ${target}`, '', 'This re-arranges every task position on the canvas.'];
+	} else if (name === WORKFLOW_RUN_TOOL_NAME) {
 		title = 'Cage-Free Rewsty wants to run a Rewst workflow';
 		const runInput = asObject(args.input);
-		lines = [`Run ${target}`, '', 'This executes the workflow. Each run is confirmed individually.'];
+		lines = [`Run ${target}`, '', 'This executes the workflow.'];
 		if (Object.keys(runInput).length > 0)
 			lines.push('', 'Input:', `\`\`\`json\n${JSON.stringify(runInput, null, 2)}\n\`\`\``);
 	} else {
 		lines = [
-			`Edit ${editLead}`,
+			`Edit ${target}`,
 			'',
 			'Operations:',
 			...(Array.isArray(args.operations) ? (args.operations as WorkflowOperation[]) : []).map(
