@@ -1,0 +1,57 @@
+name: Tag merged release
+
+# When a release/* PR merges to main, create and push the matching vX.Y.Z tag so
+# the tag-driven Publish workflow runs. Merging the release PR is the go-ahead to
+# ship — there is no separate publish approval. The tag is pushed with the
+# release-bot App token (not GITHUB_TOKEN), because a tag pushed by GITHUB_TOKEN
+# would not trigger the Publish workflow.
+
+on:
+    pull_request:
+        types: [closed]
+        branches: [main]
+
+permissions:
+    contents: read
+
+concurrency:
+    group: tag-on-merge
+    cancel-in-progress: false
+
+jobs:
+    tag:
+        # Only merged release/* PRs (a closed-without-merge PR does nothing).
+        if: >-
+            github.event.pull_request.merged == true &&
+            startsWith(github.event.pull_request.head.ref, 'release/')
+        runs-on: ubuntu-latest
+        steps:
+            - name: Generate a token from the release-bot GitHub App
+              id: app-token
+              uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+              with:
+                  app-id: ${{ secrets.RELEASE_APP_ID }}
+                  private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+                  repositories: rewst-buddy
+                  permission-contents: write
+
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  ref: ${{ github.event.pull_request.merge_commit_sha }}
+                  fetch-depth: 0
+                  persist-credentials: true
+                  token: ${{ steps.app-token.outputs.token }}
+
+            - name: Create and push the release tag
+              run: |
+                  VERSION="$(node -p "require('./package.json').version")"
+                  TAG="v${VERSION}"
+                  if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+                    echo "::notice::Tag ${TAG} already exists on origin; nothing to do."
+                    exit 0
+                  fi
+                  git config user.name 'github-actions[bot]'
+                  git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+                  git tag "${TAG}"
+                  git push origin "${TAG}"
+                  echo "::notice::Pushed ${TAG}; the Publish workflow will run."
