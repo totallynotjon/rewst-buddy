@@ -125,8 +125,7 @@ The changelog is generated from **per-PR note files** — never hand-edit `CHANG
 Releases run entirely through GitHub Actions; runbook and one-time setup are in `docs/dev/releasing.md`. In short:
 
 1. Run the **Prepare release** workflow (Actions → Run workflow) — pick a bump (`patch`/`minor`/`major`) or an explicit version. It collates `changelog.d/` into a new `## [x.y.z]` section in `CHANGELOG.md`, bumps `package.json`, and opens a `release/vx.y.z` PR.
-2. Review and squash-merge that PR (CodeRabbit + maintainer approval gate it).
-3. `npm run release:tag` — the **Publish** workflow then creates the GitHub release (notes from the CHANGELOG section) and publishes to the Marketplace, gated by the `release` environment's required reviewer.
+2. Review and squash-merge that PR — **merging publishes.** On merge, `tag-on-merge.yml` pushes the `vx.y.z` tag (via the release-bot App token, so the tag triggers Publish), and the **Publish** workflow creates the GitHub release (notes from the CHANGELOG section) and publishes to the Marketplace. Merging the release PR is the approval to publish — there is no separate gate. (`npm run release:tag` stays as a manual fallback.)
 
 Per-change code review happens on each feature PR (CodeRabbit + CI), not at release time.
 

@@ -120,7 +120,7 @@ jobs:
                     echo "Automated release prep for **v${VERSION}**."
                     echo
                     echo "- Collated \`changelog.d/\` notes into CHANGELOG.md and bumped \`package.json\`."
-                    echo "- Merging this PR does **not** publish. After it lands on \`main\`, push the tag \`v${VERSION}\` (e.g. \`npm run release:tag\`) to trigger Publish."
+                    echo "- ⚠️ **Merging this PR publishes v${VERSION} to the VS Code Marketplace.** On merge, CI tags \`v${VERSION}\` and the Publish workflow ships it. Merging is the approval to publish — there is no separate gate."
                     echo
                     echo "---"
                     echo

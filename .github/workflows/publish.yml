@@ -1,10 +1,10 @@
 name: Publish
 
-# Fires when a vX.Y.Z tag is pushed (after the release PR has merged to main).
-# Packages the extension, creates the GitHub release, and publishes to the VS
-# Code Marketplace. The `release` environment requires a maintainer to approve
-# the run before it proceeds, and the Marketplace token (VSCE_PAT) is scoped to
-# that environment — so the token never unlocks without a human go-ahead.
+# Fires when a vX.Y.Z tag is pushed. CI tags automatically when a release PR
+# merges (tag-on-merge.yml), so merging the release PR is what ships a release —
+# there is no separate publish approval. Packages the extension, creates the
+# GitHub release, and publishes to the VS Code Marketplace. The Marketplace token
+# (VSCE_PAT) is scoped to the `release` environment, so only this job can read it.
 
 on:
     push:

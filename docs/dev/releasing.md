@@ -1,8 +1,9 @@
 # Releasing & changelog (maintainers)
 
 The changelog is built from **per-PR notes**, and releases run through GitHub
-Actions with two human approval gates so nothing reaches `main` or the
-Marketplace unreviewed. There is no manual release skill — these workflows are the whole process.
+Actions. Approving and merging the release PR is the single human gate — it both
+lands the version on `main` and publishes to the Marketplace. There is no manual
+release skill — these workflows are the whole process.
 
 ## Changelog notes
 
@@ -19,15 +20,17 @@ Marketplace unreviewed. There is no manual release skill — these workflows are
 1. **Prepare** — run the **Prepare release** workflow (Actions → Run workflow)
    picking a version bump (`patch`/`minor`/`major`) or an explicit version. It collates `changelog.d/` into a `## [x.y.z]`
    section, bumps `package.json`, and opens a `release/vx.y.z` PR.
-2. **Review & merge** — review the PR and merge it (squash). Branch protection
-   requires the approval here — this is gate #1.
-3. **Tag** — from the merged `main`: `npm run release:tag` (tags `vx.y.z` and
-   pushes it).
-4. **Publish** — the tag triggers the **Publish** workflow. It runs in the
-   `release` environment, which requires a maintainer to approve the run — gate
-   #2 — then packages the `.vsix`, creates the GitHub release, and publishes to
-   the Marketplace. The `VSCE_PAT` is scoped to that environment, so it never
-   unlocks without that approval.
+2. **Review & merge — this ships it.** Review the PR and merge it (squash).
+   Branch protection requires the approval here, and **merging is the approval to
+   publish**: on merge, `tag-on-merge.yml` creates and pushes the `vx.y.z` tag
+   (using the release-bot App token, so the tag triggers Publish).
+3. **Publish** — the tag triggers the **Publish** workflow, which packages the
+   `.vsix`, creates the GitHub release, and publishes to the Marketplace
+   automatically. The `VSCE_PAT` is scoped to the `release` environment, so only
+   that job can read it.
+
+> If the auto-tag ever needs re-running by hand, `npm run release:tag` from the
+> merged `main` does the same thing.
 
 ## One-time GitHub setup (required for the gates)
 
@@ -37,11 +40,12 @@ These live in repo settings, not in code — set them once:
   resolution, and the `CI / Lint, type-check, build, test` + `CI / Changelog
 note` status checks; block direct pushes and force-pushes. CodeRabbit's
   `request_changes_workflow` (`.coderabbit.yaml`) then counts toward the gate.
-- **`release` environment** (Settings → Environments): add yourself / maintainers
-  as **required reviewers**, and store the **`VSCE_PAT`** secret (a VS Code
-  Marketplace PAT for the `JBramley` publisher) there — not as a repo-wide secret.
-  Optionally add `OVSX_PAT` for Open VSX and uncomment that step in
-  `publish.yml`.
+- **`release` environment** (Settings → Environments): store the **`VSCE_PAT`**
+  secret (a VS Code Marketplace PAT for the `JBramley` publisher) here as an
+  **environment secret** — not a repo-wide secret — so only the publish job can
+  read it. Leave it with **no required reviewers**: merging the release PR is the
+  publish approval, so a second environment gate would just re-ask. Optionally add
+  `OVSX_PAT` for Open VSX and uncomment that step in `publish.yml`.
 - **Release-bot GitHub App** (for the Prepare release PR): the default
   `GITHUB_TOKEN` cannot open a PR, and a PR it opened would not trigger the
   required CI checks. So `release.yml` mints a short-lived token from a GitHub
