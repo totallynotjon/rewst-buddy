@@ -105,6 +105,13 @@ All settings live under the `rewst-buddy.*` namespace. Edit via VS Code Settings
 | `rewst-buddy.ai.showActivity`       | `boolean` | `true`                                                                                                                               | Show Cage-Free Rewsty's live activity (documentation searches and tool calls) as it works, instead of only a spinner until the answer arrives.                                                                                                                                                             |
 | `rewst-buddy.ai.tools`              | `array`   | `["workspace"]`                                                                                                                      | Extra AI tools Cage-Free Rewsty may use — check the ones to enable. `workspace` shares a workspace overview and the template-link list; `web`, `graphql`, and `workflows` let the assistant act against the web or your Rewst instance, where GraphQL and workflow **edits always require your approval**. |
 
+## Tool Approvals
+
+Cage-Free Rewsty's Rewst-changing tools — `buddy_graphql` (mutations), `buddy_workflow_edit`, `buddy_workflow_autolayout`, and `buddy_workflow_run` — show an inline confirmation before they run, **every time**. The extension does not remember approvals, and it ships these four tools as **not eligible for auto-approval** (a `chat.tools.eligibleForAutoApproval` default), so the confirmation can't be allow-listed away with "Allow in this Session". This holds whether the tools are driven by Cage-Free Rewsty or another agent (e.g. Copilot agent mode).
+
+- To allow auto-approving one of them anyway, set its reference name to `true` in your settings, e.g. `"chat.tools.eligibleForAutoApproval": { "buddyWorkflowRun": true }`.
+- VS Code's **Autopilot** and **Bypass Approvals** modes approve everything regardless — that is a deliberate "no approvals" choice on your side and overrides the per-tool default.
+
 ## Multi-Region Setup
 
 For non-NA Rewst instances, configure custom regions in VS Code settings:

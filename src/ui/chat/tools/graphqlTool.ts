@@ -13,10 +13,11 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
  *   - Queries run directly once enabled; mutations always require explicit
  *     user approval — VS Code's native inline chat confirmation (Continue /
  *     Cancel) showing the full operation, gated at the tool's prepareInvocation
- *     (see lmTools.ts). The extension does not remember approvals: every mutation
- *     is confirmed each time. To stop being asked, use VS Code's own auto-approve
- *     affordance on the confirmation ("Allow in this Session" and friends), which
- *     allow-lists the tool itself.
+ *     (see lmTools.ts). The extension does not remember approvals, and it ships
+ *     `buddyGraphql` as not eligible for auto-approval (package.json
+ *     configurationDefaults → chat.tools.eligibleForAutoApproval), so every
+ *     mutation is confirmed each time and cannot be auto-approved away (short of
+ *     the user's own Autopilot / Bypass-Approvals mode).
  *   - Every mutation MUST carry four scope fields the assistant supplies:
  *     scopeId + scopeName (id and name of the single resource it changes, e.g. a
  *     workflow's id and name) and orgId + orgName. The names are shown in the
