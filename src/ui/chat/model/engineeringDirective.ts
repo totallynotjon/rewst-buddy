@@ -82,12 +82,44 @@ function buildEditorOnlyReminder(availableTools: ReadonlySet<string>): string {
 	return ` Editor tools available this turn (${names}) are vscode-tool block requests only; never invoke them through a native/Rewst function path.`;
 }
 
+function buildRewstToolPriorityReminder(availableTools: ReadonlySet<string>): string {
+	const hasWorkflowTools = [...availableTools].some(
+		tool =>
+			tool.startsWith('buddy_workflow_') ||
+			tool === 'buddy_action_search' ||
+			tool === 'buddy_execution_logs' ||
+			tool === 'buddy_render_jinja',
+	);
+	const hasGraphqlReadTools = availableTools.has('buddy_graphql_schema') || availableTools.has('buddy_graphql_read');
+	const hasGraphqlMutateTool = availableTools.has('buddy_graphql_mutate');
+	const reminders: string[] = [];
+	if (hasWorkflowTools) {
+		reminders.push(
+			'Use `buddy_workflow_*` first for workflow listing, reading, editing, running, or debugging; do not use native workflow wrappers first.',
+		);
+	}
+	if (hasGraphqlReadTools) {
+		reminders.push(
+			hasWorkflowTools
+				? 'For other live Rewst data, use `buddy_graphql_schema` or `buddy_graphql_read` before native platform wrappers.'
+				: 'For live Rewst data, use `buddy_graphql_schema` or `buddy_graphql_read` before native platform wrappers.',
+		);
+	}
+	if (hasGraphqlMutateTool) {
+		reminders.push(
+			'`buddy_graphql_mutate` is unsafe and only a last resort when no safer workflow/editor tool can express the change.',
+		);
+	}
+	return reminders.length > 0 ? ` ${reminders.join(' ')}` : '';
+}
+
 export function buildNativeToolReminder(availableTools: ReadonlySet<string>): string {
 	const base =
 		'Reminder: do not call `gitbook_retriever` or otherwise search Rewst documentation, and do not render/test Jinja, unless this request explicitly calls for it. Do not open a turn with a documentation search or a throwaway native call like `listWorkflow`; your first tool action must be the one the request actually needs. For anything not specifically about Rewst, answer it directly or with the right tool.';
 	const withEditorTools = `${base}${buildEditorOnlyReminder(availableTools)}`;
-	if (!availableTools.has('web_search')) return withEditorTools;
-	return `${withEditorTools} For current events, news, or any live or time-sensitive fact, use \`web_search\` yourself rather than refusing or citing a knowledge cutoff — the user should not have to ask you to search.`;
+	const withRewstPriorities = `${withEditorTools}${buildRewstToolPriorityReminder(availableTools)}`;
+	if (!availableTools.has('web_search')) return withRewstPriorities;
+	return `${withRewstPriorities} For current events, news, or any live or time-sensitive fact, use \`web_search\` yourself rather than refusing or citing a knowledge cutoff — the user should not have to ask you to search.`;
 }
 
 const FOOTER = `# Epistemics

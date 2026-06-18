@@ -133,6 +133,36 @@ const TEMPLATE_LINKS_TOOL: vscode.LanguageModelChatTool = {
 	inputSchema: { type: 'object' },
 };
 
+const GRAPHQL_SCHEMA_TOOL: vscode.LanguageModelChatTool = {
+	name: 'buddy_graphql_schema',
+	description: 'inspect GraphQL schema',
+	inputSchema: { type: 'object' },
+};
+
+const GRAPHQL_READ_TOOL: vscode.LanguageModelChatTool = {
+	name: 'buddy_graphql_read',
+	description: 'read GraphQL data',
+	inputSchema: { type: 'object' },
+};
+
+const WORKFLOW_SEARCH_TOOL: vscode.LanguageModelChatTool = {
+	name: 'buddy_workflow_search',
+	description: 'search workflows',
+	inputSchema: { type: 'object' },
+};
+
+const WORKFLOW_GET_TOOL: vscode.LanguageModelChatTool = {
+	name: 'buddy_workflow_get',
+	description: 'read workflow graph',
+	inputSchema: { type: 'object' },
+};
+
+const WORKFLOW_EDIT_TOOL: vscode.LanguageModelChatTool = {
+	name: 'buddy_workflow_edit',
+	description: 'edit workflow graph',
+	inputSchema: { type: 'object' },
+};
+
 suite('Unit: RoboRewstyChatModelProvider', () => {
 	setup(() => {
 		initTestEnvironment();
@@ -178,6 +208,33 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(!harness.captured[1].message.includes('<visible_chat_transcript>'), 'no transcript re-sent');
 		assert.ok(!harness.captured[1].message.includes('# Rewst Buddy VS Code Context'), 'no directive re-sent');
 		assert.match(harness.captured[1].message, /next/);
+	});
+
+	test('reuse turns repeat Rewst tool priority after the tool list', async () => {
+		const harness = makeHarness([completeTurn('Hello', 'conv-1'), completeTurn('Again', 'conv-1')]);
+		const tools = [
+			WORKFLOW_SEARCH_TOOL,
+			WORKFLOW_GET_TOOL,
+			WORKFLOW_EDIT_TOOL,
+			GRAPHQL_SCHEMA_TOOL,
+			GRAPHQL_READ_TOOL,
+		];
+
+		await harness.run([message(User, [text('hi')])], tools);
+		await harness.run(
+			[message(User, [text('hi')]), message(Assistant, [text('Hello')]), message(User, [text('list workflows')])],
+			tools,
+		);
+
+		const reuseMessage = harness.captured[1].message;
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'append reuses the warm conversation');
+		const toolListIdx = reuseMessage.indexOf('Available tools:');
+		const priorityIdx = reuseMessage.indexOf('Use `buddy_workflow_*` first');
+		assert.ok(toolListIdx >= 0, 'reuse message includes tool instructions');
+		assert.ok(priorityIdx > toolListIdx, 'priority reminder is repeated after the tool list');
+		assert.ok(/workflow listing, reading, editing, running, or debugging/i.test(reuseMessage));
+		assert.ok(reuseMessage.includes('`buddy_graphql_schema` or `buddy_graphql_read`'));
+		assert.ok(/before native platform wrappers/i.test(reuseMessage));
 	});
 
 	test('a rewound transcript forks fresh and deletes the rolled-back conversation', async () => {

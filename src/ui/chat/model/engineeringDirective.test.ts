@@ -148,6 +148,18 @@ suite('Unit: buildNativeToolReminder', () => {
 		assert.ok(/native\/Rewst function/i.test(reminder), 'forbids native/Rewst invocation path');
 	});
 
+	test('repeats Rewst tool priority in the highest-recency reminder', () => {
+		const reminder = buildNativeToolReminder(
+			new Set(['buddy_workflow_search', 'buddy_workflow_get', 'buddy_graphql_schema', 'buddy_graphql_read']),
+		);
+		assert.ok(/workflow listing, reading, editing, running, or debugging/i.test(reminder));
+		assert.ok(/buddy_workflow_\*/i.test(reminder));
+		assert.ok(/other live Rewst data/i.test(reminder));
+		assert.ok(reminder.includes('buddy_graphql_schema'));
+		assert.ok(reminder.includes('buddy_graphql_read'));
+		assert.ok(/before native platform wrappers/i.test(reminder));
+	});
+
 	test('does not push memory-only answers for non-Rewst questions', () => {
 		const reminder = buildNativeToolReminder(new Set());
 		// The old wording said "answer directly", which steered the model into
