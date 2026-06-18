@@ -40,9 +40,9 @@ const MUTATION_SCOPE_KEYS = ['workflowId', 'workflowName', 'orgId', 'orgName'] a
 export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	{
 		name: 'buddy_workflow_get',
-		args: '{"workflowId": string, "orgId": string, "detail"?: "summary" | "full"}',
+		args: '{"workflowId": string, "orgId": string, "detail"?: "summary" (default) | "full"}',
 		description:
-			'Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what buddy_workflow_edit operations expect. By default (detail "summary") it returns a concise ANALYSIS view: task ids, transition ids, canvas x/y positions, and the version token are OMITTED and tasks/edges are referenced by name — ideal for understanding what a workflow does with far fewer tokens, and enough to edit (operations resolve tasks by name). Pass detail "full" only when you need those ids/positions, e.g. to reposition a task or target one specific transition by its id. Use this before editing a workflow.',
+			'Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what buddy_workflow_edit operations expect. detail defaults to "summary": a concise ANALYSIS view that OMITS task ids, transition ids, canvas x/y positions, and the version token and refers to tasks/edges by name — ideal for understanding or explaining what a workflow does with far fewer tokens. Use the default "summary" whenever you are reading or analyzing a workflow. Pass detail "full" only when you are preparing to make workflow edits: it adds the task ids, transition ids, and canvas positions that editing needs to reposition a task or target a specific transition by its id.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -52,7 +52,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 					type: 'string',
 					enum: ['summary', 'full'],
 					description:
-						'"summary" (default): concise analysis view, no ids/positions/version token. "full": adds task ids, transition ids, and canvas positions for repositioning or targeting a specific transition.',
+						'"summary" (default): concise analysis view for reading or understanding a workflow, no ids/positions/version token. "full": adds task ids, transition ids, and canvas positions — use only when preparing to make workflow edits (repositioning a task or targeting a specific transition by id).',
 				},
 			},
 			required: ['workflowId', 'orgId'],
