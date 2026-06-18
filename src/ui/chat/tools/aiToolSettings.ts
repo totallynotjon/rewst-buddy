@@ -20,3 +20,8 @@ export function enabledAiTools(): Set<string> {
 export function isAiToolEnabled(capability: AiToolCapability): boolean {
 	return enabledAiTools().has(capability);
 }
+
+/** Whether any tool capability is enabled at all. */
+export function anyAiToolEnabled(): boolean {
+	return enabledAiTools().size > 0;
+}

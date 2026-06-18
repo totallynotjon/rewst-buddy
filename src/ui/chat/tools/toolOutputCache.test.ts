@@ -1,15 +1,21 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
+import { SessionManager } from '@sessions';
 import { ToolOutputCache, formatToolOutput, runResultReadTool } from './toolOutputCache';
 
-const { suite, test, setup } = Mocha;
+const { suite, test, setup, teardown } = Mocha;
 
 const SMALL_LIMIT = () => 1_000_000; // 1 MB, plenty for these tests
 
 suite('Unit: toolOutputCache', () => {
 	setup(() => {
 		initTestEnvironment();
+		SessionManager._resetForTesting();
+	});
+
+	teardown(() => {
+		SessionManager._resetForTesting();
 	});
 
 	suite('formatToolOutput()', () => {

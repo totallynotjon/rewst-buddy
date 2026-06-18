@@ -1,7 +1,7 @@
 import { LinkManager, type TemplateLink } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { isAiToolEnabled } from './aiToolSettings';
+import { anyAiToolEnabled, isAiToolEnabled } from './aiToolSettings';
 import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
 import { GRAPHQL_TOOL_SPECS, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
 import { formatToolOutput, isResultReadTool, runResultReadTool } from './toolOutputCache';
@@ -116,9 +116,18 @@ async function runTool(
 				return { output: await runWorkflowTool(request, graphqlDeps) };
 			}
 			if (isGraphqlTool(request.tool)) return { output: await runGraphqlTool(request, graphqlDeps) };
-			// Reads only this process's output cache (text a tool already returned a
-			// preview of), so it needs no capability gate of its own.
-			if (isResultReadTool(request.tool)) return { output: runResultReadTool(request) };
+			if (isResultReadTool(request.tool)) {
+				// Reads only this process's output cache, but a remote assistant can
+				// emit a block it was never offered — so gate it like the others: at
+				// least one tool capability must be on (any of them can have produced
+				// the cached output).
+				if (!anyAiToolEnabled()) {
+					throw new Error(
+						'buddy_result_read is unavailable. Enable at least one capability in the rewst-buddy.ai.tools setting.',
+					);
+				}
+				return { output: runResultReadTool(request) };
+			}
 			const names = [...WORKSPACE_TOOL_SPECS, ...WEB_TOOL_SPECS, ...WORKFLOW_TOOL_SPECS, ...GRAPHQL_TOOL_SPECS]
 				.map(s => s.name)
 				.join(', ');
