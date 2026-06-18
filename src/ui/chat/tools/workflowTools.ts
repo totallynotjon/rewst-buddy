@@ -144,7 +144,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_RUN_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "input"?: object, "wait"?: boolean}',
 		description:
-			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from buddy_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate buddy_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to buddy_execution_logs or buddy_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval, remembered per workflow for the session.",
+			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from buddy_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate buddy_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to buddy_execution_logs or buddy_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval EACH time it runs (unlike editing, a run is never remembered — every run is confirmed individually).",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -1886,16 +1886,21 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 // Mutation approval integration (mirrors graphqlTool's scope machinery)
 // ---------------------------------------------------------------------------
 
-/** Tool names that act on a workflow and share the per-workflow approval scope. */
-const WORKFLOW_MUTATION_TOOLS = new Set<string>([
+/**
+ * Workflow-editing tools whose approval is REMEMBERED per workflow for the
+ * session: approving one edit (or layout) lets later edits to the same workflow
+ * run without re-asking. They change the workflow definition.
+ */
+const WORKFLOW_REMEMBERED_MUTATION_TOOLS = new Set<string>([
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
-	WORKFLOW_RUN_TOOL_NAME,
 ]);
 
+/** Every workflow tool that requires user approval before it runs. */
+const WORKFLOW_MUTATION_TOOLS = new Set<string>([...WORKFLOW_REMEMBERED_MUTATION_TOOLS, WORKFLOW_RUN_TOOL_NAME]);
+
 /** The org+workflow a workflow-mutation request targets, if fully specified. */
-export function workflowEditScope(name: string, input: unknown): MutationScope | undefined {
-	if (!WORKFLOW_MUTATION_TOOLS.has(name)) return undefined;
+function workflowScope(input: unknown): MutationScope | undefined {
 	const args = asObject(input);
 	const workflowId = str(args.workflowId);
 	const workflowName = str(args.workflowName);
@@ -1903,6 +1908,17 @@ export function workflowEditScope(name: string, input: unknown): MutationScope |
 	const orgName = str(args.orgName);
 	if (!workflowId || !workflowName || !orgId || !orgName) return undefined;
 	return { scopeId: workflowId, scopeName: workflowName, orgId, orgName };
+}
+
+/**
+ * The org+workflow scope lmTools records once a request is permitted, so repeat
+ * edits to the same workflow skip the prompt. Only the remembered editing tools
+ * return a scope: running a workflow executes automation and is confirmed every
+ * time (see workflowEditConfirmation), so its approval is never remembered.
+ */
+export function workflowEditScope(name: string, input: unknown): MutationScope | undefined {
+	if (!WORKFLOW_REMEMBERED_MUTATION_TOOLS.has(name)) return undefined;
+	return workflowScope(input);
 }
 
 function describeOperation(operation: WorkflowOperation): string {
@@ -1914,29 +1930,35 @@ function describeOperation(operation: WorkflowOperation): string {
 }
 
 /**
- * The inline approval prompt for a buddy_workflow_edit request, or undefined
- * when no prompt is needed (not an edit, already approved this session, or
- * missing scope fields — refused downstream). Summarizes the operations so the
- * user sees what will change before approving.
+ * The inline approval prompt for a workflow-mutation request, or undefined when
+ * no prompt is needed (not a workflow mutation, or missing scope fields —
+ * refused downstream). The editing tools (edit, autolayout) skip the prompt once
+ * their workflow scope is approved this session; running a workflow executes its
+ * automation, so it is confirmed EVERY time and ignores the remembered scope.
  */
 export function workflowEditConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
-	const scope = workflowEditScope(name, input);
-	if (!scope || isMutationScopeApproved(scope)) return undefined;
+	if (!WORKFLOW_MUTATION_TOOLS.has(name)) return undefined;
+	const scope = workflowScope(input);
+	if (!scope) return undefined;
+	const isRun = name === WORKFLOW_RUN_TOOL_NAME;
+	if (!isRun && isMutationScopeApproved(scope)) return undefined;
 	const args = asObject(input);
-	const lead = `workflow **${scope.scopeName}** (\`${scope.scopeId}\`) in org **${scope.orgName}** (\`${scope.orgId}\`)? Approving also lets further actions on this same workflow run for the rest of this session without asking again.`;
+	const target = `workflow **${scope.scopeName}** (\`${scope.scopeId}\`) in org **${scope.orgName}** (\`${scope.orgId}\`)?`;
+	// Editing approval is remembered per workflow; a run is always re-confirmed.
+	const editLead = `${target} Approving also lets further edits to this same workflow run for the rest of this session without asking again.`;
 	let lines: string[];
 	let title = 'Cage-Free Rewsty wants to edit a Rewst workflow';
 	if (name === WORKFLOW_AUTOLAYOUT_TOOL_NAME) {
-		lines = [`Auto-layout ${lead}`, '', 'This re-arranges every task position on the canvas.'];
-	} else if (name === WORKFLOW_RUN_TOOL_NAME) {
+		lines = [`Auto-layout ${editLead}`, '', 'This re-arranges every task position on the canvas.'];
+	} else if (isRun) {
 		title = 'Cage-Free Rewsty wants to run a Rewst workflow';
 		const runInput = asObject(args.input);
-		lines = [`Run ${lead}`, '', 'This executes the workflow.'];
+		lines = [`Run ${target}`, '', 'This executes the workflow. Each run is confirmed individually.'];
 		if (Object.keys(runInput).length > 0)
 			lines.push('', 'Input:', `\`\`\`json\n${JSON.stringify(runInput, null, 2)}\n\`\`\``);
 	} else {
 		lines = [
-			`Edit ${lead}`,
+			`Edit ${editLead}`,
 			'',
 			'Operations:',
 			...(Array.isArray(args.operations) ? (args.operations as WorkflowOperation[]) : []).map(

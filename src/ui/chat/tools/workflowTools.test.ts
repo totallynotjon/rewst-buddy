@@ -1198,13 +1198,25 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('buddy_workflow_run is scope-gated with a "run" confirmation', () => {
+		test('buddy_workflow_run confirms with a "run" prompt and is never remembered', () => {
 			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme', input: { a: 1 } };
-			assert.ok(workflowEditScope(WORKFLOW_RUN_TOOL_NAME, args), 'shares the per-workflow scope');
+			// A run's approval is never recorded, so lmTools has no scope to remember.
+			assert.strictEqual(workflowEditScope(WORKFLOW_RUN_TOOL_NAME, args), undefined);
 			const confirmation = workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args);
 			assert.ok(confirmation);
 			assert.match(confirmation!.message, /Run workflow/);
 			assert.match(confirmation!.message, /executes the workflow/i);
+			assert.match(confirmation!.message, /confirmed individually/i);
+		});
+
+		test('buddy_workflow_run prompts every time, even after the workflow scope is approved', () => {
+			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme', input: { a: 1 } };
+			// Approving an edit on this workflow must not silence run confirmations.
+			approveMutationScope({ scopeId: 'wf-1', scopeName: 'WF', orgId: 'org-1', orgName: 'Acme' });
+			assert.strictEqual(workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, args), undefined);
+			const confirmation = workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args);
+			assert.ok(confirmation, 'run still asks once the edit scope is approved');
+			assert.match(confirmation!.message, /Run workflow/);
 		});
 
 		test('buddy_workflow_edit refuses when scope fields are missing', async () => {
