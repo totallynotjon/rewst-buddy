@@ -1,5 +1,8 @@
 import * as assert from 'assert';
+import * as fs from 'fs/promises';
 import * as Mocha from 'mocha';
+import * as os from 'os';
+import * as path from 'path';
 import { initTestEnvironment } from '@test';
 import type { TemplateLink } from '@models';
 import vscode from 'vscode';
@@ -18,11 +21,16 @@ const folder: vscode.WorkspaceFolder = { uri: vscode.Uri.file('/ws'), name: 'ws'
 
 function deps(over: Partial<WorkspaceToolDeps> = {}): WorkspaceToolDeps {
 	return {
+		createDirectory: uri => vscode.workspace.fs.createDirectory(uri),
+		writeFile: (uri, content) => vscode.workspace.fs.writeFile(uri, content),
 		readDirectory: async () => [],
 		workspaceFolders: () => [folder],
 		asRelativePath: uri => uri.path.replace(/^\/ws\//, ''),
 		templateLinks: () => [],
 		workspaceToolsEnabled: () => true,
+		now: () => new Date('2026-06-18T15:30:00.000Z'),
+		randomId: () => 'testid',
+		tmpDir: () => os.tmpdir(),
 		...over,
 	};
 }
@@ -108,6 +116,37 @@ suite('Unit: workspaceTools', () => {
 			assert.deepStrictEqual(calls, [
 				{ query: 'query U($id: ID!) { user(id: $id) { id } }', variables: { id: 'u-1' } },
 			]);
+		});
+
+		test('saves oversized tool output to a readable workspace artifact', async () => {
+			const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rewst-buddy-output-'));
+			try {
+				const workspaceFolder: vscode.WorkspaceFolder = { uri: vscode.Uri.file(root), name: 'tmp', index: 0 };
+				const big = 'x'.repeat(20_000);
+				const graphqlDeps: GraphqlToolDeps = {
+					isEnabled: () => true,
+					confirmMutation: async () => true,
+					execute: async () => ({ data: { big } }),
+				};
+				const [result] = await runToolRequests(
+					[{ tool: 'buddy_graphql', args: { query: '{ big }' } }],
+					deps({ workspaceFolders: () => [workspaceFolder] }),
+					undefined,
+					graphqlDeps,
+				);
+				assert.strictEqual(result.ok, true);
+				assert.match(result.output, /Full output saved:/);
+				assert.match(result.output, /read_file/);
+				assert.match(result.output, /VS Code search/);
+				assert.doesNotMatch(result.output, /output truncated/);
+				const savedPath = result.output.match(/Full output saved:\s*\n([^\n]+)/)?.[1].trim();
+				assert.ok(savedPath, 'result includes the artifact path');
+				assert.ok(savedPath.startsWith(path.join(root, '.rewst-buddy', 'tool-results')));
+				const saved = await fs.readFile(savedPath, 'utf8');
+				assert.ok(saved.includes(big), 'artifact contains the full output');
+			} finally {
+				await fs.rm(root, { recursive: true, force: true });
+			}
 		});
 
 		test('reports progress per request', async () => {

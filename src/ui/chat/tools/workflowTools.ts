@@ -26,8 +26,6 @@ import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
  * approval flow as buddy_graphql (see workflowEditConfirmation + lmTools.ts).
  */
 
-const MAX_OUTPUT_CHARS = 8_000;
-
 export const WORKFLOW_EDIT_TOOL_NAME = 'buddy_workflow_edit';
 export const WORKFLOW_AUTOLAYOUT_TOOL_NAME = 'buddy_workflow_autolayout';
 export const WORKFLOW_RUN_TOOL_NAME = 'buddy_workflow_run';
@@ -202,9 +200,9 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	},
 	{
 		name: 'buddy_render_jinja',
-		args: '{"orgId": string, "template"?: string, "executionId"?: string, "vars"?: object, "contextIndex"?: number, "keys"?: boolean, "truncate"?: boolean}',
+		args: '{"orgId": string, "template"?: string, "executionId"?: string, "vars"?: object, "contextIndex"?: number, "keys"?: boolean}',
 		description:
-			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. By default the last context snapshot of the run is used; contextIndex picks another. Responses are truncated by default; pass truncate:false when you need the full rendered value. Returns the rendered value, or the Jinja error if it fails.",
+			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. By default the last context snapshot of the run is used; contextIndex picks another. Returns the rendered value, or the Jinja error if it fails.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -230,10 +228,6 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 				keys: {
 					type: 'boolean',
 					description: "List the context's top-level keys instead of rendering a template (default false).",
-				},
-				truncate: {
-					type: 'boolean',
-					description: 'Cap long output by default; pass false to return the full rendered value.',
 				},
 			},
 			required: ['orgId'],
@@ -1230,10 +1224,8 @@ async function resolveActionIds(deps: GraphqlToolDeps, orgId: string, refs: stri
 // Output formatting
 // ---------------------------------------------------------------------------
 
-function cap(text: string, truncate = true): string {
-	return truncate && text.length > MAX_OUTPUT_CHARS
-		? text.slice(0, MAX_OUTPUT_CHARS) + '\n…(output truncated)'
-		: text;
+function formatWorkflowOutput(text: string): string {
+	return text;
 }
 
 function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary'): string {
@@ -1311,7 +1303,7 @@ function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary
 		? 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). When troubleshooting a condition or expression, render it against a recent execution with buddy_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").'
 		: 'Analysis view: task ids, transition ids, canvas positions, and the version token are omitted, and tasks/edges are referenced by NAME — which is exactly what buddy_workflow_edit operations use, so you can edit straight from this view. Call buddy_workflow_get again with detail:"full" only to reposition a task or target one specific transition by its id. To edit or run, pass workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). Before changing a condition or expression, confirm it with buddy_render_jinja against a recent execution (types matter: a boolean is not the string "true").';
 
-	return cap(JSON.stringify({ workflow, nodes, edges, note }, null, 1));
+	return formatWorkflowOutput(JSON.stringify({ workflow, nodes, edges, note }, null, 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -1350,7 +1342,7 @@ async function runActionSearch(request: ToolRequest, deps: GraphqlToolDeps): Pro
 		const result = await deps.execute(ACTION_DESCRIBE_QUERY, { orgId, search });
 		const row = (result.data as { actionsForOrg?: Record<string, unknown>[] } | undefined)?.actionsForOrg?.[0];
 		if (!row) throw new Error(`Action ${ref ?? actionId} not found in org ${orgId}.`);
-		return cap(JSON.stringify(row, null, 1));
+		return formatWorkflowOutput(JSON.stringify(row, null, 1));
 	}
 
 	const query = asStringArg(request.args, 'query');
@@ -1374,7 +1366,7 @@ async function runActionSearch(request: ToolRequest, deps: GraphqlToolDeps): Pro
 		row =>
 			`- ${row.ref} — ${row.name}${row.category ? ` [${row.category}]` : ''}${row.deprecated ? ' (deprecated)' : ''} (id ${row.id})`,
 	);
-	return cap(
+	return formatWorkflowOutput(
 		`Actions matching "${query}":\n${lines.join('\n')}\n\nDescribe one with buddy_action_search {"orgId","ref"} to see its input parameters.`,
 	);
 }
@@ -1383,7 +1375,6 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	const orgId = asStringArg(request.args, 'orgId');
 	const template = asStringArg(request.args, 'template');
 	const keysMode = request.args.keys === true;
-	const truncateOutput = request.args.truncate !== false;
 	if (!orgId) throw new Error('buddy_render_jinja requires "orgId".');
 	if (!keysMode && !template) {
 		throw new Error('buddy_render_jinja requires "template" (or pass keys:true to list the context keys).');
@@ -1413,9 +1404,8 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 
 	if (keysMode) {
 		const keys = Object.keys(vars as Record<string, unknown>).sort();
-		return cap(
+		return formatWorkflowOutput(
 			`Context top-level keys (${keys.length}): ${keys.join(', ') || '(none)'}\n\nDrill in with {{ CTX.<key> }}. System vars: execution id = CTX.execution_id, org id = CTX.organization.id, this workflow's id = CTX.trigger_instance.trigger.workflow_id.`,
-			truncateOutput,
 		);
 	}
 
@@ -1427,7 +1417,7 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 		return `Jinja error: ${typeof rendered.error === 'string' ? rendered.error : JSON.stringify(rendered.error)}`;
 	}
 	const value = rendered && typeof rendered === 'object' && 'result' in rendered ? rendered.result : rendered;
-	return cap(`Rendered: ${JSON.stringify(value)} (type ${value === null ? 'null' : typeof value})`, truncateOutput);
+	return formatWorkflowOutput(`Rendered: ${JSON.stringify(value)} (type ${value === null ? 'null' : typeof value})`);
 }
 
 /** Validates the four scope fields a workflow mutation must carry. */
@@ -1575,7 +1565,7 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 	const rows = await fetchTaskLogs(deps, executionId);
 	const failed = rows.filter(r => isFailedStatus(r.status)).length;
 	const header = `Execution ${executionId}: ${rows.length} task(s), ${failed} failed.`;
-	return cap(`${header}\n${formatTaskLogs(rows, { failedOnly, includeResult })}`);
+	return formatWorkflowOutput(`${header}\n${formatTaskLogs(rows, { failedOnly, includeResult })}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1642,7 +1632,7 @@ async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	const head = `Run of "${name}" finished: ${(status ?? 'unknown').toUpperCase()}. executionId: ${executionId}`;
 	if (isFailedStatus(status)) {
 		const rows = await fetchTaskLogs(deps, executionId);
-		return cap(
+		return formatWorkflowOutput(
 			`${head}\n\nFailing task(s):\n${formatTaskLogs(rows, { failedOnly: true })}\n\nFull logs: buddy_execution_logs {"executionId": "${executionId}"}.`,
 		);
 	}
@@ -1675,7 +1665,7 @@ async function runWorkflowExecutions(request: ToolRequest, deps: GraphqlToolDeps
 		const when = Number.isFinite(ts) ? new Date(ts).toISOString() : (e.createdAt ?? '?');
 		return `- ${e.id}  ${e.status}  ${when}  (${e.numSuccessfulTasks ?? '?'} task(s) ok)`;
 	};
-	return cap(
+	return formatWorkflowOutput(
 		`${rows.length} ${status ?? 'recent'} execution(s), newest first:\n${rows.map(fmt).join('\n')}\n\nInspect one with buddy_render_jinja {"executionId": "<id>", "template": "{{ CTX.<field> }}"}.`,
 	);
 }
@@ -1853,7 +1843,7 @@ async function runWorkflowSearch(request: ToolRequest, deps: GraphqlToolDeps): P
 			`Plus ${orgOnly.length} workflow(s) in matching org(s), not by name: ${summary}. Pass that orgId to list an org's workflows.`,
 		);
 	}
-	return cap(parts.join('\n'));
+	return formatWorkflowOutput(parts.join('\n'));
 }
 
 /** Lower is better: 0 exact name, 1 name starts-with the query, 2 all tokens present. */

@@ -4,6 +4,11 @@ import vscode from 'vscode';
 import { isAiToolEnabled } from './aiToolSettings';
 import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
 import { GRAPHQL_TOOL_SPECS, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
+import {
+	defaultToolOutputArtifactDeps,
+	formatToolOutput,
+	type ToolOutputArtifactDeps,
+} from './toolOutputArtifacts';
 import { isWebTool, runWebTool, WEB_TOOL_SPECS } from './webTools';
 import { isWorkflowTool, runWorkflowTool, WORKFLOW_TOOL_SPECS } from './workflowTools';
 
@@ -16,7 +21,7 @@ import { isWorkflowTool, runWorkflowTool, WORKFLOW_TOOL_SPECS } from './workflow
  */
 
 /** Seams for unit testing; production code uses defaultDeps. */
-export interface WorkspaceToolDeps {
+export interface WorkspaceToolDeps extends ToolOutputArtifactDeps {
 	readDirectory(uri: vscode.Uri): Thenable<[string, vscode.FileType][]>;
 	workspaceFolders(): readonly vscode.WorkspaceFolder[];
 	asRelativePath(uri: vscode.Uri): string;
@@ -25,6 +30,7 @@ export interface WorkspaceToolDeps {
 }
 
 export const defaultDeps: WorkspaceToolDeps = {
+	...defaultToolOutputArtifactDeps,
 	readDirectory: uri => vscode.workspace.fs.readDirectory(uri),
 	workspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
 	asRelativePath: uri => vscode.workspace.asRelativePath(uri, false),
@@ -81,7 +87,8 @@ export async function runToolRequests(
 		const argsLabel = JSON.stringify(request.args) === '{}' ? '' : JSON.stringify(request.args);
 		try {
 			const outcome = await runTool(request, deps, graphqlDeps);
-			results.push({ tool: request.tool, argsLabel, ok: true, ...outcome });
+			const output = await formatToolOutput(request.tool, outcome.output, deps);
+			results.push({ tool: request.tool, argsLabel, ok: true, output });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			log.debug('workspaceTools: tool failed', request.tool, message);

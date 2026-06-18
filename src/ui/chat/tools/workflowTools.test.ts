@@ -814,13 +814,13 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('buddy_render_jinja can return the full rendered value without truncating', async () => {
+		test('buddy_render_jinja returns oversized values intact for the shared tool-output formatter', async () => {
 			const longValue = 'x'.repeat(8_100);
 			const { deps } = makeDeps({ renderResult: longValue });
 			const output = await runWorkflowTool(
 				{
 					tool: 'buddy_render_jinja',
-					args: { orgId: 'org-1', vars: {}, template: '{{ CTX() }}', truncate: false },
+					args: { orgId: 'org-1', vars: {}, template: '{{ CTX() }}' },
 				},
 				deps,
 			);

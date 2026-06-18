@@ -13,6 +13,9 @@ tsconfig.tsbuildinfo
 # Workflow probe snapshots (may contain live workflow internals)
 scripts/wf-backups/
 
+# Local AI tool result artifacts (may contain live Rewst data)
+.rewst-buddy/
+
 # Claude Code local files
 .claude/settings.*
 .claudeignore
