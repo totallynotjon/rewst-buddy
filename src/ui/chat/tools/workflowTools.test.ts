@@ -591,6 +591,7 @@ suite('Unit: workflowTools', () => {
 				updateResults: { data?: unknown; errors?: unknown }[];
 				pollStatus: string;
 				pollError: string;
+				renderResult: unknown;
 				taskLogs: unknown[];
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
 			}> = {},
@@ -619,7 +620,7 @@ suite('Unit: workflowTools', () => {
 				if (query.includes('RewstBuddyRenderJinja')) {
 					// Echo the context value the tool passed, to prove it rendered against it.
 					const vars = variables?.vars as { proceed?: unknown } | undefined;
-					return { data: { renderJinja: { result: vars?.proceed } } };
+					return { data: { renderJinja: { result: over.renderResult ?? vars?.proceed } } };
 				}
 				if (query.includes('RewstBuddyTestWorkflow')) {
 					return { data: { testWorkflow: { executionId: 'exec-new' } } };
@@ -811,6 +812,20 @@ suite('Unit: workflowTools', () => {
 				!calls.some(c => c.query.includes('RewstBuddyExecutionContexts')),
 				'no execution fetch for ad-hoc vars',
 			);
+		});
+
+		test('buddy_render_jinja can return the full rendered value without truncating', async () => {
+			const longValue = 'x'.repeat(8_100);
+			const { deps } = makeDeps({ renderResult: longValue });
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_render_jinja',
+					args: { orgId: 'org-1', vars: {}, template: '{{ CTX() }}', truncate: false },
+				},
+				deps,
+			);
+			assert.ok(output.includes(longValue), 'full rendered value is present');
+			assert.doesNotMatch(output, /output truncated/);
 		});
 
 		test('buddy_render_jinja requires an execution or vars', async () => {

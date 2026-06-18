@@ -202,9 +202,9 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	},
 	{
 		name: 'buddy_render_jinja',
-		args: '{"orgId": string, "template"?: string, "executionId"?: string, "vars"?: object, "contextIndex"?: number, "keys"?: boolean}',
+		args: '{"orgId": string, "template"?: string, "executionId"?: string, "vars"?: object, "contextIndex"?: number, "keys"?: boolean, "truncate"?: boolean}',
 		description:
-			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. By default the last context snapshot of the run is used; contextIndex picks another. Returns the rendered value, or the Jinja error if it fails.",
+			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. By default the last context snapshot of the run is used; contextIndex picks another. Responses are truncated by default; pass truncate:false when you need the full rendered value. Returns the rendered value, or the Jinja error if it fails.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -230,6 +230,10 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 				keys: {
 					type: 'boolean',
 					description: "List the context's top-level keys instead of rendering a template (default false).",
+				},
+				truncate: {
+					type: 'boolean',
+					description: 'Cap long output by default; pass false to return the full rendered value.',
 				},
 			},
 			required: ['orgId'],
@@ -1226,8 +1230,10 @@ async function resolveActionIds(deps: GraphqlToolDeps, orgId: string, refs: stri
 // Output formatting
 // ---------------------------------------------------------------------------
 
-function cap(text: string): string {
-	return text.length > MAX_OUTPUT_CHARS ? text.slice(0, MAX_OUTPUT_CHARS) + '\n…(output truncated)' : text;
+function cap(text: string, truncate = true): string {
+	return truncate && text.length > MAX_OUTPUT_CHARS
+		? text.slice(0, MAX_OUTPUT_CHARS) + '\n…(output truncated)'
+		: text;
 }
 
 function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary'): string {
@@ -1377,6 +1383,7 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	const orgId = asStringArg(request.args, 'orgId');
 	const template = asStringArg(request.args, 'template');
 	const keysMode = request.args.keys === true;
+	const truncateOutput = request.args.truncate !== false;
 	if (!orgId) throw new Error('buddy_render_jinja requires "orgId".');
 	if (!keysMode && !template) {
 		throw new Error('buddy_render_jinja requires "template" (or pass keys:true to list the context keys).');
@@ -1408,6 +1415,7 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 		const keys = Object.keys(vars as Record<string, unknown>).sort();
 		return cap(
 			`Context top-level keys (${keys.length}): ${keys.join(', ') || '(none)'}\n\nDrill in with {{ CTX.<key> }}. System vars: execution id = CTX.execution_id, org id = CTX.organization.id, this workflow's id = CTX.trigger_instance.trigger.workflow_id.`,
+			truncateOutput,
 		);
 	}
 
@@ -1419,7 +1427,7 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 		return `Jinja error: ${typeof rendered.error === 'string' ? rendered.error : JSON.stringify(rendered.error)}`;
 	}
 	const value = rendered && typeof rendered === 'object' && 'result' in rendered ? rendered.result : rendered;
-	return cap(`Rendered: ${JSON.stringify(value)} (type ${value === null ? 'null' : typeof value})`);
+	return cap(`Rendered: ${JSON.stringify(value)} (type ${value === null ? 'null' : typeof value})`, truncateOutput);
 }
 
 /** Validates the four scope fields a workflow mutation must carry. */
