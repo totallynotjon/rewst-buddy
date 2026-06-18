@@ -1,12 +1,10 @@
 import * as assert from 'assert';
-import * as fs from 'fs/promises';
 import * as Mocha from 'mocha';
-import * as os from 'os';
-import * as path from 'path';
 import { initTestEnvironment } from '@test';
 import type { TemplateLink } from '@models';
 import vscode from 'vscode';
 import type { GraphqlToolDeps } from './graphqlTool';
+import { toolOutputCache } from './toolOutputCache';
 import {
 	buildWorkspaceOverview,
 	createCachedWorkspaceOverview,
@@ -21,16 +19,11 @@ const folder: vscode.WorkspaceFolder = { uri: vscode.Uri.file('/ws'), name: 'ws'
 
 function deps(over: Partial<WorkspaceToolDeps> = {}): WorkspaceToolDeps {
 	return {
-		createDirectory: uri => vscode.workspace.fs.createDirectory(uri),
-		writeFile: (uri, content) => vscode.workspace.fs.writeFile(uri, content),
 		readDirectory: async () => [],
 		workspaceFolders: () => [folder],
 		asRelativePath: uri => uri.path.replace(/^\/ws\//, ''),
 		templateLinks: () => [],
 		workspaceToolsEnabled: () => true,
-		now: () => new Date('2026-06-18T15:30:00.000Z'),
-		randomId: () => 'testid',
-		tmpDir: () => os.tmpdir(),
 		...over,
 	};
 }
@@ -118,35 +111,38 @@ suite('Unit: workspaceTools', () => {
 			]);
 		});
 
-		test('saves oversized tool output to a readable workspace artifact', async () => {
-			const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rewst-buddy-output-'));
-			try {
-				const workspaceFolder: vscode.WorkspaceFolder = { uri: vscode.Uri.file(root), name: 'tmp', index: 0 };
-				const big = 'x'.repeat(20_000);
-				const graphqlDeps: GraphqlToolDeps = {
-					isEnabled: () => true,
-					confirmMutation: async () => true,
-					execute: async () => ({ data: { big } }),
-				};
-				const [result] = await runToolRequests(
-					[{ tool: 'buddy_graphql', args: { query: '{ big }' } }],
-					deps({ workspaceFolders: () => [workspaceFolder] }),
-					undefined,
-					graphqlDeps,
-				);
-				assert.strictEqual(result.ok, true);
-				assert.match(result.output, /Full output saved:/);
-				assert.match(result.output, /read_file/);
-				assert.match(result.output, /VS Code search/);
-				assert.doesNotMatch(result.output, /output truncated/);
-				const savedPath = result.output.match(/Full output saved:\s*\n([^\n]+)/)?.[1].trim();
-				assert.ok(savedPath, 'result includes the artifact path');
-				assert.ok(savedPath.startsWith(path.join(root, '.rewst-buddy', 'tool-results')));
-				const saved = await fs.readFile(savedPath, 'utf8');
-				assert.ok(saved.includes(big), 'artifact contains the full output');
-			} finally {
-				await fs.rm(root, { recursive: true, force: true });
-			}
+		test('caches oversized tool output and reads it back through buddy_result_read', async () => {
+			toolOutputCache.clear();
+			const big = 'y'.repeat(20_000);
+			const graphqlDeps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async () => ({ data: { big } }),
+			};
+			const [result] = await runToolRequests(
+				[{ tool: 'buddy_graphql', args: { query: '{ big }' } }],
+				deps(),
+				undefined,
+				graphqlDeps,
+			);
+			assert.strictEqual(result.ok, true);
+			assert.match(result.output, /cached in memory as id "([0-9a-f]+)"/);
+			assert.match(result.output, /buddy_result_read/);
+			assert.doesNotMatch(result.output, /saved/i);
+			const id = result.output.match(/cached in memory as id "([0-9a-f]+)"/)?.[1];
+			assert.ok(id, 'result announces a cache id');
+
+			const [read] = await runToolRequests([{ tool: 'buddy_result_read', args: { id, offset: 8_000 } }], deps());
+			assert.strictEqual(read.ok, true);
+			assert.match(read.output, /characters 8000–14000 of \d+/);
+			assert.ok(read.output.includes('y'.repeat(100)), 'returns a slice of the cached text');
+		});
+
+		test('buddy_result_read reports an unknown cache id', async () => {
+			toolOutputCache.clear();
+			const [read] = await runToolRequests([{ tool: 'buddy_result_read', args: { id: 'nope' } }], deps());
+			assert.strictEqual(read.ok, false);
+			assert.match(read.output, /No cached tool result for id "nope"/);
 		});
 
 		test('reports progress per request', async () => {

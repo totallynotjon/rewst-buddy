@@ -15,8 +15,8 @@ function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
 }
 
 suite('Unit: lmTools', () => {
-	test('exposes all 13 protocol tools with input schemas', () => {
-		assert.strictEqual(ALL_TOOL_SPECS.length, 13);
+	test('exposes all 14 protocol tools with input schemas', () => {
+		assert.strictEqual(ALL_TOOL_SPECS.length, 14);
 		for (const spec of ALL_TOOL_SPECS) {
 			assert.ok(spec.inputSchema, `${spec.name} carries an inputSchema`);
 		}
@@ -27,20 +27,27 @@ suite('Unit: lmTools', () => {
 			assert.strictEqual(enabledToolNames(settings()).size, 0);
 		});
 
-		test('each opt-in setting yields exactly its tools', () => {
-			assert.deepStrictEqual(
-				[...enabledToolNames(settings({ enableWorkspaceTools: true }))],
-				['list_template_links'],
-			);
-			assert.deepStrictEqual([...enabledToolNames(settings({ enableWebTools: true }))].sort(), ['web_search']);
+		test('each opt-in setting yields its tools plus the cached-result reader', () => {
+			// buddy_result_read rides along with any enabled capability, since any of
+			// them can produce the oversized output it reads back.
+			assert.deepStrictEqual([...enabledToolNames(settings({ enableWorkspaceTools: true }))].sort(), [
+				'buddy_result_read',
+				'list_template_links',
+			]);
+			assert.deepStrictEqual([...enabledToolNames(settings({ enableWebTools: true }))].sort(), [
+				'buddy_result_read',
+				'web_search',
+			]);
 			assert.deepStrictEqual([...enabledToolNames(settings({ enableGraphqlTool: true }))].sort(), [
 				'buddy_graphql',
 				'buddy_graphql_schema',
+				'buddy_result_read',
 			]);
 			assert.deepStrictEqual([...enabledToolNames(settings({ enableWorkflowTools: true }))].sort(), [
 				'buddy_action_search',
 				'buddy_execution_logs',
 				'buddy_render_jinja',
+				'buddy_result_read',
 				'buddy_workflow_autolayout',
 				'buddy_workflow_edit',
 				'buddy_workflow_executions',
@@ -50,7 +57,7 @@ suite('Unit: lmTools', () => {
 			]);
 		});
 
-		test('everything enabled yields all 13', () => {
+		test('everything enabled yields all 14', () => {
 			const names = enabledToolNames(
 				settings({
 					enableWorkspaceTools: true,
@@ -59,7 +66,7 @@ suite('Unit: lmTools', () => {
 					enableWorkflowTools: true,
 				}),
 			);
-			assert.strictEqual(names.size, 13);
+			assert.strictEqual(names.size, 14);
 		});
 	});
 

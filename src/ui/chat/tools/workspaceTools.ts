@@ -4,11 +4,7 @@ import vscode from 'vscode';
 import { isAiToolEnabled } from './aiToolSettings';
 import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
 import { GRAPHQL_TOOL_SPECS, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
-import {
-	defaultToolOutputArtifactDeps,
-	formatToolOutput,
-	type ToolOutputArtifactDeps,
-} from './toolOutputArtifacts';
+import { formatToolOutput, isResultReadTool, runResultReadTool } from './toolOutputCache';
 import { isWebTool, runWebTool, WEB_TOOL_SPECS } from './webTools';
 import { isWorkflowTool, runWorkflowTool, WORKFLOW_TOOL_SPECS } from './workflowTools';
 
@@ -21,7 +17,7 @@ import { isWorkflowTool, runWorkflowTool, WORKFLOW_TOOL_SPECS } from './workflow
  */
 
 /** Seams for unit testing; production code uses defaultDeps. */
-export interface WorkspaceToolDeps extends ToolOutputArtifactDeps {
+export interface WorkspaceToolDeps {
 	readDirectory(uri: vscode.Uri): Thenable<[string, vscode.FileType][]>;
 	workspaceFolders(): readonly vscode.WorkspaceFolder[];
 	asRelativePath(uri: vscode.Uri): string;
@@ -30,7 +26,6 @@ export interface WorkspaceToolDeps extends ToolOutputArtifactDeps {
 }
 
 export const defaultDeps: WorkspaceToolDeps = {
-	...defaultToolOutputArtifactDeps,
 	readDirectory: uri => vscode.workspace.fs.readDirectory(uri),
 	workspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
 	asRelativePath: uri => vscode.workspace.asRelativePath(uri, false),
@@ -87,7 +82,7 @@ export async function runToolRequests(
 		const argsLabel = JSON.stringify(request.args) === '{}' ? '' : JSON.stringify(request.args);
 		try {
 			const outcome = await runTool(request, deps, graphqlDeps);
-			const output = await formatToolOutput(request.tool, outcome.output, deps);
+			const output = formatToolOutput(request.tool, outcome.output);
 			results.push({ tool: request.tool, argsLabel, ok: true, output });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -121,6 +116,9 @@ async function runTool(
 				return { output: await runWorkflowTool(request, graphqlDeps) };
 			}
 			if (isGraphqlTool(request.tool)) return { output: await runGraphqlTool(request, graphqlDeps) };
+			// Reads only this process's output cache (text a tool already returned a
+			// preview of), so it needs no capability gate of its own.
+			if (isResultReadTool(request.tool)) return { output: runResultReadTool(request) };
 			const names = [...WORKSPACE_TOOL_SPECS, ...WEB_TOOL_SPECS, ...WORKFLOW_TOOL_SPECS, ...GRAPHQL_TOOL_SPECS]
 				.map(s => s.name)
 				.join(', ');
