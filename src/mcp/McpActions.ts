@@ -88,8 +88,17 @@ function auditOutcomeForText(text: string): 'ok' | 'approval_required' {
 	}
 }
 
+// The tool name (and orgId, on some paths) originate in the client request, so
+// strip line breaks before logging to keep each audit record on its own line —
+// otherwise a crafted tool name could inject forged audit entries.
+function sanitizeAuditField(value: string): string {
+	return value.replace(/[\r\n\t]/g, ' ').trim() || '—';
+}
+
 function logCallToolAudit(tool: string, orgId: string, outcome: AuditOutcome, startedAt: number): void {
-	log.info(`[MCP audit] tool=${tool} orgId=${orgId} outcome=${outcome} durationMs=${Date.now() - startedAt}`);
+	const safeTool = sanitizeAuditField(tool);
+	const safeOrgId = sanitizeAuditField(orgId);
+	log.info(`[MCP audit] tool=${safeTool} orgId=${safeOrgId} outcome=${outcome} durationMs=${Date.now() - startedAt}`);
 }
 
 /** Validates the session, attempting one refresh, before a capability runs. */

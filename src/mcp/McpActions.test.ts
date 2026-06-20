@@ -627,6 +627,24 @@ suite('Unit: MCP audit logging', () => {
 		assert.match(lines[0], /durationMs=\d+/);
 	});
 
+	test('a tool name with line breaks cannot forge extra audit lines', async () => {
+		useSession('org-1');
+		const capture = captureInfoLogs();
+		try {
+			await assert.rejects(
+				callTool({ name: 'evil\n[MCP audit] tool=forged', arguments: { orgId: 'org-1' } }, settings()),
+				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
+			);
+		} finally {
+			capture.restore();
+		}
+
+		const lines = auditLines(capture.messages);
+		assert.strictEqual(lines.length, 1, 'the injected newline does not split the record into two audit lines');
+		assert.ok(!lines[0].includes('\n'), 'the audit line carries no embedded newline');
+		assert.ok(lines[0].includes('outcome=error:unknown_tool'));
+	});
+
 	test('audit logs do not include arguments or secrets', async () => {
 		const { wrapper } = useSession('org-1');
 		wrapper.when('listTemplates', {
