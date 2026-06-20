@@ -80,7 +80,7 @@ async function runGraphqlMutate(input: Record<string, unknown>, ctx: CapabilityC
 	const query = requireTrimmedString(input, 'query');
 	const kind = detectOperationType(query);
 	if (kind === 'subscription') {
-		throw new Error('subscriptions are not supported; use a query or mutation');
+		throw new Error('Subscriptions are not supported; this tool runs mutations only.');
 	}
 	if (kind === 'query') {
 		throw new Error('This tool runs mutations only; use rewst_graphql_query for read-only queries.');

@@ -247,7 +247,7 @@ suite('Unit: McpActions', () => {
 				settings({ enableWriteTools: true }),
 			);
 			assert.strictEqual(result.isError, true);
-			assert.ok(result.text.includes('subscriptions are not supported'));
+			assert.ok(result.text.includes('Subscriptions are not supported'));
 		});
 
 		test('rewst_graphql_mutate returns approval_required without executing when the user declines', async () => {
