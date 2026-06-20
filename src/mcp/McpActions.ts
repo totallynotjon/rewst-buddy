@@ -51,8 +51,12 @@ export class McpError extends Error {
 }
 
 function capabilitySettings(): CapabilitySettings {
+	const tools = enabledAiTools();
 	return {
-		enableGraphqlTool: enabledAiTools().has('graphql'),
+		enableGraphqlTool: tools.has('graphql'),
+		enableWorkflowTools: tools.has('workflows'),
+		enableWebTools: tools.has('web'),
+		enableWorkspaceTools: tools.has('workspace'),
 	};
 }
 

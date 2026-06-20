@@ -1,4 +1,10 @@
 import type { Capability, CapabilitySettings } from './Capability';
+import {
+	RESULT_READ_CHAT_CAPABILITIES,
+	WEB_CHAT_CAPABILITIES,
+	WORKFLOW_CHAT_CAPABILITIES,
+	WORKSPACE_CHAT_CAPABILITIES,
+} from './chatToolCapabilities';
 import { GRAPHQL_CAPABILITIES } from './graphqlCapabilities';
 import { graphqlMutateCapability } from './graphqlMutateCapability';
 import { READ_CAPABILITIES } from './rewstReadCapabilities';
@@ -9,9 +15,13 @@ import { READ_CAPABILITIES } from './rewstReadCapabilities';
  * it opts into. Names must be unique across the registry.
  */
 export const CAPABILITY_REGISTRY: Capability[] = [
+	...WORKSPACE_CHAT_CAPABILITIES,
+	...WEB_CHAT_CAPABILITIES,
+	...WORKFLOW_CHAT_CAPABILITIES,
 	...GRAPHQL_CAPABILITIES,
 	...READ_CAPABILITIES,
 	graphqlMutateCapability,
+	...RESULT_READ_CHAT_CAPABILITIES,
 ];
 
 const BY_NAME = new Map(CAPABILITY_REGISTRY.map(capability => [capability.spec.name, capability]));

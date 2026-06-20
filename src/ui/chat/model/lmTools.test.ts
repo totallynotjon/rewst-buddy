@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { chatCapabilities } from '@capabilities';
 import { ALL_TOOL_SPECS, enabledToolNames, isToolPermitted, type AiToolSettings } from './lmTools';
 
 const { suite, test } = Mocha;
@@ -20,6 +21,12 @@ suite('Unit: lmTools', () => {
 		for (const spec of ALL_TOOL_SPECS) {
 			assert.ok(spec.inputSchema, `${spec.name} carries an inputSchema`);
 		}
+	});
+
+	test('derives protocol tools from chat capabilities', () => {
+		const capabilityNames = chatCapabilities().map(capability => capability.spec.name);
+		const specNames = ALL_TOOL_SPECS.map(spec => spec.name);
+		assert.deepStrictEqual([...specNames].sort(), [...capabilityNames].sort());
 	});
 
 	suite('enabledToolNames()', () => {

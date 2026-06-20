@@ -10,13 +10,34 @@ import {
 	getCapability,
 	mcpCapabilities,
 } from './registry';
+import { RESULT_READ_TOOL_SPECS } from '../ui/chat/tools/toolOutputCache';
+import { WEB_TOOL_SPECS } from '../ui/chat/tools/webTools';
+import { WORKFLOW_TOOL_SPECS } from '../ui/chat/tools/workflowTools';
+import { WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
 
 const { suite, test, setup } = Mocha;
 
 const GRAPHQL_CHAT_CAPABILITIES = ['buddy_graphql_schema', 'buddy_graphql'];
+const WORKSPACE_CHAT_CAPABILITIES = WORKSPACE_TOOL_SPECS.map(spec => spec.name);
+const WEB_CHAT_CAPABILITIES = WEB_TOOL_SPECS.map(spec => spec.name);
+const WORKFLOW_CHAT_CAPABILITIES = WORKFLOW_TOOL_SPECS.map(spec => spec.name);
+const RESULT_READ_CHAT_CAPABILITIES = RESULT_READ_TOOL_SPECS.map(spec => spec.name);
+const CHAT_CAPABILITIES = [
+	...WORKSPACE_CHAT_CAPABILITIES,
+	...WEB_CHAT_CAPABILITIES,
+	...WORKFLOW_CHAT_CAPABILITIES,
+	...GRAPHQL_CHAT_CAPABILITIES,
+	...RESULT_READ_CHAT_CAPABILITIES,
+];
 
 function settings(overrides: Partial<CapabilitySettings> = {}): CapabilitySettings {
-	return { enableGraphqlTool: false, ...overrides };
+	return {
+		enableGraphqlTool: false,
+		enableWorkflowTools: false,
+		enableWebTools: false,
+		enableWorkspaceTools: false,
+		...overrides,
+	};
 }
 
 suite('Unit: capability registry', () => {
@@ -51,10 +72,9 @@ suite('Unit: capability registry', () => {
 	});
 
 	suite('chat surface', () => {
-		test('graphql tools are exposed on the chat surface', () => {
+		test('all VS Code chat tools are exposed on the chat surface', () => {
 			const names = chatCapabilities().map(capability => capability.spec.name);
-			assert.ok(names.includes('buddy_graphql_schema'));
-			assert.ok(names.includes('buddy_graphql'));
+			assert.deepStrictEqual([...names].sort(), [...CHAT_CAPABILITIES].sort());
 		});
 
 		test('chat graphql capabilities are gated by enableGraphqlTool', () => {
@@ -68,6 +88,41 @@ suite('Unit: capability registry', () => {
 					true,
 					`${capability.spec.name} on when graphql enabled`,
 				);
+			}
+		});
+
+		test('chat-only categories are gated by their feature switches', () => {
+			const byName = new Map(chatCapabilities().map(capability => [capability.spec.name, capability]));
+			const cases: [string, string[], Partial<CapabilitySettings>][] = [
+				['workspace', WORKSPACE_CHAT_CAPABILITIES, { enableWorkspaceTools: true }],
+				['web', WEB_CHAT_CAPABILITIES, { enableWebTools: true }],
+				['workflow', WORKFLOW_CHAT_CAPABILITIES, { enableWorkflowTools: true }],
+			];
+
+			for (const [label, names, on] of cases) {
+				for (const name of names) {
+					const capability = byName.get(name);
+					assert.ok(capability, `${name} is registered`);
+					assert.strictEqual(capability.enabled(settings()), false, `${name} off by default`);
+					assert.strictEqual(capability.enabled(settings(on)), true, `${name} on when ${label} enabled`);
+				}
+			}
+		});
+
+		test('result reader is enabled when any chat tool category is enabled', () => {
+			const byName = new Map(chatCapabilities().map(capability => [capability.spec.name, capability]));
+			for (const name of RESULT_READ_CHAT_CAPABILITIES) {
+				const capability = byName.get(name);
+				assert.ok(capability, `${name} is registered`);
+				assert.strictEqual(capability.enabled(settings()), false, `${name} off by default`);
+				for (const on of [
+					{ enableWorkspaceTools: true },
+					{ enableWebTools: true },
+					{ enableGraphqlTool: true },
+					{ enableWorkflowTools: true },
+				]) {
+					assert.strictEqual(capability.enabled(settings(on)), true, `${name} on when any tools are enabled`);
+				}
 			}
 		});
 	});
@@ -95,6 +150,18 @@ suite('Unit: capability registry', () => {
 			const names = mcpCapabilities().map(capability => capability.spec.name);
 			assert.ok(!names.includes('buddy_graphql'));
 			assert.ok(names.includes('buddy_graphql_schema'));
+		});
+
+		test('chat-only tool categories are not exposed to MCP', () => {
+			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
+			for (const name of [
+				...WORKSPACE_CHAT_CAPABILITIES,
+				...WEB_CHAT_CAPABILITIES,
+				...WORKFLOW_CHAT_CAPABILITIES,
+				...RESULT_READ_CHAT_CAPABILITIES,
+			]) {
+				assert.ok(!names.has(name), `${name} stays off MCP`);
+			}
 		});
 
 		test('list_orgs does not require an org', () => {
