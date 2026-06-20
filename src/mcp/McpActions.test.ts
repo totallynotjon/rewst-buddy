@@ -35,6 +35,50 @@ function useRawGraphqlWrapper(session: Session, wrapper: ReturnType<typeof creat
 	};
 }
 
+function workflowGetResponse() {
+	return {
+		data: {
+			workflow: {
+				id: 'wf-1',
+				name: 'MCP Sample Workflow',
+				description: null,
+				type: 'workflow',
+				orgId: 'org-1',
+				organization: { id: 'org-1', name: 'Acme' },
+				action: { parameters: {} },
+				updatedAt: '1000',
+				input: [],
+				tasks: [
+					{
+						id: 'task-start',
+						name: 'start',
+						actionId: 'action-noop',
+						action: { id: 'action-noop', ref: 'core.noop', name: 'Noop' },
+						input: {},
+						next: [
+							{
+								id: 'transition-1',
+								from: 'task-start',
+								to: 'task-end',
+								when: '{{ SUCCEEDED }}',
+								do: ['task-end'],
+							},
+						],
+					},
+					{
+						id: 'task-end',
+						name: 'end',
+						actionId: 'action-noop',
+						action: { id: 'action-noop', ref: 'core.noop', name: 'Noop' },
+						input: {},
+						next: [],
+					},
+				],
+			},
+		},
+	};
+}
+
 function detectGraphqlOperation(query: string): string {
 	const match = /\b(query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(query);
 	return match ? `${match[1]} ${match[2]}` : 'rawGraphql';
@@ -137,6 +181,61 @@ suite('Unit: McpActions', () => {
 			const calls = wrapper.getCallsFor('rawGraphql');
 			assert.strictEqual(calls.length, 1);
 			assert.deepStrictEqual(calls[0].variables.variables, { includeDeprecated: false });
+		});
+
+		test('buddy_workflow_get is callable over MCP through the workflow capability', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when('rawGraphql', { data: workflowGetResponse() });
+			await setAiTools(['workspace', 'workflows']);
+
+			const names = listTools(settings()).map(tool => tool.name);
+			assert.ok(names.includes('buddy_workflow_get'));
+
+			const result = await callTool(
+				{ name: 'buddy_workflow_get', arguments: { orgId: 'org-1', workflowId: 'wf-1' } },
+				settings(),
+			);
+
+			assert.ok(!result.isError);
+			const parsed = JSON.parse(result.text) as {
+				workflow: { id: string; name: string; orgId: string; orgName: string };
+				nodes: { name: string }[];
+			};
+			assert.strictEqual(parsed.workflow.name, 'MCP Sample Workflow');
+			assert.strictEqual(parsed.workflow.orgName, 'Acme');
+			assert.deepStrictEqual(
+				parsed.nodes.map(node => node.name),
+				['start', 'end'],
+			);
+			const calls = wrapper.getCallsFor('rawGraphql');
+			assert.strictEqual(calls.length, 1);
+			assert.match(calls[0].variables.query, /query RewstBuddyWorkflowGet/);
+			assert.deepStrictEqual(calls[0].variables.variables, { where: { id: 'wf-1', orgId: 'org-1' } });
+		});
+
+		test('buddy_workflow_edit is not available over MCP', async () => {
+			useSession('org-1');
+			await setAiTools(['workspace', 'workflows']);
+
+			const names = listTools(settings({ enableWriteTools: true })).map(tool => tool.name);
+			assert.ok(!names.includes('buddy_workflow_edit'));
+			await assert.rejects(
+				callTool(
+					{
+						name: 'buddy_workflow_edit',
+						arguments: {
+							orgId: 'org-1',
+							workflowId: 'wf-1',
+							workflowName: 'Workflow',
+							orgName: 'Acme',
+							operations: [],
+						},
+					},
+					settings({ enableWriteTools: true }),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
+			);
 		});
 
 		test('an org-scoped tool without orgId throws org_required', async () => {

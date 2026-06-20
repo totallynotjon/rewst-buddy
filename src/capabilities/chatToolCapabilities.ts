@@ -64,13 +64,14 @@ function chatCapability(
 	access: CapabilityAccess,
 	group: CapabilityGroup,
 	enabled: (settings: CapabilitySettings) => boolean,
+	mcp = false,
 ): Capability {
 	return {
 		spec,
 		group,
 		access,
 		chat: true,
-		mcp: false,
+		mcp,
 		...(doesNotRequireOrg.has(spec.name) ? { requiresOrg: false as const } : {}),
 		enabled,
 		run: (input, ctx) => runViaChatToolPath(spec, input, ctx),
@@ -85,9 +86,10 @@ export const WEB_CHAT_CAPABILITIES: Capability[] = WEB_TOOL_SPECS.map(spec =>
 	chatCapability(spec, 'read', 'web', settings => settings.enableWebTools),
 );
 
-export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec =>
-	chatCapability(spec, workflowAccessFor(spec), 'workflow', settings => settings.enableWorkflowTools),
-);
+export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec => {
+	const access = workflowAccessFor(spec);
+	return chatCapability(spec, access, 'workflow', settings => settings.enableWorkflowTools, access === 'read');
+});
 
 export const RESULT_READ_CHAT_CAPABILITIES: Capability[] = RESULT_READ_TOOL_SPECS.map(spec =>
 	chatCapability(
