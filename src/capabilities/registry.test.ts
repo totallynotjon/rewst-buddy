@@ -14,7 +14,14 @@ import {
 } from './registry';
 import { RESULT_READ_TOOL_SPECS } from '../ui/chat/tools/toolOutputCache';
 import { WEB_TOOL_SPECS } from '../ui/chat/tools/webTools';
-import { WORKFLOW_TOOL_SPECS } from '../ui/chat/tools/workflowTools';
+import {
+	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_EDIT_TOOL_NAME,
+	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+	WORKFLOW_RUN_TOOL_NAME,
+	WORKFLOW_SEARCH_TOOL_NAME,
+	WORKFLOW_TOOL_SPECS,
+} from '../ui/chat/tools/workflowTools';
 import { WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
 
 const { suite, test, setup } = Mocha;
@@ -23,6 +30,19 @@ const GRAPHQL_CHAT_CAPABILITIES = ['buddy_graphql_schema', 'buddy_graphql'];
 const WORKSPACE_CHAT_CAPABILITIES = WORKSPACE_TOOL_SPECS.map(spec => spec.name);
 const WEB_CHAT_CAPABILITIES = WEB_TOOL_SPECS.map(spec => spec.name);
 const WORKFLOW_CHAT_CAPABILITIES = WORKFLOW_TOOL_SPECS.map(spec => spec.name);
+const WORKFLOW_READ_MCP_CAPABILITIES = [
+	'buddy_workflow_get',
+	WORKFLOW_SEARCH_TOOL_NAME,
+	'buddy_action_search',
+	'buddy_workflow_executions',
+	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+	'buddy_render_jinja',
+];
+const WORKFLOW_WRITE_CHAT_CAPABILITIES = [
+	WORKFLOW_EDIT_TOOL_NAME,
+	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_RUN_TOOL_NAME,
+];
 const RESULT_READ_CHAT_CAPABILITIES = RESULT_READ_TOOL_SPECS.map(spec => spec.name);
 const CHAT_CAPABILITIES = [
 	...WORKSPACE_CHAT_CAPABILITIES,
@@ -187,12 +207,39 @@ suite('Unit: capability registry', () => {
 			assert.ok(names.includes('buddy_graphql_schema'));
 		});
 
-		test('chat-only tool categories are not exposed to MCP', () => {
+		test('read-only workflow helpers are exposed to MCP', () => {
+			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
+			for (const name of WORKFLOW_READ_MCP_CAPABILITIES) {
+				assert.ok(names.has(name), `${name} exposed to MCP`);
+			}
+		});
+
+		test('workflow write helpers are not exposed to MCP', () => {
+			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
+			for (const name of WORKFLOW_WRITE_CHAT_CAPABILITIES) {
+				assert.ok(!names.has(name), `${name} stays off MCP`);
+			}
+		});
+
+		test('promoted workflow helpers keep their existing org requirements', () => {
+			for (const name of [WORKFLOW_SEARCH_TOOL_NAME, WORKFLOW_EXECUTION_LOGS_TOOL_NAME]) {
+				assert.strictEqual(getCapability(name)?.requiresOrg, false, `${name} does not require org`);
+			}
+			for (const name of [
+				'buddy_workflow_get',
+				'buddy_action_search',
+				'buddy_workflow_executions',
+				'buddy_render_jinja',
+			]) {
+				assert.notStrictEqual(getCapability(name)?.requiresOrg, false, `${name} remains org-scoped`);
+			}
+		});
+
+		test('non-workflow chat-only tool categories are not exposed to MCP', () => {
 			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
 			for (const name of [
 				...WORKSPACE_CHAT_CAPABILITIES,
 				...WEB_CHAT_CAPABILITIES,
-				...WORKFLOW_CHAT_CAPABILITIES,
 				...RESULT_READ_CHAT_CAPABILITIES,
 			]) {
 				assert.ok(!names.has(name), `${name} stays off MCP`);
