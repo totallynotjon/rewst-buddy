@@ -1,5 +1,6 @@
 export * from './folders/index';
 export * from './mcp/index';
+export { RotateMcpToken } from './mcp/RotateMcpToken';
 export * from './server/index';
 export * from './sessions/index';
 export * from './template/index';
