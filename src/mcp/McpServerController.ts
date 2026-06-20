@@ -14,6 +14,17 @@ import { readMcpSettings } from './settings';
  */
 export const McpServerController = new (class _ implements vscode.Disposable {
 	private disposables: vscode.Disposable[] = [];
+	/** Serializes reconciliation so overlapping toggles can't interleave start/stop. */
+	private syncQueue: Promise<void> = Promise.resolve();
+
+	private scheduleSync(logContext: string): void {
+		this.syncQueue = this.syncQueue
+			.catch(() => undefined)
+			.then(() => this.sync())
+			.catch(error => {
+				log.error(`McpServerController.${logContext} sync failed`, error);
+			});
+	}
 
 	init(): this {
 		this.disposables.push(
@@ -22,11 +33,11 @@ export const McpServerController = new (class _ implements vscode.Disposable {
 					event.affectsConfiguration(`${extPrefix}.mcp`) ||
 					event.affectsConfiguration(`${extPrefix}.server`)
 				) {
-					this.sync().catch(error => log.error('McpServerController.sync failed', error));
+					this.scheduleSync('config');
 				}
 			}),
 		);
-		this.sync().catch(error => log.error('McpServerController.init sync failed', error));
+		this.scheduleSync('init');
 		return this;
 	}
 

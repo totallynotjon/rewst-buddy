@@ -32,8 +32,10 @@ export const Server = new (class _ implements vscode.Disposable {
 		return this;
 	}
 
-	dispose(): void {
-		this.stop();
+	async dispose(): Promise<void> {
+		// Await the stop so its close-callback status fire lands before the emitter
+		// is disposed, instead of being silently dropped as a post-dispose no-op.
+		await this.stop();
 		this.statusEmitter.dispose();
 		this.disposables.forEach(d => d.dispose());
 	}
