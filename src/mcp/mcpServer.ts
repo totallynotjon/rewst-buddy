@@ -70,8 +70,17 @@ export function buildMcpServer(): Server {
 	server.setRequestHandler(ListResourcesRequestSchema, () => ({ resources: listResources() }));
 
 	server.setRequestHandler(ReadResourceRequestSchema, async request => {
-		const content = await readResource(request.params.uri);
-		return { contents: [{ uri: content.uri, mimeType: content.mimeType, text: content.text }] };
+		try {
+			const content = await readResource(request.params.uri);
+			return { contents: [{ uri: content.uri, mimeType: content.mimeType, text: content.text }] };
+		} catch (error) {
+			// The MCP resource result has no isError field, so turn a gate failure
+			// (unknown_tool, rate_limited, …) into a JSON-RPC error carrying the
+			// readable reason instead of leaking an opaque McpError shape.
+			const message =
+				error instanceof McpError ? error.message : error instanceof Error ? error.message : String(error);
+			throw new Error(message);
+		}
 	});
 
 	return server;

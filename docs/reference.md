@@ -87,7 +87,7 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 **Server**
 
 - `Start Server` — Start the session receiver server
-- `Generate MCP Client Config` — Print and copy the JSON that points an external MCP client (Claude Desktop, Claude Code, Cursor) at the extension's local MCP server. The token travels in the standard `Authorization: Bearer` header; no credentials are written to the config. Requires `rewst-buddy.mcp.enable`.
+- `Generate MCP Client Config` — Print and copy a credential-free JSON config that points an external MCP client (Claude Desktop, Claude Code, Cursor) at the extension's local MCP server. The config carries the token via the standard `Authorization: Bearer` header, referencing it as the `REWST_BUDDY_MCP_TOKEN` environment variable rather than embedding it. Use the command's **Copy token** action to grab the localhost token (set it as that env var), or paste it in place of `${REWST_BUDDY_MCP_TOKEN}` for clients that don't expand env vars. Requires `rewst-buddy.mcp.enable`.
 
 ## Settings
 

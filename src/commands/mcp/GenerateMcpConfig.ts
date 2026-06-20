@@ -2,14 +2,20 @@ import { extPrefix } from '@global';
 import { formatHostPort, getServerConfig } from '@server';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { getMcpToken, mcpAuthorizationHeader } from '@mcp';
+import { getMcpToken } from '@mcp';
 import GenericCommand from '../GenericCommand';
+
+/** Env var the generated config expects the client to expand into the bearer token. */
+const MCP_TOKEN_ENV_VAR = 'REWST_BUDDY_MCP_TOKEN';
 
 /**
  * Prints the MCP client configuration that points an external client (Claude
  * Desktop, Claude Code, Cursor) at the extension's in-process MCP HTTP server.
  * The client connects to the localhost /mcp URL and presents the per-install
- * token as a header — no separate process, no `node`, no secrets in the config.
+ * token in the standard `Authorization: Bearer` header. The token is not written
+ * into the config blob — it is referenced via the `REWST_BUDDY_MCP_TOKEN`
+ * environment variable and delivered through a separate "Copy token" step, so the
+ * config stays credential-free (no process, no `node`, no embedded secret).
  */
 export class GenerateMcpConfig extends GenericCommand {
 	commandName = 'GenerateMcpConfig';
@@ -20,7 +26,9 @@ export class GenerateMcpConfig extends GenericCommand {
 			mcpServers: {
 				'rewst-buddy': {
 					url: `http://${formatHostPort(host, port)}/mcp`,
-					headers: { Authorization: mcpAuthorizationHeader(getMcpToken()) },
+					// Credential-free: the client expands the env var into the token, so the
+					// blob can be shared without leaking the localhost token.
+					headers: { Authorization: `Bearer \${${MCP_TOKEN_ENV_VAR}}` },
 				},
 			},
 		};
@@ -31,28 +39,25 @@ export class GenerateMcpConfig extends GenericCommand {
 		await vscode.window.showTextDocument(doc, { preview: false });
 		await vscode.env.clipboard.writeText(json);
 
-		log.info('GenerateMcpConfig: produced client config');
+		log.info('GenerateMcpConfig: produced credential-free client config');
 
 		const notes = [
-			'MCP client config copied to clipboard and opened in an editor.',
-			'Add it to your MCP client (e.g. Claude Desktop) config and restart it.',
-			enabled
-				? ''
-				: 'Note: rewst-buddy.mcp.enable is currently off — turn it on so the server accepts connections.',
+			'MCP client config copied to clipboard and opened in an editor — no token inside.',
+			`Set the ${MCP_TOKEN_ENV_VAR} environment variable to the localhost token for your MCP client (use "Copy token"). Clients that do not expand env vars can paste the token in place of \${${MCP_TOKEN_ENV_VAR}}.`,
+			enabled ? '' : 'rewst-buddy.mcp.enable is currently off — turn it on so the server accepts connections.',
 		]
 			.filter(Boolean)
 			.join(' ');
 
-		if (enabled) {
-			vscode.window.showInformationMessage(notes);
-			return;
-		}
-
-		const choice = await vscode.window.showInformationMessage(notes, 'Enable MCP server');
+		const actions = enabled ? ['Copy token'] : ['Enable MCP server', 'Copy token'];
+		const choice = await vscode.window.showInformationMessage(notes, ...actions);
 		if (choice === 'Enable MCP server') {
 			await vscode.workspace
 				.getConfiguration(`${extPrefix}.mcp`)
 				.update('enable', true, vscode.ConfigurationTarget.Global);
+		} else if (choice === 'Copy token') {
+			await vscode.env.clipboard.writeText(getMcpToken());
+			vscode.window.showInformationMessage(`${MCP_TOKEN_ENV_VAR} value copied to clipboard.`);
 		}
 	}
 }

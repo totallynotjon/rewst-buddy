@@ -90,7 +90,7 @@ suite('Unit: GenerateMcpConfig', () => {
 		await setServer('enabled', undefined);
 	});
 
-	test('generates a config with the localhost /mcp URL and a Bearer Authorization header', async () => {
+	test('generates a credential-free config with a Bearer env-var placeholder', async () => {
 		await setMcpEnabled(true);
 		await new GenerateMcpConfig().execute();
 
@@ -103,7 +103,13 @@ suite('Unit: GenerateMcpConfig', () => {
 		};
 		const server = config.mcpServers['rewst-buddy'];
 		assert.match(server.url, /^http:\/\/127\.0\.0\.1:\d+\/mcp$/, 'points at the localhost /mcp route');
-		assert.strictEqual(server.headers.Authorization, `Bearer ${getMcpToken()}`, 'standard Bearer auth header');
+		assert.strictEqual(
+			server.headers.Authorization,
+			'Bearer ${REWST_BUDDY_MCP_TOKEN}',
+			'standard Bearer header via env-var placeholder',
+		);
+		// The blob must stay credential-free: the live token is delivered separately.
+		assert.ok(!opened!.content!.includes(getMcpToken()), 'the live token is not embedded in the config');
 		// The in-extension transport means no spawned process and no custom header.
 		assert.strictEqual(server.command, undefined, 'no node/spawn command');
 		assert.strictEqual(server.args, undefined, 'no bridge args');
@@ -135,8 +141,17 @@ suite('Unit: GenerateMcpConfig', () => {
 		await new GenerateMcpConfig().execute();
 
 		assert.ok(infoMessage?.includes('clipboard'), 'confirms the copy');
-		assert.deepStrictEqual(infoItems, [], 'no enable button when already enabled');
+		assert.ok(!infoItems.includes('Enable MCP server'), 'no enable button when already enabled');
+		assert.ok(infoItems.includes('Copy token'), 'offers a separate token copy step');
 		assert.strictEqual(readMcpEnabled(), true, 'leaves the setting on');
+	});
+
+	test('Copy token writes the live token to the clipboard', async () => {
+		await setMcpEnabled(true);
+		infoChoice = 'Copy token';
+		await new GenerateMcpConfig().execute();
+
+		assert.strictEqual(clipboardText, getMcpToken(), 'the token, not the config, lands on the clipboard');
 	});
 
 	test('when MCP is disabled, offers an enable button and turns it on when chosen', async () => {
