@@ -240,6 +240,13 @@ export async function readResource(uri: string, settings: McpSettings = readMcpS
 	if (!isExposed(capability, settings)) {
 		throw new McpError('unknown_tool', `Resource ${uri} is not available; the tool "${toolName}" is not enabled.`);
 	}
+	// Resource reads hit the org API like tool calls, so they share the same throttle.
+	if (!THROTTLE.tryAcquire()) {
+		throw new McpError(
+			'rate_limited',
+			`Too many MCP calls; slow down and retry in ~${Math.ceil(THROTTLE.retryAfterMs() / 1000)}s.`,
+		);
+	}
 
 	const args: Record<string, unknown> = { orgId: parsed.orgId };
 	if (parsed.id) args[parsed.collection === 'templates' ? 'templateId' : 'workflowId'] = parsed.id;

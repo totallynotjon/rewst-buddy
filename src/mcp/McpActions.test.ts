@@ -174,5 +174,20 @@ suite('Unit: McpActions', () => {
 			);
 			assert.ok(content.text.includes('Welcome (t-1)'));
 		});
+
+		test('readResource is rate-limited after a burst', async () => {
+			const { wrapper } = useSession('org-1');
+			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery([]) });
+			let limited = false;
+			for (let i = 0; i < 40 && !limited; i++) {
+				try {
+					await readResource('rewst://org-1/templates', settings({ enabledTools: ['list_templates'] }));
+				} catch (error) {
+					if (error instanceof McpError && error.code === 'rate_limited') limited = true;
+					else throw error;
+				}
+			}
+			assert.ok(limited, 'the throttle eventually rejects a burst of resource reads');
+		});
 	});
 });

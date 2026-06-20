@@ -1,5 +1,5 @@
 import { extPrefix } from '@global';
-import { getServerConfig } from '@server';
+import { formatHostPort, getServerConfig } from '@server';
 import { log } from '@utils';
 import vscode from 'vscode';
 import { getMcpToken, mcpAuthorizationHeader } from '@mcp';
@@ -19,7 +19,7 @@ export class GenerateMcpConfig extends GenericCommand {
 		const config = {
 			mcpServers: {
 				'rewst-buddy': {
-					url: `http://${host}:${port}/mcp`,
+					url: `http://${formatHostPort(host, port)}/mcp`,
 					headers: { Authorization: mcpAuthorizationHeader(getMcpToken()) },
 				},
 			},

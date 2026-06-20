@@ -1,2 +1,2 @@
 export { Server } from './Server';
-export { getServerConfig } from './config';
+export { getServerConfig, formatHostPort } from './config';

@@ -8,7 +8,7 @@ import {
 	ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { IncomingMessage, ServerResponse } from 'http';
-import { getServerConfig } from '../server/config';
+import { formatHostPort, getServerConfig } from '../server/config';
 import { callTool, listResources, listTools, McpError, readResource } from './McpActions';
 import { MCP_PROTOCOL_VERSION, parseBearerToken } from './protocol';
 import { isValidMcpToken } from './runtime';
@@ -89,9 +89,11 @@ function firstHeader(value: string | string[] | undefined): string | undefined {
  */
 function allowedHosts(host: string, port: number): string[] {
 	const hosts = [`127.0.0.1:${port}`, `localhost:${port}`];
+	const trimmed = host.trim();
 	const wildcards = new Set(['0.0.0.0', '::', '[::]', '']);
-	if (!wildcards.has(host) && !hosts.includes(`${host}:${port}`)) {
-		hosts.push(`${host}:${port}`);
+	const hostWithPort = formatHostPort(trimmed, port);
+	if (!wildcards.has(trimmed) && !hosts.includes(hostWithPort)) {
+		hosts.push(hostWithPort);
 	}
 	return hosts;
 }

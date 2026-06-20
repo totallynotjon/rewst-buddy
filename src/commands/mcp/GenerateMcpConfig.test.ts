@@ -33,6 +33,10 @@ function readMcpEnabled(): boolean | undefined {
 	return vscode.workspace.getConfiguration('rewst-buddy.mcp').get<boolean>('enable');
 }
 
+async function setServer(key: 'host' | 'enabled', value: unknown): Promise<void> {
+	await vscode.workspace.getConfiguration('rewst-buddy.server').update(key, value, vscode.ConfigurationTarget.Global);
+}
+
 suite('Unit: GenerateMcpConfig', () => {
 	const restores: Restore[] = [];
 	let opened: { language?: string; content?: string } | undefined;
@@ -82,6 +86,8 @@ suite('Unit: GenerateMcpConfig', () => {
 		SessionManager._resetForTesting();
 		await _resetMcpTokenForTesting();
 		await setMcpEnabled(undefined);
+		await setServer('host', undefined);
+		await setServer('enabled', undefined);
 	});
 
 	test('generates a config with the localhost /mcp URL and a Bearer Authorization header', async () => {
@@ -102,6 +108,17 @@ suite('Unit: GenerateMcpConfig', () => {
 		assert.strictEqual(server.command, undefined, 'no node/spawn command');
 		assert.strictEqual(server.args, undefined, 'no bridge args');
 		assert.strictEqual(server.headers['x-rewst-mcp-token'], undefined, 'no legacy custom header');
+	});
+
+	test('brackets an IPv6 host in the MCP URL', async () => {
+		// Keep the browser-action server off so the host change cannot start a real socket.
+		await setServer('enabled', false);
+		await setServer('host', '::1');
+		await setMcpEnabled(true);
+		await new GenerateMcpConfig().execute();
+
+		const config = JSON.parse(opened!.content!) as { mcpServers: Record<string, { url: string }> };
+		assert.match(config.mcpServers['rewst-buddy'].url, /^http:\/\/\[::1\]:\d+\/mcp$/, 'IPv6 host is bracketed');
 	});
 
 	test('copies the config to the clipboard and opens it without preview', async () => {
