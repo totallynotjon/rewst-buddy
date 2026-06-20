@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
-import { McpError, _resetMcpThrottleForTesting, callTool, listTools } from './McpActions';
+import { McpError, _resetMcpThrottleForTesting, callTool, listResources, listTools, readResource } from './McpActions';
 import type { McpSettings } from './settings';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -139,6 +139,40 @@ suite('Unit: McpActions', () => {
 				}
 			}
 			assert.ok(limited, 'the throttle eventually rejects a burst of calls');
+		});
+	});
+
+	suite('resources honour the allowlist', () => {
+		test('listResources advertises both collections per active org by default', () => {
+			useSession('org-1', 'Acme');
+			const uris = listResources(settings()).map(resource => resource.uri);
+			assert.deepStrictEqual(uris.sort(), ['rewst://org-1/templates', 'rewst://org-1/workflows']);
+		});
+
+		test('listResources hides a collection whose list tool is not allowlisted', () => {
+			useSession('org-1');
+			const uris = listResources(settings({ enabledTools: ['list_templates'] })).map(resource => resource.uri);
+			assert.deepStrictEqual(uris, ['rewst://org-1/templates']);
+		});
+
+		test('readResource rejects a resource whose backing tool is not allowlisted', async () => {
+			useSession('org-1');
+			await assert.rejects(
+				readResource('rewst://org-1/templates', settings({ enabledTools: ['list_orgs'] })),
+				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
+			);
+		});
+
+		test('readResource reads an allowlisted collection', async () => {
+			const { wrapper } = useSession('org-1');
+			wrapper.when('listTemplates', {
+				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
+			});
+			const content = await readResource(
+				'rewst://org-1/templates',
+				settings({ enabledTools: ['list_templates'] }),
+			);
+			assert.ok(content.text.includes('Welcome (t-1)'));
 		});
 	});
 });

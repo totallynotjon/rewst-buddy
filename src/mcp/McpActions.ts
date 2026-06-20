@@ -220,7 +220,7 @@ function parseResourceUri(uri: string): ParsedResourceUri | undefined {
 	return { orgId: match[1], collection: match[2] as 'templates' | 'workflows', id: match[3] };
 }
 
-export async function readResource(uri: string): Promise<ResourceContent> {
+export async function readResource(uri: string, settings: McpSettings = readMcpSettings()): Promise<ResourceContent> {
 	const parsed = parseResourceUri(uri);
 	if (!parsed) {
 		throw new McpError('invalid_request', `Unrecognized resource URI: ${uri}`);
@@ -237,7 +237,7 @@ export async function readResource(uri: string): Promise<ResourceContent> {
 	if (!capability) throw new McpError('internal', `Missing capability for resource ${uri}`);
 	// Resources run capabilities directly, so enforce the same exposure/allowlist
 	// gates here — otherwise a disabled or non-allowlisted tool is reachable by URI.
-	if (!isExposed(capability, readMcpSettings())) {
+	if (!isExposed(capability, settings)) {
 		throw new McpError('unknown_tool', `Resource ${uri} is not available; the tool "${toolName}" is not enabled.`);
 	}
 
