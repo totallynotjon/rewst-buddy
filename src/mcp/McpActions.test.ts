@@ -46,8 +46,8 @@ suite('Unit: McpActions', () => {
 			assert.ok(names.includes('get_template'));
 			assert.ok(names.includes('list_workflows'));
 			assert.ok(names.includes('get_workflow'));
-			assert.ok(!names.includes('rewst_graphql'), 'chat write tool is not on MCP');
-			assert.ok(!names.includes('rewst_graphql_schema'), 'chat schema tool is not on MCP');
+			assert.ok(!names.includes('buddy_graphql'), 'chat write tool is not on MCP');
+			assert.ok(!names.includes('buddy_graphql_schema'), 'chat schema tool is not on MCP');
 		});
 
 		test('an allowlist restricts the exposed tools', () => {
@@ -87,7 +87,7 @@ suite('Unit: McpActions', () => {
 		test('the chat GraphQL write tool is not callable over MCP', async () => {
 			useSession();
 			await assert.rejects(
-				callTool({ action: 'mcp.callTool', name: 'rewst_graphql', arguments: { orgId: 'org-1' } }, settings()),
+				callTool({ action: 'mcp.callTool', name: 'buddy_graphql', arguments: { orgId: 'org-1' } }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
 			);
 		});

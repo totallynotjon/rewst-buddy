@@ -3,13 +3,13 @@ import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability } from './Capability';
 
 /**
- * Migrates the existing rewst_graphql_schema / rewst_graphql tool specs into
+ * Migrates the existing buddy_graphql_schema / buddy_graphql tool specs into
  * capabilities. The spec objects are reused verbatim (not copied) so the
  * package.json manifest stays in sync via packageManifest.test.ts, and the chat
  * surface keeps offering the identical two tools.
  *
  * Execution wraps runGraphqlTool with deps bound to the resolved session, the
- * same path the chat tools use. rewst_graphql_schema is read-only; rewst_graphql
+ * same path the chat tools use. buddy_graphql_schema is read-only; buddy_graphql
  * is marked write because it can carry a mutation — the MCP server boundary
  * rejects writes unless write tools are enabled. A read-only GraphQL query
  * capability for MCP is added separately in a later phase.
@@ -22,21 +22,21 @@ function specByName(name: string): ToolSpec {
 }
 
 export const graphqlSchemaCapability: Capability = {
-	spec: specByName('rewst_graphql_schema'),
+	spec: specByName('buddy_graphql_schema'),
 	access: 'read',
 	chat: true,
 	mcp: false,
 	enabled: settings => settings.enableGraphqlTool,
-	run: (input, ctx) => runGraphqlTool({ tool: 'rewst_graphql_schema', args: input }, createGraphqlDeps(ctx.session)),
+	run: (input, ctx) => runGraphqlTool({ tool: 'buddy_graphql_schema', args: input }, createGraphqlDeps(ctx.session)),
 };
 
 export const graphqlCapability: Capability = {
-	spec: specByName('rewst_graphql'),
+	spec: specByName('buddy_graphql'),
 	access: 'write',
 	chat: true,
 	mcp: false,
 	enabled: settings => settings.enableGraphqlTool,
-	run: (input, ctx) => runGraphqlTool({ tool: 'rewst_graphql', args: input }, createGraphqlDeps(ctx.session)),
+	run: (input, ctx) => runGraphqlTool({ tool: 'buddy_graphql', args: input }, createGraphqlDeps(ctx.session)),
 };
 
 export const GRAPHQL_CAPABILITIES: Capability[] = [graphqlSchemaCapability, graphqlCapability];

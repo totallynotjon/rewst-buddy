@@ -29,14 +29,14 @@ suite('Unit: capability registry', () => {
 	});
 
 	test('getCapability resolves by tool name', () => {
-		const schema = getCapability('rewst_graphql_schema');
-		assert.ok(schema, 'rewst_graphql_schema is registered');
+		const schema = getCapability('buddy_graphql_schema');
+		assert.ok(schema, 'buddy_graphql_schema is registered');
 		assert.strictEqual(schema.access, 'read');
 		assert.strictEqual(getCapability('does_not_exist'), undefined);
 	});
 
-	test('rewst_graphql is a write capability (can mutate)', () => {
-		const graphql = getCapability('rewst_graphql');
+	test('buddy_graphql is a write capability (can mutate)', () => {
+		const graphql = getCapability('buddy_graphql');
 		assert.ok(graphql);
 		assert.strictEqual(graphql.access, 'write');
 	});
@@ -44,8 +44,8 @@ suite('Unit: capability registry', () => {
 	suite('chat surface', () => {
 		test('graphql tools are exposed on the chat surface', () => {
 			const names = chatCapabilities().map(capability => capability.spec.name);
-			assert.ok(names.includes('rewst_graphql_schema'));
-			assert.ok(names.includes('rewst_graphql'));
+			assert.ok(names.includes('buddy_graphql_schema'));
+			assert.ok(names.includes('buddy_graphql'));
 		});
 
 		test('chat graphql capabilities are gated by enableGraphqlTool', () => {
@@ -80,8 +80,8 @@ suite('Unit: capability registry', () => {
 
 		test('the GraphQL chat tools are not exposed to MCP (writes stay in the chat surface)', () => {
 			const names = mcpCapabilities().map(capability => capability.spec.name);
-			assert.ok(!names.includes('rewst_graphql'));
-			assert.ok(!names.includes('rewst_graphql_schema'));
+			assert.ok(!names.includes('buddy_graphql'));
+			assert.ok(!names.includes('buddy_graphql_schema'));
 		});
 
 		test('list_orgs does not require an org', () => {
