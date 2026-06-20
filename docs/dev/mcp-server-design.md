@@ -95,8 +95,14 @@ surfaces it on every enabled surface automatically.
   the standard `Authorization: Bearer <token>` header + DNS-rebinding protection
   (`allowedHosts`).
 
-**Onboarding command** `GenerateMcpConfig` → prints client config JSON: the
-`/mcp` URL plus the token header. No `node`, no spawned process, no discovery file.
+**Onboarding.** For VS Code's own MCP client, an `McpServerDefinitionProvider`
+(registered via `vscode.lm.registerMcpServerDefinitionProvider` +
+`contributes.mcpServerDefinitionProviders`) publishes the server natively while
+`mcp.enable` is on, injecting the live localhost token into the `Authorization`
+header; the `AddMcpToVSCode` command flips `mcp.enable` on and surfaces it. For
+external clients, `CopyMcpConfig` copies a credential-free client config JSON: the
+`/mcp` URL plus the `REWST_BUDDY_MCP_TOKEN` Bearer placeholder. No `node`, no
+spawned process, no discovery file.
 
 Initial read tools: `list_orgs`, `list_templates`, `get_template`,
 `list_workflows`, `get_workflow`, `rewst_graphql_query` (read-only), `get_bundle`.
@@ -132,9 +138,10 @@ Otherwise VS Code's native MCP client covers user-wired external servers.
 ```text
 src/capabilities/   index.ts (@capabilities), Capability.ts, registry.ts, *.test.ts
 src/mcp/ (@mcp)     index.ts, McpActions.ts (capability surface), mcpServer.ts
-                    (SDK server + /mcp HTTP handler), runtime.ts (token), settings.ts
+                    (SDK server + /mcp HTTP handler), runtime.ts (token), settings.ts,
+                    McpDefinitionProvider.ts (native VS Code MCP registration)
 src/server/Server.ts   + /mcp route → handleMcpHttp
-src/commands/mcp/   GenerateMcpConfig.ts
+src/commands/mcp/   CopyMcpConfig.ts, AddMcpToVSCode.ts
 ```
 
 ## Testing (CLAUDE.md mandates)
@@ -157,8 +164,9 @@ src/commands/mcp/   GenerateMcpConfig.ts
 These change what we build; tracked here so they aren't discovered mid-implementation.
 
 1. ~~**Port + token discovery.**~~ **Resolved by HTTP-direct.** No bridge to
-   discover the port; the `GenerateMcpConfig` command bakes the live URL + token
-   into the client config. The token is now **stable** (persisted), so the config
+   discover the port; the `CopyMcpConfig` command bakes the live URL + token
+   into the client config (and the native `McpDefinitionProvider` wires VS Code's
+   own client directly). The token is now **stable** (persisted), so the config
    survives window reloads. Open: a "rotate MCP token" command for revocation.
 
 2. **Multiple VS Code windows.** Each window runs its own extension host. Only one

@@ -9,16 +9,18 @@ import GenericCommand from '../GenericCommand';
 const MCP_TOKEN_ENV_VAR = 'REWST_BUDDY_MCP_TOKEN';
 
 /**
- * Prints the MCP client configuration that points an external client (Claude
- * Desktop, Claude Code, Cursor) at the extension's in-process MCP HTTP server.
- * The client connects to the localhost /mcp URL and presents the per-install
- * token in the standard `Authorization: Bearer` header. The token is not written
- * into the config blob — it is referenced via the `REWST_BUDDY_MCP_TOKEN`
- * environment variable and delivered through a separate "Copy token" step, so the
- * config stays credential-free (no process, no `node`, no embedded secret).
+ * Copies the MCP client configuration that points an external client (Claude
+ * Desktop, Claude Code, Cursor) at the extension's in-process MCP HTTP server, and
+ * opens it in an editor. The client connects to the localhost /mcp URL and
+ * presents the per-install token in the standard `Authorization: Bearer` header.
+ * The token is not written into the config blob — it is referenced via the
+ * `REWST_BUDDY_MCP_TOKEN` environment variable and delivered through a separate
+ * "Copy token" step, so the config stays credential-free (no process, no `node`,
+ * no embedded secret). For VS Code's own MCP client, the "Add MCP to VS Code"
+ * command registers the server natively instead — no config copy needed.
  */
-export class GenerateMcpConfig extends GenericCommand {
-	commandName = 'GenerateMcpConfig';
+export class CopyMcpConfig extends GenericCommand {
+	commandName = 'CopyMcpConfig';
 
 	async execute(): Promise<void> {
 		const { host, port } = getServerConfig();
@@ -35,11 +37,11 @@ export class GenerateMcpConfig extends GenericCommand {
 		const json = JSON.stringify(config, null, 2);
 
 		const enabled = vscode.workspace.getConfiguration(`${extPrefix}.mcp`).get<boolean>('enable', false);
+		await vscode.env.clipboard.writeText(json);
 		const doc = await vscode.workspace.openTextDocument({ language: 'json', content: json });
 		await vscode.window.showTextDocument(doc, { preview: false });
-		await vscode.env.clipboard.writeText(json);
 
-		log.info('GenerateMcpConfig: produced credential-free client config');
+		log.info('CopyMcpConfig: copied credential-free client config to clipboard');
 
 		const notes = [
 			'MCP client config copied to clipboard and opened in an editor — no token inside.',

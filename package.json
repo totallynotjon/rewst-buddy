@@ -36,6 +36,12 @@
 				"displayName": "Cage-Free Rewsty"
 			}
 		],
+		"mcpServerDefinitionProviders": [
+			{
+				"id": "rewst-buddy.mcpServer",
+				"label": "Rewst Buddy"
+			}
+		],
 		"languageModelTools": [
 			{
 				"name": "list_template_links",
@@ -881,9 +887,14 @@
 				"icon": "$(git-pull-request-go-to-changes)"
 			},
 			{
-				"command": "rewst-buddy.prefix.GenerateMcpConfig",
-				"title": "Rewst Buddy: Generate MCP Client Config",
+				"command": "rewst-buddy.prefix.CopyMcpConfig",
+				"title": "Rewst Buddy: Copy MCP Config to Clipboard",
 				"icon": "$(server-process)"
+			},
+			{
+				"command": "rewst-buddy.prefix.AddMcpToVSCode",
+				"title": "Rewst Buddy: Add MCP Server to VS Code",
+				"icon": "$(plug)"
 			}
 		],
 		"keybindings": [

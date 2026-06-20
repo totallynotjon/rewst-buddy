@@ -4,7 +4,7 @@ import vscode from 'vscode';
 import { getMcpToken, _resetMcpTokenForTesting } from '@mcp';
 import { SessionManager } from '@sessions';
 import { initTestEnvironment } from '@test';
-import { GenerateMcpConfig } from './GenerateMcpConfig';
+import { CopyMcpConfig } from './CopyMcpConfig';
 
 const { suite, test, setup, teardown } = Mocha;
 
@@ -37,7 +37,7 @@ async function setServer(key: 'host' | 'enabled', value: unknown): Promise<void>
 	await vscode.workspace.getConfiguration('rewst-buddy.server').update(key, value, vscode.ConfigurationTarget.Global);
 }
 
-suite('Unit: GenerateMcpConfig', () => {
+suite('Unit: CopyMcpConfig', () => {
 	const restores: Restore[] = [];
 	let opened: { language?: string; content?: string } | undefined;
 	let shownOptions: vscode.TextDocumentShowOptions | undefined;
@@ -92,7 +92,7 @@ suite('Unit: GenerateMcpConfig', () => {
 
 	test('generates a credential-free config with a Bearer env-var placeholder', async () => {
 		await setMcpEnabled(true);
-		await new GenerateMcpConfig().execute();
+		await new CopyMcpConfig().execute();
 
 		assert.strictEqual(opened?.language, 'json');
 		const config = JSON.parse(opened!.content!) as {
@@ -121,7 +121,7 @@ suite('Unit: GenerateMcpConfig', () => {
 		await setServer('enabled', false);
 		await setServer('host', '::1');
 		await setMcpEnabled(true);
-		await new GenerateMcpConfig().execute();
+		await new CopyMcpConfig().execute();
 
 		const config = JSON.parse(opened!.content!) as { mcpServers: Record<string, { url: string }> };
 		assert.match(config.mcpServers['rewst-buddy'].url, /^http:\/\/\[::1\]:\d+\/mcp$/, 'IPv6 host is bracketed');
@@ -129,7 +129,7 @@ suite('Unit: GenerateMcpConfig', () => {
 
 	test('copies the config to the clipboard and opens it without preview', async () => {
 		await setMcpEnabled(true);
-		await new GenerateMcpConfig().execute();
+		await new CopyMcpConfig().execute();
 
 		assert.ok(clipboardText?.includes('rewst-buddy'), 'clipboard carries the config');
 		assert.strictEqual(clipboardText, opened?.content, 'clipboard matches the opened document');
@@ -138,7 +138,7 @@ suite('Unit: GenerateMcpConfig', () => {
 
 	test('when MCP is enabled, shows the info message without an enable prompt', async () => {
 		await setMcpEnabled(true);
-		await new GenerateMcpConfig().execute();
+		await new CopyMcpConfig().execute();
 
 		assert.ok(infoMessage?.includes('clipboard'), 'confirms the copy');
 		assert.ok(!infoItems.includes('Enable MCP server'), 'no enable button when already enabled');
@@ -149,7 +149,7 @@ suite('Unit: GenerateMcpConfig', () => {
 	test('Copy token writes the live token to the clipboard', async () => {
 		await setMcpEnabled(true);
 		infoChoice = 'Copy token';
-		await new GenerateMcpConfig().execute();
+		await new CopyMcpConfig().execute();
 
 		assert.strictEqual(clipboardText, getMcpToken(), 'the token, not the config, lands on the clipboard');
 	});
@@ -157,7 +157,7 @@ suite('Unit: GenerateMcpConfig', () => {
 	test('when MCP is disabled, offers an enable button and turns it on when chosen', async () => {
 		await setMcpEnabled(false);
 		infoChoice = 'Enable MCP server';
-		await new GenerateMcpConfig().execute();
+		await new CopyMcpConfig().execute();
 
 		assert.ok(infoItems.includes('Enable MCP server'), 'offers the enable button');
 		assert.ok(infoMessage?.includes('currently off'), 'notes the server is off');
@@ -167,7 +167,7 @@ suite('Unit: GenerateMcpConfig', () => {
 	test('when MCP is disabled and the prompt is dismissed, it stays disabled', async () => {
 		await setMcpEnabled(false);
 		infoChoice = undefined; // user dismissed the prompt
-		await new GenerateMcpConfig().execute();
+		await new CopyMcpConfig().execute();
 
 		assert.ok(infoItems.includes('Enable MCP server'), 'still offers the button');
 		assert.notStrictEqual(readMcpEnabled(), true, 'does not enable MCP on dismissal');

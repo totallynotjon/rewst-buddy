@@ -9,6 +9,7 @@ export {
 	type ResourceContent,
 } from './McpActions';
 export { buildMcpServer, handleMcpHttp } from './mcpServer';
+export { McpDefinitionProvider, MCP_DEFINITION_PROVIDER_ID } from './McpDefinitionProvider';
 export { McpServerController } from './McpServerController';
 export { getMcpToken, isValidMcpToken, rotateMcpToken, _resetMcpTokenForTesting } from './runtime';
 export { readMcpSettings, type McpSettings } from './settings';
