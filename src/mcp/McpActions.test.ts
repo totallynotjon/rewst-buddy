@@ -1,7 +1,10 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { SessionManager } from '@sessions';
+import { SessionManager, type Session } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import vscode from 'vscode';
+import { _resetMcpMutationApproverForTesting, setMcpMutationApprover } from '../capabilities/graphqlMutateCapability';
+import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import { McpError, _resetMcpThrottleForTesting, callTool, listResources, listTools, readResource } from './McpActions';
 import type { McpSettings } from './settings';
 
@@ -11,6 +14,10 @@ function settings(over: Partial<McpSettings> = {}): McpSettings {
 	return { enable: true, enableWriteTools: false, enabledTools: [], ...over };
 }
 
+async function setAiTools(tools: string[]): Promise<void> {
+	await vscode.workspace.getConfiguration('rewst-buddy.ai').update('tools', tools, vscode.ConfigurationTarget.Global);
+}
+
 /** A mock session managing one org, registered with the SessionManager. */
 function useSession(orgId = 'org-1', orgName = 'Acme') {
 	const { session, wrapper } = createMockSession({ profile: { org: { id: orgId, name: orgName } } });
@@ -18,15 +25,36 @@ function useSession(orgId = 'org-1', orgName = 'Acme') {
 	return { session, wrapper };
 }
 
+function useRawGraphqlWrapper(session: Session, wrapper: ReturnType<typeof createMockSession>['wrapper']): void {
+	const wrap = wrapper.getWrapper();
+	(session as { rawGraphql: Session['rawGraphql'] }).rawGraphql = async (query, variables) => {
+		return wrap(async () => ({ data: undefined, errors: undefined }), 'rawGraphql', detectGraphqlOperation(query), {
+			query,
+			variables,
+		});
+	};
+}
+
+function detectGraphqlOperation(query: string): string {
+	const match = /\b(query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(query);
+	return match ? `${match[1]} ${match[2]}` : 'rawGraphql';
+}
+
 suite('Unit: McpActions', () => {
-	setup(() => {
+	setup(async () => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
 		_resetMcpThrottleForTesting();
+		_resetApprovedMutationScopes();
+		_resetMcpMutationApproverForTesting();
+		await setAiTools(['workspace', 'graphql']);
 	});
 
-	teardown(() => {
+	teardown(async () => {
 		SessionManager._resetForTesting();
+		_resetApprovedMutationScopes();
+		_resetMcpMutationApproverForTesting();
+		await setAiTools(['workspace']);
 	});
 
 	suite('listTools()', () => {
@@ -38,7 +66,7 @@ suite('Unit: McpActions', () => {
 			assert.ok(names.includes('list_workflows'));
 			assert.ok(names.includes('get_workflow'));
 			assert.ok(!names.includes('buddy_graphql'), 'chat write tool is not on MCP');
-			assert.ok(!names.includes('buddy_graphql_schema'), 'chat schema tool is not on MCP');
+			assert.ok(names.includes('buddy_graphql_schema'), 'schema introspection is available on MCP');
 		});
 
 		test('an allowlist restricts the exposed tools', () => {
@@ -81,6 +109,36 @@ suite('Unit: McpActions', () => {
 			);
 		});
 
+		test('buddy_graphql_schema is callable over MCP and returns a schema view', async () => {
+			const { session, wrapper } = useSession('org-1');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when('rawGraphql', {
+				data: {
+					data: {
+						__schema: {
+							queryType: {
+								name: 'Query',
+								fields: [{ name: 'workflow', args: [], type: { name: 'Workflow' } }],
+							},
+							mutationType: {
+								name: 'Mutation',
+								fields: [{ name: 'updateWorkflow', args: [], type: { name: 'Workflow' } }],
+							},
+						},
+					},
+				},
+			});
+
+			const result = await callTool({ name: 'buddy_graphql_schema', arguments: {} }, settings());
+
+			assert.ok(!result.isError);
+			assert.ok(result.text.includes('## Query (Query)'));
+			assert.ok(result.text.includes('workflow: Workflow'));
+			const calls = wrapper.getCallsFor('rawGraphql');
+			assert.strictEqual(calls.length, 1);
+			assert.deepStrictEqual(calls[0].variables.variables, { includeDeprecated: false });
+		});
+
 		test('an org-scoped tool without orgId throws org_required', async () => {
 			useSession('org-1');
 			await assert.rejects(
@@ -114,17 +172,140 @@ suite('Unit: McpActions', () => {
 			assert.strictEqual(result.isError, true);
 		});
 
-		test('a write tool is rejected while write tools are disabled', async () => {
+		test('rewst_graphql_mutate is rejected while write tools are disabled', async () => {
 			useSession('org-1');
 			await assert.rejects(
 				callTool(
-					{ name: 'buddy_graphql', arguments: { orgId: 'org-1' } },
+					{
+						name: 'rewst_graphql_mutate',
+						arguments: {
+							orgId: 'org-1',
+							query: 'mutation UpdateThing { updateThing { id } }',
+							scopeId: 'wf-1',
+							scopeName: 'Workflow',
+						},
+					},
+					settings({ enableWriteTools: false }),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'write_disabled',
+			);
+		});
+
+		test('rewst_graphql_mutate is hidden and rejected when GraphQL tools are off', async () => {
+			useSession('org-1');
+			await setAiTools(['workspace']);
+
+			const names = listTools(settings({ enableWriteTools: true })).map(tool => tool.name);
+			assert.ok(!names.includes('rewst_graphql_mutate'));
+			await assert.rejects(
+				callTool(
+					{
+						name: 'rewst_graphql_mutate',
+						arguments: {
+							orgId: 'org-1',
+							query: 'mutation UpdateThing { updateThing { id } }',
+							scopeId: 'wf-1',
+							scopeName: 'Workflow',
+						},
+					},
 					settings({ enableWriteTools: true }),
 				),
-				// buddy_graphql is chat-only (mcp:false), so it stays unknown_tool even
-				// with writes enabled — there is no MCP write tool in the foundation yet.
 				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
 			);
+		});
+
+		test('rewst_graphql_mutate returns an error result for query documents', async () => {
+			useSession('org-1');
+			const result = await callTool(
+				{
+					name: 'rewst_graphql_mutate',
+					arguments: {
+						orgId: 'org-1',
+						query: 'query ReadThing { thing { id } }',
+						scopeId: 'wf-1',
+						scopeName: 'Workflow',
+					},
+				},
+				settings({ enableWriteTools: true }),
+			);
+			assert.strictEqual(result.isError, true);
+			assert.ok(result.text.includes('use rewst_graphql_query'));
+		});
+
+		test('rewst_graphql_mutate returns an error result for subscriptions', async () => {
+			useSession('org-1');
+			const result = await callTool(
+				{
+					name: 'rewst_graphql_mutate',
+					arguments: {
+						orgId: 'org-1',
+						query: 'subscription WatchThing { thingChanged { id } }',
+						scopeId: 'wf-1',
+						scopeName: 'Workflow',
+					},
+				},
+				settings({ enableWriteTools: true }),
+			);
+			assert.strictEqual(result.isError, true);
+			assert.ok(result.text.includes('Subscriptions are not supported'));
+		});
+
+		test('rewst_graphql_mutate returns approval_required without executing when the user declines', async () => {
+			const { session, wrapper } = useSession('org-1');
+			useRawGraphqlWrapper(session, wrapper);
+			setMcpMutationApprover(async () => false);
+
+			const result = await callTool(
+				{
+					name: 'rewst_graphql_mutate',
+					arguments: {
+						orgId: 'org-1',
+						query: 'mutation UpdateThing { updateThing { id } }',
+						scopeId: 'wf-1',
+						scopeName: 'Workflow',
+					},
+				},
+				settings({ enableWriteTools: true }),
+			);
+
+			assert.ok(!result.isError);
+			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
+			assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 0);
+		});
+
+		test('rewst_graphql_mutate executes after approval and remembers the same scope', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme Org');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when('rawGraphql', { data: { data: { updateThing: { id: 'wf-1' } } } });
+			let approvals = 0;
+			setMcpMutationApprover(async () => {
+				approvals++;
+				return true;
+			});
+			const args = {
+				orgId: 'org-1',
+				query: 'mutation UpdateThing($name: String!) { updateThing(name: $name) { id } }',
+				variables: { name: 'Renamed' },
+				scopeId: 'wf-1',
+				scopeName: 'Workflow',
+			};
+
+			const first = await callTool(
+				{ name: 'rewst_graphql_mutate', arguments: args },
+				settings({ enableWriteTools: true }),
+			);
+			const second = await callTool(
+				{ name: 'rewst_graphql_mutate', arguments: args },
+				settings({ enableWriteTools: true }),
+			);
+
+			assert.ok(!first.isError);
+			assert.ok(first.text.includes('"updateThing"'));
+			assert.ok(!second.isError);
+			const calls = wrapper.getCallsFor('rawGraphql');
+			assert.strictEqual(calls.length, 2);
+			assert.strictEqual(approvals, 1);
+			assert.deepStrictEqual(calls[0].variables.variables, { name: 'Renamed' });
 		});
 
 		test('exceeding the call rate throws rate_limited', async () => {

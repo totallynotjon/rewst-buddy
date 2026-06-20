@@ -577,6 +577,26 @@ export async function runReadonlyGraphql(
 	return formatResult(await execute(query, variables));
 }
 
+/**
+ * Runs a GraphQL mutation and formats the result the same way as the chat tool.
+ * Used by the MCP mutation capability after the MCP boundary and VS Code modal
+ * have allowed the write.
+ */
+export async function runMutationGraphql(
+	query: string,
+	variables: Record<string, unknown> | undefined,
+	execute: (q: string, v?: Record<string, unknown>) => Promise<{ data?: unknown; errors?: unknown }>,
+): Promise<string> {
+	if (typeof query !== 'string' || query.trim().length === 0) {
+		throw new Error('A non-empty GraphQL "query" is required.');
+	}
+	const kind = detectOperationType(query);
+	if (kind !== 'mutation') {
+		throw new Error(`This tool runs mutations only; received a ${kind}. Use a mutation operation.`);
+	}
+	return formatResult(await execute(query, variables));
+}
+
 export async function runGraphqlTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
 	if (!deps || !deps.isEnabled()) {
 		throw new Error(

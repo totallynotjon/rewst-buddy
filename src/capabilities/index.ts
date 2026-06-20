@@ -6,3 +6,9 @@ export {
 	getCapability,
 	mcpCapabilities,
 } from './registry';
+export {
+	_resetMcpMutationApproverForTesting,
+	graphqlMutateCapability,
+	setMcpMutationApprover,
+	type McpMutationApprover,
+} from './graphqlMutateCapability';

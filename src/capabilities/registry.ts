@@ -1,5 +1,6 @@
 import type { Capability, CapabilitySettings } from './Capability';
 import { GRAPHQL_CAPABILITIES } from './graphqlCapabilities';
+import { graphqlMutateCapability } from './graphqlMutateCapability';
 import { READ_CAPABILITIES } from './rewstReadCapabilities';
 
 /**
@@ -7,7 +8,11 @@ import { READ_CAPABILITIES } from './rewstReadCapabilities';
  * this list by their own gates; adding a capability here surfaces it everywhere
  * it opts into. Names must be unique across the registry.
  */
-export const CAPABILITY_REGISTRY: Capability[] = [...GRAPHQL_CAPABILITIES, ...READ_CAPABILITIES];
+export const CAPABILITY_REGISTRY: Capability[] = [
+	...GRAPHQL_CAPABILITIES,
+	...READ_CAPABILITIES,
+	graphqlMutateCapability,
+];
 
 const BY_NAME = new Map(CAPABILITY_REGISTRY.map(capability => [capability.spec.name, capability]));
 
