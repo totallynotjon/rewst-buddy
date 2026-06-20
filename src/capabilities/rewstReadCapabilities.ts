@@ -224,7 +224,7 @@ async function runGetWorkflow(input: Record<string, unknown>, ctx: CapabilityCon
 }
 
 async function runGraphqlQuery(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	requireString(input, 'orgId');
+	const orgId = requireString(input, 'orgId');
 	const query = requireString(input, 'query');
 	const rawVariables = input.variables;
 	if (
@@ -233,9 +233,14 @@ async function runGraphqlQuery(input: Record<string, unknown>, ctx: CapabilityCo
 	) {
 		throw new Error('"variables" must be a JSON object when provided.');
 	}
-	return runReadonlyGraphql(query, rawVariables as Record<string, unknown> | undefined, (q, v) =>
-		ctx.session.rawGraphql(q, v),
-	);
+	const variables = (rawVariables as Record<string, unknown> | undefined) ?? {};
+	// Bind the declared org boundary: a raw query must not silently target a
+	// different org than the caller named. Reject a conflicting orgId variable and
+	// pass the requested orgId through for queries that take an $orgId.
+	if (variables.orgId !== undefined && variables.orgId !== orgId) {
+		throw new Error('"variables.orgId" must match the requested "orgId".');
+	}
+	return runReadonlyGraphql(query, { ...variables, orgId }, (q, v) => ctx.session.rawGraphql(q, v));
 }
 
 export const READ_CAPABILITIES: Capability[] = [

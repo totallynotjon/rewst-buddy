@@ -33,7 +33,7 @@ send only tool names and arguments; cookies never leave the host.
 
 ## Architecture
 
-```
+```text
 Capability Registry (src/capabilities)  ← single source of truth
   Capability = ToolSpec + access(read|write) + settings gate + handler(ctx)
         │
@@ -129,7 +129,7 @@ Otherwise VS Code's native MCP client covers user-wired external servers.
 
 ## File layout
 
-```
+```text
 src/capabilities/   index.ts (@capabilities), Capability.ts, registry.ts, *.test.ts
 src/mcp/ (@mcp)     index.ts, McpActions.ts (capability surface), mcpServer.ts
                     (SDK server + /mcp HTTP handler), runtime.ts (token), settings.ts
@@ -147,7 +147,8 @@ src/commands/mcp/   GenerateMcpConfig.ts
 ## Docs to update on ship
 
 `docs/features.md` (deep dive), `docs/reference.md` (commands + `mcp.*` settings),
-`README.md` features bullet, `CHANGELOG.md`.
+`README.md` features bullet, and a per-PR note in `changelog.d/` (never hand-edit
+`CHANGELOG.md`).
 
 ---
 
@@ -207,7 +208,3 @@ These change what we build; tracked here so they aren't discovered mid-implement
     to autonomous agents via MCP is a meaningful escalation for an _unofficial_
     extension. Confirm this is an acceptable stance before shipping; keep the
     "unofficial" framing prominent.
-
-```
-
-```

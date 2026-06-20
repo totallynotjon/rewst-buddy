@@ -38,13 +38,12 @@ export const McpServerController = new (class _ implements vscode.Disposable {
 	/**
 	 * Reconciles the localhost server with the MCP switch: starts it when MCP is
 	 * enabled, and stops a server that was running only for MCP once MCP is turned
-	 * off and the browser-action server does not want it either.
+	 * off and the browser-action server does not want it either. The settings are
+	 * re-read after the start awaits, so a disable that lands mid-bind still tears
+	 * the server back down instead of leaving it orphaned.
 	 */
 	private async sync(): Promise<void> {
-		if (!readMcpSettings().enable) {
-			if (Server.getStatus() && !getServerConfig().enabled) await Server.stop();
-			return;
-		}
-		if (!Server.getStatus()) await Server.start(true);
+		if (readMcpSettings().enable && !Server.getStatus()) await Server.start(true);
+		if (!readMcpSettings().enable && Server.getStatus() && !getServerConfig().enabled) await Server.stop();
 	}
 })();

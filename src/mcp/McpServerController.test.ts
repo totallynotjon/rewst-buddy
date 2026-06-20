@@ -56,6 +56,7 @@ suite('Unit: McpServerController', () => {
 	let running = false;
 	let startCalls = 0;
 	let stopCalls = 0;
+	let startDelayMs = 0;
 
 	setup(() => {
 		initTestEnvironment();
@@ -63,10 +64,12 @@ suite('Unit: McpServerController', () => {
 		running = false;
 		startCalls = 0;
 		stopCalls = 0;
+		startDelayMs = 0;
 		restores.push(
 			stub(Server, 'getStatus', (() => running) as typeof Server.getStatus),
 			stub(Server, 'start', (async () => {
 				startCalls += 1;
+				if (startDelayMs > 0) await new Promise(resolve => setTimeout(resolve, startDelayMs));
 				running = true;
 				return true;
 			}) as typeof Server.start),
@@ -136,6 +139,19 @@ suite('Unit: McpServerController', () => {
 
 		await setMcpEnabled(true);
 		assert.ok(await waitUntil(() => startCalls > 0), 'the config-change subscription starts the server');
+	});
+
+	test('tears down the server if MCP is disabled while start is in flight', async () => {
+		await setServerEnabled(false);
+		await setMcpEnabled(true);
+		startDelayMs = 80; // keep the bind pending so we can flip MCP off mid-flight
+		McpServerController.init();
+		// Disable MCP before the in-flight start resolves.
+		await setMcpEnabled(false);
+		assert.ok(
+			await waitUntil(() => running === false && stopCalls > 0, 1500),
+			'stops the server orphaned by a mid-bind disable',
+		);
 	});
 
 	test('stops reacting after dispose', async () => {
