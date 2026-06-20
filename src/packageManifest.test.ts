@@ -1,8 +1,11 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { SessionManager } from '@sessions';
+import { initTestEnvironment } from '@test';
+import { chatCapabilities } from './capabilities';
 import { ALL_TOOL_SPECS, APPROVAL_TOOL_SPEC } from './ui/chat/model/lmTools';
 
-const { suite, test } = Mocha;
+const { suite, test, setup } = Mocha;
 
 interface ManifestTool {
 	name: string;
@@ -30,6 +33,11 @@ interface PackageManifest {
 const manifest = require('../package.json') as PackageManifest;
 
 suite('Unit: package manifest', () => {
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+	});
+
 	test('declares the VS Code chat model provider floor and contribution', () => {
 		assert.match(manifest.engines.vscode, /^\^1\.122/);
 		// @types/vscode tracks the highest published typings (>= 1.120), which already
@@ -53,6 +61,24 @@ suite('Unit: package manifest', () => {
 			assert.ok(entry, `package.json declares ${spec.name}`);
 			assert.strictEqual(entry.modelDescription, spec.description, `${spec.name} description in sync`);
 			assert.deepStrictEqual(entry.inputSchema, spec.inputSchema, `${spec.name} inputSchema in sync`);
+		}
+	});
+
+	test('every chat-exposed capability is declared as a languageModelTools entry', () => {
+		const declared = new Map((manifest.contributes.languageModelTools ?? []).map(tool => [tool.name, tool]));
+		for (const capability of chatCapabilities()) {
+			const entry = declared.get(capability.spec.name);
+			assert.ok(entry, `package.json declares ${capability.spec.name}`);
+			assert.strictEqual(
+				entry.modelDescription,
+				capability.spec.description,
+				`${capability.spec.name} description in sync`,
+			);
+			assert.deepStrictEqual(
+				entry.inputSchema,
+				capability.spec.inputSchema,
+				`${capability.spec.name} inputSchema in sync`,
+			);
 		}
 	});
 

@@ -11,6 +11,8 @@
 		"lib": ["DOM", "DOM.Iterable", "ES2020"],
 		"paths": {
 			"@models": ["models/index.ts"],
+			"@capabilities": ["capabilities/index.ts"],
+			"@mcp": ["mcp/index.ts"],
 			"@commands": ["commands/index.ts"],
 			"@sessions": ["sessions/index.ts"],
 			"@utils": ["utils/index.ts"],

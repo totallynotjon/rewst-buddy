@@ -36,6 +36,12 @@
 				"displayName": "Cage-Free Rewsty"
 			}
 		],
+		"mcpServerDefinitionProviders": [
+			{
+				"id": "rewst-buddy.mcpServer",
+				"label": "Rewst Buddy"
+			}
+		],
 		"languageModelTools": [
 			{
 				"name": "list_template_links",
@@ -688,6 +694,24 @@
 					"default": 500,
 					"minimum": 1,
 					"markdownDescription": "Memory budget (in MB) for caching oversized Cage-Free Rewsty tool results. When a tool returns more than fits inline, the full result is kept in memory so the assistant can page or search it via `buddy_result_read` instead of rerunning the request. Nothing is written to disk; the cache evicts the oldest results once this budget is reached and is cleared when the window reloads."
+				},
+				"rewst-buddy.mcp.enable": {
+					"type": "boolean",
+					"default": false,
+					"description": "Expose your authenticated Rewst sessions to external MCP clients (Claude Desktop, Claude Code, Cursor) through a local, credential-free bridge. Off by default: enabling it lets an external agent read your Rewst data through your session. This is an unofficial extension — review the security notes before enabling."
+				},
+				"rewst-buddy.mcp.enableWriteTools": {
+					"type": "boolean",
+					"default": false,
+					"description": "Allow MCP tools that change Rewst data (write capabilities). Even when enabled, each change still requires your approval inside VS Code. Off by default; read-only tools work without it."
+				},
+				"rewst-buddy.mcp.enabledTools": {
+					"type": "array",
+					"default": [],
+					"items": {
+						"type": "string"
+					},
+					"description": "Allowlist of MCP capability names to expose. Leave empty to expose all enabled read tools (the default); set names to restrict the surface (e.g. [\"list_orgs\", \"list_templates\"])."
 				}
 			}
 		},
@@ -861,6 +885,16 @@
 				"command": "rewst-buddy.prefix.ApplyRewstAiEdit",
 				"title": "Rewst Buddy: Apply Rewst AI Suggestion",
 				"icon": "$(git-pull-request-go-to-changes)"
+			},
+			{
+				"command": "rewst-buddy.prefix.CopyMcpConfig",
+				"title": "Rewst Buddy: Copy MCP Config to Clipboard",
+				"icon": "$(server-process)"
+			},
+			{
+				"command": "rewst-buddy.prefix.AddMcpToVSCode",
+				"title": "Rewst Buddy: Add MCP Server to VS Code",
+				"icon": "$(plug)"
 			}
 		],
 		"keybindings": [
@@ -1239,5 +1273,8 @@
 		"*.{json,md}": [
 			"prettier --write"
 		]
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.29.0"
 	}
 }

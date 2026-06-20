@@ -1,5 +1,6 @@
 import { CommandInitiater } from '@commands';
 import { extPrefix, context as globalVSContext } from '@global';
+import { McpDefinitionProvider, McpServerController } from '@mcp';
 import { LinkManager, SyncManager, SyncOnSaveManager, TemplateBundleManager, TemplateMetadataStore } from '@models';
 import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
 import { Server } from '@server';
@@ -64,6 +65,12 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(TemplateBundleManager.init());
 	context.subscriptions.push(Server.init());
+	// Register after Server.init so the controller starts the localhost server
+	// (which hosts the MCP /mcp endpoint) when MCP is enabled.
+	context.subscriptions.push(McpServerController.init());
+	// Publish the MCP server to VS Code's native MCP surface so it shows up in the
+	// editor's server list (the "Add MCP to VS Code" command toggles it on).
+	context.subscriptions.push(McpDefinitionProvider.init());
 	// Persist chat continuity across window reloads so warm conversations are
 	// reused instead of every chat re-shipping its full transcript statelessly.
 	const conversationMapKey = 'RewstConversationMap';

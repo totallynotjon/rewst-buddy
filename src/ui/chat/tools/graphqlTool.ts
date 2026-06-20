@@ -556,6 +556,27 @@ function formatResultText(text: string): string {
 	return text;
 }
 
+/**
+ * Runs a read-only GraphQL operation: mutations and subscriptions are rejected
+ * before execution, then the result is formatted (and length-capped) the same
+ * way as the chat tool. Used by the MCP read-only query capability, where writes
+ * are gated separately at the server boundary and must never slip through here.
+ */
+export async function runReadonlyGraphql(
+	query: string,
+	variables: Record<string, unknown> | undefined,
+	execute: (q: string, v?: Record<string, unknown>) => Promise<{ data?: unknown; errors?: unknown }>,
+): Promise<string> {
+	if (typeof query !== 'string' || query.trim().length === 0) {
+		throw new Error('A non-empty GraphQL "query" is required.');
+	}
+	const kind = detectOperationType(query);
+	if (kind !== 'query') {
+		throw new Error(`This tool runs read-only queries only; received a ${kind}. Use a query operation.`);
+	}
+	return formatResult(await execute(query, variables));
+}
+
 export async function runGraphqlTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
 	if (!deps || !deps.isEnabled()) {
 		throw new Error(

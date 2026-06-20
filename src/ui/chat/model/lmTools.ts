@@ -1,3 +1,4 @@
+import { chatCapabilities } from '@capabilities';
 import { extPrefix } from '@global';
 import { SessionManager, type Session } from '@sessions';
 import { log } from '@utils';
@@ -7,7 +8,6 @@ import {
 	createGraphqlDeps,
 	graphqlMutationConfirmation,
 	graphqlMutationScope,
-	GRAPHQL_TOOL_SPECS,
 } from '../tools/graphqlTool';
 import { enabledAiTools } from '../tools/aiToolSettings';
 import { RESULT_READ_TOOL_SPECS } from '../tools/toolOutputCache';
@@ -38,12 +38,21 @@ interface GovernedSpec {
 	enabled: (settings: AiToolSettings) => boolean;
 }
 
+// The GraphQL chat tools are sourced from the capability registry (the single
+// source of truth). Their spec objects are reused verbatim there, so the chat
+// tool set and the package.json manifest are unchanged; execution still flows
+// through runToolRequests until Phase 2 converges it onto the registry.
+const REGISTRY_CHAT_GOVERNED: GovernedSpec[] = chatCapabilities().map(capability => ({
+	spec: capability.spec,
+	enabled: (s: AiToolSettings) => capability.enabled({ enableGraphqlTool: s.enableGraphqlTool }),
+}));
+
 /** Every tool with the settings predicate that governs it. */
 export const GOVERNED_TOOL_SPECS: GovernedSpec[] = [
 	...WORKSPACE_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkspaceTools })),
 	...WEB_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWebTools })),
 	...WORKFLOW_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkflowTools })),
-	...GRAPHQL_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableGraphqlTool })),
+	...REGISTRY_CHAT_GOVERNED,
 	// Available whenever any tool can run, since any of them can produce the
 	// oversized cached output this one reads back.
 	...RESULT_READ_TOOL_SPECS.map(spec => ({

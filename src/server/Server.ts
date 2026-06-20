@@ -1,6 +1,8 @@
 import { log } from '@utils';
 import http, { IncomingMessage, ServerResponse } from 'http';
 import vscode from 'vscode';
+import { handleMcpHttp } from '../mcp/mcpServer';
+import { readMcpSettings } from '../mcp/settings';
 import { getServerConfig } from './config';
 import { handleAddSession, handleOpenTemplate, validateRequest } from './handlers';
 import { BrowserRequest, Response, ServerConfig } from './types';
@@ -8,7 +10,12 @@ import { BrowserRequest, Response, ServerConfig } from './types';
 export const Server = new (class _ implements vscode.Disposable {
 	private server: http.Server | null = null;
 	private isRunning = false;
+	/** In-flight bind, so concurrent start() calls share one listen (no self-collision). */
+	private startPromise: Promise<boolean> | null = null;
 	private disposables: vscode.Disposable[] = [];
+	private readonly statusEmitter = new vscode.EventEmitter<boolean>();
+	/** Fires true when the server binds, false when it stops or fails to bind. */
+	readonly onDidChangeStatus = this.statusEmitter.event;
 
 	constructor() {
 		this.disposables.push(
@@ -25,16 +32,20 @@ export const Server = new (class _ implements vscode.Disposable {
 		return this;
 	}
 
-	dispose(): void {
-		this.stop();
+	async dispose(): Promise<void> {
+		// Await the stop so its close-callback status fire lands before the emitter
+		// is disposed, instead of being silently dropped as a post-dispose no-op.
+		await this.stop();
+		this.statusEmitter.dispose();
 		this.disposables.forEach(d => d.dispose());
 	}
 
 	private async handleConfigChange(): Promise<void> {
 		const config = getServerConfig();
 		if (config.enabled && !this.isRunning) {
-			await this.start();
-		} else if (!config.enabled && this.isRunning) {
+			await this.start(true);
+		} else if (!config.enabled && this.isRunning && !readMcpSettings().enable) {
+			// Only stop when MCP no longer needs the server either.
 			await this.stop();
 		}
 	}
@@ -42,17 +53,53 @@ export const Server = new (class _ implements vscode.Disposable {
 	async startIfEnabled(): Promise<void> {
 		const config = getServerConfig();
 		if (config.enabled) {
-			await this.start();
+			await this.start(true);
 		}
 	}
 
-	async start(): Promise<boolean> {
-		log.trace('Server.start: starting');
+	/** The server stays up while either driver wants it: the browser-action server or MCP. */
+	private shouldStayRunning(): boolean {
+		return getServerConfig().enabled || readMcpSettings().enable;
+	}
 
+	/**
+	 * @param auto true for config/controller-driven starts, which self-correct if
+	 * every driver was disabled mid-bind; false for an explicit user StartServer.
+	 */
+	async start(auto = false): Promise<boolean> {
 		if (this.isRunning) {
 			log.warn('Server.start: already running');
 			return true;
 		}
+		// Activation calls start() twice in quick succession (Server.init and
+		// McpServerController.init), both before isRunning flips true. Without this
+		// guard each opens its own listen on the same port; the second loses with
+		// EADDRINUSE and its error handler tears down the server the first just
+		// bound. Sharing one in-flight promise makes the second caller await the
+		// first bind instead of racing it.
+		if (this.startPromise) {
+			log.trace('Server.start: bind already in progress; awaiting it');
+			return this.startPromise;
+		}
+		this.startPromise = this.bind();
+		try {
+			const started = await this.startPromise;
+			// A disable toggled while the bind was in flight is skipped by
+			// handleConfigChange (isRunning was still false), so re-check the final
+			// config here and stop a server no driver wants anymore.
+			if (started && auto && !this.shouldStayRunning()) {
+				log.debug('Server.start: all drivers disabled during bind; stopping immediately');
+				await this.stop();
+				return false;
+			}
+			return started;
+		} finally {
+			this.startPromise = null;
+		}
+	}
+
+	private async bind(): Promise<boolean> {
+		log.trace('Server.start: starting');
 
 		const config = getServerConfig();
 		log.debug('Server.start: config', { host: config.host, port: config.port });
@@ -60,10 +107,11 @@ export const Server = new (class _ implements vscode.Disposable {
 		try {
 			this.server = http.createServer(this.handleRequest.bind(this));
 
-			return new Promise(resolve => {
+			return await new Promise<boolean>(resolve => {
 				this.server!.listen(config.port, config.host, () => {
 					this.isRunning = true;
 					log.info(`Server.start: listening on ${config.host}:${config.port}`);
+					this.statusEmitter.fire(true);
 					resolve(true);
 				});
 
@@ -91,6 +139,7 @@ export const Server = new (class _ implements vscode.Disposable {
 				this.isRunning = false;
 				this.server = null;
 				log.info('Server.stop: stopped');
+				this.statusEmitter.fire(false);
 				resolve();
 			});
 		});
@@ -102,6 +151,15 @@ export const Server = new (class _ implements vscode.Disposable {
 
 	private handleRequest(req: IncomingMessage, res: ServerResponse): void {
 		log.trace('Server.handleRequest: incoming', { method: req.method, url: req.url });
+
+		// The MCP Streamable HTTP transport owns the /mcp path: it reads the body
+		// and writes its own headers/stream, so route it before the browser-action
+		// handling sets any headers or consumes the request body.
+		const path = (req.url ?? '/').split('?')[0].replace(/\/+$/, '');
+		if (path === '/mcp') {
+			void handleMcpHttp(req, res);
+			return;
+		}
 
 		res.setHeader('Content-Type', 'application/json');
 		res.setHeader('Access-Control-Allow-Origin', '*');
@@ -213,5 +271,6 @@ export const Server = new (class _ implements vscode.Disposable {
 		}
 		this.isRunning = false;
 		this.server = null;
+		this.statusEmitter.fire(false);
 	}
 })();
