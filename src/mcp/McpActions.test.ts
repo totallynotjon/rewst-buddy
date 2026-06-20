@@ -5,6 +5,11 @@ import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import vscode from 'vscode';
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover } from '../capabilities/graphqlMutateCapability';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
+import {
+	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_EDIT_TOOL_NAME,
+	WORKFLOW_RUN_TOOL_NAME,
+} from '../ui/chat/tools/workflowTools';
 import { McpError, _resetMcpThrottleForTesting, callTool, listResources, listTools, readResource } from './McpActions';
 import type { McpSettings } from './settings';
 
@@ -77,6 +82,17 @@ function workflowGetResponse() {
 			},
 		},
 	};
+}
+
+function workflowMutationRawGraphqlResponse(request: { query?: string }): { data: unknown } {
+	const query = request.query ?? '';
+	if (query.includes('RewstBuddyWorkflowGet')) {
+		return { data: workflowGetResponse() };
+	}
+	if (query.includes('RewstBuddyWorkflowUpdate')) {
+		return { data: { data: { updateWorkflow: { id: 'wf-1', name: 'MCP Sample Workflow', updatedAt: '2000' } } } };
+	}
+	throw new Error(`Unexpected rawGraphql operation in workflow mutation test: ${query}`);
 }
 
 function detectGraphqlOperation(query: string): string {
@@ -214,16 +230,29 @@ suite('Unit: McpActions', () => {
 			assert.deepStrictEqual(calls[0].variables.variables, { where: { id: 'wf-1', orgId: 'org-1' } });
 		});
 
-		test('buddy_workflow_edit is not available over MCP', async () => {
+		test('workflow write helpers are listed only when MCP write tools are enabled', async () => {
 			useSession('org-1');
 			await setAiTools(['workspace', 'workflows']);
 
+			const withoutWrite = listTools(settings()).map(tool => tool.name);
+			assert.ok(!withoutWrite.includes(WORKFLOW_EDIT_TOOL_NAME));
+			assert.ok(!withoutWrite.includes(WORKFLOW_AUTOLAYOUT_TOOL_NAME));
+			assert.ok(!withoutWrite.includes(WORKFLOW_RUN_TOOL_NAME));
+
 			const names = listTools(settings({ enableWriteTools: true })).map(tool => tool.name);
-			assert.ok(!names.includes('buddy_workflow_edit'));
+			assert.ok(names.includes(WORKFLOW_EDIT_TOOL_NAME));
+			assert.ok(names.includes(WORKFLOW_AUTOLAYOUT_TOOL_NAME));
+			assert.ok(names.includes(WORKFLOW_RUN_TOOL_NAME));
+		});
+
+		test('buddy_workflow_edit is rejected at the boundary while write tools are disabled', async () => {
+			useSession('org-1');
+			await setAiTools(['workspace', 'workflows']);
+
 			await assert.rejects(
 				callTool(
 					{
-						name: 'buddy_workflow_edit',
+						name: WORKFLOW_EDIT_TOOL_NAME,
 						arguments: {
 							orgId: 'org-1',
 							workflowId: 'wf-1',
@@ -232,10 +261,69 @@ suite('Unit: McpActions', () => {
 							operations: [],
 						},
 					},
-					settings({ enableWriteTools: true }),
+					settings({ enableWriteTools: false }),
 				),
-				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
+				(error: unknown) => error instanceof McpError && error.code === 'write_disabled',
 			);
+		});
+
+		test('buddy_workflow_edit returns approval_required without executing when the user declines', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			await setAiTools(['workspace', 'workflows']);
+			setMcpMutationApprover(async () => false);
+
+			const result = await callTool(
+				{
+					name: WORKFLOW_EDIT_TOOL_NAME,
+					arguments: {
+						orgId: 'org-1',
+						workflowId: 'wf-1',
+						workflowName: 'MCP Sample Workflow',
+						orgName: 'Acme',
+						operations: [{ op: 'reposition', task: 'start', x: 100, y: 200 }],
+					},
+				},
+				settings({ enableWriteTools: true }),
+			);
+
+			assert.ok(!result.isError);
+			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
+			assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 0);
+		});
+
+		test('buddy_workflow_edit executes after MCP approval and returns workflow output', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when<unknown>('rawGraphql', workflowMutationRawGraphqlResponse);
+			await setAiTools(['workspace', 'workflows']);
+			let approvals = 0;
+			setMcpMutationApprover(async () => {
+				approvals++;
+				return true;
+			});
+
+			const result = await callTool(
+				{
+					name: WORKFLOW_EDIT_TOOL_NAME,
+					arguments: {
+						orgId: 'org-1',
+						workflowId: 'wf-1',
+						workflowName: 'MCP Sample Workflow',
+						orgName: 'Acme',
+						operations: [{ op: 'reposition', task: 'start', x: 100, y: 200 }],
+					},
+				},
+				settings({ enableWriteTools: true }),
+			);
+
+			assert.ok(!result.isError);
+			assert.match(result.text, /Applied 1 operation/);
+			assert.match(result.text, /New version token: 2000/);
+			assert.strictEqual(approvals, 1);
+			const calls = wrapper.getCallsFor('rawGraphql');
+			assert.ok(calls.some(call => String(call.variables.query).includes('RewstBuddyWorkflowGet')));
+			assert.ok(calls.some(call => String(call.variables.query).includes('RewstBuddyWorkflowUpdate')));
 		});
 
 		test('an org-scoped tool without orgId throws org_required', async () => {

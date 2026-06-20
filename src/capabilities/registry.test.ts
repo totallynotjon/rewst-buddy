@@ -30,14 +30,6 @@ const GRAPHQL_CHAT_CAPABILITIES = ['buddy_graphql_schema', 'buddy_graphql'];
 const WORKSPACE_CHAT_CAPABILITIES = WORKSPACE_TOOL_SPECS.map(spec => spec.name);
 const WEB_CHAT_CAPABILITIES = WEB_TOOL_SPECS.map(spec => spec.name);
 const WORKFLOW_CHAT_CAPABILITIES = WORKFLOW_TOOL_SPECS.map(spec => spec.name);
-const WORKFLOW_READ_MCP_CAPABILITIES = [
-	'buddy_workflow_get',
-	WORKFLOW_SEARCH_TOOL_NAME,
-	'buddy_action_search',
-	'buddy_workflow_executions',
-	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
-	'buddy_render_jinja',
-];
 const WORKFLOW_WRITE_CHAT_CAPABILITIES = [
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
@@ -207,17 +199,19 @@ suite('Unit: capability registry', () => {
 			assert.ok(names.includes('buddy_graphql_schema'));
 		});
 
-		test('read-only workflow helpers are exposed to MCP', () => {
+		test('all workflow helpers are exposed to MCP', () => {
 			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
-			for (const name of WORKFLOW_READ_MCP_CAPABILITIES) {
+			for (const name of WORKFLOW_CHAT_CAPABILITIES) {
 				assert.ok(names.has(name), `${name} exposed to MCP`);
 			}
 		});
 
-		test('workflow write helpers are not exposed to MCP', () => {
-			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
+		test('workflow write helpers keep write access on MCP', () => {
 			for (const name of WORKFLOW_WRITE_CHAT_CAPABILITIES) {
-				assert.ok(!names.has(name), `${name} stays off MCP`);
+				const capability = getCapability(name);
+				assert.ok(capability, `${name} registered`);
+				assert.strictEqual(capability.mcp, true, `${name} exposed to MCP`);
+				assert.strictEqual(capability.access, 'write', `${name} remains write-gated`);
 			}
 		});
 
