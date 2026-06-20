@@ -2,12 +2,14 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { SessionManager } from '@sessions';
 import { initTestEnvironment } from '@test';
-import type { CapabilitySettings } from './Capability';
+import type { CapabilityGroup, CapabilitySettings } from './Capability';
 import {
 	CAPABILITY_REGISTRY,
 	chatCapabilities,
+	chatCapabilityNames,
 	enabledMcpCapabilities,
 	getCapability,
+	hasChatCapability,
 	mcpCapabilities,
 } from './registry';
 import { RESULT_READ_TOOL_SPECS } from '../ui/chat/tools/toolOutputCache';
@@ -124,6 +126,39 @@ suite('Unit: capability registry', () => {
 					assert.strictEqual(capability.enabled(settings(on)), true, `${name} on when any tools are enabled`);
 				}
 			}
+		});
+	});
+
+	suite('tool-family groups', () => {
+		test('every chat capability declares a group', () => {
+			for (const capability of chatCapabilities()) {
+				assert.ok(capability.group, `${capability.spec.name} has a group`);
+			}
+		});
+
+		test('chatCapabilityNames returns the names in each family', () => {
+			const expected: Record<CapabilityGroup, string[]> = {
+				workspace: WORKSPACE_CHAT_CAPABILITIES,
+				web: WEB_CHAT_CAPABILITIES,
+				workflow: WORKFLOW_CHAT_CAPABILITIES,
+				graphql: GRAPHQL_CHAT_CAPABILITIES,
+				result: RESULT_READ_CHAT_CAPABILITIES,
+			};
+			for (const group of Object.keys(expected) as CapabilityGroup[]) {
+				assert.deepStrictEqual(
+					[...chatCapabilityNames(group)].sort(),
+					[...expected[group]].sort(),
+					`${group} family names`,
+				);
+			}
+		});
+
+		test('hasChatCapability matches only names in the family', () => {
+			assert.ok(hasChatCapability('workflow', new Set(['buddy_workflow_edit'])));
+			assert.ok(hasChatCapability('graphql', new Set(['buddy_graphql_schema'])));
+			assert.ok(!hasChatCapability('workflow', new Set(['buddy_graphql'])));
+			assert.ok(!hasChatCapability('graphql', new Set(['read_file', 'unknown_tool'])));
+			assert.ok(!hasChatCapability('web', new Set<string>()));
 		});
 	});
 
