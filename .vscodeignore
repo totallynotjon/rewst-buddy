@@ -36,11 +36,9 @@ docs/dev/**
 # Test files
 **/.vscode-test.*
 
-# Only include the bundled entrypoint + the MCP bridge, exclude all other dist artifacts
+# Only include the bundled entrypoint, exclude all other dist artifacts
 dist/**
 !dist/extension.js
-!dist/mcp/
-!dist/mcp/rewst-mcp.js
 
 # TypeScript source (keep only compiled)
 **/*.ts

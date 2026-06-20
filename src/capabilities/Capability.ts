@@ -9,7 +9,7 @@ import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
  *
  * The handler receives a session that was already resolved and validated by the
  * surface — never raw secrets. Cookies stay inside the extension host; the MCP
- * bridge process only forwards tool names and arguments.
+ * server (also in the host) receives only tool names and arguments from clients.
  */
 
 export type CapabilityAccess = 'read' | 'write';
@@ -41,7 +41,7 @@ export interface Capability {
 	/**
 	 * Whether the capability can change Rewst state. The MCP server boundary
 	 * rejects access:'write' unless write tools are explicitly enabled, regardless
-	 * of what the bridge forwards.
+	 * of what the client requests.
 	 */
 	access: CapabilityAccess;
 	/** Exposed as a Cage-Free Rewsty chat tool (vscode-tool protocol). */

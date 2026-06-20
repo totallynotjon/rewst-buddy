@@ -4,8 +4,9 @@ import type { Capability, CapabilityContext } from './Capability';
 
 /**
  * Read-only Rewst capabilities exposed over the MCP server. Each operates on the
- * authenticated, multi-org sessions the extension already holds; the MCP bridge
- * forwards only tool names and arguments, never credentials.
+ * authenticated, multi-org sessions the extension already holds; the MCP server
+ * runs in the extension host and receives only tool names and arguments, never
+ * credentials.
  *
  * Descriptions are deliberately plain and factual: they enter an external
  * agent's context, so they avoid instruction-shaped or authority-claiming

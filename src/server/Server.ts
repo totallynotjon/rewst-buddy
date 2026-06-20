@@ -1,8 +1,7 @@
 import { log } from '@utils';
 import http, { IncomingMessage, ServerResponse } from 'http';
 import vscode from 'vscode';
-import { handleMcpRequest, type McpRequestHeaders } from '../mcp/McpActions';
-import { isMcpAction, MCP_PROTOCOL_HEADER, MCP_TOKEN_HEADER, type McpRequest } from '../mcp/protocol';
+import { handleMcpHttp } from '../mcp/mcpServer';
 import { getServerConfig } from './config';
 import { handleAddSession, handleOpenTemplate, validateRequest } from './handlers';
 import { BrowserRequest, Response, ServerConfig } from './types';
@@ -63,8 +62,8 @@ export const Server = new (class _ implements vscode.Disposable {
 		// McpServerController.init), both before isRunning flips true. Without this
 		// guard each opens its own listen on the same port; the second loses with
 		// EADDRINUSE and its error handler tears down the server the first just
-		// bound — which also deletes the MCP discovery file. Sharing one in-flight
-		// promise makes the second caller await the first bind instead of racing it.
+		// bound. Sharing one in-flight promise makes the second caller await the
+		// first bind instead of racing it.
 		if (this.startPromise) {
 			log.trace('Server.start: bind already in progress; awaiting it');
 			return this.startPromise;
@@ -128,15 +127,16 @@ export const Server = new (class _ implements vscode.Disposable {
 		return this.isRunning;
 	}
 
-	/** The address the server is bound to while running, for MCP discovery. */
-	getBoundAddress(): { host: string; port: number } | undefined {
-		if (!this.isRunning) return undefined;
-		const config = getServerConfig();
-		return { host: config.host, port: config.port };
-	}
-
 	private handleRequest(req: IncomingMessage, res: ServerResponse): void {
 		log.trace('Server.handleRequest: incoming', { method: req.method, url: req.url });
+
+		// The MCP Streamable HTTP transport owns the /mcp path: it reads the body
+		// and writes its own headers/stream, so route it before the browser-action
+		// handling sets any headers or consumes the request body.
+		if ((req.url ?? '/').split('?')[0] === '/mcp') {
+			void handleMcpHttp(req, res);
+			return;
+		}
 
 		res.setHeader('Content-Type', 'application/json');
 		res.setHeader('Access-Control-Allow-Origin', '*');
@@ -172,13 +172,9 @@ export const Server = new (class _ implements vscode.Disposable {
 			}
 			chunks.push(chunk);
 		});
-		const mcpHeaders: McpRequestHeaders = {
-			token: firstHeader(req.headers[MCP_TOKEN_HEADER]),
-			protocolVersion: firstHeader(req.headers[MCP_PROTOCOL_HEADER]),
-		};
 		req.on('end', () => {
 			if (rejected) return;
-			this.processRequest(Buffer.concat(chunks).toString('utf-8'), res, mcpHeaders);
+			this.processRequest(Buffer.concat(chunks).toString('utf-8'), res);
 		});
 		req.on('error', err => {
 			log.error('Server.handleRequest: request error', err);
@@ -186,7 +182,7 @@ export const Server = new (class _ implements vscode.Disposable {
 		});
 	}
 
-	private async processRequest(rawBody: string, res: ServerResponse, mcpHeaders: McpRequestHeaders): Promise<void> {
+	private async processRequest(rawBody: string, res: ServerResponse): Promise<void> {
 		log.trace('Server.processRequest: processing', { bodyLength: rawBody.length });
 
 		if (!rawBody) {
@@ -202,15 +198,6 @@ export const Server = new (class _ implements vscode.Disposable {
 		} catch {
 			log.warn('Server.processRequest: invalid JSON');
 			this.sendResponse(res, 400, { success: false, error: 'Invalid JSON format' });
-			return;
-		}
-
-		// MCP actions carry their own structured request/response shapes and gating
-		// (token + protocol + settings), handled by the credential-free bridge surface.
-		if (typeof request.action === 'string' && isMcpAction(request.action)) {
-			const { statusCode, body } = await handleMcpRequest(request as unknown as McpRequest, mcpHeaders);
-			res.writeHead(statusCode);
-			res.end(JSON.stringify(body));
 			return;
 		}
 
@@ -264,9 +251,3 @@ export const Server = new (class _ implements vscode.Disposable {
 		this.statusEmitter.fire(false);
 	}
 })();
-
-/** node lowercases header names; a repeated header arrives as an array. */
-function firstHeader(value: string | string[] | undefined): string | undefined {
-	if (Array.isArray(value)) return value[0];
-	return value;
-}

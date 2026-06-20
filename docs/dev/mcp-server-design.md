@@ -1,8 +1,14 @@
 # MCP Server — Design Draft
 
-> Status: **DRAFT** (pre-build). Captures the agreed direction for adding Model
-> Context Protocol support to Rewst Buddy. Decisions locked so far: **stdio
-> transport**, **read-only by default**, **credential-free bridge process**.
+> Status: **IN PROGRESS**. Captures the direction for adding Model Context
+> Protocol support to Rewst Buddy. Decisions locked: **HTTP transport served
+> from the extension** (MCP Streamable HTTP, mounted on the localhost server at
+> `/mcp`), **read-only by default**, **no separate process / no stdio**.
+>
+> Earlier drafts used a stdio bridge spawned by the client; that was dropped in
+> favor of HTTP-direct (no `node` on PATH, no discovery file). The transport
+> decision is tracked in the epic (#52) and foundation (#53) issues, which are
+> the source of truth; this doc trails them.
 
 ## Goal
 
@@ -19,11 +25,11 @@ MCP tools onto one capability definition so each Rewst operation is defined once
 ## The constraint that dictates the architecture
 
 Rewst cookies live in VS Code `secrets`, readable **only inside the extension
-host**. A stdio MCP server spawned by Claude Desktop is a **separate process**
-and cannot read those secrets. To honor the stdio choice _and_ reuse the solved
-auth, the stdio binary must be a **thin, credential-free proxy** that forwards
-tool calls back into the running extension (which holds the sessions and already
-runs a localhost server).
+host**. The extension host is already Node and already runs a localhost server,
+so the simplest way to reuse the solved auth is to run the MCP server **in the
+host** and let clients connect to it over HTTP. There is no separate process to
+hand credentials to, so the credential boundary is trivially honored: clients
+send only tool names and arguments; cookies never leave the host.
 
 ## Architecture
 
@@ -37,9 +43,11 @@ Capability Registry (src/capabilities)  ← single source of truth
 
 MCP path:
   Claude Desktop/Code
-    └─(MCP stdio JSON-RPC)→ stdio bridge  (src/mcp/bin/rewst-mcp.js, NO secrets)
-        └─(localhost HTTP + token)→ extension server (src/server, 8765)
-            └─ SessionManager + Session.rawGraphql → Rewst GraphQL
+    └─(MCP Streamable HTTP, URL + x-rewst-mcp-token header)→
+        extension localhost server (src/server) /mcp route
+          └─ MCP SDK Server (stateless) — src/mcp/mcpServer.ts
+              └─ capability surface (src/mcp/McpActions.ts)
+                  └─ SessionManager + Session.rawGraphql → Rewst GraphQL
 ```
 
 Surfaces are thin adapters; the registry is the brain. Adding a capability
@@ -67,23 +75,27 @@ surfaces it on every enabled surface automatically.
   its governed specs from the registry via a temporary shim (chat behavior unchanged).
 - Extend `packageManifest.test.ts` to cover the registry.
 
-### Phase 1 — stdio MCP server, read-only (headline milestone)
+### Phase 1 — in-extension MCP HTTP server, read-only (headline milestone)
 
-**1a. MCP actions on the existing server** (`Server.ts` `processRequest`):
-`mcp.listTools`, `mcp.callTool`, `mcp.listResources`, `mcp.readResource`.
+**Capability surface** (`src/mcp/McpActions.ts`) — transport-agnostic functions:
+`listTools`, `callTool`, `listResources`, `readResource`.
 
 - `callTool` resolves `{ orgId }` → `Session` via `SessionManager`, runs the capability.
-- **Read-only enforced at the server boundary**: reject `access:'write'` regardless of bridge input.
-- Guard with a bridge token (`x-rewst-mcp-token`).
+- **Read-only enforced**: `access:'write'` is rejected unless write tools are enabled.
+- Throttled; capability errors come back as `isError` tool results.
 
-**1b. stdio bridge** `src/mcp/bin/rewst-mcp.ts` (separate webpack entry → `dist/mcp/rewst-mcp.js`):
+**MCP HTTP server** (`src/mcp/mcpServer.ts`) — an `@modelcontextprotocol/sdk`
+`Server` whose request handlers call the capability surface, driven by a
+`StreamableHTTPServerTransport`:
 
-- `@modelcontextprotocol/sdk` `Server` + `StdioServerTransport`.
-- Maps `tools/list` → `mcp.listTools`, `tools/call` → `mcp.callTool`.
-- Holds no credentials; reads port + token from a discovery file / env.
-- Extension unreachable → MCP error "Open VS Code with Rewst Buddy running."
+- Stateless: a fresh `Server` + transport per request (the documented pattern).
+- Mounted on the localhost server at the `/mcp` route (`Server.ts` routes it
+  before the browser-action handling).
+- Auth: master switch (`mcp.enable`) + a stable per-install token presented in
+  the `x-rewst-mcp-token` header + DNS-rebinding protection (`allowedHosts`).
 
-**Onboarding command** `GenerateMcpConfig` → writes/prints client config JSON.
+**Onboarding command** `GenerateMcpConfig` → prints client config JSON: the
+`/mcp` URL plus the token header. No `node`, no spawned process, no discovery file.
 
 Initial read tools: `list_orgs`, `list_templates`, `get_template`,
 `list_workflows`, `get_workflow`, `rewst_graphql_query` (read-only), `get_bundle`.
@@ -118,17 +130,18 @@ Otherwise VS Code's native MCP client covers user-wired external servers.
 
 ```
 src/capabilities/   index.ts (@capabilities), Capability.ts, registry.ts, *.test.ts
-src/mcp/            index.ts, McpActions.ts (server-side), bin/rewst-mcp.ts (bridge)
-src/server/Server.ts   + mcp.* action cases
-src/commands/mcp/   GenerateMcpConfig.ts, EnableMcpServer.ts
+src/mcp/ (@mcp)     index.ts, McpActions.ts (capability surface), mcpServer.ts
+                    (SDK server + /mcp HTTP handler), runtime.ts (token), settings.ts
+src/server/Server.ts   + /mcp route → handleMcpHttp
+src/commands/mcp/   GenerateMcpConfig.ts
 ```
 
 ## Testing (CLAUDE.md mandates)
 
 - Unit: registry gating (read/write, settings), each capability handler via
-  `MockWrapper`, MCP action serialization, write-rejection at boundary, token guard.
-- Integration (`REWST_TEST_TOKEN`): `mcp.callTool` round-trip for read tools.
-- Bridge: stdio↔HTTP mapping with stubbed fetch (no real socket).
+  `MockWrapper`, the SDK server handlers via the in-memory transport, the `/mcp`
+  token/enable gate, and write-rejection at the boundary.
+- Integration (`REWST_TEST_TOKEN`): `callTool` round-trip for read tools.
 
 ## Docs to update on ship
 
@@ -141,21 +154,19 @@ src/commands/mcp/   GenerateMcpConfig.ts, EnableMcpServer.ts
 
 These change what we build; tracked here so they aren't discovered mid-implementation.
 
-1. **Port + token discovery.** The default port (8765) is configurable and falls
-   back on `EADDRINUSE`. The bridge must discover the _live_ port + current token,
-   not assume them. Plan: extension writes `~/.rewst-buddy/mcp.json` (mode 0600)
-   on activation with `{ port, token, pid, extensionVersion }`; bridge reads it.
-   Token rotates per activation.
+1. ~~**Port + token discovery.**~~ **Resolved by HTTP-direct.** No bridge to
+   discover the port; the `GenerateMcpConfig` command bakes the live URL + token
+   into the client config. The token is now **stable** (persisted), so the config
+   survives window reloads. Open: a "rotate MCP token" command for revocation.
 
 2. **Multiple VS Code windows.** Each window runs its own extension host. Only one
-   can bind the port; the rest hit `EADDRINUSE` (existing behavior). The bridge
-   therefore talks to **whichever window owns the port**, which may not be the one
-   the user is looking at, and its sessions differ. Need a defined story: e.g.,
-   the port-owning window is the MCP host; surface which org/sessions it exposes.
+   can bind the port; the rest hit `EADDRINUSE`. The `/mcp` endpoint is therefore
+   served by **whichever window owns the port**, which may not be the one the user
+   is looking at, and its sessions differ. Need a defined story: surface which
+   org/sessions the port-owning window exposes.
 
-3. **Node on PATH for spawning.** The client config uses `"command": "node"`.
-   Claude Desktop spawns independently of VS Code's bundled node, so node must be
-   on the user's PATH — document it, or ship/launch differently.
+3. ~~**Node on PATH for spawning.**~~ **Resolved by HTTP-direct.** There is no
+   spawned process; clients connect to a URL. No `node` requirement.
 
 4. **Session expiry during long-lived MCP use.** Cookies refresh on a ~15-min
    cycle inside the extension. An agent calling hours later may hit a stale
@@ -174,21 +185,22 @@ These change what we build; tracked here so they aren't discovered mid-implement
    large and expensive in agent token terms. Reuse the chat's truncation +
    "continue" convention for MCP responses.
 
-8. **Structured error contract.** Define a stable error shape across server↔bridge
-   for: session missing, org not found, approval required, GraphQL errors, refresh
-   failed — so the agent gets actionable messages, not opaque 500s.
+8. **Structured error contract.** Stable `McpErrorCode` set for: session missing,
+   org not found, approval required, GraphQL errors, refresh failed — surfaced as
+   `isError` tool results so the agent gets actionable messages, not opaque 500s.
 
-9. **Version handshake.** A stale bridge config could point at a newer extension.
-   Include `extensionVersion`/protocol version in `initialize`; warn on mismatch.
+9. ~~**Version handshake.**~~ **Resolved by HTTP-direct.** The MCP `initialize`
+   handshake negotiates protocol version natively; there is no separate bridge
+   config to drift from the extension.
 
 10. **Prompt-injection surface.** Tool descriptions and any resource _content_
     returned (template bodies) enter an agent's context. Keep descriptions boring/
     descriptive (same discipline as the steering prompt per CLAUDE.md). Consider
     tools-first, resources optional/off by default (client resource support varies).
 
-11. **`@modelcontextprotocol/sdk` dependency.** New runtime dep, Node-target
-    bundling for the bin, bundle size, license review, `.vscodeignore` must ship
-    `dist/mcp/`.
+11. **`@modelcontextprotocol/sdk` dependency.** Runtime dep now bundled into the
+    extension bundle (the HTTP transport runs in-host) — watch bundle size and do
+    a license review. No separate `dist/mcp/` artifact to ship.
 
 12. **Unofficial-extension / ToS posture.** Exposing authenticated MSP automation
     to autonomous agents via MCP is a meaningful escalation for an _unofficial_

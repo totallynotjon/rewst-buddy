@@ -1,13 +1,23 @@
-export { handleMcpRequest, McpError, _resetMcpThrottleForTesting, type McpRequestHeaders } from './McpActions';
+export {
+	callTool,
+	listResources,
+	listTools,
+	McpError,
+	readResource,
+	_resetMcpThrottleForTesting,
+	type CallToolParams,
+	type ResourceContent,
+} from './McpActions';
+export { buildMcpServer, handleMcpHttp } from './mcpServer';
 export { McpServerController } from './McpServerController';
+export { getMcpToken, isValidMcpToken, rotateMcpToken } from './runtime';
 export { readMcpSettings, type McpSettings } from './settings';
-export { discoveryFilePath, readDiscovery, removeDiscovery, writeDiscovery, type McpDiscovery } from './discovery';
 export {
 	MCP_PROTOCOL_VERSION,
-	MCP_PROTOCOL_HEADER,
 	MCP_TOKEN_HEADER,
-	isMcpAction,
-	type McpRequest,
-	type McpResponse,
+	type McpErrorCode,
+	type McpResourceDescriptor,
+	type McpToolDescriptor,
+	type McpToolResult,
 } from './protocol';
 export { SlidingWindowThrottle } from './throttle';

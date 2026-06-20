@@ -65,8 +65,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	);
 	context.subscriptions.push(TemplateBundleManager.init());
 	context.subscriptions.push(Server.init());
-	// Register after Server.init so the controller's status subscription is in
-	// place before the server's bind callback fires and writes MCP discovery.
+	// Register after Server.init so the controller starts the localhost server
+	// (which hosts the MCP /mcp endpoint) when MCP is enabled.
 	context.subscriptions.push(McpServerController.init());
 	// Persist chat continuity across window reloads so warm conversations are
 	// reused instead of every chat re-shipping its full transcript statelessly.

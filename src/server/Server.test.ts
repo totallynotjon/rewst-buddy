@@ -29,8 +29,8 @@ async function setPort(port: number): Promise<void> {
  * Regression: activation calls Server.start() twice in quick succession
  * (Server.init + McpServerController.init). Both used to open their own listen
  * on the same port before isRunning flipped true; the loser's EADDRINUSE handler
- * tore down the server the winner had just bound, which deleted the MCP discovery
- * file. start() now shares one in-flight bind, so concurrent calls don't collide.
+ * tore down the server the winner had just bound. start() now shares one
+ * in-flight bind, so concurrent calls don't collide.
  */
 suite('Unit: Server concurrent start', () => {
 	let port = 0;

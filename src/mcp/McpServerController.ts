@@ -1,30 +1,22 @@
-import { context, extPrefix } from '@global';
+import { extPrefix } from '@global';
 import { Server } from '@server';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { removeDiscovery, writeDiscovery } from './discovery';
-import { MCP_PROTOCOL_VERSION } from './protocol';
-import { clearMcpToken, getMcpToken, rotateMcpToken } from './runtime';
 import { readMcpSettings } from './settings';
 
 /**
- * Owns the MCP server's runtime lifecycle in this extension host: rotates the
- * per-activation token, and keeps the ~/.rewst-buddy/mcp.json discovery file in
- * step with whether this window actually owns the localhost port.
- *
- * Multiple VS Code windows each run their own host but share one discovery file.
- * Only the window that successfully bound the port (Server.getStatus() === true)
- * writes the file, and a window only removes a file it wrote, so a window that
- * lost the bind (EADDRINUSE) never clobbers the real owner's entry.
+ * Keeps the localhost server running whenever the MCP server is enabled. The MCP
+ * Streamable HTTP transport is mounted on that server at /mcp (see mcpServer.ts),
+ * so MCP needs the server bound even if the browser-extension server
+ * (rewst-buddy.server.enabled) is off. The token is persisted (runtime.ts) and
+ * the client config carries the live URL, so there is no discovery file to keep
+ * in step.
  */
 export const McpServerController = new (class _ implements vscode.Disposable {
 	private disposables: vscode.Disposable[] = [];
-	private wroteDiscovery = false;
 
 	init(): this {
-		rotateMcpToken();
 		this.disposables.push(
-			Server.onDidChangeStatus(running => this.onServerStatus(running)),
 			vscode.workspace.onDidChangeConfiguration(event => {
 				if (
 					event.affectsConfiguration(`${extPrefix}.mcp`) ||
@@ -39,79 +31,13 @@ export const McpServerController = new (class _ implements vscode.Disposable {
 	}
 
 	dispose(): void {
-		if (this.wroteDiscovery) {
-			try {
-				removeDiscovery();
-			} catch (error) {
-				log.debug('McpServerController.dispose: removeDiscovery failed', error);
-			}
-			this.wroteDiscovery = false;
-		}
-		clearMcpToken();
 		this.disposables.forEach(disposable => disposable.dispose());
 		this.disposables = [];
 	}
 
-	/** Reconciles the discovery file with the current settings + server state. */
+	/** Starts the localhost server if MCP is enabled and it is not already running. */
 	private async sync(): Promise<void> {
-		const settings = readMcpSettings();
-		if (!settings.enable) {
-			this.clearDiscovery();
-			return;
-		}
-		// MCP reuses the localhost server; start it if the user enabled MCP but the
-		// server is not already running. The status event writes discovery on bind.
-		if (!Server.getStatus()) {
-			await Server.start();
-			return;
-		}
-		this.writeDiscoveryNow();
-	}
-
-	private onServerStatus(running: boolean): void {
-		if (running) {
-			if (readMcpSettings().enable) this.writeDiscoveryNow();
-		} else {
-			this.clearDiscovery();
-		}
-	}
-
-	private writeDiscoveryNow(): void {
-		const address = Server.getBoundAddress();
-		const token = getMcpToken();
-		if (!address || !token) return;
-		try {
-			writeDiscovery({
-				port: address.port,
-				host: address.host,
-				token,
-				pid: process.pid,
-				extensionVersion: this.extensionVersion(),
-				protocolVersion: MCP_PROTOCOL_VERSION,
-				writtenAt: new Date().toISOString(),
-			});
-			this.wroteDiscovery = true;
-			log.info(`MCP discovery written for ${address.host}:${address.port}`);
-		} catch (error) {
-			log.error('McpServerController: failed to write discovery file', error);
-		}
-	}
-
-	private clearDiscovery(): void {
-		if (!this.wroteDiscovery) return;
-		try {
-			removeDiscovery();
-		} catch (error) {
-			log.debug('McpServerController: removeDiscovery failed', error);
-		}
-		this.wroteDiscovery = false;
-	}
-
-	private extensionVersion(): string {
-		try {
-			return (context.extension?.packageJSON?.version as string) ?? '0.0.0';
-		} catch {
-			return '0.0.0';
-		}
+		if (!readMcpSettings().enable) return;
+		if (!Server.getStatus()) await Server.start();
 	}
 })();

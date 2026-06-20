@@ -1,43 +1,44 @@
-import { context, extPrefix } from '@global';
+import { extPrefix } from '@global';
+import { getServerConfig } from '@server';
 import { log } from '@utils';
 import vscode from 'vscode';
+import { getMcpToken, MCP_TOKEN_HEADER } from '@mcp';
 import GenericCommand from '../GenericCommand';
 
 /**
  * Prints the MCP client configuration that points an external client (Claude
- * Desktop, Claude Code, Cursor) at the bundled credential-free bridge. The
- * client spawns `node <bridge>`; the bridge discovers the live port + token from
- * ~/.rewst-buddy/mcp.json at runtime, so no secrets appear in the config.
+ * Desktop, Claude Code, Cursor) at the extension's in-process MCP HTTP server.
+ * The client connects to the localhost /mcp URL and presents the per-install
+ * token as a header — no separate process, no `node`, no secrets in the config.
  */
 export class GenerateMcpConfig extends GenericCommand {
 	commandName = 'GenerateMcpConfig';
 
 	async execute(): Promise<void> {
-		const bridgePath = context.asAbsolutePath('dist/mcp/rewst-mcp.js');
+		const { host, port } = getServerConfig();
 		const config = {
 			mcpServers: {
 				'rewst-buddy': {
-					command: 'node',
-					args: [bridgePath],
+					url: `http://${host}:${port}/mcp`,
+					headers: { [MCP_TOKEN_HEADER]: getMcpToken() },
 				},
 			},
 		};
+		const json = JSON.stringify(config, null, 2);
 
 		const enabled = vscode.workspace.getConfiguration(`${extPrefix}.mcp`).get<boolean>('enable', false);
-		const doc = await vscode.workspace.openTextDocument({
-			language: 'json',
-			content: JSON.stringify(config, null, 2),
-		});
+		const doc = await vscode.workspace.openTextDocument({ language: 'json', content: json });
 		await vscode.window.showTextDocument(doc, { preview: false });
-		await vscode.env.clipboard.writeText(JSON.stringify(config, null, 2));
+		await vscode.env.clipboard.writeText(json);
 
 		log.info('GenerateMcpConfig: produced client config');
 
 		const notes = [
 			'MCP client config copied to clipboard and opened in an editor.',
-			'Add it to your MCP client (e.g. Claude Desktop) config.',
-			'The client runs `node`, so Node.js must be on its PATH.',
-			enabled ? '' : 'Note: rewst-buddy.mcp.enable is currently off — turn it on so the bridge can connect.',
+			'Add it to your MCP client (e.g. Claude Desktop) config and restart it.',
+			enabled
+				? ''
+				: 'Note: rewst-buddy.mcp.enable is currently off — turn it on so the server accepts connections.',
 		]
 			.filter(Boolean)
 			.join(' ');

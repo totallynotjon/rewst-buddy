@@ -3,7 +3,7 @@ import vscode from 'vscode';
 
 /** The rewst-buddy.mcp.* switches that govern the MCP server surface. */
 export interface McpSettings {
-	/** Master switch; when false no MCP action runs and no discovery file is written. */
+	/** Master switch; when false the /mcp endpoint rejects every request. */
 	enable: boolean;
 	/** Allows access:'write' capabilities through the MCP boundary. */
 	enableWriteTools: boolean;
