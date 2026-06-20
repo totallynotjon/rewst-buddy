@@ -73,7 +73,7 @@ suite('Unit: capability registry', () => {
 	});
 
 	suite('mcp surface', () => {
-		test('read tools are exposed to MCP and are all read access', () => {
+		test('read tools and the dedicated mutation tool are exposed to MCP', () => {
 			const names = mcpCapabilities().map(capability => capability.spec.name);
 			for (const expected of [
 				'list_orgs',
@@ -82,18 +82,19 @@ suite('Unit: capability registry', () => {
 				'list_workflows',
 				'get_workflow',
 				'rewst_graphql_query',
+				'buddy_graphql_schema',
+				'rewst_graphql_mutate',
 			]) {
 				assert.ok(names.includes(expected), `${expected} exposed to MCP`);
 			}
-			for (const capability of mcpCapabilities()) {
-				assert.strictEqual(capability.access, 'read', `${capability.spec.name} is read-only`);
-			}
+			assert.strictEqual(getCapability('rewst_graphql_mutate')?.access, 'write');
+			assert.ok(!names.includes('buddy_graphql'), 'combined chat write tool stays off MCP');
 		});
 
-		test('the GraphQL chat tools are not exposed to MCP (writes stay in the chat surface)', () => {
+		test('buddy_graphql_schema is also exposed to MCP, but buddy_graphql is not', () => {
 			const names = mcpCapabilities().map(capability => capability.spec.name);
 			assert.ok(!names.includes('buddy_graphql'));
-			assert.ok(!names.includes('buddy_graphql_schema'));
+			assert.ok(names.includes('buddy_graphql_schema'));
 		});
 
 		test('list_orgs does not require an org', () => {
@@ -102,14 +103,24 @@ suite('Unit: capability registry', () => {
 			assert.strictEqual(listOrgs.requiresOrg, false);
 		});
 
-		test('rewst_graphql_query is gated by enableGraphqlTool; structured reads are not', () => {
+		test('buddy_graphql_schema does not require an org', () => {
+			const schema = getCapability('buddy_graphql_schema');
+			assert.ok(schema);
+			assert.strictEqual(schema.requiresOrg, false);
+		});
+
+		test('raw GraphQL MCP tools are gated by enableGraphqlTool; structured reads are not', () => {
 			const off = enabledMcpCapabilities(settings()).map(capability => capability.spec.name);
 			assert.ok(!off.includes('rewst_graphql_query'), 'raw query off by default');
+			assert.ok(!off.includes('buddy_graphql_schema'), 'schema off by default');
+			assert.ok(!off.includes('rewst_graphql_mutate'), 'mutation off by default');
 			assert.ok(off.includes('list_templates'), 'structured reads always available');
 			const on = enabledMcpCapabilities(settings({ enableGraphqlTool: true })).map(
 				capability => capability.spec.name,
 			);
 			assert.ok(on.includes('rewst_graphql_query'), 'raw query available when graphql enabled');
+			assert.ok(on.includes('buddy_graphql_schema'), 'schema available when graphql enabled');
+			assert.ok(on.includes('rewst_graphql_mutate'), 'mutation available when graphql enabled');
 		});
 	});
 });

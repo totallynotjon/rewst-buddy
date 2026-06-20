@@ -9,10 +9,9 @@ import type { Capability } from './Capability';
  * surface keeps offering the identical two tools.
  *
  * Execution wraps runGraphqlTool with deps bound to the resolved session, the
- * same path the chat tools use. buddy_graphql_schema is read-only; buddy_graphql
- * is marked write because it can carry a mutation — the MCP server boundary
- * rejects writes unless write tools are enabled. A read-only GraphQL query
- * capability for MCP is added separately in a later phase.
+ * same path the chat tools use. buddy_graphql_schema is read-only and can also
+ * be exposed over MCP; buddy_graphql stays chat-only because it can carry both
+ * reads and writes. MCP gets separate read and mutation primitives.
  */
 
 function specByName(name: string): ToolSpec {
@@ -25,7 +24,8 @@ export const graphqlSchemaCapability: Capability = {
 	spec: specByName('buddy_graphql_schema'),
 	access: 'read',
 	chat: true,
-	mcp: false,
+	mcp: true,
+	requiresOrg: false,
 	enabled: settings => settings.enableGraphqlTool,
 	run: (input, ctx) => runGraphqlTool({ tool: 'buddy_graphql_schema', args: input }, createGraphqlDeps(ctx.session)),
 };

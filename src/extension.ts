@@ -1,4 +1,5 @@
 import { CommandInitiater } from '@commands';
+import { setMcpMutationApprover } from '@capabilities';
 import { extPrefix, context as globalVSContext } from '@global';
 import { McpDefinitionProvider, McpServerController } from '@mcp';
 import { LinkManager, SyncManager, SyncOnSaveManager, TemplateBundleManager, TemplateMetadataStore } from '@models';
@@ -25,6 +26,14 @@ export async function activate(context: vscode.ExtensionContext) {
 	log.init();
 
 	log.info(`Starting activation of extension ${extPrefix}`);
+	setMcpMutationApprover(async (scope, operation) => {
+		const choice = await vscode.window.showWarningMessage(
+			`An external MCP client wants to run a mutation against ${scope.scopeName} (${scope.scopeId}) in org ${scope.orgName} (${scope.orgId}).`,
+			{ modal: true, detail: operation },
+			'Approve',
+		);
+		return choice === 'Approve';
+	});
 
 	// Register TreeDataProvider (self-registers for session change events)
 	const sessionTreeProvider = new SessionTreeDataProvider();
