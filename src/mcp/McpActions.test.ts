@@ -2,6 +2,8 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { SessionManager, type Session } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import { log } from '@utils';
+import vscode from 'vscode';
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover } from '../capabilities/graphqlMutateCapability';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import {
@@ -93,6 +95,24 @@ function workflowMutationRawGraphqlResponse(request: { query?: string }): { data
 function detectGraphqlOperation(query: string): string {
 	const match = /\b(query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(query);
 	return match ? `${match[1]} ${match[2]}` : 'rawGraphql';
+}
+
+function captureInfoLogs(): { messages: string[]; restore: () => void } {
+	const messages: string[] = [];
+	const originalInfo = log.info;
+	log.info = (message: string, ...args: unknown[]) => {
+		messages.push([message, ...args.map(String)].join(' '));
+	};
+	return {
+		messages,
+		restore: () => {
+			log.info = originalInfo;
+		},
+	};
+}
+
+function auditLines(messages: string[]): string[] {
+	return messages.filter(message => message.includes('[MCP audit]'));
 }
 
 suite('Unit: McpActions', () => {
@@ -547,5 +567,124 @@ suite('Unit: McpActions', () => {
 			}
 			assert.ok(limited, 'the throttle eventually rejects a burst of resource reads');
 		});
+	});
+});
+
+suite('Unit: MCP audit logging', () => {
+	setup(async () => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+		_resetMcpThrottleForTesting();
+		_resetApprovedMutationScopes();
+		_resetMcpMutationApproverForTesting();
+		await setAiTools(['workspace', 'graphql']);
+	});
+
+	teardown(async () => {
+		SessionManager._resetForTesting();
+		_resetApprovedMutationScopes();
+		_resetMcpMutationApproverForTesting();
+		await setAiTools(['workspace']);
+	});
+
+	test('successful tool call logs tool, resolved orgId, ok outcome, and duration', async () => {
+		const { wrapper } = useSession('org-1');
+		wrapper.when('listTemplates', {
+			data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
+		});
+		const capture = captureInfoLogs();
+		try {
+			await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
+		} finally {
+			capture.restore();
+		}
+
+		const lines = auditLines(capture.messages);
+		assert.strictEqual(lines.length, 1);
+		assert.ok(lines[0].includes('tool=list_templates'));
+		assert.ok(lines[0].includes('orgId=org-1'));
+		assert.ok(lines[0].includes('outcome=ok'));
+		assert.match(lines[0], /durationMs=\d+/);
+	});
+
+	test('rejected tool call logs the McpError outcome', async () => {
+		useSession('org-1');
+		const capture = captureInfoLogs();
+		try {
+			await assert.rejects(
+				callTool({ name: 'list_templates' }, settings()),
+				(error: unknown) => error instanceof McpError && error.code === 'org_required',
+			);
+		} finally {
+			capture.restore();
+		}
+
+		const lines = auditLines(capture.messages);
+		assert.strictEqual(lines.length, 1);
+		assert.ok(lines[0].includes('tool=list_templates'));
+		assert.ok(lines[0].includes('orgId=—'));
+		assert.ok(lines[0].includes('outcome=error:org_required'));
+		assert.match(lines[0], /durationMs=\d+/);
+	});
+
+	test('audit logs do not include arguments or secrets', async () => {
+		const { wrapper } = useSession('org-1');
+		wrapper.when('listTemplates', {
+			data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
+		});
+		const capture = captureInfoLogs();
+		try {
+			await callTool(
+				{
+					name: 'list_templates',
+					arguments: {
+						orgId: 'org-1',
+						apiToken: 'audit-secret-token',
+						query: 'query AuditSecret { secretField }',
+						variables: { password: 'audit-secret-password' },
+					},
+				},
+				settings(),
+			);
+		} finally {
+			capture.restore();
+		}
+
+		const lines = auditLines(capture.messages);
+		assert.strictEqual(lines.length, 1);
+		const combined = lines.join('\n');
+		assert.ok(!combined.includes('audit-secret-token'));
+		assert.ok(!combined.includes('AuditSecret'));
+		assert.ok(!combined.includes('secretField'));
+		assert.ok(!combined.includes('audit-secret-password'));
+	});
+
+	test('approval_required structured results log approval_required outcome', async () => {
+		const { session, wrapper } = useSession('org-1');
+		useRawGraphqlWrapper(session, wrapper);
+		setMcpMutationApprover(async () => false);
+		const capture = captureInfoLogs();
+		try {
+			await callTool(
+				{
+					name: 'rewst_graphql_mutate',
+					arguments: {
+						orgId: 'org-1',
+						query: 'mutation UpdateThing { updateThing { id } }',
+						scopeId: 'wf-1',
+						scopeName: 'Workflow',
+					},
+				},
+				settings({ enableWriteTools: true }),
+			);
+		} finally {
+			capture.restore();
+		}
+
+		const lines = auditLines(capture.messages);
+		assert.strictEqual(lines.length, 1);
+		assert.ok(lines[0].includes('tool=rewst_graphql_mutate'));
+		assert.ok(lines[0].includes('orgId=org-1'));
+		assert.ok(lines[0].includes('outcome=approval_required'));
 	});
 });
