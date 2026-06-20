@@ -169,9 +169,15 @@ async function runListTemplates(input: Record<string, unknown>, ctx: CapabilityC
 }
 
 async function runGetTemplate(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	requireString(input, 'orgId');
+	const orgId = requireString(input, 'orgId');
 	const templateId = requireString(input, 'templateId');
 	const template = await ctx.session.getTemplate(templateId);
+	// A session can manage several orgs, so a bare id lookup can cross org
+	// boundaries; enforce the requested orgId against the returned resource.
+	const templateOrgId = (template as { orgId?: unknown }).orgId;
+	if (typeof templateOrgId === 'string' && templateOrgId !== orgId) {
+		throw new Error(`Template ${templateId} is not in org ${orgId}.`);
+	}
 	return JSON.stringify(template, null, 2);
 }
 
@@ -200,14 +206,18 @@ async function runListWorkflows(input: Record<string, unknown>, ctx: CapabilityC
 }
 
 async function runGetWorkflow(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	requireString(input, 'orgId');
+	const orgId = requireString(input, 'orgId');
 	const workflowId = requireString(input, 'workflowId');
 	const { data, errors } = await ctx.session.rawGraphql(WORKFLOW_QUERY, { id: workflowId });
 	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
 		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
 	}
-	const workflow = (data as { workflow?: unknown } | undefined)?.workflow;
+	const workflow = (data as { workflow?: { orgId?: unknown } } | undefined)?.workflow;
 	if (!workflow) throw new Error(`Workflow not found: ${workflowId}`);
+	// workflow(where:{id}) ignores org, so enforce the requested orgId here.
+	if (typeof workflow.orgId === 'string' && workflow.orgId !== orgId) {
+		throw new Error(`Workflow ${workflowId} is not in org ${orgId}.`);
+	}
 	return JSON.stringify(workflow, null, 2);
 }
 

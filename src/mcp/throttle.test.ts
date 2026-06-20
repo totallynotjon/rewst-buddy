@@ -1,10 +1,17 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { SessionManager } from '@sessions';
+import { initTestEnvironment } from '@test';
 import { SlidingWindowThrottle } from './throttle';
 
-const { suite, test } = Mocha;
+const { suite, test, setup } = Mocha;
 
 suite('Unit: SlidingWindowThrottle', () => {
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+	});
+
 	test('allows up to the limit then rejects within the window', () => {
 		const now = 1000;
 		const throttle = new SlidingWindowThrottle(3, 1000, () => now);

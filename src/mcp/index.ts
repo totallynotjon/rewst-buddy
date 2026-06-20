@@ -10,11 +10,12 @@ export {
 } from './McpActions';
 export { buildMcpServer, handleMcpHttp } from './mcpServer';
 export { McpServerController } from './McpServerController';
-export { getMcpToken, isValidMcpToken, rotateMcpToken } from './runtime';
+export { getMcpToken, isValidMcpToken, rotateMcpToken, _resetMcpTokenForTesting } from './runtime';
 export { readMcpSettings, type McpSettings } from './settings';
 export {
 	MCP_PROTOCOL_VERSION,
-	MCP_TOKEN_HEADER,
+	mcpAuthorizationHeader,
+	parseBearerToken,
 	type McpErrorCode,
 	type McpResourceDescriptor,
 	type McpToolDescriptor,

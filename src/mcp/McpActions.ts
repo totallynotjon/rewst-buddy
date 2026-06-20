@@ -69,6 +69,12 @@ function exposedCapabilities(settings: McpSettings): Capability[] {
 	return CAPABILITY_REGISTRY.filter(capability => isExposed(capability, settings));
 }
 
+/** Whether a capability, looked up by name, is exposed under the current settings. */
+function isCapabilityExposed(name: string, settings: McpSettings): boolean {
+	const capability = getCapability(name);
+	return capability ? isExposed(capability, settings) : false;
+}
+
 function truncate(text: string): string {
 	if (text.length <= MCP_MAX_OUTPUT_CHARS) return text;
 	return `${text.slice(0, MCP_MAX_OUTPUT_CHARS)}\n…(output truncated at ${MCP_MAX_OUTPUT_CHARS} characters; narrow your request to see more)`;
@@ -182,15 +188,22 @@ export async function callTool(
 // Resources are a thin, bounded view over the same read capabilities. Client
 // support varies, so this stays tools-first: only per-active-org collection URIs
 // are advertised, not every individual template.
-export function listResources(): McpResourceDescriptor[] {
+export function listResources(settings: McpSettings = readMcpSettings()): McpResourceDescriptor[] {
+	// Only advertise a collection when its backing list capability is exposed, so
+	// resources honour the same allowlist/exposure gates as tools.
+	const templatesExposed = isCapabilityExposed('list_templates', settings);
+	const workflowsExposed = isCapabilityExposed('list_workflows', settings);
+	if (!templatesExposed && !workflowsExposed) return [];
 	const resources: McpResourceDescriptor[] = [];
 	for (const session of SessionManager.getActiveSessions()) {
 		const { id, name } = session.profile.org;
 		if (!id) continue;
-		resources.push(
-			{ uri: `rewst://${id}/templates`, name: `${name} templates`, mimeType: 'text/plain' },
-			{ uri: `rewst://${id}/workflows`, name: `${name} workflows`, mimeType: 'text/plain' },
-		);
+		if (templatesExposed) {
+			resources.push({ uri: `rewst://${id}/templates`, name: `${name} templates`, mimeType: 'text/plain' });
+		}
+		if (workflowsExposed) {
+			resources.push({ uri: `rewst://${id}/workflows`, name: `${name} workflows`, mimeType: 'text/plain' });
+		}
 	}
 	return resources;
 }
@@ -222,6 +235,11 @@ export async function readResource(uri: string): Promise<ResourceContent> {
 				: 'list_workflows';
 	const capability = getCapability(toolName);
 	if (!capability) throw new McpError('internal', `Missing capability for resource ${uri}`);
+	// Resources run capabilities directly, so enforce the same exposure/allowlist
+	// gates here — otherwise a disabled or non-allowlisted tool is reachable by URI.
+	if (!isExposed(capability, readMcpSettings())) {
+		throw new McpError('unknown_tool', `Resource ${uri} is not available; the tool "${toolName}" is not enabled.`);
+	}
 
 	const args: Record<string, unknown> = { orgId: parsed.orgId };
 	if (parsed.id) args[parsed.collection === 'templates' ? 'templateId' : 'workflowId'] = parsed.id;

@@ -16,10 +16,20 @@ export interface McpSettings {
 
 export function readMcpSettings(): McpSettings {
 	const config = vscode.workspace.getConfiguration(`${extPrefix}.mcp`);
-	const enabledTools = config.get<string[]>('enabledTools', []);
+	const rawEnabledTools = config.get<unknown>('enabledTools');
+	// `[]` means "all enabled read tools", so a malformed (non-array) value must
+	// not silently fall through to that — it would broaden exposure on a config
+	// typo. Fail closed: disable the server entirely until the config is valid.
+	const malformedEnabledTools = rawEnabledTools !== undefined && !Array.isArray(rawEnabledTools);
+	const enabledTools = Array.isArray(rawEnabledTools)
+		? rawEnabledTools
+				.filter((value): value is string => typeof value === 'string')
+				.map(value => value.trim())
+				.filter(Boolean)
+		: [];
 	return {
-		enable: config.get<boolean>('enable', false),
-		enableWriteTools: config.get<boolean>('enableWriteTools', false),
-		enabledTools: Array.isArray(enabledTools) ? enabledTools : [],
+		enable: !malformedEnabledTools && config.get<boolean>('enable', false),
+		enableWriteTools: !malformedEnabledTools && config.get<boolean>('enableWriteTools', false),
+		enabledTools,
 	};
 }

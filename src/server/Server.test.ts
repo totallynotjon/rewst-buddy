@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import net from 'net';
 import vscode from 'vscode';
+import { SessionManager } from '@sessions';
 import { initTestEnvironment } from '@test';
 import { Server } from './Server';
 
@@ -37,6 +38,7 @@ suite('Unit: Server concurrent start', () => {
 
 	setup(async () => {
 		initTestEnvironment();
+		SessionManager._resetForTesting();
 		await Server.stop(); // ensure a clean, not-running singleton
 		port = await findFreePort();
 		await setPort(port);

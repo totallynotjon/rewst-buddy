@@ -3,14 +3,28 @@
  * transport runs inside the extension host (see mcpServer.ts), so there is no
  * separate bridge process and no wire envelope to maintain — these are just the
  * descriptor/result/error shapes the capability surface produces, plus the
- * localhost auth header.
+ * localhost auth helpers.
  */
 
 /** Reported as the MCP server version in the initialize handshake. */
 export const MCP_PROTOCOL_VERSION = 1;
 
-/** HTTP header carrying the per-install MCP token the client must present. */
-export const MCP_TOKEN_HEADER = 'x-rewst-mcp-token';
+/**
+ * The localhost MCP token travels in the standard `Authorization: Bearer <token>`
+ * header — the same scheme MCP HTTP clients use everywhere, so the generated
+ * client config needs no custom-header support. Builds the header value a client
+ * presents on every /mcp request.
+ */
+export function mcpAuthorizationHeader(token: string): string {
+	return `Bearer ${token}`;
+}
+
+/** Extracts the bearer token from an `Authorization` header value, if present. */
+export function parseBearerToken(authorization: string | undefined): string | undefined {
+	if (typeof authorization !== 'string') return undefined;
+	const match = /^Bearer[ \t]+(\S.*)$/i.exec(authorization.trim());
+	return match ? match[1].trim() : undefined;
+}
 
 /** Stable error codes so the agent gets actionable messages, not opaque 500s. */
 export type McpErrorCode =

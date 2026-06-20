@@ -7,8 +7,8 @@ import { SessionManager } from '@sessions';
 import { createMockSession, initTestEnvironment } from '@test';
 import { _resetMcpThrottleForTesting } from './McpActions';
 import { buildMcpServer, handleMcpHttp } from './mcpServer';
-import { MCP_TOKEN_HEADER } from './protocol';
-import { getMcpToken, rotateMcpToken } from './runtime';
+import { mcpAuthorizationHeader } from './protocol';
+import { getMcpToken, rotateMcpToken, _resetMcpTokenForTesting } from './runtime';
 
 const { suite, test, setup, teardown } = Mocha;
 
@@ -45,6 +45,9 @@ suite('Unit: mcpServer', () => {
 
 	teardown(async () => {
 		SessionManager._resetForTesting();
+		// The token persists in globalState (and an in-memory cache); clear both so
+		// it cannot leak into other suites.
+		_resetMcpTokenForTesting();
 		await vscode.workspace
 			.getConfiguration('rewst-buddy.mcp')
 			.update('enable', undefined, vscode.ConfigurationTarget.Global);
@@ -108,7 +111,19 @@ suite('Unit: mcpServer', () => {
 				.update('enable', true, vscode.ConfigurationTarget.Global);
 			rotateMcpToken();
 			const res = fakeRes();
-			await handleMcpHttp({ headers: { [MCP_TOKEN_HEADER]: 'wrong' } } as never, res as never);
+			await handleMcpHttp({ headers: { authorization: mcpAuthorizationHeader('wrong') } } as never, res as never);
+			assert.strictEqual(res.statusCode, 401);
+			assert.ok(res.body.includes('bad_token'));
+		});
+
+		test('returns 401 when the token is sent without the Bearer scheme', async () => {
+			await vscode.workspace
+				.getConfiguration('rewst-buddy.mcp')
+				.update('enable', true, vscode.ConfigurationTarget.Global);
+			const token = getMcpToken();
+			const res = fakeRes();
+			// A bare token (no "Bearer " prefix) must not authenticate.
+			await handleMcpHttp({ headers: { authorization: token } } as never, res as never);
 			assert.strictEqual(res.statusCode, 401);
 			assert.ok(res.body.includes('bad_token'));
 		});

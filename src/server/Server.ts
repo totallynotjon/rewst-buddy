@@ -2,6 +2,7 @@ import { log } from '@utils';
 import http, { IncomingMessage, ServerResponse } from 'http';
 import vscode from 'vscode';
 import { handleMcpHttp } from '../mcp/mcpServer';
+import { readMcpSettings } from '../mcp/settings';
 import { getServerConfig } from './config';
 import { handleAddSession, handleOpenTemplate, validateRequest } from './handlers';
 import { BrowserRequest, Response, ServerConfig } from './types';
@@ -40,8 +41,9 @@ export const Server = new (class _ implements vscode.Disposable {
 	private async handleConfigChange(): Promise<void> {
 		const config = getServerConfig();
 		if (config.enabled && !this.isRunning) {
-			await this.start();
-		} else if (!config.enabled && this.isRunning) {
+			await this.start(true);
+		} else if (!config.enabled && this.isRunning && !readMcpSettings().enable) {
+			// Only stop when MCP no longer needs the server either.
 			await this.stop();
 		}
 	}
@@ -49,11 +51,20 @@ export const Server = new (class _ implements vscode.Disposable {
 	async startIfEnabled(): Promise<void> {
 		const config = getServerConfig();
 		if (config.enabled) {
-			await this.start();
+			await this.start(true);
 		}
 	}
 
-	async start(): Promise<boolean> {
+	/** The server stays up while either driver wants it: the browser-action server or MCP. */
+	private shouldStayRunning(): boolean {
+		return getServerConfig().enabled || readMcpSettings().enable;
+	}
+
+	/**
+	 * @param auto true for config/controller-driven starts, which self-correct if
+	 * every driver was disabled mid-bind; false for an explicit user StartServer.
+	 */
+	async start(auto = false): Promise<boolean> {
 		if (this.isRunning) {
 			log.warn('Server.start: already running');
 			return true;
@@ -70,7 +81,16 @@ export const Server = new (class _ implements vscode.Disposable {
 		}
 		this.startPromise = this.bind();
 		try {
-			return await this.startPromise;
+			const started = await this.startPromise;
+			// A disable toggled while the bind was in flight is skipped by
+			// handleConfigChange (isRunning was still false), so re-check the final
+			// config here and stop a server no driver wants anymore.
+			if (started && auto && !this.shouldStayRunning()) {
+				log.debug('Server.start: all drivers disabled during bind; stopping immediately');
+				await this.stop();
+				return false;
+			}
+			return started;
 		} finally {
 			this.startPromise = null;
 		}
@@ -133,7 +153,8 @@ export const Server = new (class _ implements vscode.Disposable {
 		// The MCP Streamable HTTP transport owns the /mcp path: it reads the body
 		// and writes its own headers/stream, so route it before the browser-action
 		// handling sets any headers or consumes the request body.
-		if ((req.url ?? '/').split('?')[0] === '/mcp') {
+		const path = (req.url ?? '/').split('?')[0].replace(/\/+$/, '');
+		if (path === '/mcp') {
 			void handleMcpHttp(req, res);
 			return;
 		}

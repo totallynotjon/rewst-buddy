@@ -43,7 +43,7 @@ Capability Registry (src/capabilities)  ← single source of truth
 
 MCP path:
   Claude Desktop/Code
-    └─(MCP Streamable HTTP, URL + x-rewst-mcp-token header)→
+    └─(MCP Streamable HTTP, URL + Authorization: Bearer <token> header)→
         extension localhost server (src/server) /mcp route
           └─ MCP SDK Server (stateless) — src/mcp/mcpServer.ts
               └─ capability surface (src/mcp/McpActions.ts)
@@ -92,7 +92,8 @@ surfaces it on every enabled surface automatically.
 - Mounted on the localhost server at the `/mcp` route (`Server.ts` routes it
   before the browser-action handling).
 - Auth: master switch (`mcp.enable`) + a stable per-install token presented in
-  the `x-rewst-mcp-token` header + DNS-rebinding protection (`allowedHosts`).
+  the standard `Authorization: Bearer <token>` header + DNS-rebinding protection
+  (`allowedHosts`).
 
 **Onboarding command** `GenerateMcpConfig` → prints client config JSON: the
 `/mcp` URL plus the token header. No `node`, no spawned process, no discovery file.

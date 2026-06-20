@@ -2,7 +2,7 @@ import { extPrefix } from '@global';
 import { getServerConfig } from '@server';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { getMcpToken, MCP_TOKEN_HEADER } from '@mcp';
+import { getMcpToken, mcpAuthorizationHeader } from '@mcp';
 import GenericCommand from '../GenericCommand';
 
 /**
@@ -20,7 +20,7 @@ export class GenerateMcpConfig extends GenericCommand {
 			mcpServers: {
 				'rewst-buddy': {
 					url: `http://${host}:${port}/mcp`,
-					headers: { [MCP_TOKEN_HEADER]: getMcpToken() },
+					headers: { Authorization: mcpAuthorizationHeader(getMcpToken()) },
 				},
 			},
 		};

@@ -38,6 +38,6 @@ export const McpServerController = new (class _ implements vscode.Disposable {
 	/** Starts the localhost server if MCP is enabled and it is not already running. */
 	private async sync(): Promise<void> {
 		if (!readMcpSettings().enable) return;
-		if (!Server.getStatus()) await Server.start();
+		if (!Server.getStatus()) await Server.start(true);
 	}
 })();

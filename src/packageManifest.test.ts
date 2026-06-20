@@ -1,9 +1,11 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { SessionManager } from '@sessions';
+import { initTestEnvironment } from '@test';
 import { chatCapabilities } from './capabilities';
 import { ALL_TOOL_SPECS, APPROVAL_TOOL_SPEC } from './ui/chat/model/lmTools';
 
-const { suite, test } = Mocha;
+const { suite, test, setup } = Mocha;
 
 interface ManifestTool {
 	name: string;
@@ -31,6 +33,11 @@ interface PackageManifest {
 const manifest = require('../package.json') as PackageManifest;
 
 suite('Unit: package manifest', () => {
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+	});
+
 	test('declares the VS Code chat model provider floor and contribution', () => {
 		assert.match(manifest.engines.vscode, /^\^1\.122/);
 		// @types/vscode tracks the highest published typings (>= 1.120), which already

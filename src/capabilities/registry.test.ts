@@ -1,5 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { SessionManager } from '@sessions';
+import { initTestEnvironment } from '@test';
 import type { CapabilitySettings } from './Capability';
 import {
 	CAPABILITY_REGISTRY,
@@ -9,13 +11,20 @@ import {
 	mcpCapabilities,
 } from './registry';
 
-const { suite, test } = Mocha;
+const { suite, test, setup } = Mocha;
+
+const GRAPHQL_CHAT_CAPABILITIES = ['buddy_graphql_schema', 'buddy_graphql'];
 
 function settings(overrides: Partial<CapabilitySettings> = {}): CapabilitySettings {
 	return { enableGraphqlTool: false, ...overrides };
 }
 
 suite('Unit: capability registry', () => {
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+	});
+
 	test('capability names are unique', () => {
 		const names = CAPABILITY_REGISTRY.map(capability => capability.spec.name);
 		assert.strictEqual(new Set(names).size, names.length, 'no duplicate capability names');
@@ -49,7 +58,10 @@ suite('Unit: capability registry', () => {
 		});
 
 		test('chat graphql capabilities are gated by enableGraphqlTool', () => {
-			for (const capability of chatCapabilities()) {
+			const graphqlChatCapabilities = chatCapabilities().filter(capability =>
+				GRAPHQL_CHAT_CAPABILITIES.includes(capability.spec.name),
+			);
+			for (const capability of graphqlChatCapabilities) {
 				assert.strictEqual(capability.enabled(settings()), false, `${capability.spec.name} off by default`);
 				assert.strictEqual(
 					capability.enabled(settings({ enableGraphqlTool: true })),
