@@ -42,10 +42,10 @@ suite('Unit: GenerateMcpConfig', () => {
 	let infoItems: string[] = [];
 	let infoChoice: string | undefined;
 
-	setup(() => {
+	setup(async () => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
-		_resetMcpTokenForTesting();
+		await _resetMcpTokenForTesting();
 		opened = undefined;
 		shownOptions = undefined;
 		clipboardText = undefined;
@@ -80,7 +80,7 @@ suite('Unit: GenerateMcpConfig', () => {
 	teardown(async () => {
 		while (restores.length) restores.pop()!.restore();
 		SessionManager._resetForTesting();
-		_resetMcpTokenForTesting();
+		await _resetMcpTokenForTesting();
 		await setMcpEnabled(undefined);
 	});
 

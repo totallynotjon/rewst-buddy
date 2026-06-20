@@ -57,7 +57,7 @@ export function isValidMcpToken(presented: string | undefined): boolean {
 }
 
 /** Exposed for tests: drops the cached token and clears the persisted one. */
-export function _resetMcpTokenForTesting(): void {
+export async function _resetMcpTokenForTesting(): Promise<void> {
 	cachedToken = undefined;
-	void context.globalState.update(TOKEN_KEY, undefined);
+	await context.globalState.update(TOKEN_KEY, undefined);
 }

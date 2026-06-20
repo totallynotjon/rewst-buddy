@@ -39,22 +39,30 @@ async function setMcpEnabled(value: boolean | undefined): Promise<void> {
 		.update('enable', value, vscode.ConfigurationTarget.Global);
 }
 
+async function setServerEnabled(value: boolean | undefined): Promise<void> {
+	await vscode.workspace
+		.getConfiguration('rewst-buddy.server')
+		.update('enabled', value, vscode.ConfigurationTarget.Global);
+}
+
 /**
- * Tests the controller's contract — does it ask the localhost Server to start
- * when MCP is enabled? — by stubbing Server so no real socket binds. Only
- * `rewst-buddy.mcp.enable` is toggled, so the global Server's own
- * `rewst-buddy.server` config handler never fires and cannot interfere.
+ * Tests the controller's contract — does it start/stop the localhost Server to
+ * track the MCP switch? — by stubbing Server so no real socket binds. Most cases
+ * toggle only `rewst-buddy.mcp.enable`, so the global Server's own
+ * `rewst-buddy.server` config handler does not interfere.
  */
 suite('Unit: McpServerController', () => {
 	const restores: Restore[] = [];
 	let running = false;
 	let startCalls = 0;
+	let stopCalls = 0;
 
 	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
 		running = false;
 		startCalls = 0;
+		stopCalls = 0;
 		restores.push(
 			stub(Server, 'getStatus', (() => running) as typeof Server.getStatus),
 			stub(Server, 'start', (async () => {
@@ -62,6 +70,10 @@ suite('Unit: McpServerController', () => {
 				running = true;
 				return true;
 			}) as typeof Server.start),
+			stub(Server, 'stop', (async () => {
+				stopCalls += 1;
+				running = false;
+			}) as typeof Server.stop),
 		);
 	});
 
@@ -69,6 +81,7 @@ suite('Unit: McpServerController', () => {
 		McpServerController.dispose();
 		while (restores.length) restores.pop()!.restore();
 		await setMcpEnabled(undefined);
+		await setServerEnabled(undefined);
 	});
 
 	test('does not start the server when MCP is disabled', async () => {
@@ -91,6 +104,28 @@ suite('Unit: McpServerController', () => {
 		McpServerController.init();
 		await new Promise(resolve => setTimeout(resolve, 60));
 		assert.strictEqual(startCalls, 0, 'reuses the already-running server');
+	});
+
+	test('stops an MCP-only server when MCP is disabled', async () => {
+		await setServerEnabled(false); // browser-action server does not want it
+		await setMcpEnabled(false);
+		// Let any global server-config handler settle, then assert from a clean slate.
+		await new Promise(resolve => setTimeout(resolve, 40));
+		stopCalls = 0;
+		running = true; // server is up, started only for MCP
+		McpServerController.init();
+		assert.ok(await waitUntil(() => stopCalls > 0), 'stops the server no driver wants');
+	});
+
+	test('leaves the server running when the browser-action server still wants it', async () => {
+		await setServerEnabled(true); // browser-action server wants it
+		await setMcpEnabled(false);
+		await new Promise(resolve => setTimeout(resolve, 40));
+		stopCalls = 0;
+		running = true;
+		McpServerController.init();
+		await new Promise(resolve => setTimeout(resolve, 60));
+		assert.strictEqual(stopCalls, 0, 'does not stop a server the other driver needs');
 	});
 
 	test('reacts to a later config change that enables MCP', async () => {

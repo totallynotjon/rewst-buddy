@@ -174,8 +174,9 @@ async function runGetTemplate(input: Record<string, unknown>, ctx: CapabilityCon
 	const template = await ctx.session.getTemplate(templateId);
 	// A session can manage several orgs, so a bare id lookup can cross org
 	// boundaries; enforce the requested orgId against the returned resource.
+	// Fail closed: reject when orgId is absent as well as when it mismatches.
 	const templateOrgId = (template as { orgId?: unknown }).orgId;
-	if (typeof templateOrgId === 'string' && templateOrgId !== orgId) {
+	if (typeof templateOrgId !== 'string' || templateOrgId !== orgId) {
 		throw new Error(`Template ${templateId} is not in org ${orgId}.`);
 	}
 	return JSON.stringify(template, null, 2);
@@ -215,7 +216,8 @@ async function runGetWorkflow(input: Record<string, unknown>, ctx: CapabilityCon
 	const workflow = (data as { workflow?: { orgId?: unknown } } | undefined)?.workflow;
 	if (!workflow) throw new Error(`Workflow not found: ${workflowId}`);
 	// workflow(where:{id}) ignores org, so enforce the requested orgId here.
-	if (typeof workflow.orgId === 'string' && workflow.orgId !== orgId) {
+	// Fail closed: reject when orgId is absent as well as when it mismatches.
+	if (typeof workflow.orgId !== 'string' || workflow.orgId !== orgId) {
 		throw new Error(`Workflow ${workflowId} is not in org ${orgId}.`);
 	}
 	return JSON.stringify(workflow, null, 2);

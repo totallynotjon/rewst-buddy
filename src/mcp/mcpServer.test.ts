@@ -47,7 +47,7 @@ suite('Unit: mcpServer', () => {
 		SessionManager._resetForTesting();
 		// The token persists in globalState (and an in-memory cache); clear both so
 		// it cannot leak into other suites.
-		_resetMcpTokenForTesting();
+		await _resetMcpTokenForTesting();
 		await vscode.workspace
 			.getConfiguration('rewst-buddy.mcp')
 			.update('enable', undefined, vscode.ConfigurationTarget.Global);

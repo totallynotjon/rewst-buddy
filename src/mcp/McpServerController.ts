@@ -1,5 +1,5 @@
 import { extPrefix } from '@global';
-import { Server } from '@server';
+import { Server, getServerConfig } from '@server';
 import { log } from '@utils';
 import vscode from 'vscode';
 import { readMcpSettings } from './settings';
@@ -35,9 +35,16 @@ export const McpServerController = new (class _ implements vscode.Disposable {
 		this.disposables = [];
 	}
 
-	/** Starts the localhost server if MCP is enabled and it is not already running. */
+	/**
+	 * Reconciles the localhost server with the MCP switch: starts it when MCP is
+	 * enabled, and stops a server that was running only for MCP once MCP is turned
+	 * off and the browser-action server does not want it either.
+	 */
 	private async sync(): Promise<void> {
-		if (!readMcpSettings().enable) return;
+		if (!readMcpSettings().enable) {
+			if (Server.getStatus() && !getServerConfig().enabled) await Server.stop();
+			return;
+		}
 		if (!Server.getStatus()) await Server.start(true);
 	}
 })();
