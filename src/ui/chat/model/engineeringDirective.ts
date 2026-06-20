@@ -1,3 +1,5 @@
+import { hasChatCapability } from '../../../capabilities/registry';
+
 /**
  * Hidden preamble sent as the first part of the opening message of every NEW
  * backend conversation started from VS Code. RoboRewsty's system prompt is
@@ -134,8 +136,8 @@ Write like an engineer in a code review: direct, specific, complete. Deliver wor
  * editor tools at all, header, native-tool policy, and footer remain.
  */
 export function buildEngineeringDirective(availableTools: ReadonlySet<string>): string {
-	const hasWorkflowTools = availableTools.has('buddy_workflow_get') || availableTools.has('buddy_workflow_edit');
-	const hasGraphql = availableTools.has('buddy_graphql') || availableTools.has('buddy_graphql_schema');
+	const hasWorkflowTools = hasChatCapability('workflow', availableTools);
+	const hasGraphql = hasChatCapability('graphql', availableTools);
 	const bullets: string[] = [];
 	// Priority order is bullet order: our purpose-built workflow tools first, then
 	// raw GraphQL, then (per each bullet) native platform wrappers as the last resort.

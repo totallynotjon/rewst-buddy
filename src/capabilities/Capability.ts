@@ -13,6 +13,7 @@ import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
  */
 
 export type CapabilityAccess = 'read' | 'write';
+export type CapabilityGroup = 'workflow' | 'graphql' | 'web' | 'workspace' | 'result';
 
 /**
  * Settings that gate whether a capability is offered at all, independent of
@@ -40,6 +41,8 @@ export interface CapabilityContext {
 
 export interface Capability {
 	spec: ToolSpec;
+	/** Tool family used by steering and category-level capability lookups. */
+	group?: CapabilityGroup;
 	/**
 	 * Whether the capability can change Rewst state. The MCP server boundary
 	 * rejects access:'write' unless write tools are explicitly enabled, regardless

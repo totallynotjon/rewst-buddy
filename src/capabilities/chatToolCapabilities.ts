@@ -11,7 +11,13 @@ import {
 	WORKFLOW_TOOL_SPECS,
 } from '../ui/chat/tools/workflowTools';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
-import type { Capability, CapabilityAccess, CapabilityContext, CapabilitySettings } from './Capability';
+import type {
+	Capability,
+	CapabilityAccess,
+	CapabilityContext,
+	CapabilityGroup,
+	CapabilitySettings,
+} from './Capability';
 
 const workflowAccess: Record<string, CapabilityAccess> = {
 	buddy_workflow_get: 'read',
@@ -56,10 +62,12 @@ async function runViaChatToolPath(
 function chatCapability(
 	spec: ToolSpec,
 	access: CapabilityAccess,
+	group: CapabilityGroup,
 	enabled: (settings: CapabilitySettings) => boolean,
 ): Capability {
 	return {
 		spec,
+		group,
 		access,
 		chat: true,
 		mcp: false,
@@ -70,21 +78,22 @@ function chatCapability(
 }
 
 export const WORKSPACE_CHAT_CAPABILITIES: Capability[] = WORKSPACE_TOOL_SPECS.map(spec =>
-	chatCapability(spec, 'read', settings => settings.enableWorkspaceTools),
+	chatCapability(spec, 'read', 'workspace', settings => settings.enableWorkspaceTools),
 );
 
 export const WEB_CHAT_CAPABILITIES: Capability[] = WEB_TOOL_SPECS.map(spec =>
-	chatCapability(spec, 'read', settings => settings.enableWebTools),
+	chatCapability(spec, 'read', 'web', settings => settings.enableWebTools),
 );
 
 export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec =>
-	chatCapability(spec, workflowAccessFor(spec), settings => settings.enableWorkflowTools),
+	chatCapability(spec, workflowAccessFor(spec), 'workflow', settings => settings.enableWorkflowTools),
 );
 
 export const RESULT_READ_CHAT_CAPABILITIES: Capability[] = RESULT_READ_TOOL_SPECS.map(spec =>
 	chatCapability(
 		spec,
 		'read',
+		'result',
 		settings =>
 			settings.enableWorkspaceTools ||
 			settings.enableWebTools ||

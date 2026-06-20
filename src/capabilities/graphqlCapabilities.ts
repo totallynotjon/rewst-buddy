@@ -22,6 +22,7 @@ function specByName(name: string): ToolSpec {
 
 export const graphqlSchemaCapability: Capability = {
 	spec: specByName('buddy_graphql_schema'),
+	group: 'graphql',
 	access: 'read',
 	chat: true,
 	mcp: true,
@@ -32,6 +33,7 @@ export const graphqlSchemaCapability: Capability = {
 
 export const graphqlCapability: Capability = {
 	spec: specByName('buddy_graphql'),
+	group: 'graphql',
 	access: 'write',
 	chat: true,
 	mcp: false,

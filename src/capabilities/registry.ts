@@ -1,4 +1,4 @@
-import type { Capability, CapabilitySettings } from './Capability';
+import type { Capability, CapabilityGroup, CapabilitySettings } from './Capability';
 import {
 	RESULT_READ_CHAT_CAPABILITIES,
 	WEB_CHAT_CAPABILITIES,
@@ -25,9 +25,18 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 ];
 
 const BY_NAME = new Map(CAPABILITY_REGISTRY.map(capability => [capability.spec.name, capability]));
+const EMPTY_CHAT_CAPABILITY_NAMES = new Set<string>();
+const CHAT_NAMES_BY_GROUP = new Map<CapabilityGroup, Set<string>>();
 
 if (BY_NAME.size !== CAPABILITY_REGISTRY.length) {
 	throw new Error('CAPABILITY_REGISTRY contains duplicate capability names');
+}
+
+for (const capability of CAPABILITY_REGISTRY) {
+	if (!capability.chat || capability.group === undefined) continue;
+	const names = CHAT_NAMES_BY_GROUP.get(capability.group) ?? new Set<string>();
+	names.add(capability.spec.name);
+	CHAT_NAMES_BY_GROUP.set(capability.group, names);
 }
 
 /** A capability by tool name, or undefined if no capability owns that name. */
@@ -38,6 +47,20 @@ export function getCapability(name: string): Capability | undefined {
 /** Capabilities exposed on the Cage-Free Rewsty chat surface. */
 export function chatCapabilities(): Capability[] {
 	return CAPABILITY_REGISTRY.filter(capability => capability.chat);
+}
+
+/** Chat-exposed capability names in a tool family. */
+export function chatCapabilityNames(group: CapabilityGroup): ReadonlySet<string> {
+	return CHAT_NAMES_BY_GROUP.get(group) ?? EMPTY_CHAT_CAPABILITY_NAMES;
+}
+
+/** Whether a provided tool-name set includes any chat capability in a tool family. */
+export function hasChatCapability(group: CapabilityGroup, names: ReadonlySet<string>): boolean {
+	const groupNames = chatCapabilityNames(group);
+	for (const name of names) {
+		if (groupNames.has(name)) return true;
+	}
+	return false;
 }
 
 /** Capabilities exposed on the MCP server surface. */
