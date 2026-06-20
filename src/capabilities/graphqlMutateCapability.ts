@@ -20,6 +20,10 @@ export function _resetMcpMutationApproverForTesting(): void {
 	approver = async () => false;
 }
 
+export function requestMcpMutationApproval(scope: MutationScope, operation: string): Promise<boolean> {
+	return approver(scope, operation);
+}
+
 const graphqlMutateSpec: ToolSpec = {
 	name: 'rewst_graphql_mutate',
 	args: '{"orgId": string, "query": string, "variables"?: object, "scopeId": string, "scopeName": string, "orgName"?: string}',

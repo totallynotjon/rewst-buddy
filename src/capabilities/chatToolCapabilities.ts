@@ -18,6 +18,7 @@ import type {
 	CapabilityGroup,
 	CapabilitySettings,
 } from './Capability';
+import { runWorkflowMutationWithApproval } from './workflowMutateCapability';
 
 const workflowAccess: Record<string, CapabilityAccess> = {
 	buddy_workflow_get: 'read',
@@ -65,6 +66,8 @@ function chatCapability(
 	group: CapabilityGroup,
 	enabled: (settings: CapabilitySettings) => boolean,
 	mcp = false,
+	run: (input: Record<string, unknown>, ctx: CapabilityContext) => Promise<string> = (input, ctx) =>
+		runViaChatToolPath(spec, input, ctx),
 ): Capability {
 	return {
 		spec,
@@ -74,7 +77,7 @@ function chatCapability(
 		mcp,
 		...(doesNotRequireOrg.has(spec.name) ? { requiresOrg: false as const } : {}),
 		enabled,
-		run: (input, ctx) => runViaChatToolPath(spec, input, ctx),
+		run,
 	};
 }
 
@@ -88,7 +91,14 @@ export const WEB_CHAT_CAPABILITIES: Capability[] = WEB_TOOL_SPECS.map(spec =>
 
 export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec => {
 	const access = workflowAccessFor(spec);
-	return chatCapability(spec, access, 'workflow', settings => settings.enableWorkflowTools, access === 'read');
+	return chatCapability(
+		spec,
+		access,
+		'workflow',
+		settings => settings.enableWorkflowTools,
+		true,
+		access === 'write' ? (input, ctx) => runWorkflowMutationWithApproval(spec, input, ctx) : undefined,
+	);
 });
 
 export const RESULT_READ_CHAT_CAPABILITIES: Capability[] = RESULT_READ_TOOL_SPECS.map(spec =>
