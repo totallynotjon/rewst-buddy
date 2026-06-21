@@ -188,6 +188,9 @@ suite('Unit: McpActions', () => {
 			assert.ok(
 				first.text.length < templates.map(template => `${template.name} (${template.id})`).join('\n').length,
 			);
+			const listCalls = wrapper.getCallsFor('listTemplates');
+			assert.strictEqual(listCalls.length, 1, 'the org templates are fetched once for the oversized call');
+			assert.strictEqual(listCalls[0].variables.orgId, 'org-1', 'list_templates is scoped to the requested org');
 
 			const second = await callTool(
 				{ name: RESULT_READ_TOOL_NAME, arguments: { id, offset: MCP_MAX_OUTPUT_CHARS } },
@@ -198,6 +201,11 @@ suite('Unit: McpActions', () => {
 			assert.ok(second.text.startsWith(`Cached result "${id}" (list_templates)`));
 			assert.ok(second.text.includes(`characters ${MCP_MAX_OUTPUT_CHARS}-`));
 			assert.ok(second.text.includes('Template'));
+			assert.strictEqual(
+				wrapper.getCallsFor('listTemplates').length,
+				1,
+				'paging serves from the in-memory cache without re-hitting the API',
+			);
 		});
 
 		test('list_template_links is callable over MCP without an orgId', async () => {
