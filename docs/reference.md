@@ -91,6 +91,8 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 - `Copy MCP Config to Clipboard` — Copy (and open) a credential-free JSON config that points an **external** MCP client (Claude Desktop, Claude Code, Cursor) at the extension's local MCP server. The config carries the token via the standard `Authorization: Bearer` header, referencing it as the `REWST_BUDDY_MCP_TOKEN` environment variable rather than embedding it. Use the command's **Copy token** action to grab the localhost token (set it as that env var), or paste it in place of `${REWST_BUDDY_MCP_TOKEN}` for clients that don't expand env vars. Requires `rewst-buddy.mcp.enable`.
 - `Rotate MCP Token` — Replace the localhost MCP token after a modal confirmation. Existing MCP clients using the old token lose access until you update them; run `Copy MCP Config to Clipboard` afterward to copy the updated token/config for external clients.
 
+> **Multiple windows:** the MCP server binds one localhost port, so only the first VS Code window to bind it hosts `/mcp`, and it exposes that window's signed-in Rewst sessions. Other windows can't bind the port while it's owned, so their sessions aren't reachable over MCP — sign the org you want exposed into the owning window, or close that window to free the port. See [Rewst MCP tools](features.md#rewst-mcp-tools).
+
 ## Settings
 
 All settings live under the `rewst-buddy.*` namespace. Edit via VS Code Settings (Cmd/Ctrl + ,) → search "rewst-buddy", or `settings.json` directly.

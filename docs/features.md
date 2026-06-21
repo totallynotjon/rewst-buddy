@@ -116,6 +116,8 @@ Oversized MCP results are cached in memory and returned with a preview plus a sh
 
 The local MCP endpoint is guarded by a persistent localhost token. If it is ever exposed, run `Rewst Buddy: Rotate MCP Token` to replace it after a modal confirmation — existing MCP clients holding the old token lose access until you re-copy the config with `Copy MCP Config to Clipboard`.
 
+**Multiple VS Code windows:** the MCP server binds a single localhost port, so only one window can host it — the first window to bind owns the `/mcp` endpoint, and the server exposes **that window's** active Rewst sessions. Other windows still try to start the server but lose the port bind; their sessions are not reachable over MCP while another window owns it. Tools that take an `orgId` resolve it among the owning window's sessions, so to expose a particular org through MCP, make sure that org's session is signed in in the window that owns the server (close the owning window to let another take over the port).
+
 ### Context and answers
 
 - **Attached context** — files attached via the paperclip or `#file`, and editor selections, are included by the chat itself
