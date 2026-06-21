@@ -2,8 +2,6 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { SessionManager } from '@sessions';
 import { initTestEnvironment } from '@test';
-import { chatCapabilities } from './capabilities';
-import { ALL_TOOL_SPECS, APPROVAL_TOOL_SPEC } from './ui/chat/model/lmTools';
 
 const { suite, test, setup } = Mocha;
 
@@ -25,6 +23,9 @@ interface PackageManifest {
 		}[];
 		languageModelTools?: ManifestTool[];
 		chatParticipants?: unknown[];
+		configuration?: {
+			properties?: Record<string, { type?: string; default?: unknown; description?: string }>;
+		};
 		commands: { command: string; title: string }[];
 	};
 }
@@ -52,38 +53,29 @@ suite('Unit: package manifest', () => {
 		]);
 	});
 
-	test('declares every tool spec as a languageModelTools entry, name-for-name', () => {
-		const declared = new Map((manifest.contributes.languageModelTools ?? []).map(tool => [tool.name, tool]));
-		const specs = [...ALL_TOOL_SPECS, APPROVAL_TOOL_SPEC];
-		assert.strictEqual(declared.size, specs.length, 'declaration count matches the spec arrays');
-		for (const spec of specs) {
-			const entry = declared.get(spec.name);
-			assert.ok(entry, `package.json declares ${spec.name}`);
-			assert.strictEqual(entry.modelDescription, spec.description, `${spec.name} description in sync`);
-			assert.deepStrictEqual(entry.inputSchema, spec.inputSchema, `${spec.name} inputSchema in sync`);
-		}
-	});
-
-	test('every chat-exposed capability is declared as a languageModelTools entry', () => {
-		const declared = new Map((manifest.contributes.languageModelTools ?? []).map(tool => [tool.name, tool]));
-		for (const capability of chatCapabilities()) {
-			const entry = declared.get(capability.spec.name);
-			assert.ok(entry, `package.json declares ${capability.spec.name}`);
-			assert.strictEqual(
-				entry.modelDescription,
-				capability.spec.description,
-				`${capability.spec.name} description in sync`,
-			);
-			assert.deepStrictEqual(
-				entry.inputSchema,
-				capability.spec.inputSchema,
-				`${capability.spec.name} inputSchema in sync`,
-			);
-		}
+	test('does not contribute Rewst tools as VS Code language-model tools', () => {
+		const declared: ManifestTool[] = manifest.contributes.languageModelTools ?? [];
+		const names = declared.map(tool => tool.name);
+		assert.deepStrictEqual(declared, [], 'languageModelTools contribution is empty');
+		assert.ok(!names.some(name => name.startsWith('buddy_')), 'no buddy_* LM tools are contributed');
+		assert.ok(!names.some(name => name === 'list_template_links'), 'list_template_links is not an LM tool');
 	});
 
 	test('the @rewst chat participant is retired', () => {
 		assert.strictEqual(manifest.contributes.chatParticipants, undefined);
+	});
+
+	test('MCP settings use the three-tier gate and the legacy checklist is removed', () => {
+		const properties = manifest.contributes.configuration?.properties ?? {};
+		const retiredChecklistKey = ['rewst-buddy', 'ai', 'tools'].join('.');
+		assert.strictEqual(properties[retiredChecklistKey], undefined);
+		assert.strictEqual(properties['rewst-buddy.mcp.enable']?.default, false);
+		assert.strictEqual(properties['rewst-buddy.mcp.enableWriteTools']?.default, false);
+		assert.strictEqual(properties['rewst-buddy.mcp.enableDangerousGraphqlMutation']?.default, false);
+		assert.match(
+			properties['rewst-buddy.mcp.enableDangerousGraphqlMutation']?.description ?? '',
+			/arbitrary GraphQL mutations/,
+		);
 	});
 
 	test('resume and apply commands are contributed for the palette', () => {

@@ -182,17 +182,10 @@ suite('Unit: graphqlTool', () => {
 		});
 	});
 
-	test('fails when the tool is disabled or deps are missing', async () => {
-		await assert.rejects(
-			runGraphqlTool(
-				{ tool: 'buddy_graphql', args: { query: '{ user { id } }' } },
-				deps({ isEnabled: () => false }),
-			),
-			/rewst-buddy\.ai\.tools/,
-		);
+	test('fails when deps are missing', async () => {
 		await assert.rejects(
 			runGraphqlTool({ tool: 'buddy_graphql', args: { query: '{ user { id } }' } }, undefined),
-			/rewst-buddy\.ai\.tools/,
+			/GraphQL dependencies are unavailable/,
 		);
 	});
 

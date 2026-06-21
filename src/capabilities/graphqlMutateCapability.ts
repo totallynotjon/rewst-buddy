@@ -20,11 +20,15 @@ export function _resetMcpMutationApproverForTesting(): void {
 	approver = async () => false;
 }
 
+export function requestMcpMutationApproval(scope: MutationScope, operation: string): Promise<boolean> {
+	return approver(scope, operation);
+}
+
 const graphqlMutateSpec: ToolSpec = {
 	name: 'rewst_graphql_mutate',
 	args: '{"orgId": string, "query": string, "variables"?: object, "scopeId": string, "scopeName": string, "orgName"?: string}',
 	description:
-		"Run a GraphQL mutation against one Rewst organization with the user's session. Write tools must be enabled. The request includes the mutation document, optional variables, and the Rewst resource scope that VS Code uses for approval.",
+		"Run an arbitrary GraphQL mutation against one Rewst organization with the user's session. The dangerous GraphQL mutation setting must be enabled. The request includes the mutation document, optional variables, and the Rewst resource scope that VS Code uses for approval.",
 	inputSchema: {
 		type: 'object',
 		properties: {
@@ -110,9 +114,9 @@ async function runGraphqlMutate(input: Record<string, unknown>, ctx: CapabilityC
 export const graphqlMutateCapability: Capability = {
 	spec: graphqlMutateSpec,
 	access: 'write',
+	dangerous: true,
 	chat: false,
 	mcp: true,
 	requiresOrg: true,
-	enabled: settings => settings.enableGraphqlTool,
 	run: runGraphqlMutate,
 };

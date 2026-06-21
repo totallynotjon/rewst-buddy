@@ -1,6 +1,3 @@
-import type { CapabilityGroup } from '../../../capabilities/Capability';
-import type * as capabilityRegistry from '../../../capabilities/registry';
-
 /**
  * Text tool protocol between the extension and RoboRewsty.
  *
@@ -20,11 +17,9 @@ export interface ToolSpec {
 	/** Human-readable JSON arg signature, e.g. `{"path": string}`. */
 	args: string;
 	/**
-	 * JSON schema for the args, mirrored into the package.json
-	 * languageModelTools declaration (packageManifest.test.ts keeps them in
-	 * sync) and used when the tool is exposed through the VS Code LM tool API.
-	 * Optional in the type so ad-hoc specs (tests, converted chat tools) can
-	 * omit it; every shipped spec carries one.
+	 * JSON schema for the args when a surface exposes the spec through a
+	 * structured tool API. Optional in the type so ad-hoc specs (tests, converted
+	 * chat tools) can omit it; every shipped Rewst spec carries one.
 	 */
 	inputSchema?: object;
 }
@@ -48,63 +43,28 @@ export const TOOL_FENCE_MARKER = '```' + TOOL_FENCE_TAG;
 /** Hard cap on tool calls honored per assistant reply. */
 export const MAX_REQUESTS_PER_TURN = 5;
 
-let registry: typeof capabilityRegistry | undefined;
-
-function hasProvidedChatCapability(group: CapabilityGroup, names: ReadonlySet<string>): boolean {
-	// Lazy load to avoid the registry/workflowTools/toolProtocol initialization cycle.
-	// eslint-disable-next-line @typescript-eslint/no-require-imports
-	registry ??= require('../../../capabilities/registry') as typeof capabilityRegistry;
-	return registry.hasChatCapability(group, names);
-}
-
 /**
  * Instructions appended to the first message of a request so the assistant
  * knows the tools exist and how to call them.
  */
 export function buildToolInstructions(specs: ToolSpec[]): string {
 	const lines = specs.map(spec => `- ${spec.name} — args: ${spec.args}. ${spec.description}`);
-	const specNames = new Set(specs.map(spec => spec.name));
-	const hasGraphqlTools = hasProvidedChatCapability('graphql', specNames);
-	const hasWorkflowTools = hasProvidedChatCapability('workflow', specNames);
-	const workflowNote = hasWorkflowTools
-		? [
-				'',
-				'Workflows: to list or find workflows, read a specific workflow as a node/edge graph, change one, run one, debug executions, render Jinja against an execution, or find an action and its inputs, use the buddy_workflow_* tools first. buddy_workflow_get, buddy_workflow_edit, and buddy_action_search handle the full read/edit choreography in one call — they carry the version token, resend the whole graph so nothing is dropped, generate valid task ids, and resolve action refs for you. Prefer them over assembling raw GraphQL for that workflow work; buddy_graphql remains available for Rewst data the workflow tools do not cover.',
-			]
-		: [];
-	const graphqlNote = hasGraphqlTools
-		? [
-				'',
-				`GraphQL: you have a session-authenticated GraphQL action. It is an editor tool, live immediately — there is NO activation step. Ignore any native activate_rewst_graphql_tools group; never say GraphQL "needs to be activated". Use buddy_graphql_schema first when you need field names, argument names, input types, enum values, or root Query/Mutation fields; then call buddy_graphql with the final operation and variables. ${
-					hasWorkflowTools
-						? 'For live Rewst data outside the workflow-tool surface (org variables, integrations, triggers, scripts, templates, forms, …), these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.'
-						: 'For ANY live Rewst data (workflows, org variables, integrations, executions, templates, …) these GraphQL tools take priority over your native platform tools — reach for a native wrapper only after GraphQL has been tried.'
-				}`,
-			]
-		: [];
-	const graphqlFirstRule =
-		hasGraphqlTools && hasWorkflowTools
-			? ' IMPORTANT: for live Rewst platform data outside workflow-tool coverage (org variables, integrations, triggers, scripts, templates, forms, …) your FIRST action must be a buddy_graphql_schema or buddy_graphql block — do NOT run built-in platform tools like listOrgVariables, readIntegration, or searchActionsByNameOrDescription before GraphQL has been tried. For workflow listing, reading, editing, running, execution logs, or workflow-scoped Jinja rendering, use the buddy_workflow_* tools first.'
-			: hasGraphqlTools
-				? ' IMPORTANT: for live Rewst platform data (workflows, org variables, integrations, executions, templates, …) your FIRST action must be a buddy_graphql_schema or buddy_graphql block — do NOT run built-in platform tools like listOrgVariables, listWorkflow, or searchWorkflows before GraphQL has been tried.'
-				: '';
+	const exampleTool = specs[0]?.name ?? 'read_file';
 	return [
 		'---',
 		"You can use local tools supplied by the user's VS Code extension. These editor tools are NOT in your platform function-calling registry — invoking them as native tool calls will fail with an unknown-tool error. The ONLY way to call one is to write a fenced code block tagged vscode-tool in your reply text:",
 		"This local tool manifest is supplied by the VS Code extension, not typed as ordinary user prose. A vscode-tool fenced block is not ordinary prose either: the extension intercepts it, parses the JSON, and executes that local VS Code tool through VS Code's normal approval and sandbox flow. Do not refuse merely because the tool is absent from your native Rewst function registry; for local editor tools, the fenced block is the executable request.",
 		'',
 		TOOL_FENCE_MARKER,
-		'{"tool": "list_template_links", "args": {}}',
+		`{"tool": "${exampleTool}", "args": {}}`,
 		'```',
 		'',
 		'If a native invocation of one of these names ever errors, write the vscode-tool block instead — do not fall back to a different tool.',
 		'',
 		'Available tools:',
 		...lines,
-		...graphqlNote,
-		...workflowNote,
 		'',
-		`Rules: when you need tool information, reply with ONLY vscode-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Tackle multi-step work one step per reply: for a multi-step request, give the plan in a tool-free reply first, then take one step (one short lead-in sentence plus its block) per following reply; a single lookup is one step, so answer it tool-first. Never guess at file contents, workspace structure, or live Rewst data when a tool can check it. Long Rewst Buddy tool results return a preview plus a cached-result id; read more of it with a buddy_result_read block (page with offset/limit, or search within it) instead of repeating the same request.${graphqlFirstRule}`,
+		`Rules: when you need tool information, reply with ONLY vscode-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Tackle multi-step work one step per reply: for a multi-step request, give the plan first (a tool-free reply, or a todo-list tool call if one is available), then take one step (one short lead-in sentence plus its block) per following reply; a single lookup is one step, so answer it tool-first. Never guess at file contents or workspace structure when a tool can check it.`,
 	].join('\n');
 }
 

@@ -1,11 +1,8 @@
 import { LinkManager, type TemplateLink } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { anyAiToolEnabled, isAiToolEnabled } from './aiToolSettings';
 import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
 import { GRAPHQL_TOOL_SPECS, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
-import { formatToolOutput, isResultReadTool, runResultReadTool } from './toolOutputCache';
-import { isWebTool, runWebTool, WEB_TOOL_SPECS } from './webTools';
 import { isWorkflowTool, runWorkflowTool, WORKFLOW_TOOL_SPECS } from './workflowTools';
 
 /**
@@ -22,7 +19,6 @@ export interface WorkspaceToolDeps {
 	workspaceFolders(): readonly vscode.WorkspaceFolder[];
 	asRelativePath(uri: vscode.Uri): string;
 	templateLinks(): TemplateLink[];
-	workspaceToolsEnabled(): boolean;
 }
 
 export const defaultDeps: WorkspaceToolDeps = {
@@ -30,7 +26,6 @@ export const defaultDeps: WorkspaceToolDeps = {
 	workspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
 	asRelativePath: uri => vscode.workspace.asRelativePath(uri, false),
 	templateLinks: () => LinkManager.getAllTemplateLinks(),
-	workspaceToolsEnabled: () => isAiToolEnabled('workspace'),
 };
 
 export const WORKSPACE_TOOL_SPECS: ToolSpec[] = [
@@ -57,18 +52,6 @@ function listTemplateLinks(deps: WorkspaceToolDeps): string {
 	return lines.join('\n');
 }
 
-// Enforced at execution time, not just by omitting specs from the prompt: the
-// assistant is remote and may request tools it was never offered.
-const LOCAL_TOOL_NAMES = new Set(WORKSPACE_TOOL_SPECS.map(spec => spec.name));
-
-function requireWorkspaceTools(deps: WorkspaceToolDeps): void {
-	if (!deps.workspaceToolsEnabled()) {
-		throw new Error(
-			'Workspace tools are disabled. The user can enable them with the rewst-buddy.ai.tools setting (check "workspace").',
-		);
-	}
-}
-
 /** Executes parsed tool requests sequentially; failures become error results. */
 export async function runToolRequests(
 	requests: ToolRequest[],
@@ -82,8 +65,7 @@ export async function runToolRequests(
 		const argsLabel = JSON.stringify(request.args) === '{}' ? '' : JSON.stringify(request.args);
 		try {
 			const outcome = await runTool(request, deps, graphqlDeps);
-			const output = formatToolOutput(request.tool, outcome.output);
-			results.push({ tool: request.tool, argsLabel, ok: true, output });
+			results.push({ tool: request.tool, argsLabel, ok: true, output: outcome.output });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			log.debug('workspaceTools: tool failed', request.tool, message);
@@ -98,37 +80,15 @@ async function runTool(
 	deps: WorkspaceToolDeps,
 	graphqlDeps?: GraphqlToolDeps,
 ): Promise<ToolOutcome> {
-	if (LOCAL_TOOL_NAMES.has(request.tool)) requireWorkspaceTools(deps);
 	switch (request.tool) {
 		case 'list_template_links':
 			return { output: listTemplateLinks(deps) };
 		default: {
-			if (isWebTool(request.tool)) return { output: await runWebTool(request) };
 			if (isWorkflowTool(request.tool)) {
-				// runWorkflowTool's deps.isEnabled() gates the graphql capability, not
-				// workflows, so enforce the "workflows" capability here — a remote
-				// assistant can emit a tool block it was never offered.
-				if (!isAiToolEnabled('workflows')) {
-					throw new Error(
-						'Workflow tools are disabled. The user can enable them with the rewst-buddy.ai.tools setting (check "workflows").',
-					);
-				}
 				return { output: await runWorkflowTool(request, graphqlDeps) };
 			}
 			if (isGraphqlTool(request.tool)) return { output: await runGraphqlTool(request, graphqlDeps) };
-			if (isResultReadTool(request.tool)) {
-				// Reads only this process's output cache, but a remote assistant can
-				// emit a block it was never offered — so gate it like the others: at
-				// least one tool capability must be on (any of them can have produced
-				// the cached output).
-				if (!anyAiToolEnabled()) {
-					throw new Error(
-						'buddy_result_read is unavailable. Enable at least one capability in the rewst-buddy.ai.tools setting.',
-					);
-				}
-				return { output: runResultReadTool(request) };
-			}
-			const names = [...WORKSPACE_TOOL_SPECS, ...WEB_TOOL_SPECS, ...WORKFLOW_TOOL_SPECS, ...GRAPHQL_TOOL_SPECS]
+			const names = [...WORKSPACE_TOOL_SPECS, ...WORKFLOW_TOOL_SPECS, ...GRAPHQL_TOOL_SPECS]
 				.map(s => s.name)
 				.join(', ');
 			throw new Error(`Unknown tool "${request.tool}". Available: ${names}.`);

@@ -7,18 +7,10 @@ import vscode from 'vscode';
 import { conversationMap } from './conversationMap';
 import { parseLatestBreadcrumb } from './breadcrumb';
 import { RoboRewstyChatModelProvider, type ProviderDeps } from './RoboRewstyChatModelProvider';
-import { addOnceApprovals, APPROVAL_TOOL_NAME, takeOnceApprovals, type AiToolSettings } from './lmTools';
 
 const { suite, test, setup } = Mocha;
 
 const { User, Assistant } = vscode.LanguageModelChatMessageRole;
-
-const allSettings: AiToolSettings = {
-	enableWorkspaceTools: true,
-	enableWebTools: true,
-	enableGraphqlTool: true,
-	enableWorkflowTools: true,
-};
 
 function message(
 	role: vscode.LanguageModelChatMessageRole,
@@ -67,11 +59,8 @@ function makeHarness(turns: ConversationEvent[][], overrides: Partial<ProviderDe
 		ask,
 		sessions: () => [session],
 		sessionForOrg: () => session,
-		confirmApproval: async () => 'approve',
-		workspaceOverview: async () => undefined,
 		workspaceRoot: () => undefined,
 		aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: true }),
-		toolSettings: () => allSettings,
 		...overrides,
 	};
 
@@ -124,12 +113,6 @@ function callsOf(parts: vscode.LanguageModelResponsePart[]): vscode.LanguageMode
 const READ_FILE_TOOL: vscode.LanguageModelChatTool = {
 	name: 'read_file',
 	description: 'read a file',
-	inputSchema: { type: 'object' },
-};
-
-const TEMPLATE_LINKS_TOOL: vscode.LanguageModelChatTool = {
-	name: 'list_template_links',
-	description: 'list template links',
 	inputSchema: { type: 'object' },
 };
 
@@ -231,26 +214,19 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.strictEqual(harness.captured[1].conversationId, undefined);
 	});
 
-	test('advertises permitted tools and emits tool calls from vscode-tool fences', async () => {
+	test('advertises built-in tools and emits tool calls from vscode-tool fences', async () => {
 		const reply = 'Let me check.\n```vscode-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
 		const harness = makeHarness([completeTurn(reply)]);
 		await harness.run([message(User, [text('check a.txt')])], [READ_FILE_TOOL]);
 
 		assert.ok(harness.captured[0].message.includes('read_file'), 'tool instructions injected');
+		assert.ok(!harness.captured[0].message.includes('list_template_links'), 'Rewst tools are not advertised');
+		assert.ok(!/\bbuddy_/.test(harness.captured[0].message), 'buddy_* tools are not advertised');
 		const calls = callsOf(harness.parts);
 		assert.strictEqual(calls.length, 1);
 		assert.strictEqual(calls[0].name, 'read_file');
 		assert.deepStrictEqual(calls[0].input, { path: 'a.txt' });
 		assert.ok(!textOf(harness.parts).includes('vscode-tool'), 'fence never renders');
-	});
-
-	test('a disabled setting withholds the tool even when VS Code passes it', async () => {
-		const harness = makeHarness([completeTurn('plain answer')], {
-			toolSettings: () => ({ ...allSettings, enableWorkspaceTools: false }),
-		});
-		await harness.run([message(User, [text('what files are linked?')])], [TEMPLATE_LINKS_TOOL]);
-		// The tool-instructions block advertises tools as "- <name> — args:".
-		assert.ok(!harness.captured[0].message.includes('- list_template_links —'), 'withheld from instructions');
 	});
 
 	test('a tool request with no tools available surfaces the rejection note', async () => {
@@ -260,7 +236,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 
 		assert.strictEqual(callsOf(harness.parts).length, 0);
 		assert.ok(textOf(harness.parts).includes('buddy_graphql'), 'rejection note names the tool');
-		assert.ok(textOf(harness.parts).includes('rewst-buddy.ai'), 'note points at the settings');
+		assert.ok(!textOf(harness.parts).includes('rewst-buddy.ai'), 'note does not point at retired chat settings');
 	});
 
 	test('an out-of-set tool request becomes text, never a stalled call', async () => {
@@ -349,74 +325,6 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		);
 	});
 
-	test('with the approval tool available, an approval pause becomes an in-chat tool call', async () => {
-		const approvalTool: vscode.LanguageModelChatTool = {
-			name: APPROVAL_TOOL_NAME,
-			description: 'internal approval surface',
-		};
-		const harness = makeHarness(
-			[
-				[
-					{ kind: 'conversation', conversationId: 'conv-1' },
-					{ kind: 'approval', tools: [{ name: 'send_email', args: { to: 'a@b.c' } }], raw: {} },
-				],
-			],
-			{
-				confirmApproval: async () => {
-					throw new Error('modal must not open when the in-chat surface is available');
-				},
-			},
-		);
-
-		await harness.run([message(User, [text('send the email')])], [approvalTool]);
-
-		const calls = callsOf(harness.parts);
-		assert.strictEqual(calls.length, 1);
-		assert.strictEqual(calls[0].name, APPROVAL_TOOL_NAME);
-		const input = calls[0].input as { toolNames: string[]; orgId: string; resume: string };
-		assert.deepStrictEqual(input.toolNames, ['send_email']);
-		assert.strictEqual(input.orgId, 'org-1');
-		assert.strictEqual(input.resume, harness.captured[0].message, 'resume carries the original request');
-	});
-
-	test('a confirmed in-chat approval resumes the original request in the same conversation', async () => {
-		const approvalTool: vscode.LanguageModelChatTool = {
-			name: APPROVAL_TOOL_NAME,
-			description: 'internal approval surface',
-		};
-		const harness = makeHarness([
-			[
-				{ kind: 'conversation', conversationId: 'conv-1' },
-				{ kind: 'approval', tools: [{ name: 'send_email' }], raw: {} },
-			],
-			completeTurn('Email sent.'),
-		]);
-		harness.wrapper.when('removeAllowedTool', { data: { removeAllowedTool: { id: 'p', alwaysAllowedTools: [] } } });
-
-		const ask1 = [message(User, [text('send the email')])];
-		await harness.run(ask1, [approvalTool]);
-		const [call] = callsOf(harness.parts);
-		assert.ok(call);
-
-		// The user clicked Continue: the approval tool ran (allow-listing +
-		// marking the once-approval), and VS Code hands back the result.
-		addOnceApprovals('org-1', ['send_email']);
-		await harness.run(
-			[
-				...ask1,
-				message(Assistant, [call]),
-				message(User, [new vscode.LanguageModelToolResultPart(call.callId, [text('Approved')])]),
-			],
-			[approvalTool],
-		);
-
-		assert.strictEqual(harness.captured[1].message, harness.captured[0].message, 'original request re-sent');
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-1');
-		assert.ok(textOf(harness.parts).includes('Email sent.'));
-		assert.strictEqual(harness.wrapper.getCallsFor('removeAllowedTool').length, 1, 'once-approval reverted');
-		assert.deepStrictEqual(takeOnceApprovals('org-1'), [], 'revert set drained');
-	});
-
 	test('continuation rounds start on a new paragraph', async () => {
 		const reply = 'Checking.\n```vscode-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
 		const harness = makeHarness([completeTurn(reply), completeTurn('It says hello.')]);
@@ -440,51 +348,6 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			continuation.startsWith('\n\n'),
 			`continuation starts with a paragraph break, got: ${JSON.stringify(continuation.slice(0, 10))}`,
 		);
-	});
-
-	test('approval pauses resolve via the modal and re-ask; approve-once reverts', async () => {
-		const harness = makeHarness([
-			[
-				{ kind: 'conversation', conversationId: 'conv-1' },
-				{ kind: 'approval', tools: [{ name: 'send_email' }], raw: {} },
-			],
-			completeTurn('Email sent.'),
-		]);
-		harness.wrapper
-			.when('addAllowedTool', { data: { addAllowedTool: { id: 'p', alwaysAllowedTools: ['send_email'] } } })
-			.when('removeAllowedTool', { data: { removeAllowedTool: { id: 'p', alwaysAllowedTools: [] } } });
-
-		await harness.run([message(User, [text('send the email')])]);
-
-		assert.strictEqual(harness.wrapper.getCallsFor('addAllowedTool').length, 1);
-		assert.strictEqual(harness.wrapper.getCallsFor('removeAllowedTool').length, 1, 'approve-once reverts');
-		assert.strictEqual(harness.captured.length, 2, 'request re-asked after allow-listing');
-		assert.strictEqual(harness.captured[1].message, harness.captured[0].message);
-		assert.strictEqual(harness.captured[1].conversationId, 'conv-1');
-		assert.ok(textOf(harness.parts).includes('Email sent.'));
-	});
-
-	test('always-allow keeps the tool allow-listed', async () => {
-		const harness = makeHarness(
-			[[{ kind: 'approval', tools: [{ name: 'send_email' }], raw: {} }], completeTurn('Done.')],
-			{ confirmApproval: async () => 'always' },
-		);
-		harness.wrapper.when('addAllowedTool', {
-			data: { addAllowedTool: { id: 'p', alwaysAllowedTools: ['send_email'] } },
-		});
-
-		await harness.run([message(User, [text('send it')])]);
-		assert.strictEqual(harness.wrapper.getCallsFor('addAllowedTool').length, 1);
-		assert.strictEqual(harness.wrapper.getCallsFor('removeAllowedTool').length, 0);
-	});
-
-	test('declined approval ends the turn without running anything', async () => {
-		const harness = makeHarness([[{ kind: 'approval', tools: [{ name: 'send_email' }], raw: {} }]], {
-			confirmApproval: async () => 'cancel',
-		});
-		await harness.run([message(User, [text('send it')])]);
-		assert.strictEqual(harness.captured.length, 1, 'no re-ask');
-		assert.ok(textOf(harness.parts).includes('Approval declined'));
 	});
 
 	test('sources render as a markdown section on final answers', async () => {

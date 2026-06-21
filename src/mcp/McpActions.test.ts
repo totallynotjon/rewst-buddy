@@ -2,20 +2,20 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { SessionManager, type Session } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
-import vscode from 'vscode';
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover } from '../capabilities/graphqlMutateCapability';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
+import {
+	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_EDIT_TOOL_NAME,
+	WORKFLOW_RUN_TOOL_NAME,
+} from '../ui/chat/tools/workflowTools';
 import { McpError, _resetMcpThrottleForTesting, callTool, listResources, listTools, readResource } from './McpActions';
 import type { McpSettings } from './settings';
 
 const { suite, test, setup, teardown } = Mocha;
 
 function settings(over: Partial<McpSettings> = {}): McpSettings {
-	return { enable: true, enableWriteTools: false, enabledTools: [], ...over };
-}
-
-async function setAiTools(tools: string[]): Promise<void> {
-	await vscode.workspace.getConfiguration('rewst-buddy.ai').update('tools', tools, vscode.ConfigurationTarget.Global);
+	return { enable: true, enableWriteTools: false, enableDangerousGraphqlMutation: false, ...over };
 }
 
 /** A mock session managing one org, registered with the SessionManager. */
@@ -35,26 +35,79 @@ function useRawGraphqlWrapper(session: Session, wrapper: ReturnType<typeof creat
 	};
 }
 
+function workflowGetResponse() {
+	return {
+		data: {
+			workflow: {
+				id: 'wf-1',
+				name: 'MCP Sample Workflow',
+				description: null,
+				type: 'workflow',
+				orgId: 'org-1',
+				organization: { id: 'org-1', name: 'Acme' },
+				action: { parameters: {} },
+				updatedAt: '1000',
+				input: [],
+				tasks: [
+					{
+						id: 'task-start',
+						name: 'start',
+						actionId: 'action-noop',
+						action: { id: 'action-noop', ref: 'core.noop', name: 'Noop' },
+						input: {},
+						next: [
+							{
+								id: 'transition-1',
+								from: 'task-start',
+								to: 'task-end',
+								when: '{{ SUCCEEDED }}',
+								do: ['task-end'],
+							},
+						],
+					},
+					{
+						id: 'task-end',
+						name: 'end',
+						actionId: 'action-noop',
+						action: { id: 'action-noop', ref: 'core.noop', name: 'Noop' },
+						input: {},
+						next: [],
+					},
+				],
+			},
+		},
+	};
+}
+
+function workflowMutationRawGraphqlResponse(request: { query?: string }): { data: unknown } {
+	const query = request.query ?? '';
+	if (query.includes('RewstBuddyWorkflowGet')) {
+		return { data: workflowGetResponse() };
+	}
+	if (query.includes('RewstBuddyWorkflowUpdate')) {
+		return { data: { data: { updateWorkflow: { id: 'wf-1', name: 'MCP Sample Workflow', updatedAt: '2000' } } } };
+	}
+	throw new Error(`Unexpected rawGraphql operation in workflow mutation test: ${query}`);
+}
+
 function detectGraphqlOperation(query: string): string {
 	const match = /\b(query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(query);
 	return match ? `${match[1]} ${match[2]}` : 'rawGraphql';
 }
 
 suite('Unit: McpActions', () => {
-	setup(async () => {
+	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
 		_resetMcpThrottleForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
-		await setAiTools(['workspace', 'graphql']);
 	});
 
-	teardown(async () => {
+	teardown(() => {
 		SessionManager._resetForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
-		await setAiTools(['workspace']);
 	});
 
 	suite('listTools()', () => {
@@ -65,13 +118,12 @@ suite('Unit: McpActions', () => {
 			assert.ok(names.includes('get_template'));
 			assert.ok(names.includes('list_workflows'));
 			assert.ok(names.includes('get_workflow'));
+			assert.ok(names.includes('rewst_graphql_query'), 'read-only GraphQL query is available on MCP');
+			assert.ok(names.includes('list_template_links'), 'workspace helper is available on MCP');
 			assert.ok(!names.includes('buddy_graphql'), 'chat write tool is not on MCP');
 			assert.ok(names.includes('buddy_graphql_schema'), 'schema introspection is available on MCP');
-		});
-
-		test('an allowlist restricts the exposed tools', () => {
-			const names = listTools(settings({ enabledTools: ['list_orgs'] })).map(tool => tool.name);
-			assert.deepStrictEqual(names, ['list_orgs']);
+			assert.ok(!names.includes('rewst_graphql_mutate'), 'raw GraphQL mutation needs its own dangerous toggle');
+			assert.ok(!names.includes('buddy_result_read'), 'chat result-cache reader is not on MCP');
 		});
 	});
 
@@ -91,6 +143,13 @@ suite('Unit: McpActions', () => {
 			const result = await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
 			assert.ok(result.text.includes('Welcome (t-1)'));
 			assert.strictEqual(wrapper.getCallsFor('listTemplates').length, 1);
+		});
+
+		test('list_template_links is callable over MCP without an orgId', async () => {
+			useSession('org-1');
+			const result = await callTool({ name: 'list_template_links', arguments: {} }, settings());
+			assert.ok(!result.isError);
+			assert.match(result.text, /No files are linked to Rewst templates/);
 		});
 
 		test('an unknown tool throws unknown_tool', async () => {
@@ -139,6 +198,128 @@ suite('Unit: McpActions', () => {
 			assert.deepStrictEqual(calls[0].variables.variables, { includeDeprecated: false });
 		});
 
+		test('buddy_workflow_get is callable over MCP through the workflow capability', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when('rawGraphql', { data: workflowGetResponse() });
+
+			const names = listTools(settings()).map(tool => tool.name);
+			assert.ok(names.includes('buddy_workflow_get'));
+
+			const result = await callTool(
+				{ name: 'buddy_workflow_get', arguments: { orgId: 'org-1', workflowId: 'wf-1' } },
+				settings(),
+			);
+
+			assert.ok(!result.isError);
+			const parsed = JSON.parse(result.text) as {
+				workflow: { id: string; name: string; orgId: string; orgName: string };
+				nodes: { name: string }[];
+			};
+			assert.strictEqual(parsed.workflow.name, 'MCP Sample Workflow');
+			assert.strictEqual(parsed.workflow.orgName, 'Acme');
+			assert.deepStrictEqual(
+				parsed.nodes.map(node => node.name),
+				['start', 'end'],
+			);
+			const calls = wrapper.getCallsFor('rawGraphql');
+			assert.strictEqual(calls.length, 1);
+			assert.match(calls[0].variables.query, /query RewstBuddyWorkflowGet/);
+			assert.deepStrictEqual(calls[0].variables.variables, { where: { id: 'wf-1', orgId: 'org-1' } });
+		});
+
+		test('workflow write helpers are listed only when MCP write tools are enabled', async () => {
+			useSession('org-1');
+
+			const withoutWrite = listTools(settings()).map(tool => tool.name);
+			assert.ok(!withoutWrite.includes(WORKFLOW_EDIT_TOOL_NAME));
+			assert.ok(!withoutWrite.includes(WORKFLOW_AUTOLAYOUT_TOOL_NAME));
+			assert.ok(!withoutWrite.includes(WORKFLOW_RUN_TOOL_NAME));
+
+			const names = listTools(settings({ enableWriteTools: true })).map(tool => tool.name);
+			assert.ok(names.includes(WORKFLOW_EDIT_TOOL_NAME));
+			assert.ok(names.includes(WORKFLOW_AUTOLAYOUT_TOOL_NAME));
+			assert.ok(names.includes(WORKFLOW_RUN_TOOL_NAME));
+		});
+
+		test('buddy_workflow_edit is rejected at the boundary while write tools are disabled', async () => {
+			useSession('org-1');
+
+			await assert.rejects(
+				callTool(
+					{
+						name: WORKFLOW_EDIT_TOOL_NAME,
+						arguments: {
+							orgId: 'org-1',
+							workflowId: 'wf-1',
+							workflowName: 'Workflow',
+							orgName: 'Acme',
+							operations: [],
+						},
+					},
+					settings({ enableWriteTools: false }),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'write_disabled',
+			);
+		});
+
+		test('buddy_workflow_edit returns approval_required without executing when the user declines', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			setMcpMutationApprover(async () => false);
+
+			const result = await callTool(
+				{
+					name: WORKFLOW_EDIT_TOOL_NAME,
+					arguments: {
+						orgId: 'org-1',
+						workflowId: 'wf-1',
+						workflowName: 'MCP Sample Workflow',
+						orgName: 'Acme',
+						operations: [{ op: 'reposition', task: 'start', x: 100, y: 200 }],
+					},
+				},
+				settings({ enableWriteTools: true }),
+			);
+
+			assert.ok(!result.isError);
+			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
+			assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 0);
+		});
+
+		test('buddy_workflow_edit executes after MCP approval and returns workflow output', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when<unknown>('rawGraphql', workflowMutationRawGraphqlResponse);
+			let approvals = 0;
+			setMcpMutationApprover(async () => {
+				approvals++;
+				return true;
+			});
+
+			const result = await callTool(
+				{
+					name: WORKFLOW_EDIT_TOOL_NAME,
+					arguments: {
+						orgId: 'org-1',
+						workflowId: 'wf-1',
+						workflowName: 'MCP Sample Workflow',
+						orgName: 'Acme',
+						operations: [{ op: 'reposition', task: 'start', x: 100, y: 200 }],
+					},
+				},
+				settings({ enableWriteTools: true }),
+			);
+
+			assert.ok(!result.isError);
+			assert.match(result.text, /Applied 1 operation/);
+			assert.match(result.text, /New version token: 2000/);
+			assert.strictEqual(approvals, 1);
+			const calls = wrapper.getCallsFor('rawGraphql');
+			assert.ok(calls.some(call => String(call.variables.query).includes('RewstBuddyWorkflowGet')));
+			assert.ok(calls.some(call => String(call.variables.query).includes('RewstBuddyWorkflowUpdate')));
+		});
+
 		test('an org-scoped tool without orgId throws org_required', async () => {
 			useSession('org-1');
 			await assert.rejects(
@@ -172,7 +353,7 @@ suite('Unit: McpActions', () => {
 			assert.strictEqual(result.isError, true);
 		});
 
-		test('rewst_graphql_mutate is rejected while write tools are disabled', async () => {
+		test('rewst_graphql_mutate is rejected while the dangerous mutation toggle is disabled', async () => {
 			useSession('org-1');
 			await assert.rejects(
 				callTool(
@@ -185,15 +366,17 @@ suite('Unit: McpActions', () => {
 							scopeName: 'Workflow',
 						},
 					},
-					settings({ enableWriteTools: false }),
+					settings({ enableWriteTools: true, enableDangerousGraphqlMutation: false }),
 				),
-				(error: unknown) => error instanceof McpError && error.code === 'write_disabled',
+				(error: unknown) =>
+					error instanceof McpError &&
+					error.code === 'write_disabled' &&
+					error.message.includes('rewst-buddy.mcp.enableDangerousGraphqlMutation'),
 			);
 		});
 
-		test('rewst_graphql_mutate is hidden and rejected when GraphQL tools are off', async () => {
+		test('rewst_graphql_mutate is not exposed by enableWriteTools alone', async () => {
 			useSession('org-1');
-			await setAiTools(['workspace']);
 
 			const names = listTools(settings({ enableWriteTools: true })).map(tool => tool.name);
 			assert.ok(!names.includes('rewst_graphql_mutate'));
@@ -210,8 +393,19 @@ suite('Unit: McpActions', () => {
 					},
 					settings({ enableWriteTools: true }),
 				),
-				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
+				(error: unknown) =>
+					error instanceof McpError &&
+					error.code === 'write_disabled' &&
+					error.message.includes('enableDangerousGraphqlMutation'),
 			);
+		});
+
+		test('rewst_graphql_mutate is exposed by the dangerous toggle without enableWriteTools', () => {
+			const names = listTools(settings({ enableDangerousGraphqlMutation: true })).map(tool => tool.name);
+			assert.ok(names.includes('rewst_graphql_mutate'));
+			assert.ok(!names.includes(WORKFLOW_EDIT_TOOL_NAME));
+			assert.ok(!names.includes(WORKFLOW_AUTOLAYOUT_TOOL_NAME));
+			assert.ok(!names.includes(WORKFLOW_RUN_TOOL_NAME));
 		});
 
 		test('rewst_graphql_mutate returns an error result for query documents', async () => {
@@ -226,7 +420,7 @@ suite('Unit: McpActions', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 			assert.strictEqual(result.isError, true);
 			assert.ok(result.text.includes('use rewst_graphql_query'));
@@ -244,7 +438,7 @@ suite('Unit: McpActions', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 			assert.strictEqual(result.isError, true);
 			assert.ok(result.text.includes('Subscriptions are not supported'));
@@ -265,7 +459,7 @@ suite('Unit: McpActions', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 
 			assert.ok(!result.isError);
@@ -292,11 +486,11 @@ suite('Unit: McpActions', () => {
 
 			const first = await callTool(
 				{ name: 'rewst_graphql_mutate', arguments: args },
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 			const second = await callTool(
 				{ name: 'rewst_graphql_mutate', arguments: args },
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 
 			assert.ok(!first.isError);
@@ -323,36 +517,19 @@ suite('Unit: McpActions', () => {
 		});
 	});
 
-	suite('resources honour the allowlist', () => {
+	suite('resources', () => {
 		test('listResources advertises both collections per active org by default', () => {
 			useSession('org-1', 'Acme');
 			const uris = listResources(settings()).map(resource => resource.uri);
 			assert.deepStrictEqual(uris.sort(), ['rewst://org-1/templates', 'rewst://org-1/workflows']);
 		});
 
-		test('listResources hides a collection whose list tool is not allowlisted', () => {
-			useSession('org-1');
-			const uris = listResources(settings({ enabledTools: ['list_templates'] })).map(resource => resource.uri);
-			assert.deepStrictEqual(uris, ['rewst://org-1/templates']);
-		});
-
-		test('readResource rejects a resource whose backing tool is not allowlisted', async () => {
-			useSession('org-1');
-			await assert.rejects(
-				readResource('rewst://org-1/templates', settings({ enabledTools: ['list_orgs'] })),
-				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
-			);
-		});
-
-		test('readResource reads an allowlisted collection', async () => {
+		test('readResource reads a collection', async () => {
 			const { wrapper } = useSession('org-1');
 			wrapper.when('listTemplates', {
 				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
 			});
-			const content = await readResource(
-				'rewst://org-1/templates',
-				settings({ enabledTools: ['list_templates'] }),
-			);
+			const content = await readResource('rewst://org-1/templates', settings());
 			assert.ok(content.text.includes('Welcome (t-1)'));
 		});
 
@@ -362,7 +539,7 @@ suite('Unit: McpActions', () => {
 			let limited = false;
 			for (let i = 0; i < 40 && !limited; i++) {
 				try {
-					await readResource('rewst://org-1/templates', settings({ enabledTools: ['list_templates'] }));
+					await readResource('rewst://org-1/templates', settings());
 				} catch (error) {
 					if (error instanceof McpError && error.code === 'rate_limited') limited = true;
 					else throw error;

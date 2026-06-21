@@ -22,8 +22,8 @@ import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
  * must equal the updatedAt read at fetch time), and snapshots a patch so every
  * change is reversible. New task ids are de-dashed hex because the server
  * strips dashes from task ids but not from the `do` references that point at
- * them. Reads run directly; the edit is a mutation gated by the same in-chat
- * approval flow as buddy_graphql (see workflowEditConfirmation + lmTools.ts).
+ * them. Reads run directly; write helpers are gated by the MCP mutation
+ * approval path before execution.
  */
 
 export const WORKFLOW_EDIT_TOOL_NAME = 'buddy_workflow_edit';
@@ -1310,15 +1310,12 @@ function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary
 // Tool runners
 // ---------------------------------------------------------------------------
 
-// Availability is gated at registration time by the rewst-buddy.ai.tools setting
-// ("workflows"; see lmTools.ts); runToolRequests is only ever invoked per
-// registered tool, so a disabled tool is never routed here. The remaining
-// requirement is a live session to run GraphQL against.
+// Availability is gated by the MCP capability settings before runToolRequests
+// routes here. The remaining requirement is a live session to run GraphQL
+// against.
 function requireDeps(deps: GraphqlToolDeps | undefined): GraphqlToolDeps {
 	if (!deps) {
-		throw new Error(
-			'No active Rewst session for the workflow tools (enable "workflows" in rewst-buddy.ai.tools and sign in).',
-		);
+		throw new Error('No active Rewst session for the workflow tools. Sign in to Rewst in VS Code and retry.');
 	}
 	return deps;
 }

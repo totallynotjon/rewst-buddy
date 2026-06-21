@@ -1,7 +1,5 @@
 import { createGraphqlDeps } from '../ui/chat/tools/graphqlTool';
-import { RESULT_READ_TOOL_SPECS } from '../ui/chat/tools/toolOutputCache';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
-import { WEB_TOOL_SPECS } from '../ui/chat/tools/webTools';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
@@ -11,13 +9,8 @@ import {
 	WORKFLOW_TOOL_SPECS,
 } from '../ui/chat/tools/workflowTools';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
-import type {
-	Capability,
-	CapabilityAccess,
-	CapabilityContext,
-	CapabilityGroup,
-	CapabilitySettings,
-} from './Capability';
+import type { Capability, CapabilityAccess, CapabilityContext, CapabilityGroup } from './Capability';
+import { runWorkflowMutationWithApproval } from './workflowMutateCapability';
 
 const workflowAccess: Record<string, CapabilityAccess> = {
 	buddy_workflow_get: 'read',
@@ -33,10 +26,8 @@ const workflowAccess: Record<string, CapabilityAccess> = {
 
 const doesNotRequireOrg = new Set<string>([
 	'list_template_links',
-	'web_search',
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
-	'buddy_result_read',
 ]);
 
 function workflowAccessFor(spec: ToolSpec): CapabilityAccess {
@@ -59,45 +50,34 @@ async function runViaChatToolPath(
 	return result.ok ? result.output : `Error: ${result.output}`;
 }
 
-function chatCapability(
+function mcpCapability(
 	spec: ToolSpec,
 	access: CapabilityAccess,
 	group: CapabilityGroup,
-	enabled: (settings: CapabilitySettings) => boolean,
+	mcp: boolean,
+	run: (input: Record<string, unknown>, ctx: CapabilityContext) => Promise<string> = (input, ctx) =>
+		runViaChatToolPath(spec, input, ctx),
 ): Capability {
 	return {
 		spec,
 		group,
 		access,
-		chat: true,
-		mcp: false,
+		chat: false,
+		mcp,
 		...(doesNotRequireOrg.has(spec.name) ? { requiresOrg: false as const } : {}),
-		enabled,
-		run: (input, ctx) => runViaChatToolPath(spec, input, ctx),
+		run,
 	};
 }
 
 export const WORKSPACE_CHAT_CAPABILITIES: Capability[] = WORKSPACE_TOOL_SPECS.map(spec =>
-	chatCapability(spec, 'read', 'workspace', settings => settings.enableWorkspaceTools),
+	mcpCapability(spec, 'read', 'workspace', true),
 );
 
-export const WEB_CHAT_CAPABILITIES: Capability[] = WEB_TOOL_SPECS.map(spec =>
-	chatCapability(spec, 'read', 'web', settings => settings.enableWebTools),
-);
-
-export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec =>
-	chatCapability(spec, workflowAccessFor(spec), 'workflow', settings => settings.enableWorkflowTools),
-);
-
-export const RESULT_READ_CHAT_CAPABILITIES: Capability[] = RESULT_READ_TOOL_SPECS.map(spec =>
-	chatCapability(
-		spec,
-		'read',
-		'result',
-		settings =>
-			settings.enableWorkspaceTools ||
-			settings.enableWebTools ||
-			settings.enableGraphqlTool ||
-			settings.enableWorkflowTools,
-	),
-);
+export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec => {
+	const access = workflowAccessFor(spec);
+	return access === 'write'
+		? mcpCapability(spec, access, 'workflow', true, (input, ctx) =>
+				runWorkflowMutationWithApproval(spec, input, ctx),
+			)
+		: mcpCapability(spec, access, 'workflow', true);
+});

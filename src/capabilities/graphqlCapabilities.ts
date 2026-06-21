@@ -3,15 +3,9 @@ import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability } from './Capability';
 
 /**
- * Migrates the existing buddy_graphql_schema / buddy_graphql tool specs into
- * capabilities. The spec objects are reused verbatim (not copied) so the
- * package.json manifest stays in sync via packageManifest.test.ts, and the chat
- * surface keeps offering the identical two tools.
- *
- * Execution wraps runGraphqlTool with deps bound to the resolved session, the
- * same path the chat tools use. buddy_graphql_schema is read-only and can also
- * be exposed over MCP; buddy_graphql stays chat-only because it can carry both
- * reads and writes. MCP gets separate read and mutation primitives.
+ * Exposes the schema helper over MCP. The combined buddy_graphql chat tool is
+ * retired: MCP uses the dedicated rewst_graphql_query and rewst_graphql_mutate
+ * primitives instead.
  */
 
 function specByName(name: string): ToolSpec {
@@ -24,21 +18,10 @@ export const graphqlSchemaCapability: Capability = {
 	spec: specByName('buddy_graphql_schema'),
 	group: 'graphql',
 	access: 'read',
-	chat: true,
+	chat: false,
 	mcp: true,
 	requiresOrg: false,
-	enabled: settings => settings.enableGraphqlTool,
 	run: (input, ctx) => runGraphqlTool({ tool: 'buddy_graphql_schema', args: input }, createGraphqlDeps(ctx.session)),
 };
 
-export const graphqlCapability: Capability = {
-	spec: specByName('buddy_graphql'),
-	group: 'graphql',
-	access: 'write',
-	chat: true,
-	mcp: false,
-	enabled: settings => settings.enableGraphqlTool,
-	run: (input, ctx) => runGraphqlTool({ tool: 'buddy_graphql', args: input }, createGraphqlDeps(ctx.session)),
-};
-
-export const GRAPHQL_CAPABILITIES: Capability[] = [graphqlSchemaCapability, graphqlCapability];
+export const GRAPHQL_CAPABILITIES: Capability[] = [graphqlSchemaCapability];

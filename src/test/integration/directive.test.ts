@@ -3,7 +3,6 @@ import * as Mocha from 'mocha';
 import { askRewstAi, Session } from '@sessions';
 import { clearCachedSession, getTestSession, getTestToken, hasTestToken, initTestEnvironment } from '@test';
 import { buildEngineeringDirective } from '../../ui/chat/model/engineeringDirective';
-import { ALL_TOOL_SPECS } from '../../ui/chat/model/lmTools';
 import {
 	buildToolInstructions,
 	parseToolRequests,
@@ -46,7 +45,7 @@ suite('Integration: engineering directive steering', function () {
 		attempt = 1,
 		extraSpecs: ToolSpec[] = [],
 	): Promise<{ content: string; requests: ToolRequest[]; statuses: string[] }> {
-		const specs = [...ALL_TOOL_SPECS, ...extraSpecs];
+		const specs = extraSpecs;
 		const directive = buildEngineeringDirective(new Set(specs.map(spec => spec.name)));
 		const message = `${directive}\n\n${question}\n\n${buildToolInstructions(specs)}`;
 		let content = '';
@@ -79,60 +78,10 @@ suite('Integration: engineering directive steering', function () {
 		return { content, requests, statuses };
 	}
 
-	// The server reports a gitbook doc-search loop via the `searching` status,
+	// The server reports a documentation search loop via the `searching` status,
 	// mapped to this label in ConversationEventMapper.
 	const DOC_SEARCH_LABEL = 'Searching documentation';
 	const searchedDocs = (statuses: string[]): boolean => statuses.some(label => label.includes(DOC_SEARCH_LABEL));
-
-	test('org variable question routes to GraphQL schema introspection', async () => {
-		const { requests } = await turn('What org variables are set in this org?');
-		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
-		const tools = requests.map(request => request.tool);
-		assert.ok(
-			tools.every(tool => tool === 'buddy_graphql_schema' || tool === 'buddy_graphql'),
-			`expected only GraphQL tools, got: ${tools.join(', ')}`,
-		);
-	});
-
-	test('general web question routes to web_search', async () => {
-		const { requests } = await turn(
-			'Search the web for the current latest stable version of the "graphql-ws" npm package and tell me what it is.',
-		);
-		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
-		assert.ok(
-			requests.some(request => request.tool === 'web_search'),
-			`expected web_search, got: ${requests.map(r => r.tool).join(', ')}`,
-		);
-	});
-
-	test('a current-events question searches the web instead of refusing', async () => {
-		// The reported failure (#27): a news / "latest in the last N hours" question
-		// gets a "can't browse / no realtime access" refusal with no tool call,
-		// unless the user prefixes "use agents to search". It must search on its own.
-		const { requests } = await turn('What is the latest news out of the Democratic Party in the last 24 hours?');
-		assert.ok(requests.length > 0, 'expected a web_search request, got a prose refusal');
-		assert.ok(
-			requests.some(request => request.tool === 'web_search'),
-			`expected web_search, got: ${requests.map(r => r.tool).join(', ')}`,
-		);
-	});
-
-	test('workflow listing routes to the workflow search tool, not GraphQL or native platform tools', async () => {
-		const { requests } = await turn('List the workflows in this org.');
-		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
-		const tools = requests.map(request => request.tool);
-		assert.ok(tools.includes('buddy_workflow_search'), `expected buddy_workflow_search, got: ${tools.join(', ')}`);
-		assert.ok(
-			!tools.some(
-				tool =>
-					tool === 'buddy_graphql' ||
-					tool === 'buddy_graphql_schema' ||
-					tool === 'listWorkflow' ||
-					tool === 'searchWorkflows',
-			),
-			`must not use GraphQL or native wrappers, got: ${tools.join(', ')}`,
-		);
-	});
 
 	test('a non-Rewst engineering task does not trigger a documentation search', async () => {
 		const { statuses } = await turn(
@@ -159,9 +108,12 @@ suite('Integration: engineering directive steering', function () {
 		// (e.g. listWorkflow) as a warm-up, ignores it, then runs the real tool.
 		// Server-side native tools surface as "Running tool: …" statuses; an
 		// editor-tool request does not, so any such status here is a stray call.
-		const { statuses } = await turn(
-			'Use the list_template_links tool to show which local files are linked to templates.',
-		);
+		const readFileSpec: ToolSpec = {
+			name: 'read_file',
+			args: '{"path": string}',
+			description: 'Read a local workspace file.',
+		};
+		const { statuses } = await turn('Use the read_file tool to read /tmp/readme.md.', 1, [readFileSpec]);
 		const nativeCalls = statuses.filter(label => label.startsWith('Running tool:'));
 		assert.deepStrictEqual(
 			nativeCalls,

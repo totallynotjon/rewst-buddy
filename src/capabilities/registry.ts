@@ -1,10 +1,5 @@
-import type { Capability, CapabilityGroup, CapabilitySettings } from './Capability';
-import {
-	RESULT_READ_CHAT_CAPABILITIES,
-	WEB_CHAT_CAPABILITIES,
-	WORKFLOW_CHAT_CAPABILITIES,
-	WORKSPACE_CHAT_CAPABILITIES,
-} from './chatToolCapabilities';
+import type { Capability, CapabilityGroup } from './Capability';
+import { WORKFLOW_CHAT_CAPABILITIES, WORKSPACE_CHAT_CAPABILITIES } from './chatToolCapabilities';
 import { GRAPHQL_CAPABILITIES } from './graphqlCapabilities';
 import { graphqlMutateCapability } from './graphqlMutateCapability';
 import { READ_CAPABILITIES } from './rewstReadCapabilities';
@@ -16,12 +11,10 @@ import { READ_CAPABILITIES } from './rewstReadCapabilities';
  */
 export const CAPABILITY_REGISTRY: Capability[] = [
 	...WORKSPACE_CHAT_CAPABILITIES,
-	...WEB_CHAT_CAPABILITIES,
 	...WORKFLOW_CHAT_CAPABILITIES,
 	...GRAPHQL_CAPABILITIES,
 	...READ_CAPABILITIES,
 	graphqlMutateCapability,
-	...RESULT_READ_CHAT_CAPABILITIES,
 ];
 
 const BY_NAME = new Map(CAPABILITY_REGISTRY.map(capability => [capability.spec.name, capability]));
@@ -68,7 +61,7 @@ export function mcpCapabilities(): Capability[] {
 	return CAPABILITY_REGISTRY.filter(capability => capability.mcp);
 }
 
-/** MCP capabilities whose intrinsic feature gate the given settings satisfy. */
-export function enabledMcpCapabilities(settings: CapabilitySettings): Capability[] {
-	return mcpCapabilities().filter(capability => capability.enabled(settings));
+/** MCP capabilities; exposure gates are applied by the MCP boundary. */
+export function enabledMcpCapabilities(): Capability[] {
+	return mcpCapabilities();
 }
