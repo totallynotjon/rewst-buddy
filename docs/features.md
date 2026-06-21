@@ -110,6 +110,8 @@ Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of
 
 The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement is the query/mutate pair. Workflow edits, auto-layout, runs, and raw GraphQL mutations still require approval inside VS Code before anything is sent to Rewst. `rewst_graphql_mutate` is intentionally separate from `enableWriteTools` because it can run arbitrary mutations against the live org.
 
+When the server is registered with VS Code's own MCP client (the `Add MCP Server to VS Code` command), flipping any of these exposure switches re-advertises the server with a new version, so VS Code reconnects and refreshes the tool set in chat — no window reload needed.
+
 Large MCP outputs are bounded at the MCP response boundary; the retired chat-only `buddy_result_read` cache is no longer part of the chat tool protocol.
 
 The local MCP endpoint is guarded by a persistent localhost token. If it is ever exposed, run `Rewst Buddy: Rotate MCP Token` to replace it after a modal confirmation — existing MCP clients holding the old token lose access until you re-copy the config with `Copy MCP Config to Clipboard`.
