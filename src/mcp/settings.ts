@@ -7,9 +7,12 @@ export interface McpSettings {
 	enable: boolean;
 	/** Allows access:'write' capabilities through the MCP boundary. */
 	enableWriteTools: boolean;
+	/** Allows the raw GraphQL mutation capability through the MCP boundary. */
+	enableDangerousGraphqlMutation: boolean;
 	/**
 	 * Allowlist of capability names exposed over MCP. Empty array means "all
-	 * enabled read tools" (the default); a non-empty list restricts to those names.
+	 * capabilities allowed by the MCP switches" (the default); a non-empty list
+	 * restricts to those names.
 	 */
 	enabledTools: string[];
 }
@@ -36,6 +39,8 @@ export function readMcpSettings(): McpSettings {
 	return {
 		enable: !malformedEnabledTools && config.get<boolean>('enable', false),
 		enableWriteTools: !malformedEnabledTools && config.get<boolean>('enableWriteTools', false),
+		enableDangerousGraphqlMutation:
+			!malformedEnabledTools && config.get<boolean>('enableDangerousGraphqlMutation', false),
 		enabledTools,
 	};
 }

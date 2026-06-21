@@ -17,17 +17,6 @@ export type CapabilityAccess = 'read' | 'write';
 export type CapabilityGroup = 'workflow' | 'graphql' | 'workspace' | 'result';
 
 /**
- * Settings that gate whether a capability is offered at all, independent of
- * any surface. Each field mirrors one rewst-buddy.ai.tools category. The MCP
- * surface layers its own gates on top (master switch, write toggle, allowlist).
- */
-export interface CapabilitySettings {
-	enableGraphqlTool: boolean;
-	enableWorkflowTools: boolean;
-	enableWorkspaceTools: boolean;
-}
-
-/**
  * The session + org a capability handler runs against. The surface resolves and
  * validates the session before calling run, so handlers can assume it is live.
  * `sessions` is every active session, for org-discovery capabilities that span
@@ -49,6 +38,8 @@ export interface Capability {
 	 * of what the client requests.
 	 */
 	access: CapabilityAccess;
+	/** High-risk write capability that has its own MCP exposure toggle. */
+	dangerous?: boolean;
 	/** Exposed as a Cage-Free Rewsty chat tool (vscode-tool protocol). */
 	chat: boolean;
 	/** Exposed over the MCP server surface. */
@@ -60,8 +51,6 @@ export interface Capability {
 	 * org-scoped (true) when omitted.
 	 */
 	requiresOrg?: boolean;
-	/** Intrinsic feature gate; surface-specific gates are applied by the surface. */
-	enabled(settings: CapabilitySettings): boolean;
 	/** Runs the operation and returns text for the caller. */
 	run(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string>;
 }

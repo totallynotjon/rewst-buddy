@@ -2,7 +2,6 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { SessionManager, type Session } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
-import vscode from 'vscode';
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover } from '../capabilities/graphqlMutateCapability';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import {
@@ -16,11 +15,7 @@ import type { McpSettings } from './settings';
 const { suite, test, setup, teardown } = Mocha;
 
 function settings(over: Partial<McpSettings> = {}): McpSettings {
-	return { enable: true, enableWriteTools: false, enabledTools: [], ...over };
-}
-
-async function setAiTools(tools: string[]): Promise<void> {
-	await vscode.workspace.getConfiguration('rewst-buddy.ai').update('tools', tools, vscode.ConfigurationTarget.Global);
+	return { enable: true, enableWriteTools: false, enableDangerousGraphqlMutation: false, enabledTools: [], ...over };
 }
 
 /** A mock session managing one org, registered with the SessionManager. */
@@ -101,20 +96,18 @@ function detectGraphqlOperation(query: string): string {
 }
 
 suite('Unit: McpActions', () => {
-	setup(async () => {
+	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
 		_resetMcpThrottleForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
-		await setAiTools(['workspace', 'graphql']);
 	});
 
-	teardown(async () => {
+	teardown(() => {
 		SessionManager._resetForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
-		await setAiTools(['workspace']);
 	});
 
 	suite('listTools()', () => {
@@ -125,9 +118,11 @@ suite('Unit: McpActions', () => {
 			assert.ok(names.includes('get_template'));
 			assert.ok(names.includes('list_workflows'));
 			assert.ok(names.includes('get_workflow'));
+			assert.ok(names.includes('rewst_graphql_query'), 'read-only GraphQL query is available on MCP');
 			assert.ok(names.includes('list_template_links'), 'workspace helper is available on MCP');
 			assert.ok(!names.includes('buddy_graphql'), 'chat write tool is not on MCP');
 			assert.ok(names.includes('buddy_graphql_schema'), 'schema introspection is available on MCP');
+			assert.ok(!names.includes('rewst_graphql_mutate'), 'raw GraphQL mutation needs its own dangerous toggle');
 			assert.ok(!names.includes('buddy_result_read'), 'chat result-cache reader is not on MCP');
 		});
 
@@ -212,7 +207,6 @@ suite('Unit: McpActions', () => {
 			const { session, wrapper } = useSession('org-1', 'Acme');
 			useRawGraphqlWrapper(session, wrapper);
 			wrapper.when('rawGraphql', { data: workflowGetResponse() });
-			await setAiTools(['workspace', 'workflows']);
 
 			const names = listTools(settings()).map(tool => tool.name);
 			assert.ok(names.includes('buddy_workflow_get'));
@@ -241,7 +235,6 @@ suite('Unit: McpActions', () => {
 
 		test('workflow write helpers are listed only when MCP write tools are enabled', async () => {
 			useSession('org-1');
-			await setAiTools(['workspace', 'workflows']);
 
 			const withoutWrite = listTools(settings()).map(tool => tool.name);
 			assert.ok(!withoutWrite.includes(WORKFLOW_EDIT_TOOL_NAME));
@@ -256,7 +249,6 @@ suite('Unit: McpActions', () => {
 
 		test('buddy_workflow_edit is rejected at the boundary while write tools are disabled', async () => {
 			useSession('org-1');
-			await setAiTools(['workspace', 'workflows']);
 
 			await assert.rejects(
 				callTool(
@@ -279,7 +271,6 @@ suite('Unit: McpActions', () => {
 		test('buddy_workflow_edit returns approval_required without executing when the user declines', async () => {
 			const { session, wrapper } = useSession('org-1', 'Acme');
 			useRawGraphqlWrapper(session, wrapper);
-			await setAiTools(['workspace', 'workflows']);
 			setMcpMutationApprover(async () => false);
 
 			const result = await callTool(
@@ -305,7 +296,6 @@ suite('Unit: McpActions', () => {
 			const { session, wrapper } = useSession('org-1', 'Acme');
 			useRawGraphqlWrapper(session, wrapper);
 			wrapper.when<unknown>('rawGraphql', workflowMutationRawGraphqlResponse);
-			await setAiTools(['workspace', 'workflows']);
 			let approvals = 0;
 			setMcpMutationApprover(async () => {
 				approvals++;
@@ -368,7 +358,7 @@ suite('Unit: McpActions', () => {
 			assert.strictEqual(result.isError, true);
 		});
 
-		test('rewst_graphql_mutate is rejected while write tools are disabled', async () => {
+		test('rewst_graphql_mutate is rejected while the dangerous mutation toggle is disabled', async () => {
 			useSession('org-1');
 			await assert.rejects(
 				callTool(
@@ -381,15 +371,17 @@ suite('Unit: McpActions', () => {
 							scopeName: 'Workflow',
 						},
 					},
-					settings({ enableWriteTools: false }),
+					settings({ enableWriteTools: true, enableDangerousGraphqlMutation: false }),
 				),
-				(error: unknown) => error instanceof McpError && error.code === 'write_disabled',
+				(error: unknown) =>
+					error instanceof McpError &&
+					error.code === 'write_disabled' &&
+					error.message.includes('rewst-buddy.mcp.enableDangerousGraphqlMutation'),
 			);
 		});
 
-		test('rewst_graphql_mutate is hidden and rejected when GraphQL tools are off', async () => {
+		test('rewst_graphql_mutate is not exposed by enableWriteTools alone', async () => {
 			useSession('org-1');
-			await setAiTools(['workspace']);
 
 			const names = listTools(settings({ enableWriteTools: true })).map(tool => tool.name);
 			assert.ok(!names.includes('rewst_graphql_mutate'));
@@ -406,8 +398,19 @@ suite('Unit: McpActions', () => {
 					},
 					settings({ enableWriteTools: true }),
 				),
-				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
+				(error: unknown) =>
+					error instanceof McpError &&
+					error.code === 'write_disabled' &&
+					error.message.includes('enableDangerousGraphqlMutation'),
 			);
+		});
+
+		test('rewst_graphql_mutate is exposed by the dangerous toggle without enableWriteTools', () => {
+			const names = listTools(settings({ enableDangerousGraphqlMutation: true })).map(tool => tool.name);
+			assert.ok(names.includes('rewst_graphql_mutate'));
+			assert.ok(!names.includes(WORKFLOW_EDIT_TOOL_NAME));
+			assert.ok(!names.includes(WORKFLOW_AUTOLAYOUT_TOOL_NAME));
+			assert.ok(!names.includes(WORKFLOW_RUN_TOOL_NAME));
 		});
 
 		test('rewst_graphql_mutate returns an error result for query documents', async () => {
@@ -422,7 +425,7 @@ suite('Unit: McpActions', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 			assert.strictEqual(result.isError, true);
 			assert.ok(result.text.includes('use rewst_graphql_query'));
@@ -440,7 +443,7 @@ suite('Unit: McpActions', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 			assert.strictEqual(result.isError, true);
 			assert.ok(result.text.includes('Subscriptions are not supported'));
@@ -461,7 +464,7 @@ suite('Unit: McpActions', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 
 			assert.ok(!result.isError);
@@ -488,11 +491,11 @@ suite('Unit: McpActions', () => {
 
 			const first = await callTool(
 				{ name: 'rewst_graphql_mutate', arguments: args },
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 			const second = await callTool(
 				{ name: 'rewst_graphql_mutate', arguments: args },
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 
 			assert.ok(!first.isError);

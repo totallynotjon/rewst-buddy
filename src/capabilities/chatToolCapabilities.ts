@@ -9,13 +9,7 @@ import {
 	WORKFLOW_TOOL_SPECS,
 } from '../ui/chat/tools/workflowTools';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
-import type {
-	Capability,
-	CapabilityAccess,
-	CapabilityContext,
-	CapabilityGroup,
-	CapabilitySettings,
-} from './Capability';
+import type { Capability, CapabilityAccess, CapabilityContext, CapabilityGroup } from './Capability';
 import { runWorkflowMutationWithApproval } from './workflowMutateCapability';
 
 const workflowAccess: Record<string, CapabilityAccess> = {
@@ -60,7 +54,6 @@ function mcpCapability(
 	spec: ToolSpec,
 	access: CapabilityAccess,
 	group: CapabilityGroup,
-	enabled: (settings: CapabilitySettings) => boolean,
 	mcp: boolean,
 	run: (input: Record<string, unknown>, ctx: CapabilityContext) => Promise<string> = (input, ctx) =>
 		runViaChatToolPath(spec, input, ctx),
@@ -72,13 +65,12 @@ function mcpCapability(
 		chat: false,
 		mcp,
 		...(doesNotRequireOrg.has(spec.name) ? { requiresOrg: false as const } : {}),
-		enabled,
 		run,
 	};
 }
 
 export const WORKSPACE_CHAT_CAPABILITIES: Capability[] = WORKSPACE_TOOL_SPECS.map(spec =>
-	mcpCapability(spec, 'read', 'workspace', settings => settings.enableWorkspaceTools, true),
+	mcpCapability(spec, 'read', 'workspace', true),
 );
 
 export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec => {
@@ -87,7 +79,6 @@ export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(
 		spec,
 		access,
 		'workflow',
-		settings => settings.enableWorkflowTools,
 		true,
 		access === 'write' ? (input, ctx) => runWorkflowMutationWithApproval(spec, input, ctx) : undefined,
 	);

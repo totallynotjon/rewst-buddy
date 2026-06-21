@@ -102,13 +102,13 @@ Cage-Free Rewsty is still told your VS Code working directory when one is open, 
 
 ### Rewst MCP tools
 
-Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of the chat LM tool surface. Enable the MCP bridge with `rewst-buddy.mcp.enable`; Rewst capability families are controlled by `rewst-buddy.ai.tools` (`workspace` is on by default, `graphql` and `workflows` are opt-in):
+Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of the chat LM tool surface. MCP exposure uses three switches:
 
-- **Workspace MCP** (`workspace`) — `list_template_links` lists local files linked to Rewst templates (path, template name, template id, org)
-- **GraphQL MCP** (`graphql`) — `buddy_graphql_schema` inspects the schema, while MCP clients use `rewst_graphql_query` and `rewst_graphql_mutate` for operations. The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement is the query/mutate pair. Mutations require `rewst-buddy.mcp.enableWriteTools` and an approval prompt inside VS Code
-- **Workflow MCP** (`workflows`) — `buddy_workflow_search`, `buddy_workflow_get`, `buddy_action_search`, `buddy_workflow_edit`, `buddy_workflow_autolayout`, `buddy_workflow_run`, `buddy_workflow_executions`, `buddy_execution_logs`, and `buddy_render_jinja`
+- `rewst-buddy.mcp.enable` exposes all read capabilities: `list_orgs`, `list_templates`, `get_template`, `list_workflows`, `get_workflow`, `rewst_graphql_query`, `buddy_graphql_schema`, `list_template_links`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_render_jinja`, and `buddy_action_search`.
+- `rewst-buddy.mcp.enableWriteTools` exposes the workflow write helpers `buddy_workflow_edit`, `buddy_workflow_autolayout`, and `buddy_workflow_run`.
+- `rewst-buddy.mcp.enableDangerousGraphqlMutation` exposes only `rewst_graphql_mutate`, the raw GraphQL mutation tool.
 
-Workflow reads run directly when the MCP server and workflow family are enabled. Workflow edits, auto-layout, runs, and GraphQL mutations are write capabilities: they are rejected unless `rewst-buddy.mcp.enableWriteTools` is enabled, and every write still requires approval inside VS Code before anything is sent to Rewst.
+The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement is the query/mutate pair. Workflow edits, auto-layout, runs, and raw GraphQL mutations still require approval inside VS Code before anything is sent to Rewst. `rewst_graphql_mutate` is intentionally separate from `enableWriteTools` because it can run arbitrary mutations against the live org.
 
 Large MCP outputs are bounded at the MCP response boundary; the retired chat-only `buddy_result_read` cache is no longer part of the chat tool protocol.
 

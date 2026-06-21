@@ -1,13 +1,6 @@
-import {
-	CAPABILITY_REGISTRY,
-	getCapability,
-	type Capability,
-	type CapabilityContext,
-	type CapabilitySettings,
-} from '@capabilities';
+import { CAPABILITY_REGISTRY, getCapability, type Capability, type CapabilityContext } from '@capabilities';
 import { SessionManager, type Session } from '@sessions';
 import { log } from '@utils';
-import { enabledAiTools } from '../ui/chat/tools/aiToolSettings';
 import type { McpErrorCode, McpResourceDescriptor, McpToolDescriptor, McpToolResult } from './protocol';
 import { readMcpSettings, type McpSettings } from './settings';
 import { SlidingWindowThrottle } from './throttle';
@@ -50,20 +43,14 @@ export class McpError extends Error {
 	}
 }
 
-function capabilitySettings(): CapabilitySettings {
-	const tools = enabledAiTools();
-	return {
-		enableGraphqlTool: tools.has('graphql'),
-		enableWorkflowTools: tools.has('workflows'),
-		enableWorkspaceTools: tools.has('workspace'),
-	};
-}
-
 /** Whether a capability is exposed to MCP under the current settings. */
 function isExposed(capability: Capability, settings: McpSettings): boolean {
 	if (!capability.mcp) return false;
-	if (!capability.enabled(capabilitySettings())) return false;
-	if (capability.access === 'write' && !settings.enableWriteTools) return false;
+	if (capability.dangerous) {
+		if (!settings.enableDangerousGraphqlMutation) return false;
+	} else if (capability.access === 'write') {
+		if (!settings.enableWriteTools) return false;
+	}
 	if (settings.enabledTools.length > 0 && !settings.enabledTools.includes(capability.spec.name)) return false;
 	return true;
 }
@@ -157,7 +144,13 @@ export async function callTool(
 	if (!capability || !capability.mcp) {
 		throw new McpError('unknown_tool', `Unknown tool "${params.name}".`);
 	}
-	if (capability.access === 'write' && !settings.enableWriteTools) {
+	if (capability.dangerous && !settings.enableDangerousGraphqlMutation) {
+		throw new McpError(
+			'write_disabled',
+			`"${params.name}" can run arbitrary GraphQL mutations against the live Rewst organization and is disabled. Enable rewst-buddy.mcp.enableDangerousGraphqlMutation in VS Code.`,
+		);
+	}
+	if (!capability.dangerous && capability.access === 'write' && !settings.enableWriteTools) {
 		throw new McpError(
 			'write_disabled',
 			`"${params.name}" changes Rewst data and write tools are disabled. Enable rewst-buddy.mcp.enableWriteTools in VS Code.`,

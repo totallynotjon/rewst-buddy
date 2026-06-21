@@ -1,5 +1,4 @@
 import type { Session } from '@sessions';
-import { isAiToolEnabled } from './aiToolSettings';
 import type { ToolRequest, ToolSpec } from './toolProtocol';
 
 /**
@@ -9,8 +8,7 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
  * rewst_graphql_query and rewst_graphql_mutate primitives, while
  * buddy_graphql_schema remains available for schema inspection.
  *
- *   - Off by default (enable "graphql" in rewst-buddy.ai.tools): the session can
- *     read and change anything the user can in Rewst.
+ *   - The MCP boundary decides whether these tools are exposed.
  *   - Queries run directly once enabled; mutations always require explicit
  *     approval through the MCP mutation approver before execution.
  *   - Every mutation MUST carry four scope fields the assistant supplies:
@@ -235,7 +233,7 @@ const TYPE_NAMES_QUERY = `query RewstBuddySchemaTypeNames($includeDeprecated: Bo
 /** Binds the tool to the chat's session so operations hit the right org/region. */
 export function createGraphqlDeps(session: Session): GraphqlToolDeps {
 	return {
-		isEnabled: () => isAiToolEnabled('graphql'),
+		isEnabled: () => true,
 		// MCP mutations are approved before this dependency path is invoked, so
 		// there is nothing left to ask inside the low-level GraphQL runner.
 		confirmMutation: async () => true,
@@ -589,11 +587,7 @@ export async function runMutationGraphql(
 }
 
 export async function runGraphqlTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
-	if (!deps || !deps.isEnabled()) {
-		throw new Error(
-			'GraphQL tools are disabled. The user can enable them with the rewst-buddy.ai.tools setting (check "graphql").',
-		);
-	}
+	if (!deps) throw new Error('GraphQL dependencies are unavailable.');
 
 	if (request.tool === 'buddy_graphql_schema') {
 		return runSchemaTool(request, deps);

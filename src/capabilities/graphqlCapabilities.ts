@@ -21,7 +21,6 @@ export const graphqlSchemaCapability: Capability = {
 	chat: false,
 	mcp: true,
 	requiresOrg: false,
-	enabled: settings => settings.enableGraphqlTool,
 	run: (input, ctx) => runGraphqlTool({ tool: 'buddy_graphql_schema', args: input }, createGraphqlDeps(ctx.session)),
 };
 

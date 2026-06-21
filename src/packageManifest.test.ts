@@ -23,6 +23,9 @@ interface PackageManifest {
 		}[];
 		languageModelTools?: ManifestTool[];
 		chatParticipants?: unknown[];
+		configuration?: {
+			properties?: Record<string, { type?: string; default?: unknown; description?: string }>;
+		};
 		commands: { command: string; title: string }[];
 	};
 }
@@ -60,6 +63,19 @@ suite('Unit: package manifest', () => {
 
 	test('the @rewst chat participant is retired', () => {
 		assert.strictEqual(manifest.contributes.chatParticipants, undefined);
+	});
+
+	test('MCP settings use the three-tier gate and the legacy checklist is removed', () => {
+		const properties = manifest.contributes.configuration?.properties ?? {};
+		const retiredChecklistKey = ['rewst-buddy', 'ai', 'tools'].join('.');
+		assert.strictEqual(properties[retiredChecklistKey], undefined);
+		assert.strictEqual(properties['rewst-buddy.mcp.enable']?.default, false);
+		assert.strictEqual(properties['rewst-buddy.mcp.enableWriteTools']?.default, false);
+		assert.strictEqual(properties['rewst-buddy.mcp.enableDangerousGraphqlMutation']?.default, false);
+		assert.match(
+			properties['rewst-buddy.mcp.enableDangerousGraphqlMutation']?.description ?? '',
+			/arbitrary GraphQL mutations/,
+		);
 	});
 
 	test('resume and apply commands are contributed for the palette', () => {

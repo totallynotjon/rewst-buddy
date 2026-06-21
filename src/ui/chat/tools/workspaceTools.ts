@@ -1,7 +1,6 @@
 import { LinkManager, type TemplateLink } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { isAiToolEnabled } from './aiToolSettings';
 import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
 import { GRAPHQL_TOOL_SPECS, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
 import { isWorkflowTool, runWorkflowTool, WORKFLOW_TOOL_SPECS } from './workflowTools';
@@ -20,7 +19,6 @@ export interface WorkspaceToolDeps {
 	workspaceFolders(): readonly vscode.WorkspaceFolder[];
 	asRelativePath(uri: vscode.Uri): string;
 	templateLinks(): TemplateLink[];
-	workspaceToolsEnabled(): boolean;
 }
 
 export const defaultDeps: WorkspaceToolDeps = {
@@ -28,7 +26,6 @@ export const defaultDeps: WorkspaceToolDeps = {
 	workspaceFolders: () => vscode.workspace.workspaceFolders ?? [],
 	asRelativePath: uri => vscode.workspace.asRelativePath(uri, false),
 	templateLinks: () => LinkManager.getAllTemplateLinks(),
-	workspaceToolsEnabled: () => isAiToolEnabled('workspace'),
 };
 
 export const WORKSPACE_TOOL_SPECS: ToolSpec[] = [
@@ -53,18 +50,6 @@ function listTemplateLinks(deps: WorkspaceToolDeps): string {
 		return `${relative} ← "${link.template.name}" (template ${link.template.id}, org ${link.org.name})`;
 	});
 	return lines.join('\n');
-}
-
-// Enforced at execution time, not just by omitting specs from the prompt: the
-// assistant is remote and may request tools it was never offered.
-const LOCAL_TOOL_NAMES = new Set(WORKSPACE_TOOL_SPECS.map(spec => spec.name));
-
-function requireWorkspaceTools(deps: WorkspaceToolDeps): void {
-	if (!deps.workspaceToolsEnabled()) {
-		throw new Error(
-			'Workspace tools are disabled. The user can enable them with the rewst-buddy.ai.tools setting (check "workspace").',
-		);
-	}
 }
 
 /** Executes parsed tool requests sequentially; failures become error results. */
@@ -95,20 +80,11 @@ async function runTool(
 	deps: WorkspaceToolDeps,
 	graphqlDeps?: GraphqlToolDeps,
 ): Promise<ToolOutcome> {
-	if (LOCAL_TOOL_NAMES.has(request.tool)) requireWorkspaceTools(deps);
 	switch (request.tool) {
 		case 'list_template_links':
 			return { output: listTemplateLinks(deps) };
 		default: {
 			if (isWorkflowTool(request.tool)) {
-				// runWorkflowTool's deps.isEnabled() gates the graphql capability, not
-				// workflows, so enforce the "workflows" capability here — a remote
-				// assistant can emit a tool block it was never offered.
-				if (!isAiToolEnabled('workflows')) {
-					throw new Error(
-						'Workflow tools are disabled. The user can enable them with the rewst-buddy.ai.tools setting (check "workflows").',
-					);
-				}
 				return { output: await runWorkflowTool(request, graphqlDeps) };
 			}
 			if (isGraphqlTool(request.tool)) return { output: await runGraphqlTool(request, graphqlDeps) };

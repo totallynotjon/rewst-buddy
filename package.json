@@ -136,27 +136,6 @@
 					"default": true,
 					"description": "Show Cage-Free Rewsty's live activity (documentation searches and tool calls) as it works, instead of only a spinner until the answer arrives."
 				},
-				"rewst-buddy.ai.tools": {
-					"type": "array",
-					"default": [
-						"workspace"
-					],
-					"uniqueItems": true,
-					"items": {
-						"type": "string",
-						"enum": [
-							"workspace",
-							"graphql",
-							"workflows"
-						],
-						"enumDescriptions": [
-							"Workspace MCP tools: expose the list of files linked to Rewst templates.",
-							"GraphQL MCP tools: expose schema/query/mutation helpers against your Rewst instance (mutations require your approval).",
-							"Workflow MCP tools: expose workflow read/edit/search/run helpers (write helpers require your approval)."
-						]
-					},
-					"markdownDescription": "Rewst MCP capability families to expose. `workspace` exposes linked-template metadata; `graphql` and `workflows` let MCP clients act against your Rewst instance, where GraphQL and workflow **writes require your approval**."
-				},
 				"rewst-buddy.mcp.enable": {
 					"type": "boolean",
 					"default": false,
@@ -165,7 +144,12 @@
 				"rewst-buddy.mcp.enableWriteTools": {
 					"type": "boolean",
 					"default": false,
-					"description": "Allow MCP tools that change Rewst data (write capabilities). Even when enabled, each change still requires your approval inside VS Code. Off by default; read-only tools work without it."
+					"description": "Allow workflow MCP tools that change Rewst data (buddy_workflow_edit, buddy_workflow_autolayout, and buddy_workflow_run). Even when enabled, each change still requires your approval inside VS Code. Does not expose raw GraphQL mutation."
+				},
+				"rewst-buddy.mcp.enableDangerousGraphqlMutation": {
+					"type": "boolean",
+					"default": false,
+					"description": "Allow the raw rewst_graphql_mutate MCP tool to run arbitrary GraphQL mutations against the live Rewst organization. This is separate from write tools because it can change anything your Rewst session can change; each mutation still requires per-resource approval inside VS Code."
 				},
 				"rewst-buddy.mcp.enabledTools": {
 					"type": "array",

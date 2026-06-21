@@ -1315,9 +1315,7 @@ function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary
 // against.
 function requireDeps(deps: GraphqlToolDeps | undefined): GraphqlToolDeps {
 	if (!deps) {
-		throw new Error(
-			'No active Rewst session for the workflow tools (enable "workflows" in rewst-buddy.ai.tools and sign in).',
-		);
+		throw new Error('No active Rewst session for the workflow tools. Sign in to Rewst in VS Code and retry.');
 	}
 	return deps;
 }

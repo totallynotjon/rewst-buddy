@@ -2,12 +2,11 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { SessionManager } from '@sessions';
 import { initTestEnvironment } from '@test';
-import type { CapabilityGroup, CapabilitySettings } from './Capability';
+import type { CapabilityGroup } from './Capability';
 import {
 	CAPABILITY_REGISTRY,
 	chatCapabilities,
 	chatCapabilityNames,
-	enabledMcpCapabilities,
 	getCapability,
 	hasChatCapability,
 	mcpCapabilities,
@@ -32,15 +31,6 @@ const WORKFLOW_WRITE_MCP_CAPABILITIES = [
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 ];
-
-function settings(overrides: Partial<CapabilitySettings> = {}): CapabilitySettings {
-	return {
-		enableGraphqlTool: false,
-		enableWorkflowTools: false,
-		enableWorkspaceTools: false,
-		...overrides,
-	};
-}
 
 suite('Unit: capability registry', () => {
 	setup(() => {
@@ -115,6 +105,7 @@ suite('Unit: capability registry', () => {
 				assert.ok(names.includes(expected), `${expected} exposed to MCP`);
 			}
 			assert.strictEqual(getCapability('rewst_graphql_mutate')?.access, 'write');
+			assert.strictEqual(getCapability('rewst_graphql_mutate')?.dangerous, true);
 			assert.ok(!names.includes('buddy_graphql'), 'combined chat write tool stays off MCP');
 		});
 
@@ -174,18 +165,12 @@ suite('Unit: capability registry', () => {
 			assert.strictEqual(schema.requiresOrg, false);
 		});
 
-		test('raw GraphQL MCP tools are gated by enableGraphqlTool; structured reads are not', () => {
-			const off = enabledMcpCapabilities(settings()).map(capability => capability.spec.name);
-			assert.ok(!off.includes('rewst_graphql_query'), 'raw query off by default');
-			assert.ok(!off.includes('buddy_graphql_schema'), 'schema off by default');
-			assert.ok(!off.includes('rewst_graphql_mutate'), 'mutation off by default');
-			assert.ok(off.includes('list_templates'), 'structured reads always available');
-			const on = enabledMcpCapabilities(settings({ enableGraphqlTool: true })).map(
+		test('MCP surface includes every mcp capability without intrinsic family filtering', () => {
+			const registryNames = CAPABILITY_REGISTRY.filter(capability => capability.mcp).map(
 				capability => capability.spec.name,
 			);
-			assert.ok(on.includes('rewst_graphql_query'), 'raw query available when graphql enabled');
-			assert.ok(on.includes('buddy_graphql_schema'), 'schema available when graphql enabled');
-			assert.ok(on.includes('rewst_graphql_mutate'), 'mutation available when graphql enabled');
+			const surfaceNames = mcpCapabilities().map(capability => capability.spec.name);
+			assert.deepStrictEqual(surfaceNames, registryNames);
 		});
 	});
 });
