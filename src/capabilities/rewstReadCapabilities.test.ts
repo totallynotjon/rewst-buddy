@@ -287,6 +287,71 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.ok(noMatch.startsWith('No executions'), 'reports no match');
 	});
 
+	test('find_executions_by_variable scans execution contexts and reports skipped failed fetches', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when(
+			'rawGraphql',
+			(arg: {
+				query: string;
+				variables: Record<string, unknown>;
+			}): { data?: { data: Record<string, unknown> }; error?: Error } => {
+				if (arg.query.includes('workflowExecutionContexts')) {
+					const id = arg.variables.workflowExecutionId;
+					if (id === 'exec-1') {
+						return {
+							data: { data: { workflowExecutionContexts: [{ ticket_id: '12345' }, { stage: 'done' }] } },
+						};
+					}
+					if (id === 'exec-2') {
+						return { data: { data: { workflowExecutionContexts: [{ unrelated: 'x' }] } } };
+					}
+					return { error: new Error('context fetch failed') };
+				}
+				return {
+					data: {
+						data: {
+							workflowExecutions: [
+								{
+									id: 'exec-1',
+									status: 'succeeded',
+									createdAt: '1700000000000',
+									conductor: { input: {}, output: {} },
+								},
+								{
+									id: 'exec-2',
+									status: 'succeeded',
+									createdAt: '1700000001000',
+									conductor: { input: {}, output: {} },
+								},
+								{
+									id: 'exec-3',
+									status: 'failed',
+									createdAt: '1700000002000',
+									conductor: { input: {}, output: {} },
+								},
+							],
+						},
+					},
+				};
+			},
+		);
+		const findExec = getCapability('find_executions_by_variable');
+		assert.ok(findExec, 'find_executions_by_variable is registered');
+		const ctx = { session, orgId: 'org-1', sessions: [session] } satisfies CapabilityContext;
+
+		const out = await findExec.run({ orgId: 'org-1', workflowId: 'wf-1', name: 'ticket', kind: 'context' }, ctx);
+
+		assert.ok(out.includes('exec-1') && out.includes('ticket_id=12345'), 'matches a context variable');
+		assert.ok(!out.includes('exec-2'), 'omits executions whose context does not match');
+		assert.ok(/1 execution context fetch/.test(out), 'reports the failed context fetch as skipped');
+
+		const contextCalls = wrapper
+			.getCallsFor('rawGraphql')
+			.filter(c => c.variables.query.includes('workflowExecutionContexts'));
+		assert.strictEqual(contextCalls.length, 3, 'issues one context fetch per scanned execution');
+	});
+
 	test('latest_workflow_execution uses latestWorkflowExecution query, forwards workflowId, and handles missing execution', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);

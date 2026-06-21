@@ -216,8 +216,11 @@ async function runGetTriggerErrorStatus(input: Record<string, unknown>, ctx: Cap
 	}
 	const statuses = ((data as { getTriggerErrorStatus?: Record<string, boolean> } | undefined)
 		?.getTriggerErrorStatus ?? {}) as Record<string, boolean>;
-	return Object.entries(statuses)
-		.map(([id, hasError]) => `${id}: ${hasError ? 'ERROR' : 'ok'}`)
+	return triggerIds
+		.map(id => {
+			const hasError = statuses[id];
+			return `${id}: ${hasError === true ? 'ERROR' : hasError === false ? 'ok' : 'unknown'}`;
+		})
 		.join('\n');
 }
 

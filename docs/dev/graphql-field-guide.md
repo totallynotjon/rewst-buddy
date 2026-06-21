@@ -16,7 +16,7 @@
 
 Each probed field gets a block:
 
-```
+```text
 ### fieldName
 - **status:** WORKS | ERROR | EMPTY (callable, no data in sandbox) | NEEDS-ARGS (required input we couldn't satisfy)
 - **minimal working call:** the smallest query + variables that returned data (or the precise args needed)
@@ -89,7 +89,7 @@ Rewst's native behaviour by paginating ourselves and ranking locally._
 
 ### ✅ Built this session — 26 new read tools + 1 fix (all type-check + unit-test green)
 
-Status: implemented, type-checked, unit-tested (562 passing). **Not yet live** — needs an extension rebuild + window reload to register on the MCP server. Live-query validation happens with the Haiku pass once the server is back.
+Status: implemented, type-checked, unit-tested (full unit suite green), and live-smoke-tested over MCP against the sandbox org.
 
 **`src/capabilities/rewstReadCapabilities.ts`** (+ `inputHelpers.ts`):
 
