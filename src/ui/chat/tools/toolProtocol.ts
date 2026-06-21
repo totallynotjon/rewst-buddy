@@ -1,3 +1,6 @@
+import type { CapabilityGroup } from '../../../capabilities/Capability';
+import type * as capabilityRegistry from '../../../capabilities/registry';
+
 /**
  * Text tool protocol between the extension and RoboRewsty.
  *
@@ -45,14 +48,24 @@ export const TOOL_FENCE_MARKER = '```' + TOOL_FENCE_TAG;
 /** Hard cap on tool calls honored per assistant reply. */
 export const MAX_REQUESTS_PER_TURN = 5;
 
+let registry: typeof capabilityRegistry | undefined;
+
+function hasProvidedChatCapability(group: CapabilityGroup, names: ReadonlySet<string>): boolean {
+	// Lazy load to avoid the registry/workflowTools/toolProtocol initialization cycle.
+	// eslint-disable-next-line @typescript-eslint/no-require-imports
+	registry ??= require('../../../capabilities/registry') as typeof capabilityRegistry;
+	return registry.hasChatCapability(group, names);
+}
+
 /**
  * Instructions appended to the first message of a request so the assistant
  * knows the tools exist and how to call them.
  */
 export function buildToolInstructions(specs: ToolSpec[]): string {
 	const lines = specs.map(spec => `- ${spec.name} — args: ${spec.args}. ${spec.description}`);
-	const hasGraphqlTools = specs.some(spec => spec.name === 'buddy_graphql');
-	const hasWorkflowTools = specs.some(spec => spec.name === 'buddy_workflow_edit');
+	const specNames = new Set(specs.map(spec => spec.name));
+	const hasGraphqlTools = hasProvidedChatCapability('graphql', specNames);
+	const hasWorkflowTools = hasProvidedChatCapability('workflow', specNames);
 	const workflowNote = hasWorkflowTools
 		? [
 				'',

@@ -13,15 +13,18 @@ import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
  */
 
 export type CapabilityAccess = 'read' | 'write';
+export type CapabilityGroup = 'workflow' | 'graphql' | 'web' | 'workspace' | 'result';
 
 /**
- * Settings that gate whether a capability is offered at all, independent of any
- * surface. The MCP surface layers its own gates on top (master switch, write
- * toggle, allowlist); this is the capability's intrinsic feature gate, mirroring
- * the rewst-buddy.ai.* switches the chat tools already honor.
+ * Settings that gate whether a capability is offered at all, independent of
+ * any surface. Each field mirrors one rewst-buddy.ai.tools category. The MCP
+ * surface layers its own gates on top (master switch, write toggle, allowlist).
  */
 export interface CapabilitySettings {
 	enableGraphqlTool: boolean;
+	enableWorkflowTools: boolean;
+	enableWebTools: boolean;
+	enableWorkspaceTools: boolean;
 }
 
 /**
@@ -38,6 +41,8 @@ export interface CapabilityContext {
 
 export interface Capability {
 	spec: ToolSpec;
+	/** Tool family used by steering and category-level capability lookups. */
+	group?: CapabilityGroup;
 	/**
 	 * Whether the capability can change Rewst state. The MCP server boundary
 	 * rejects access:'write' unless write tools are explicitly enabled, regardless

@@ -1,4 +1,4 @@
-import { chatCapabilities } from '@capabilities';
+import { chatCapabilities, type CapabilitySettings } from '@capabilities';
 import { extPrefix } from '@global';
 import { SessionManager, type Session } from '@sessions';
 import { log } from '@utils';
@@ -10,57 +10,32 @@ import {
 	graphqlMutationScope,
 } from '../tools/graphqlTool';
 import { enabledAiTools } from '../tools/aiToolSettings';
-import { RESULT_READ_TOOL_SPECS } from '../tools/toolOutputCache';
 import { describeRequestBrief, type ToolSpec } from '../tools/toolProtocol';
-import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../tools/workspaceTools';
-import { WEB_TOOL_SPECS } from '../tools/webTools';
-import { WORKFLOW_TOOL_SPECS, workflowEditConfirmation, workflowEditScope } from '../tools/workflowTools';
+import { runToolRequests } from '../tools/workspaceTools';
+import { workflowEditConfirmation, workflowEditScope } from '../tools/workflowTools';
 
 /**
- * Exposes every vscode-tool protocol tool as a registered VS Code language
+ * Exposes every chat capability as a registered VS Code language
  * model tool, so they are invocable when the RoboRewsty chat model emits tool
  * calls (and visible to agent mode like any extension tool). The spec arrays
- * remain the single source of truth: registration iterates them, so registered
- * names always equal the text-protocol names, and packageManifest.test.ts
- * keeps the static package.json declarations in sync with the same arrays.
+ * are owned by the capability registry and reused verbatim, so registered names
+ * always equal the text-protocol names, and packageManifest.test.ts keeps the
+ * static package.json declarations in sync with those same objects.
  */
 
 /** Snapshot of the rewst-buddy.ai.* switches that govern tool availability. */
-export interface AiToolSettings {
-	enableWorkspaceTools: boolean;
-	enableWebTools: boolean;
-	enableGraphqlTool: boolean;
-	enableWorkflowTools: boolean;
-}
+export type AiToolSettings = CapabilitySettings;
 
 interface GovernedSpec {
 	spec: ToolSpec;
 	enabled: (settings: AiToolSettings) => boolean;
 }
 
-// The GraphQL chat tools are sourced from the capability registry (the single
-// source of truth). Their spec objects are reused verbatim there, so the chat
-// tool set and the package.json manifest are unchanged; execution still flows
-// through runToolRequests until Phase 2 converges it onto the registry.
-const REGISTRY_CHAT_GOVERNED: GovernedSpec[] = chatCapabilities().map(capability => ({
-	spec: capability.spec,
-	enabled: (s: AiToolSettings) => capability.enabled({ enableGraphqlTool: s.enableGraphqlTool }),
-}));
-
 /** Every tool with the settings predicate that governs it. */
-export const GOVERNED_TOOL_SPECS: GovernedSpec[] = [
-	...WORKSPACE_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkspaceTools })),
-	...WEB_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWebTools })),
-	...WORKFLOW_TOOL_SPECS.map(spec => ({ spec, enabled: (s: AiToolSettings) => s.enableWorkflowTools })),
-	...REGISTRY_CHAT_GOVERNED,
-	// Available whenever any tool can run, since any of them can produce the
-	// oversized cached output this one reads back.
-	...RESULT_READ_TOOL_SPECS.map(spec => ({
-		spec,
-		enabled: (s: AiToolSettings) =>
-			s.enableWorkspaceTools || s.enableWebTools || s.enableGraphqlTool || s.enableWorkflowTools,
-	})),
-];
+export const GOVERNED_TOOL_SPECS: GovernedSpec[] = chatCapabilities().map(capability => ({
+	spec: capability.spec,
+	enabled: (settings: AiToolSettings) => capability.enabled(settings),
+}));
 
 export const ALL_TOOL_SPECS: ToolSpec[] = GOVERNED_TOOL_SPECS.map(entry => entry.spec);
 
