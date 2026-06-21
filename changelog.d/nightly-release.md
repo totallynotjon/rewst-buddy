@@ -1,5 +1,6 @@
 ---
 category: Added
+pr: 66
 ---
 
 - **Nightly pre-release channel** — every merge to `main` now publishes a
