@@ -116,5 +116,10 @@ note` status checks; block direct pushes and force-pushes. CodeRabbit's
   `persist-credentials: false` except where a push is required.
 - Actions are referenced by major version tag. For supply-chain hardening, pin
   them to full commit SHAs (e.g. with `pin-github-action` or `zizmor`).
-- The publish token lives only in the `release` environment and is referenced
-  only by the publish step, behind the required-reviewer gate.
+- The publish token (`VSCE_PAT`) lives in the `release` and `nightly`
+  environments and is referenced only by their publish steps. The security
+  boundary is each environment's **deployment-ref scoping**, not the token (the
+  same PAT is reused): `release` answers only `v*` tags — it ships only when the
+  tag-driven Publish runs, which a merged release PR is the gate for — and
+  `nightly` answers only the `main` branch, publishing pre-releases automatically
+  on merge. So an unmerged PR or feature branch can read neither secret.
