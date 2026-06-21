@@ -3,7 +3,7 @@ import type { Session } from '@sessions';
 
 export interface RawGraphqlCall {
 	query: string;
-	variables: Record<string, unknown>;
+	variables?: Record<string, unknown>;
 }
 
 export function fakeCapabilityContext(response: unknown): {
@@ -13,7 +13,7 @@ export function fakeCapabilityContext(response: unknown): {
 } {
 	const calls: RawGraphqlCall[] = [];
 	const session = {
-		rawGraphql: async (query: string, variables: Record<string, unknown>) => {
+		rawGraphql: async (query: string, variables?: Record<string, unknown>) => {
 			calls.push({ query, variables });
 			return response as { data?: unknown; errors?: unknown };
 		},

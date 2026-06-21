@@ -14,7 +14,7 @@ suite('Unit: orgUserCapabilities', () => {
 
 		const output = await cap('search_organizations').run({ orgId: 'org-1', search: 'acme' }, ctx);
 
-		assert.strictEqual(calls[0].variables.search, 'acme');
+		assert.strictEqual(calls[0].variables!.search, 'acme');
 		assert.ok(output.includes('Acme'));
 	});
 
@@ -26,7 +26,7 @@ suite('Unit: orgUserCapabilities', () => {
 		const output = await cap('list_users').run({ orgId: 'org-1', search: 'foo' }, ctx);
 
 		assert.ok(calls[0].query.includes('users('));
-		assert.deepStrictEqual(calls[0].variables.search, { username: { _ilike: '%foo%' } });
+		assert.deepStrictEqual(calls[0].variables!.search, { username: { _ilike: '%foo%' } });
 		assert.ok(output.includes('foo.user'));
 		assert.ok(output.includes('roles: role-1'));
 	});

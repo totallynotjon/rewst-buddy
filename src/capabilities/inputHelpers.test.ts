@@ -38,4 +38,25 @@ suite('Unit: inputHelpers', () => {
 
 		assert.deepStrictEqual(result, [10, 20, 30, 40]);
 	});
+
+	test('mapWithConcurrency rejects zero concurrency limit', async () => {
+		await assert.rejects(
+			() => mapWithConcurrency([1], 0, async (item: number) => item),
+			/"limit" must be a positive integer\./,
+		);
+	});
+
+	test('mapWithConcurrency rejects negative concurrency limit', async () => {
+		await assert.rejects(
+			() => mapWithConcurrency([1], -1, async (item: number) => item),
+			/"limit" must be a positive integer\./,
+		);
+	});
+
+	test('mapWithConcurrency rejects non-integer concurrency limit', async () => {
+		await assert.rejects(
+			() => mapWithConcurrency([1], 1.5, async (item: number) => item),
+			/"limit" must be a positive integer\./,
+		);
+	});
 });

@@ -25,7 +25,7 @@ suite('Unit: pageTemplateCapabilities', () => {
 		const output = await cap('search_templates').run({ orgId: 'org-1', search: 'foo', limit: 10 }, ctx);
 
 		assert.ok(calls[0].query.includes('templates('));
-		assert.deepStrictEqual(calls[0].variables.search, { name: { _ilike: '%foo%' } });
+		assert.deepStrictEqual(calls[0].variables!.search, { name: { _ilike: '%foo%' } });
 		assert.ok(output.includes('Foo'));
 	});
 
