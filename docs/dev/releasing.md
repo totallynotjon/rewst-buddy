@@ -57,10 +57,14 @@ see "what's new since stable". This is **runner-only and non-destructive** — t
 committed `CHANGELOG.md` and the notes are untouched (the real stable release
 still collates them), and an empty or invalid note never fails the publish.
 
-Nightlies are **not tagged and get no GitHub release** — only stable does. They
-reuse the same `release` environment and `VSCE_PAT` as Publish. Users opt in with
-the extension's **"Switch to Pre-Release Version"** button in the Extensions
-panel.
+Nightlies are **not tagged and get no GitHub release** — only stable does. The
+job runs in its own **`nightly`** environment, scoped to the `main` branch, while
+the stable `release` environment stays scoped to `v*` tags. Each environment
+answers only the ref that should drive it, so the publish token is reachable only
+from protected refs (tags for stable, `main` for nightly) and never from an
+unmerged PR or feature branch — even though both environments reuse the same
+`VSCE_PAT`. Users opt in with the extension's **"Switch to Pre-Release Version"**
+button in the Extensions panel.
 
 ## One-time GitHub setup (required for the gates)
 
@@ -76,6 +80,19 @@ note` status checks; block direct pushes and force-pushes. CodeRabbit's
   read it. Leave it with **no required reviewers**: merging the release PR is the
   publish approval, so a second environment gate would just re-ask. Optionally add
   `OVSX_PAT` for Open VSX and uncomment that step in `publish.yml`.
+- **`nightly` environment** (Settings → Environments): used by `nightly.yml` for
+  the pre-release channel. Restrict its **deployment branches** to **`main` only**
+  (custom branch policy), and store the **`VSCE_PAT`** secret here too — reuse the
+  same Marketplace PAT as `release` (a Marketplace PAT can't be scoped to a single
+  release, so a second token buys no real isolation and just doubles what you
+  rotate). Leave it with **no required reviewers** (nightlies publish
+  automatically on merge). The split from `release` is about **deployment refs,
+  not the credential**: `release` answers only `v*` tags and `nightly` only the
+  `main` branch, so neither can be triggered from an unmerged PR/feature branch,
+  and the tag path can't mint a nightly nor the branch path a stable release. The
+  environment and its branch policy can be created with the GitHub API (`gh api
+  .../environments/nightly` + `.../deployment-branch-policies`); only the secret
+  must be added by hand.
 - **Release-bot GitHub App** (for the Prepare release PR): the default
   `GITHUB_TOKEN` cannot open a PR, and a PR it opened would not trigger the
   required CI checks. So `release.yml` mints a short-lived token from a GitHub
@@ -99,5 +116,10 @@ note` status checks; block direct pushes and force-pushes. CodeRabbit's
   `persist-credentials: false` except where a push is required.
 - Actions are referenced by major version tag. For supply-chain hardening, pin
   them to full commit SHAs (e.g. with `pin-github-action` or `zizmor`).
-- The publish token lives only in the `release` environment and is referenced
-  only by the publish step, behind the required-reviewer gate.
+- The publish token (`VSCE_PAT`) lives in the `release` and `nightly`
+  environments and is referenced only by their publish steps. The security
+  boundary is each environment's **deployment-ref scoping**, not the token (the
+  same PAT is reused): `release` answers only `v*` tags — it ships only when the
+  tag-driven Publish runs, which a merged release PR is the gate for — and
+  `nightly` answers only the `main` branch, publishing pre-releases automatically
+  on merge. So an unmerged PR or feature branch can read neither secret.
