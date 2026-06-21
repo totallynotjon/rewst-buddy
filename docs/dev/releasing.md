@@ -58,10 +58,13 @@ committed `CHANGELOG.md` and the notes are untouched (the real stable release
 still collates them), and an empty or invalid note never fails the publish.
 
 Nightlies are **not tagged and get no GitHub release** — only stable does. The
-job runs in its own **`nightly`** environment (scoped to the `main` branch, with
-its own `VSCE_PAT`), so the `release` environment stays gated to `v*` tags and
-its publish token is never reachable from branch code. Users opt in with the
-extension's **"Switch to Pre-Release Version"** button in the Extensions panel.
+job runs in its own **`nightly`** environment, scoped to the `main` branch, while
+the stable `release` environment stays scoped to `v*` tags. Each environment
+answers only the ref that should drive it, so the publish token is reachable only
+from protected refs (tags for stable, `main` for nightly) and never from an
+unmerged PR or feature branch — even though both environments reuse the same
+`VSCE_PAT`. Users opt in with the extension's **"Switch to Pre-Release Version"**
+button in the Extensions panel.
 
 ## One-time GitHub setup (required for the gates)
 
@@ -79,14 +82,17 @@ note` status checks; block direct pushes and force-pushes. CodeRabbit's
   `OVSX_PAT` for Open VSX and uncomment that step in `publish.yml`.
 - **`nightly` environment** (Settings → Environments): used by `nightly.yml` for
   the pre-release channel. Restrict its **deployment branches** to **`main` only**
-  (custom branch policy), and store a **`VSCE_PAT`** secret here too — it can be
-  the same Marketplace PAT as `release`, or a separate one so revoking the nightly
-  token doesn't affect stable. Leave it with **no required reviewers** (nightlies
-  publish automatically on merge). Keeping this separate from `release` is
-  deliberate: `release` stays gated to `v*` tags, so its token is never reachable
-  from branch code. The environment and its branch policy can be created with the
-  GitHub API (`gh api .../environments/nightly` + `.../deployment-branch-policies`);
-  only the secret must be added by hand.
+  (custom branch policy), and store the **`VSCE_PAT`** secret here too — reuse the
+  same Marketplace PAT as `release` (a Marketplace PAT can't be scoped to a single
+  release, so a second token buys no real isolation and just doubles what you
+  rotate). Leave it with **no required reviewers** (nightlies publish
+  automatically on merge). The split from `release` is about **deployment refs,
+  not the credential**: `release` answers only `v*` tags and `nightly` only the
+  `main` branch, so neither can be triggered from an unmerged PR/feature branch,
+  and the tag path can't mint a nightly nor the branch path a stable release. The
+  environment and its branch policy can be created with the GitHub API (`gh api
+  .../environments/nightly` + `.../deployment-branch-policies`); only the secret
+  must be added by hand.
 - **Release-bot GitHub App** (for the Prepare release PR): the default
   `GITHUB_TOKEN` cannot open a PR, and a PR it opened would not trigger the
   required CI checks. So `release.yml` mints a short-lived token from a GitHub
