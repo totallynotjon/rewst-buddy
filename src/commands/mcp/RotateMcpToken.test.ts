@@ -1,7 +1,9 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
+import { context } from '@global';
 import { getMcpToken, _resetMcpTokenForTesting } from '@mcp';
+import { SessionManager } from '@sessions';
 import { initTestEnvironment } from '@test';
 import { RotateMcpToken } from './RotateMcpToken';
 
@@ -33,6 +35,7 @@ suite('Unit: RotateMcpToken', () => {
 
 	setup(async () => {
 		initTestEnvironment();
+		SessionManager._resetForTesting();
 		await _resetMcpTokenForTesting();
 		warningChoice = undefined;
 		warningMessage = undefined;
@@ -66,6 +69,7 @@ suite('Unit: RotateMcpToken', () => {
 	teardown(async () => {
 		while (restores.length) restores.pop()!.restore();
 		await _resetMcpTokenForTesting();
+		SessionManager._resetForTesting();
 	});
 
 	test('rotating changes the token after confirmation', async () => {
@@ -94,5 +98,24 @@ suite('Unit: RotateMcpToken', () => {
 		assert.strictEqual(getMcpToken(), before, 'token does not rotate without confirmation');
 		assert.deepStrictEqual(infoMessages, [], 'does not report success');
 		assert.deepStrictEqual(errorMessages, [], 'does not report an error');
+	});
+
+	test('a rotation failure is surfaced as an error notification', async () => {
+		warningChoice = 'Rotate Token';
+		// rotateMcpToken persists through context.globalState.update, evaluated
+		// synchronously; making it throw drives execute() down its catch path.
+		restores.push(
+			stub(context.globalState, 'update', (() => {
+				throw new Error('persist boom');
+			}) as unknown as typeof context.globalState.update),
+		);
+
+		await new RotateMcpToken().execute();
+
+		assert.deepStrictEqual(infoMessages, [], 'does not report success when rotation fails');
+		assert.ok(
+			errorMessages.some(message => message.includes('failed to rotate MCP token')),
+			'reports the failure as an error notification',
+		);
 	});
 });
