@@ -12,8 +12,9 @@ name: Nightly (pre-release)
 # channels, which the Marketplace requires for a single extension.
 #
 # Nightlies are not tagged and get no GitHub release — only the stable Publish
-# workflow does that. The VSCE_PAT lives in the `release` environment, so only
-# these privileged jobs can read it.
+# workflow does that. This job runs in the `nightly` environment (scoped to the
+# main branch with its own VSCE_PAT), so the `release` environment stays gated to
+# v* tags and its publish token is never reachable from branch code.
 
 on:
     push:
@@ -29,7 +30,7 @@ concurrency:
 jobs:
     nightly:
         runs-on: ubuntu-latest
-        environment: release
+        environment: nightly
         steps:
             - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
               with:
