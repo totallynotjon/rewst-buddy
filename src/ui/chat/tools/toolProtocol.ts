@@ -64,7 +64,7 @@ export function buildToolInstructions(specs: ToolSpec[]): string {
 		'Available tools:',
 		...lines,
 		'',
-		`Rules: when you need tool information, reply with ONLY vscode-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Tackle multi-step work one step per reply: for a multi-step request, give the plan in a tool-free reply first, then take one step (one short lead-in sentence plus its block) per following reply; a single lookup is one step, so answer it tool-first. Never guess at file contents or workspace structure when a tool can check it.`,
+		`Rules: when you need tool information, reply with ONLY vscode-tool blocks (up to ${MAX_REQUESTS_PER_TURN} per reply) and no other prose; the editor runs them and sends the results back to you. After receiving results you may request more tools or give your final answer. Tackle multi-step work one step per reply: for a multi-step request, give the plan first (a tool-free reply, or a todo-list tool call if one is available), then take one step (one short lead-in sentence plus its block) per following reply; a single lookup is one step, so answer it tool-first. Never guess at file contents or workspace structure when a tool can check it.`,
 	].join('\n');
 }
 

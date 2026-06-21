@@ -141,7 +141,9 @@ suite('Unit: capability registry', () => {
 				'buddy_workflow_executions',
 				'buddy_render_jinja',
 			]) {
-				assert.notStrictEqual(getCapability(name)?.requiresOrg, false, `${name} remains org-scoped`);
+				const capability = getCapability(name);
+				assert.ok(capability, `${name} is registered`);
+				assert.notStrictEqual(capability.requiresOrg, false, `${name} remains org-scoped`);
 			}
 		});
 

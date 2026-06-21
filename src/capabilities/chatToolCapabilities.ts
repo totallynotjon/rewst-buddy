@@ -75,11 +75,9 @@ export const WORKSPACE_CHAT_CAPABILITIES: Capability[] = WORKSPACE_TOOL_SPECS.ma
 
 export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec => {
 	const access = workflowAccessFor(spec);
-	return mcpCapability(
-		spec,
-		access,
-		'workflow',
-		true,
-		access === 'write' ? (input, ctx) => runWorkflowMutationWithApproval(spec, input, ctx) : undefined,
-	);
+	return access === 'write'
+		? mcpCapability(spec, access, 'workflow', true, (input, ctx) =>
+				runWorkflowMutationWithApproval(spec, input, ctx),
+			)
+		: mcpCapability(spec, access, 'workflow', true);
 });

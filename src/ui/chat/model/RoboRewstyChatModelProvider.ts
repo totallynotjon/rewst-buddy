@@ -330,7 +330,10 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 							emitText(
 								'\n\n*RoboRewsty needs approval to run a Rewst-side action. Rewst Buddy no longer exposes Rewst approval as a VS Code chat tool; use the Rewst web app or the MCP approval flow for Rewst-side actions.*\n',
 							);
-							storeContinuity([]);
+							// The backend turn is paused awaiting an approval we never
+							// send, so it never completes — do not record it as reusable.
+							// Forget any prior mapping so the next message starts fresh.
+							if (conversationId) conversationMap.forget(conversationId);
 							return;
 						case 'error':
 							// A reused conversation the backend can't follow: revert
