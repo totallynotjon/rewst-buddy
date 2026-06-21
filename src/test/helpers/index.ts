@@ -21,3 +21,6 @@ export {
 export { Fixtures } from './fixtures';
 
 export { createMockSession, MockSessionOptions } from './mockSession';
+
+export { createCapabilityTestHarness, fakeCapabilityContext, findTestCapability } from './capabilityTestUtils';
+export type { RawGraphqlCall } from './capabilityTestUtils';

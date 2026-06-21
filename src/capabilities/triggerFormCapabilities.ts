@@ -205,6 +205,7 @@ async function runListOrgTriggerInstances(input: Record<string, unknown>, ctx: C
 		.join('\n');
 }
 
+// orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by trigger ids alone.
 async function runGetTriggerErrorStatus(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	requireString(input, 'orgId');
 	const triggerIds = requireStringArray(input, 'triggerIds');

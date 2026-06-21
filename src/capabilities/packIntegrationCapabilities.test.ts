@@ -1,27 +1,10 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
-import type { Session } from '@sessions';
-import type { CapabilityContext } from './Capability';
+import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import { PACK_INTEGRATION_CAPABILITIES } from './packIntegrationCapabilities';
 const { suite, test, setup } = Mocha;
 
-function fakeCtx(response: unknown) {
-	const calls: { query: string; variables: Record<string, unknown> }[] = [];
-	const session = {
-		rawGraphql: async (query: string, variables: Record<string, unknown>) => {
-			calls.push({ query, variables });
-			return response as { data?: unknown; errors?: unknown };
-		},
-	} as unknown as Session;
-	const ctx: CapabilityContext = { session, orgId: 'org-1', sessions: [session] };
-	return { ctx, calls };
-}
-function cap(name: string) {
-	const c = PACK_INTEGRATION_CAPABILITIES.find(x => x.spec.name === name);
-	if (!c) throw new Error('missing ' + name);
-	return c;
-}
+const { fakeCtx, cap } = createCapabilityTestHarness(PACK_INTEGRATION_CAPABILITIES);
 
 suite('Unit: packIntegrationCapabilities', () => {
 	setup(() => initTestEnvironment());
@@ -60,15 +43,9 @@ suite('Unit: packIntegrationCapabilities', () => {
 	});
 
 	test('list_pack_configs query has no limit arg', async () => {
-		let capturedQuery = '';
-		const session = {
-			rawGraphql: async (q: string, _v: unknown) => {
-				capturedQuery = q;
-				return { data: { packConfigs: [] } };
-			},
-		} as unknown as Session;
-		const ctx: CapabilityContext = { session, orgId: 'org-1', sessions: [session] };
+		const { ctx, calls } = fakeCtx({ data: { packConfigs: [] } });
 		await cap('list_pack_configs').run({ orgId: 'org-1' }, ctx);
+		const capturedQuery = calls[0].query;
 		assert.ok(capturedQuery.includes('packConfigs('));
 		assert.ok(!capturedQuery.includes('limit'));
 	});

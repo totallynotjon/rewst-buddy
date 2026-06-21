@@ -1,26 +1,9 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
-import type { Session } from '@sessions';
-import type { CapabilityContext } from './Capability';
+import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
 const { suite, test, setup } = Mocha;
-function fakeCtx(response: unknown) {
-	const calls: { query: string; variables: Record<string, unknown> }[] = [];
-	const session = {
-		rawGraphql: async (query: string, variables: Record<string, unknown>) => {
-			calls.push({ query, variables });
-			return response as { data?: unknown; errors?: unknown };
-		},
-	} as unknown as Session;
-	const ctx: CapabilityContext = { session, orgId: 'org-1', sessions: [session] };
-	return { ctx, calls };
-}
-function cap(name: string) {
-	const c = TRIGGER_FORM_CAPABILITIES.find(x => x.spec.name === name);
-	if (!c) throw new Error('missing ' + name);
-	return c;
-}
+const { fakeCtx, cap } = createCapabilityTestHarness(TRIGGER_FORM_CAPABILITIES);
 suite('Unit: triggerFormCapabilities', () => {
 	setup(() => initTestEnvironment());
 

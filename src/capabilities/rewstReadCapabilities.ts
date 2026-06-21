@@ -1,6 +1,7 @@
 import { runReadonlyGraphql } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { mapWithConcurrency } from './inputHelpers';
 
 /**
  * Read-only Rewst capabilities exposed over the MCP server. Each operates on the
@@ -667,29 +668,27 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 	}[];
 
 	let skipped = 0;
-	const varsByExecution = await Promise.all(
-		executions.map(async execution => {
-			if (kind === 'input' || kind === 'output') {
-				const raw = execution.conductor?.[kind];
-				return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
-			}
-			try {
-				const res = await ctx.session.rawGraphql(EXECUTION_CONTEXTS_QUERY, {
-					workflowExecutionId: execution.id,
-				});
-				if (Array.isArray(res.errors) ? res.errors.length > 0 : res.errors != null) {
-					skipped += 1;
-					return {};
-				}
-				return flattenExecutionContextFrames(
-					(res.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts,
-				);
-			} catch {
+	const varsByExecution = await mapWithConcurrency(executions, 10, async execution => {
+		if (kind === 'input' || kind === 'output') {
+			const raw = execution.conductor?.[kind];
+			return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+		}
+		try {
+			const res = await ctx.session.rawGraphql(EXECUTION_CONTEXTS_QUERY, {
+				workflowExecutionId: execution.id,
+			});
+			if (Array.isArray(res.errors) ? res.errors.length > 0 : res.errors != null) {
 				skipped += 1;
 				return {};
 			}
-		}),
-	);
+			return flattenExecutionContextFrames(
+				(res.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts,
+			);
+		} catch {
+			skipped += 1;
+			return {};
+		}
+	});
 
 	const lines: string[] = [];
 	executions.forEach((execution, index) => {
@@ -713,6 +712,7 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 	return result;
 }
 
+// orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by workflow id alone.
 async function runListWorkflowTasks(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	requireString(input, 'orgId');
 	const workflowId = requireString(input, 'workflowId');
@@ -736,6 +736,7 @@ async function runListWorkflowTasks(input: Record<string, unknown>, ctx: Capabil
 		.join('\n');
 }
 
+// orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by workflow id alone.
 async function runListWorkflowPatches(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	requireString(input, 'orgId');
 	const workflowId = requireString(input, 'workflowId');
@@ -763,6 +764,7 @@ async function runListWorkflowPatches(input: Record<string, unknown>, ctx: Capab
 		.join('\n');
 }
 
+// orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by patch id alone.
 async function runGetWorkflowPatch(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	requireString(input, 'orgId');
 	const patchId = requireString(input, 'patchId');
