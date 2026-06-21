@@ -179,7 +179,7 @@ suite('Unit: McpActions', () => {
 			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
 
 			const first = await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
-			const id = /cached in memory as id "([0-9a-f]{8})"/.exec(first.text)?.[1];
+			const id = /"id":"([^"]+)"/.exec(first.text)?.[1];
 
 			assert.ok(id, 'oversized output includes a cached result id');
 			assert.ok(first.text.startsWith('Template 1'));

@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { initTestEnvironment } from '@test';
 import type { CapabilityContext } from './Capability';
 import {
 	MCP_MAX_OUTPUT_CHARS,
@@ -24,6 +25,7 @@ function ignoredContext(): CapabilityContext {
 
 suite('Unit: resultReadCapability', () => {
 	setup(() => {
+		initTestEnvironment();
 		_resetMcpResultCacheForTesting();
 	});
 
