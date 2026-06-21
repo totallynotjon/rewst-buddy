@@ -2,6 +2,7 @@ import type { Capability, CapabilityGroup } from './Capability';
 import { WORKFLOW_CHAT_CAPABILITIES, WORKSPACE_CHAT_CAPABILITIES } from './chatToolCapabilities';
 import { GRAPHQL_CAPABILITIES } from './graphqlCapabilities';
 import { graphqlMutateCapability } from './graphqlMutateCapability';
+import { resultReadCapability } from './resultReadCapability';
 import { READ_CAPABILITIES } from './rewstReadCapabilities';
 
 /**
@@ -15,6 +16,7 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...GRAPHQL_CAPABILITIES,
 	...READ_CAPABILITIES,
 	graphqlMutateCapability,
+	resultReadCapability,
 ];
 
 const BY_NAME = new Map(CAPABILITY_REGISTRY.map(capability => [capability.spec.name, capability]));

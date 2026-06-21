@@ -104,7 +104,7 @@ Cage-Free Rewsty is still told your VS Code working directory when one is open, 
 
 Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of the chat LM tool surface. MCP exposure uses three switches:
 
-- `rewst-buddy.mcp.enable` exposes all read capabilities: `list_orgs`, `list_templates`, `get_template`, `list_workflows`, `get_workflow`, `rewst_graphql_query`, `buddy_graphql_schema`, `list_template_links`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_render_jinja`, and `buddy_action_search`.
+- `rewst-buddy.mcp.enable` exposes all read capabilities: `list_orgs`, `list_templates`, `get_template`, `list_workflows`, `get_workflow`, `rewst_graphql_query`, `buddy_graphql_schema`, `list_template_links`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_render_jinja`, `buddy_action_search`, and `result_read`.
 - `rewst-buddy.mcp.enableWriteTools` exposes the workflow write helpers `buddy_workflow_edit`, `buddy_workflow_autolayout`, and `buddy_workflow_run`.
 - `rewst-buddy.mcp.enableDangerousGraphqlMutation` exposes only `rewst_graphql_mutate`, the raw GraphQL mutation tool.
 
@@ -112,7 +112,7 @@ The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement i
 
 When the server is registered with VS Code's own MCP client (the `Add MCP Server to VS Code` command), flipping any of these exposure switches re-advertises the server with a new version, so VS Code reconnects and refreshes the tool set in chat — no window reload needed.
 
-Large MCP outputs are bounded at the MCP response boundary; the retired chat-only `buddy_result_read` cache is no longer part of the chat tool protocol.
+Oversized MCP results are cached in memory and returned with a preview plus a short id; page or search the cached result with the MCP-only `result_read` tool. The retired chat-only `buddy_result_read` cache is no longer part of the chat tool protocol.
 
 The local MCP endpoint is guarded by a persistent localhost token. If it is ever exposed, run `Rewst Buddy: Rotate MCP Token` to replace it after a modal confirmation — existing MCP clients holding the old token lose access until you re-copy the config with `Copy MCP Config to Clipboard`.
 

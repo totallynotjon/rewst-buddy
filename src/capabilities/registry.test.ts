@@ -11,6 +11,7 @@ import {
 	hasChatCapability,
 	mcpCapabilities,
 } from './registry';
+import { RESULT_READ_TOOL_NAME } from './resultReadCapability';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
@@ -101,6 +102,7 @@ suite('Unit: capability registry', () => {
 				'list_template_links',
 				'buddy_graphql_schema',
 				'rewst_graphql_mutate',
+				RESULT_READ_TOOL_NAME,
 			]) {
 				assert.ok(names.includes(expected), `${expected} exposed to MCP`);
 			}
