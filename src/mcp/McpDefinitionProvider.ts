@@ -60,14 +60,18 @@ export const McpDefinitionProvider = new (class _ implements vscode.McpServerDef
 	}
 
 	provideMcpServerDefinitions(): vscode.McpServerDefinition[] {
-		if (!readMcpSettings().enable) return [];
+		const settings = readMcpSettings();
+		if (!settings.enable) return [];
 		const { host, port } = getServerConfig();
 		const uri = vscode.Uri.parse(`http://${formatHostPort(host, port)}/mcp`);
 		const headers = { Authorization: mcpAuthorizationHeader(getMcpToken()) };
-		// A version tied to the endpoint makes VS Code refresh the tool list when
-		// the host/port moves. The token stays out of the version string so it is
-		// never surfaced where the version is shown or logged.
-		const version = `${host}:${port}`;
+		// The version tells VS Code when to restart its connection to the server and
+		// re-fetch the tool list. Tie it to the endpoint AND the exposure toggles so
+		// flipping the write/dangerous switches changes the advertised tool set in
+		// chat without a manual reconnect. The token stays out so it is never
+		// surfaced where the version is shown or logged.
+		const exposure = `w${settings.enableWriteTools ? 1 : 0}d${settings.enableDangerousGraphqlMutation ? 1 : 0}`;
+		const version = `${host}:${port}:${exposure}`;
 		return [new vscode.McpHttpServerDefinition(SERVER_LABEL, uri, headers, version)];
 	}
 

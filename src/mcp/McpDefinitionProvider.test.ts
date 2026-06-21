@@ -17,6 +17,18 @@ async function setServer(key: 'host' | 'enabled', value: unknown): Promise<void>
 	await vscode.workspace.getConfiguration('rewst-buddy.server').update(key, value, vscode.ConfigurationTarget.Global);
 }
 
+async function setMcpExposure(
+	key: 'enableWriteTools' | 'enableDangerousGraphqlMutation',
+	value: boolean | undefined,
+): Promise<void> {
+	await vscode.workspace.getConfiguration('rewst-buddy.mcp').update(key, value, vscode.ConfigurationTarget.Global);
+}
+
+function versionOf(): string {
+	const defs = McpDefinitionProvider.provideMcpServerDefinitions();
+	return (defs[0] as vscode.McpHttpServerDefinition).version ?? '';
+}
+
 suite('Unit: McpDefinitionProvider', () => {
 	setup(async () => {
 		initTestEnvironment();
@@ -30,6 +42,8 @@ suite('Unit: McpDefinitionProvider', () => {
 	teardown(async () => {
 		await _resetMcpTokenForTesting();
 		await setMcpEnabled(undefined);
+		await setMcpExposure('enableWriteTools', undefined);
+		await setMcpExposure('enableDangerousGraphqlMutation', undefined);
 		await setServer('enabled', undefined);
 		await setServer('host', undefined);
 	});
@@ -56,6 +70,23 @@ suite('Unit: McpDefinitionProvider', () => {
 		const defs = McpDefinitionProvider.provideMcpServerDefinitions();
 		const def = defs[0] as vscode.McpHttpServerDefinition;
 		assert.match(def.uri.toString(), /^http:\/\/\[::1\]:\d+\/mcp$/, 'IPv6 host is bracketed');
+	});
+
+	test('the advertised version changes when the write/dangerous exposure toggles flip', async () => {
+		await setMcpEnabled(true);
+		const base = versionOf();
+
+		await setMcpExposure('enableWriteTools', true);
+		const withWrite = versionOf();
+		assert.notStrictEqual(withWrite, base, 'enabling write tools changes the version so VS Code reconnects');
+
+		await setMcpExposure('enableDangerousGraphqlMutation', true);
+		const withDangerous = versionOf();
+		assert.notStrictEqual(withDangerous, withWrite, 'enabling the dangerous mutation toggle changes the version');
+
+		await setMcpExposure('enableWriteTools', false);
+		await setMcpExposure('enableDangerousGraphqlMutation', false);
+		assert.strictEqual(versionOf(), base, 'reverting both toggles restores the original version');
 	});
 
 	test('refresh fires the change event so VS Code re-reads the definitions', () => {
