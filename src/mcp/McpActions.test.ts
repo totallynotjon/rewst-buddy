@@ -3,7 +3,6 @@ import * as Mocha from 'mocha';
 import { SessionManager, type Session } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import { log } from '@utils';
-import vscode from 'vscode';
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover } from '../capabilities/graphqlMutateCapability';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import {
@@ -571,20 +570,18 @@ suite('Unit: McpActions', () => {
 });
 
 suite('Unit: MCP audit logging', () => {
-	setup(async () => {
+	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
 		_resetMcpThrottleForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
-		await setAiTools(['workspace', 'graphql']);
 	});
 
-	teardown(async () => {
+	teardown(() => {
 		SessionManager._resetForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
-		await setAiTools(['workspace']);
 	});
 
 	test('successful tool call logs tool, resolved orgId, ok outcome, and duration', async () => {
@@ -693,7 +690,7 @@ suite('Unit: MCP audit logging', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableWriteTools: true }),
+				settings({ enableDangerousGraphqlMutation: true }),
 			);
 		} finally {
 			capture.restore();
