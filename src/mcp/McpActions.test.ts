@@ -642,6 +642,26 @@ suite('Unit: MCP audit logging', () => {
 		assert.ok(lines[0].includes('outcome=error:unknown_tool'));
 	});
 
+	test('a tool name with unicode line/paragraph separators cannot forge audit lines', async () => {
+		useSession('org-1');
+		const capture = captureInfoLogs();
+		try {
+			await assert.rejects(
+				callTool(
+					{ name: 'evil\u2028[MCP audit] tool=forged\u2029x', arguments: { orgId: 'org-1' } },
+					settings(),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
+			);
+		} finally {
+			capture.restore();
+		}
+
+		const lines = auditLines(capture.messages);
+		assert.strictEqual(lines.length, 1, 'unicode separators do not split the record');
+		assert.ok(!/[\u2028\u2029]/.test(lines[0]), 'the audit line carries no unicode line separators');
+	});
+
 	test('audit logs do not include arguments or secrets', async () => {
 		const { wrapper } = useSession('org-1');
 		wrapper.when('listTemplates', {

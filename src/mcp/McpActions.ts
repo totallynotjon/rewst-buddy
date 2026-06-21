@@ -90,9 +90,10 @@ function auditOutcomeForText(text: string): 'ok' | 'approval_required' {
 
 // The tool name (and orgId, on some paths) originate in the client request, so
 // strip line breaks before logging to keep each audit record on its own line —
-// otherwise a crafted tool name could inject forged audit entries.
+// otherwise a crafted tool name could inject forged audit entries. Unicode line
+// (U+2028) and paragraph (U+2029) separators are stripped too for defense in depth.
 function sanitizeAuditField(value: string): string {
-	return value.replace(/[\r\n\t]/g, ' ').trim() || '—';
+	return value.replace(/[\r\n\t\u2028\u2029]/g, ' ').trim() || '—';
 }
 
 function logCallToolAudit(tool: string, orgId: string, outcome: AuditOutcome, startedAt: number): void {
