@@ -84,4 +84,15 @@ suite('Unit: pageTemplateCapabilities', () => {
 		assert.ok(output.includes('abs'));
 		assert.ok(!output.includes('default'));
 	});
+
+	test('search_templates reports GraphQL errors with details', async () => {
+		const { ctx } = fakeCtx({
+			errors: [{ message: 'boom' }],
+		});
+
+		await assert.rejects(
+			() => cap('search_templates').run({ orgId: 'org-1' }, ctx),
+			/GraphQL error: \[{"message":"boom"}\]/,
+		);
+	});
 });

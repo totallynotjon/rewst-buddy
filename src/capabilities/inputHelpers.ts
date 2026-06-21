@@ -18,7 +18,8 @@ export function requireString(input: Record<string, unknown>, key: string): stri
 export function asPositiveInt(input: Record<string, unknown>, key: string): number | undefined {
 	const value = input[key];
 	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
-	return Math.floor(value);
+	const normalized = Math.floor(value);
+	return normalized > 0 ? normalized : undefined;
 }
 
 /** Standard orgId property block for capability inputSchemas. */

@@ -80,7 +80,7 @@ suite('Unit: packIntegrationCapabilities', () => {
 			},
 		});
 		const result = await cap('list_integrations').run({ orgId: 'org-1' }, ctx);
-		assert.ok(typeof result === 'string' && result.includes('integrations(') === false);
+		assert.ok(typeof result === 'string' && !result.includes('integrations('));
 		assert.ok(typeof result === 'string' && result.includes('Slack'));
 	});
 });

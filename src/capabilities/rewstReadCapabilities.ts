@@ -651,7 +651,8 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 	const nameNeedle = rawName.toLowerCase();
 	const valueArg = asString(input, 'value');
 	const valueNeedle = valueArg ? valueArg.toLowerCase() : undefined;
-	const kind = (asString(input, 'kind') ?? 'input') as ExecutionVariableKind;
+	const rawKind = asString(input, 'kind') ?? 'input';
+	const kind: ExecutionVariableKind = rawKind === 'output' || rawKind === 'context' ? rawKind : 'input';
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_EXECUTION_LIMIT, MAX_EXECUTION_LIMIT);
 
 	const { data, errors } = await ctx.session.rawGraphql(EXECUTIONS_WITH_IO_QUERY, { orgId, workflowId, limit });

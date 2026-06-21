@@ -86,7 +86,12 @@ async function runListUsers(input: Record<string, unknown>, ctx: CapabilityConte
 	}[];
 	if (users.length === 0) return 'No users found for this organization.';
 	return users
-		.map(user => `${user.username ?? '(unnamed)'} (${user.id})${user.isApiUser ? ' [api]' : ''}`)
+		.map(
+			user =>
+				`${user.username ?? '(unnamed)'} (${user.id})${user.isApiUser ? ' [api]' : ''}${
+					user.roleIds?.length ? ` — roles: ${user.roleIds.join(', ')}` : ''
+				}`,
+		)
 		.join('\n');
 }
 

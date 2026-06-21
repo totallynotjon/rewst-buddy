@@ -37,7 +37,7 @@ suite('Unit: orgUserCapabilities', () => {
 
 	test('list_users uses users query, maps username search, and formats users', async () => {
 		const { ctx, calls } = fakeCtx({
-			data: { users: [{ id: 'u1', username: 'foo.user', isApiUser: false, roleIds: ['r1'] }] },
+			data: { users: [{ id: 'u1', username: 'foo.user', isApiUser: false, roleIds: ['role-1'] }] },
 		});
 
 		const output = await cap('list_users').run({ orgId: 'org-1', search: 'foo' }, ctx);
@@ -45,6 +45,7 @@ suite('Unit: orgUserCapabilities', () => {
 		assert.ok(calls[0].query.includes('users('));
 		assert.deepStrictEqual(calls[0].variables.search, { username: { _ilike: '%foo%' } });
 		assert.ok(output.includes('foo.user'));
+		assert.ok(output.includes('roles: role-1'));
 	});
 
 	test('list_roles uses roles query and formats role rows', async () => {

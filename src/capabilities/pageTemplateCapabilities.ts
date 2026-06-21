@@ -72,7 +72,7 @@ async function runSearchTemplates(input: Record<string, unknown>, ctx: Capabilit
 	if (search) variables.search = { name: { _ilike: `%${search}%` } };
 	const { data, errors } = await ctx.session.rawGraphql(SEARCH_TEMPLATES_QUERY, variables);
 	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error();
+		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
 	}
 	const templates = ((data as { templates?: unknown[] } | undefined)?.templates ?? []) as {
 		id?: string | null;
@@ -102,7 +102,7 @@ async function runListPages(input: Record<string, unknown>, ctx: CapabilityConte
 	const variables = { orgId, limit };
 	const { data, errors } = await ctx.session.rawGraphql(LIST_PAGES_QUERY, variables);
 	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error();
+		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
 	}
 	const pages = ((data as { pages?: unknown[] } | undefined)?.pages ?? []) as {
 		id?: string | null;
@@ -124,7 +124,7 @@ async function runListSites(input: Record<string, unknown>, ctx: CapabilityConte
 	const variables = { orgId };
 	const { data, errors } = await ctx.session.rawGraphql(LIST_SITES_QUERY, variables);
 	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error();
+		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
 	}
 	const sites = ((data as { sites?: unknown[] } | undefined)?.sites ?? []) as {
 		id?: string | null;
@@ -149,7 +149,7 @@ async function runListJinjaFilters(input: Record<string, unknown>, ctx: Capabili
 	const variables = {};
 	const { data, errors } = await ctx.session.rawGraphql(LIST_JINJA_FILTERS_QUERY, variables);
 	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error();
+		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
 	}
 	const filters = ((data as { jinjaFiltersDocumentation?: unknown[] } | undefined)?.jinjaFiltersDocumentation ??
 		[]) as {
