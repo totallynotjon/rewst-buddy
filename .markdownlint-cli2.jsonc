@@ -1,0 +1,16 @@
+{
+	// Catch the structural Markdown issues that CodeRabbit's markdownlint flags
+	// (notably MD040 fenced-code-language) before they reach review. Prose-style
+	// rules that fight our intentionally long doc lines, tab indentation, and
+	// frontmatter-first changelog notes are turned off so the hook only fails on
+	// things worth fixing.
+	"config": {
+		"default": true,
+		"MD013": false, // line length — docs and tables run long on purpose
+		"MD010": false, // hard tabs — the repo indents with tabs
+		"MD041": false, // first-line heading — changelog.d notes start with YAML frontmatter
+		"MD007": false, // unordered list indentation style
+		"MD036": false, // emphasis used as a pseudo-heading (we do this deliberately)
+		"MD038": false // spaces inside code spans (intentional in a few examples)
+	}
+}
