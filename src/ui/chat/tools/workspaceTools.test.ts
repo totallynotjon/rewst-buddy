@@ -4,7 +4,6 @@ import { initTestEnvironment } from '@test';
 import type { TemplateLink } from '@models';
 import vscode from 'vscode';
 import type { GraphqlToolDeps } from './graphqlTool';
-import { toolOutputCache } from './toolOutputCache';
 import {
 	buildWorkspaceOverview,
 	createCachedWorkspaceOverview,
@@ -111,8 +110,7 @@ suite('Unit: workspaceTools', () => {
 			]);
 		});
 
-		test('caches oversized tool output and reads it back through buddy_result_read', async () => {
-			toolOutputCache.clear();
+		test('returns oversized tool output directly for the MCP boundary to truncate', async () => {
 			const big = 'y'.repeat(20_000);
 			const graphqlDeps: GraphqlToolDeps = {
 				isEnabled: () => true,
@@ -126,23 +124,9 @@ suite('Unit: workspaceTools', () => {
 				graphqlDeps,
 			);
 			assert.strictEqual(result.ok, true);
-			assert.match(result.output, /cached in memory as id "([0-9a-f]+)"/);
-			assert.match(result.output, /buddy_result_read/);
-			assert.doesNotMatch(result.output, /saved/i);
-			const id = result.output.match(/cached in memory as id "([0-9a-f]+)"/)?.[1];
-			assert.ok(id, 'result announces a cache id');
-
-			const [read] = await runToolRequests([{ tool: 'buddy_result_read', args: { id, offset: 8_000 } }], deps());
-			assert.strictEqual(read.ok, true);
-			assert.match(read.output, /characters 8000–14000 of \d+/);
-			assert.ok(read.output.includes('y'.repeat(100)), 'returns a slice of the cached text');
-		});
-
-		test('buddy_result_read reports an unknown cache id', async () => {
-			toolOutputCache.clear();
-			const [read] = await runToolRequests([{ tool: 'buddy_result_read', args: { id: 'nope' } }], deps());
-			assert.strictEqual(read.ok, false);
-			assert.match(read.output, /No cached tool result for id "nope"/);
+			assert.ok(result.output.includes('y'.repeat(100)), 'raw output is preserved');
+			assert.doesNotMatch(result.output, /buddy_result_read/);
+			assert.doesNotMatch(result.output, /cached in memory/);
 		});
 
 		test('reports progress per request', async () => {

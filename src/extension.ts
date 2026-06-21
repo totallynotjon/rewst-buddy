@@ -10,7 +10,6 @@ import {
 	BundleTreeDataProvider,
 	ContextUsageStatusBar,
 	conversationMap,
-	LmToolRegistry,
 	ProposedContentProvider,
 	RewstViewProvider,
 	RoboRewstyChatModelProvider,
@@ -91,7 +90,6 @@ export async function activate(context: vscode.ExtensionContext) {
 			),
 	});
 	context.subscriptions.push(new RoboRewstyChatModelProvider().init());
-	context.subscriptions.push(LmToolRegistry.init());
 	context.subscriptions.push(ProposedContentProvider.init());
 	context.subscriptions.push(new StatusBar());
 	context.subscriptions.push(new ContextUsageStatusBar());

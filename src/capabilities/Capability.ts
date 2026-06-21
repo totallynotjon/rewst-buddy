@@ -3,9 +3,10 @@ import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 
 /**
  * A capability is one Rewst operation defined once and exposed on every surface
- * that wants it (the Cage-Free Rewsty chat tools and the MCP server). The
- * registry (registry.ts) is the single source of truth; each surface is a thin
- * adapter that filters the registry by its own gates and runs the handler.
+ * that wants it. The registry (registry.ts) is the single source of truth; each
+ * surface is a thin adapter that filters the registry by its own gates and runs
+ * the handler. Rewst-contributed operations are currently exposed over MCP, not
+ * as VS Code language-model chat tools.
  *
  * The handler receives a session that was already resolved and validated by the
  * surface — never raw secrets. Cookies stay inside the extension host; the MCP

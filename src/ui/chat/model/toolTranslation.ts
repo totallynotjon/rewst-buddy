@@ -1,6 +1,5 @@
 import vscode from 'vscode';
 import { buildToolInstructions, parseToolRequests, type ToolRequest, type ToolSpec } from '../tools/toolProtocol';
-import { ALL_TOOL_SPECS, isToolPermitted, type AiToolSettings } from './lmTools';
 
 /**
  * Translates between VS Code's language-model tool-calling contract and
@@ -10,25 +9,9 @@ import { ALL_TOOL_SPECS, isToolPermitted, type AiToolSettings } from './lmTools'
  * VS Code executes and answers with tool-result parts.
  */
 
-const SPEC_BY_NAME = new Map(ALL_TOOL_SPECS.map(spec => [spec.name, spec]));
-
-/**
- * The tools the model may be told about: whatever VS Code passed, minus any
- * rewst tool whose governing setting is off. A disabled tool is withheld even
- * when present in options.tools, preserving the settings semantics.
- */
-export function filterToolsBySettings(
-	tools: readonly vscode.LanguageModelChatTool[] | undefined,
-	settings: AiToolSettings,
-): vscode.LanguageModelChatTool[] {
-	return (tools ?? []).filter(tool => isToolPermitted(tool.name, settings));
-}
-
 /** Instruction text advertising the given chat tools via the text protocol. */
 export function buildInstructionsForChatTools(tools: readonly vscode.LanguageModelChatTool[]): string {
 	const specs: ToolSpec[] = tools.map(tool => {
-		const known = SPEC_BY_NAME.get(tool.name);
-		if (known) return known;
 		return {
 			name: tool.name,
 			description: tool.description,
@@ -153,7 +136,7 @@ export function rejectedToolsNote(names: readonly string[]): string {
 		.map(name => `\`${name}\``)
 		.join(
 			', ',
-		)}). Enable the corresponding rewst-buddy.ai setting or pick the tool in the chat tool picker, then ask again.*\n`;
+		)}). Pick the tool in the chat tool picker if it is a VS Code built-in, or use the MCP server for Rewst-specific tools, then ask again.*\n`;
 }
 
 /** One ToolRequest shape for dedupe/labeling reuse elsewhere. */

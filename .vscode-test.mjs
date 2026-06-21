@@ -52,6 +52,7 @@ function wantsIntegration() {
 export default defineConfig({
 	files: 'dist/test/**/*.test.js',
 	version: 'stable',
+	launchArgs: ['--disable-chromium-sandbox', '--no-sandbox'],
 	// Forwarded to the extension host as extensionTestsEnv, merged over process.env.
 	env: wantsIntegration() ? loadDotEnv() : {},
 	mocha: {

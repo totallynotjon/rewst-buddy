@@ -12,7 +12,6 @@ import {
 	hasChatCapability,
 	mcpCapabilities,
 } from './registry';
-import { RESULT_READ_TOOL_SPECS } from '../ui/chat/tools/toolOutputCache';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
@@ -25,20 +24,13 @@ import { WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
 
 const { suite, test, setup } = Mocha;
 
-const GRAPHQL_CHAT_CAPABILITIES = ['buddy_graphql_schema', 'buddy_graphql'];
-const WORKSPACE_CHAT_CAPABILITIES = WORKSPACE_TOOL_SPECS.map(spec => spec.name);
-const WORKFLOW_CHAT_CAPABILITIES = WORKFLOW_TOOL_SPECS.map(spec => spec.name);
-const WORKFLOW_WRITE_CHAT_CAPABILITIES = [
+const CAPABILITY_GROUPS: CapabilityGroup[] = ['workspace', 'workflow', 'graphql', 'result'];
+const WORKSPACE_MCP_CAPABILITIES = WORKSPACE_TOOL_SPECS.map(spec => spec.name);
+const WORKFLOW_MCP_CAPABILITIES = WORKFLOW_TOOL_SPECS.map(spec => spec.name);
+const WORKFLOW_WRITE_MCP_CAPABILITIES = [
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
-];
-const RESULT_READ_CHAT_CAPABILITIES = RESULT_READ_TOOL_SPECS.map(spec => spec.name);
-const CHAT_CAPABILITIES = [
-	...WORKSPACE_CHAT_CAPABILITIES,
-	...WORKFLOW_CHAT_CAPABILITIES,
-	...GRAPHQL_CHAT_CAPABILITIES,
-	...RESULT_READ_CHAT_CAPABILITIES,
 ];
 
 function settings(overrides: Partial<CapabilitySettings> = {}): CapabilitySettings {
@@ -75,63 +67,13 @@ suite('Unit: capability registry', () => {
 		assert.strictEqual(getCapability('does_not_exist'), undefined);
 	});
 
-	test('buddy_graphql is a write capability (can mutate)', () => {
-		const graphql = getCapability('buddy_graphql');
-		assert.ok(graphql);
-		assert.strictEqual(graphql.access, 'write');
+	test('buddy_graphql is retired from the registry surfaces', () => {
+		assert.strictEqual(getCapability('buddy_graphql'), undefined);
 	});
 
 	suite('chat surface', () => {
-		test('all VS Code chat tools are exposed on the chat surface', () => {
-			const names = chatCapabilities().map(capability => capability.spec.name);
-			assert.deepStrictEqual([...names].sort(), [...CHAT_CAPABILITIES].sort());
-		});
-
-		test('chat graphql capabilities are gated by enableGraphqlTool', () => {
-			const graphqlChatCapabilities = chatCapabilities().filter(capability =>
-				GRAPHQL_CHAT_CAPABILITIES.includes(capability.spec.name),
-			);
-			for (const capability of graphqlChatCapabilities) {
-				assert.strictEqual(capability.enabled(settings()), false, `${capability.spec.name} off by default`);
-				assert.strictEqual(
-					capability.enabled(settings({ enableGraphqlTool: true })),
-					true,
-					`${capability.spec.name} on when graphql enabled`,
-				);
-			}
-		});
-
-		test('chat-only categories are gated by their feature switches', () => {
-			const byName = new Map(chatCapabilities().map(capability => [capability.spec.name, capability]));
-			const cases: [string, string[], Partial<CapabilitySettings>][] = [
-				['workspace', WORKSPACE_CHAT_CAPABILITIES, { enableWorkspaceTools: true }],
-				['workflow', WORKFLOW_CHAT_CAPABILITIES, { enableWorkflowTools: true }],
-			];
-
-			for (const [label, names, on] of cases) {
-				for (const name of names) {
-					const capability = byName.get(name);
-					assert.ok(capability, `${name} is registered`);
-					assert.strictEqual(capability.enabled(settings()), false, `${name} off by default`);
-					assert.strictEqual(capability.enabled(settings(on)), true, `${name} on when ${label} enabled`);
-				}
-			}
-		});
-
-		test('result reader is enabled when any chat tool category is enabled', () => {
-			const byName = new Map(chatCapabilities().map(capability => [capability.spec.name, capability]));
-			for (const name of RESULT_READ_CHAT_CAPABILITIES) {
-				const capability = byName.get(name);
-				assert.ok(capability, `${name} is registered`);
-				assert.strictEqual(capability.enabled(settings()), false, `${name} off by default`);
-				for (const on of [
-					{ enableWorkspaceTools: true },
-					{ enableGraphqlTool: true },
-					{ enableWorkflowTools: true },
-				]) {
-					assert.strictEqual(capability.enabled(settings(on)), true, `${name} on when any tools are enabled`);
-				}
-			}
+		test('Rewst capabilities are not exposed on the VS Code chat LM surface', () => {
+			assert.deepStrictEqual(chatCapabilities(), []);
 		});
 	});
 
@@ -142,25 +84,15 @@ suite('Unit: capability registry', () => {
 			}
 		});
 
-		test('chatCapabilityNames returns the names in each family', () => {
-			const expected: Record<CapabilityGroup, string[]> = {
-				workspace: WORKSPACE_CHAT_CAPABILITIES,
-				workflow: WORKFLOW_CHAT_CAPABILITIES,
-				graphql: GRAPHQL_CHAT_CAPABILITIES,
-				result: RESULT_READ_CHAT_CAPABILITIES,
-			};
-			for (const group of Object.keys(expected) as CapabilityGroup[]) {
-				assert.deepStrictEqual(
-					[...chatCapabilityNames(group)].sort(),
-					[...expected[group]].sort(),
-					`${group} family names`,
-				);
+		test('chatCapabilityNames returns no Rewst tool families', () => {
+			for (const group of CAPABILITY_GROUPS) {
+				assert.deepStrictEqual([...chatCapabilityNames(group)], [], `${group} has no chat names`);
 			}
 		});
 
-		test('hasChatCapability matches only names in the family', () => {
-			assert.ok(hasChatCapability('workflow', new Set(['buddy_workflow_edit'])));
-			assert.ok(hasChatCapability('graphql', new Set(['buddy_graphql_schema'])));
+		test('hasChatCapability never matches retired Rewst tool names', () => {
+			assert.ok(!hasChatCapability('workflow', new Set(['buddy_workflow_edit'])));
+			assert.ok(!hasChatCapability('graphql', new Set(['buddy_graphql_schema'])));
 			assert.ok(!hasChatCapability('workflow', new Set(['buddy_graphql'])));
 			assert.ok(!hasChatCapability('graphql', new Set(['read_file', 'unknown_tool'])));
 		});
@@ -176,6 +108,7 @@ suite('Unit: capability registry', () => {
 				'list_workflows',
 				'get_workflow',
 				'rewst_graphql_query',
+				'list_template_links',
 				'buddy_graphql_schema',
 				'rewst_graphql_mutate',
 			]) {
@@ -193,13 +126,13 @@ suite('Unit: capability registry', () => {
 
 		test('all workflow helpers are exposed to MCP', () => {
 			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
-			for (const name of WORKFLOW_CHAT_CAPABILITIES) {
+			for (const name of WORKFLOW_MCP_CAPABILITIES) {
 				assert.ok(names.has(name), `${name} exposed to MCP`);
 			}
 		});
 
 		test('workflow write helpers keep write access on MCP', () => {
-			for (const name of WORKFLOW_WRITE_CHAT_CAPABILITIES) {
+			for (const name of WORKFLOW_WRITE_MCP_CAPABILITIES) {
 				const capability = getCapability(name);
 				assert.ok(capability, `${name} registered`);
 				assert.strictEqual(capability.mcp, true, `${name} exposed to MCP`);
@@ -221,11 +154,12 @@ suite('Unit: capability registry', () => {
 			}
 		});
 
-		test('non-workflow chat-only tool categories are not exposed to MCP', () => {
+		test('workspace helpers are exposed to MCP and chat-only result reader is gone', () => {
 			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
-			for (const name of [...WORKSPACE_CHAT_CAPABILITIES, ...RESULT_READ_CHAT_CAPABILITIES]) {
-				assert.ok(!names.has(name), `${name} stays off MCP`);
+			for (const name of WORKSPACE_MCP_CAPABILITIES) {
+				assert.ok(names.has(name), `${name} exposed to MCP`);
 			}
+			assert.ok(!names.has('buddy_result_read'), 'result reader stays off MCP');
 		});
 
 		test('list_orgs does not require an org', () => {

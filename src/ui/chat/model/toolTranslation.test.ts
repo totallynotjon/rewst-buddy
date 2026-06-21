@@ -5,24 +5,13 @@ import {
 	buildInstructionsForChatTools,
 	collectToolCalls,
 	extractTrailingToolResults,
-	filterToolsBySettings,
 	rejectedToolsNote,
 	translateToolRequests,
 } from './toolTranslation';
-import type { AiToolSettings } from './lmTools';
 
 const { suite, test } = Mocha;
 
 const { User, Assistant } = vscode.LanguageModelChatMessageRole;
-
-function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
-	return {
-		enableWorkspaceTools: false,
-		enableGraphqlTool: false,
-		enableWorkflowTools: false,
-		...overrides,
-	};
-}
 
 function chatTool(name: string, description = `${name} tool`): vscode.LanguageModelChatTool {
 	return { name, description, inputSchema: { type: 'object' } };
@@ -33,34 +22,13 @@ function fence(request: object): string {
 }
 
 suite('Unit: toolTranslation', () => {
-	suite('filterToolsBySettings()', () => {
-		test('withholds a rewst tool whose setting is disabled, even when VS Code passes it', () => {
-			const tools = [chatTool('list_template_links'), chatTool('buddy_graphql_schema')];
-			const filtered = filterToolsBySettings(tools, settings({ enableGraphqlTool: true }));
-			assert.deepStrictEqual(
-				filtered.map(tool => tool.name),
-				['buddy_graphql_schema'],
-			);
-		});
-
-		test("passes non-rewst tools through untouched (e.g. the chat's built-in file tools)", () => {
-			const filtered = filterToolsBySettings([chatTool('other_ext_tool'), chatTool('read_file')], settings());
-			assert.strictEqual(filtered.length, 2);
-		});
-
-		test('handles missing options.tools', () => {
-			assert.deepStrictEqual(filterToolsBySettings(undefined, settings()), []);
-		});
-	});
-
 	suite('buildInstructionsForChatTools()', () => {
-		test('advertises known tools with their curated descriptions', () => {
-			const instructions = buildInstructionsForChatTools([chatTool('list_template_links')]);
-			assert.ok(instructions.includes('list_template_links'));
-			assert.ok(
-				instructions.includes('List local files linked to Rewst templates'),
-				'known tools keep their curated description',
-			);
+		test('advertises built-in tools passed by VS Code without Rewst-only examples', () => {
+			const instructions = buildInstructionsForChatTools([chatTool('read_file', 'read a file')]);
+			assert.ok(instructions.includes('read_file'));
+			assert.ok(instructions.includes('read a file'));
+			assert.ok(!instructions.includes('list_template_links'));
+			assert.ok(!instructions.includes('buddy_graphql'));
 		});
 
 		test('advertises unknown tools with their schema', () => {
@@ -127,5 +95,6 @@ suite('Unit: toolTranslation', () => {
 		const note = rejectedToolsNote(['run_command', 'run_command']);
 		assert.ok(note.includes('`run_command`'));
 		assert.strictEqual(note.match(/run_command/g)?.length, 1);
+		assert.ok(!note.includes('rewst-buddy.ai'), 'chat rejection note does not mention retired Rewst tool settings');
 	});
 });

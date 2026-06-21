@@ -3,17 +3,16 @@ import { isAiToolEnabled } from './aiToolSettings';
 import type { ToolRequest, ToolSpec } from './toolProtocol';
 
 /**
- * buddy_graphql lets RoboRewsty compose and run GraphQL operations against the
- * user's own Rewst instance, authenticated with their session cookie. The
- * assistant already knows Rewst's domain; this gives it live access to the
- * same API the extension itself uses.
+ * Rewst GraphQL helpers run against the user's own Rewst instance,
+ * authenticated with their session cookie. The combined buddy_graphql tool is
+ * retired from the VS Code chat LM surface; MCP exposes dedicated
+ * rewst_graphql_query and rewst_graphql_mutate primitives, while
+ * buddy_graphql_schema remains available for schema inspection.
  *
  *   - Off by default (enable "graphql" in rewst-buddy.ai.tools): the session can
  *     read and change anything the user can in Rewst.
  *   - Queries run directly once enabled; mutations always require explicit
- *     user approval — VS Code's native inline chat confirmation (Continue /
- *     Cancel) showing the full operation, gated at the tool's prepareInvocation
- *     (see lmTools.ts). There is no auto-approve escape hatch.
+ *     approval through the MCP mutation approver before execution.
  *   - Every mutation MUST carry four scope fields the assistant supplies:
  *     scopeId + scopeName (id and name of the single resource it changes, e.g. a
  *     workflow's id and name) and orgId + orgName. Approval is remembered for the
@@ -85,10 +84,8 @@ export interface GraphqlToolDeps {
 	isEnabled(): boolean;
 	/**
 	 * Final say on whether a mutation runs; returns true to run. In production
-	 * this is already true by the time the tool executes — the user confirmed it
-	 * through VS Code's inline chat confirmation at prepareInvocation time (see
-	 * graphqlMutationConfirmation + lmTools.ts). Kept as a seam so runGraphqlTool
-	 * stays independently testable and gated.
+	 * this is true after the relevant surface has approved the mutation. Kept as
+	 * a seam so runGraphqlTool stays independently testable and gated.
 	 */
 	confirmMutation(operation: string): Promise<boolean>;
 	execute(query: string, variables?: Record<string, unknown>): Promise<{ data?: unknown; errors?: unknown }>;
@@ -239,11 +236,8 @@ const TYPE_NAMES_QUERY = `query RewstBuddySchemaTypeNames($includeDeprecated: Bo
 export function createGraphqlDeps(session: Session): GraphqlToolDeps {
 	return {
 		isEnabled: () => isAiToolEnabled('graphql'),
-		// The mutation prompt is VS Code's inline chat confirmation, shown at
-		// prepareInvocation before the tool runs (see graphqlMutationConfirmation +
-		// lmTools.ts). By the time execution reaches here the user has already said
-		// yes, so there is nothing left to ask — a second OS modal would be the
-		// jarring double-prompt this replaced (#25).
+		// MCP mutations are approved before this dependency path is invoked, so
+		// there is nothing left to ask inside the low-level GraphQL runner.
 		confirmMutation: async () => true,
 		execute: (query, variables) => session.rawGraphql(query, variables),
 		// Partition per-session caches by the org behind this session.
@@ -324,9 +318,7 @@ function parseMutation(name: string, input: unknown): ParsedMutation | undefined
 
 /**
  * The declared scope for a `buddy_graphql` mutation request, or undefined when
- * the request is not a mutation or is missing any scope field. lmTools.ts
- * records this once the invocation is permitted, so repeat edits to the same
- * resource skip the prompt.
+ * the request is not a mutation or is missing any scope field.
  */
 export function graphqlMutationScope(name: string, input: unknown): MutationScope | undefined {
 	return parseMutation(name, input)?.scope;
@@ -355,9 +347,8 @@ export interface GraphqlMutationConfirmation {
  * prompt is needed: anything but a `buddy_graphql` mutation (queries, schema
  * reads, other tools), a mutation whose org+resource scope is already approved
  * this session, or a mutation missing any scope field (it is refused downstream
- * in runGraphqlTool, so there is nothing to approve). Lets lmTools.ts gate
- * mutations through VS Code's native chat confirmation instead of an OS modal,
- * named for the resource and org the assistant declares it is changing (#25).
+ * in runGraphqlTool, so there is nothing to approve). Kept for the low-level
+ * GraphQL runner tests and any future surface that wants this confirmation copy.
  */
 export function graphqlMutationConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
 	const mutation = parseMutation(name, input);

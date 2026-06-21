@@ -1,7 +1,6 @@
 import {
 	askRewstAi,
 	SessionManager,
-	type ApprovalTool,
 	type AskOptions,
 	type ConversationEvent,
 	type ConversationSource,
@@ -12,7 +11,6 @@ import { log } from '@utils';
 import vscode from 'vscode';
 import { ChunkGate } from '../tools/chunkGate';
 import { stripToolRequestBlocks } from '../tools/toolProtocol';
-import { createCachedWorkspaceOverview, wireWorkspaceOverviewInvalidation } from '../tools/workspaceTools';
 import { prependInstructions } from '../promptContext';
 import { buildEngineeringDirective, buildNativeToolReminder } from './engineeringDirective';
 import { conversationMap, nextTurnKey, prefixKey, spineDepth } from './conversationMap';
@@ -20,20 +18,11 @@ import { formatBreadcrumb, parseLatestBreadcrumb } from './breadcrumb';
 import { setLastAiAnswer } from './lastAnswer';
 import { setContextUsage } from './contextUsage';
 import { serializeVisibleChat } from './statelessTranscript';
-import {
-	APPROVAL_TOOL_NAME,
-	readAiToolSettings,
-	setActiveAiOrg,
-	takeOnceApprovals,
-	type AiToolSettings,
-	type ApprovalToolInput,
-} from './lmTools';
 import { renderSourcesMarkdown } from './sources';
 import {
 	buildInstructionsForChatTools,
 	collectToolCalls,
 	extractTrailingToolResults,
-	filterToolsBySettings,
 	formatToolResultsMessage,
 	rejectedToolsNote,
 	translateToolRequests,
@@ -46,32 +35,13 @@ const FAMILY = 'roborewsty';
 const MAX_INPUT_TOKENS = 128_000;
 const MAX_OUTPUT_TOKENS = 16_000;
 
-type ApprovalChoice = 'approve' | 'always' | 'cancel';
-
 /** Seams for unit testing; production uses defaultProviderDeps. */
 export interface ProviderDeps {
 	ask(options: AskOptions): AsyncGenerator<ConversationEvent>;
 	sessions(): Session[];
 	sessionForOrg(orgId: string): Session;
-	confirmApproval(tools: ApprovalTool[]): Promise<ApprovalChoice>;
-	workspaceOverview(): Promise<string | undefined>;
-	/** Marks the cached workspace overview stale; absent in tests (no-op). */
-	invalidateOverview?(): void;
 	workspaceRoot(): string | undefined;
 	aiConfig(): { customInstructions: string; conversationType: string; showActivity: boolean };
-	toolSettings(): AiToolSettings;
-}
-
-function truncate(text: string, max: number): string {
-	return text.length > max ? `${text.slice(0, max)}…` : text;
-}
-
-function safeJson(value: unknown): string {
-	try {
-		return JSON.stringify(value, null, 2) ?? String(value);
-	} catch {
-		return String(value);
-	}
 }
 
 /**
@@ -89,31 +59,10 @@ function formatActivityLine(status: { label: string; tool?: { name: string; args
 	return `\n\n> _${status.label}_\n`;
 }
 
-async function confirmApprovalModal(tools: ApprovalTool[]): Promise<ApprovalChoice> {
-	const detail = tools
-		.map(tool => (tool.args === undefined ? tool.name : `${tool.name}\n${truncate(safeJson(tool.args), 500)}`))
-		.join('\n\n');
-	const alwaysLabel = tools.length === 1 ? `Always Allow "${tools[0].name}"` : 'Always Allow These Tools';
-	const choice = await vscode.window.showInformationMessage(
-		'RoboRewsty needs your approval to run a Rewst action',
-		{ modal: true, detail },
-		'Approve',
-		alwaysLabel,
-	);
-	if (choice === 'Approve') return 'approve';
-	if (choice === alwaysLabel) return 'always';
-	return 'cancel';
-}
-
-const defaultOverviewCache = createCachedWorkspaceOverview();
-
 export const defaultProviderDeps: ProviderDeps = {
 	ask: askRewstAi,
 	sessions: () => SessionManager.getActiveSessions(),
 	sessionForOrg: orgId => SessionManager.getSessionForOrg(orgId),
-	confirmApproval: confirmApprovalModal,
-	workspaceOverview: () => defaultOverviewCache.get(),
-	invalidateOverview: () => defaultOverviewCache.invalidate(),
 	workspaceRoot: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
 	aiConfig: () => {
 		const config = vscode.workspace.getConfiguration(`${extPrefix}.ai`);
@@ -123,7 +72,6 @@ export const defaultProviderDeps: ProviderDeps = {
 			showActivity: config.get<boolean>('showActivity', true),
 		};
 	},
-	toolSettings: readAiToolSettings,
 };
 
 /**
@@ -141,7 +89,6 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 
 	private registration: vscode.Disposable | undefined;
 	private sessionListener: vscode.Disposable | undefined;
-	private overviewInvalidation: vscode.Disposable | undefined;
 
 	// The directive, native-tool reminder, and tool-instruction text are pure
 	// functions of the permitted-tool set, but get rebuilt (heavy string
@@ -156,11 +103,6 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 	init(): this {
 		this.registration = vscode.lm.registerLanguageModelChatProvider(VENDOR, this);
 		this.sessionListener = SessionManager.onSessionChange(() => this.changeEmitter.fire());
-		// Keep the cached workspace overview fresh: invalidate it on top-level file
-		// and template-link changes, with the cache's TTL as the backstop.
-		if (this.deps.invalidateOverview) {
-			this.overviewInvalidation = wireWorkspaceOverviewInvalidation(() => this.deps.invalidateOverview?.());
-		}
 		log.debug('RoboRewstyChatModelProvider: registered', VENDOR);
 		return this;
 	}
@@ -203,8 +145,6 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		this.registration = undefined;
 		this.sessionListener?.dispose();
 		this.sessionListener = undefined;
-		this.overviewInvalidation?.dispose();
-		this.overviewInvalidation = undefined;
 		this.changeEmitter.dispose();
 	}
 
@@ -248,31 +188,12 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		if (messages.length === 0) throw new Error('No messages in the chat request.');
 		const orgId = model.id;
 		const session = this.deps.sessionForOrg(orgId);
-		// Tool invocations (run by VS Code after this turn) have no org context;
-		// point the GraphQL tool at this turn's org.
-		setActiveAiOrg(orgId);
-
-		const settings = this.deps.toolSettings();
-		const tools = filterToolsBySettings(options.tools, settings);
+		const tools = options.tools ?? [];
 		const permittedNames = new Set(tools.map(tool => tool.name));
 		const { customInstructions, conversationType, showActivity } = this.deps.aiConfig();
 
 		const trailingResults = extractTrailingToolResults(messages);
 		const toolCalls = trailingResults ? collectToolCalls(messages) : undefined;
-
-		// In-chat approval re-send: the user confirmed a paused Rewst action, so
-		// the original request is replayed verbatim once the tool is allow-listed.
-		let approvalResume: string | undefined;
-		if (trailingResults && toolCalls) {
-			const approval = trailingResults
-				.map(result => toolCalls.get(result.callId))
-				.find(call => call?.name === APPROVAL_TOOL_NAME);
-			if (approval) {
-				const input = approval.input as Partial<ApprovalToolInput> | undefined;
-				if (typeof input?.resume !== 'string') throw new Error('Approval call carried no resumable request.');
-				approvalResume = input.resume;
-			}
-		}
 
 		// Fire-and-forget delete of a superseded transient conversation — must not
 		// delay the turn from completing.
@@ -341,198 +262,132 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				),
 			);
 		};
-		// Tools allow-listed for a one-time Approve; reverted once the turn ends.
-		const toolsToRevert = new Set<string>();
+		// Outer loop: a reuse turn that the backend can't follow downgrades to
+		// a fresh, stateless turn ONCE. The first attempt reuses when recovery
+		// found a conversation; the retry always starts fresh.
+		for (;;) {
+			const reusing = conversationId !== undefined;
+			const reusedId = conversationId;
+			const message = await this.buildTurnMessage(
+				!reusing,
+				messages,
+				trailingResults,
+				toolCalls,
+				customInstructions,
+				permittedNames,
+				tools,
+			);
+			let downgrade = false;
 
-		try {
-			// Outer loop: a reuse turn that the backend can't follow downgrades to
-			// a fresh, stateless turn ONCE. The first attempt reuses when recovery
-			// found a conversation; the retry always starts fresh.
-			for (;;) {
-				const reusing = conversationId !== undefined;
-				const reusedId = conversationId;
-				const message = await this.buildTurnMessage(
-					!reusing,
-					approvalResume,
-					messages,
-					trailingResults,
-					toolCalls,
-					customInstructions,
-					settings,
-					permittedNames,
-					tools,
-				);
-				let downgrade = false;
+			// Each iteration is one backend turn. A reused conversation that the
+			// backend cannot follow downgrades to a stateless retry.
+			turns: for (;;) {
+				const gate = new ChunkGate();
+				let completeContent = '';
+				let sources: ConversationSource[] = [];
+				let sawComplete = false;
 
-				// Each iteration is one backend turn; approvals re-send the same
-				// message once the tool is allow-listed (resuming a paused request
-				// does not re-run the tool — see the Rewst approval semantics).
-				turns: for (;;) {
-					const gate = new ChunkGate();
-					let completeContent = '';
-					let sources: ConversationSource[] = [];
-					let sawComplete = false;
-
-					for await (const event of this.deps.ask({
-						session,
-						orgId,
-						message,
-						conversationId,
-						conversationType,
-						cancellation: token,
-					})) {
-						if (token.isCancellationRequested) return;
-						switch (event.kind) {
-							case 'registered':
-								break;
-							case 'status':
-								// Only surface real steps; skip thinking/summarizing churn.
-								if (event.activity) emitStatus(event, gate);
-								break;
-							case 'usage':
-								// Stand-in for VS Code's native context gauge, which a model
-								// provider can't update; the status bar renders the latest.
-								setContextUsage({
-									orgId,
-									orgName: model.detail,
-									totalTokens: event.totalTokens,
-									maxTokens: event.maxTokens,
-									percent: event.percent,
-								});
-								break;
-							case 'conversation':
-								conversationId = event.conversationId;
-								break;
-							case 'chunk':
-								emitText(gate.push(event.text));
-								break;
-							case 'complete':
-								sawComplete = true;
-								completeContent = event.content;
-								sources = event.sources;
-								conversationId = event.conversationId ?? conversationId;
-								break;
-							case 'approval': {
-								const named = event.tools.filter(tool => tool.name);
-								if (named.length === 0) {
-									emitText(
-										"\n\n*RoboRewsty needs approval to run a Rewst action, but it didn't name the tool, so it can't be approved from here. You can approve it in the Rewst web app.*\n",
-									);
-									storeContinuity([]);
-									return;
-								}
-								if (options.tools?.some(tool => tool.name === APPROVAL_TOOL_NAME)) {
-									// In-chat confirmation: emit a call to the approval tool.
-									// VS Code renders Continue/Cancel inline; confirming
-									// allow-lists the tool(s) and re-enters with the resume
-									// payload, cancelling simply ends the turn.
-									const argsPreview = named
-										.filter(tool => tool.args !== undefined)
-										.map(tool => `${tool.name}: ${truncate(safeJson(tool.args), 500)}`)
-										.join('\n');
-									const input: ApprovalToolInput = {
-										toolNames: named.map(tool => tool.name),
-										orgId,
-										resume: message,
-										...(argsPreview ? { argsPreview } : {}),
-									};
-									const call = new vscode.LanguageModelToolCallPart(
-										`rewst-approval-${Date.now().toString(36)}`,
-										APPROVAL_TOOL_NAME,
-										input,
-									);
-									progress.report(call);
-									storeContinuity([call]);
-									return;
-								}
-								const choice = await this.deps.confirmApproval(named);
-								if (choice === 'cancel') {
-									emitText(
-										'\n\n*Approval declined — the Rewst action was not run. Ask again if you change your mind.*\n',
-									);
-									storeContinuity([]);
-									return;
-								}
-								for (const tool of named) {
-									try {
-										await session.sdk?.addAllowedTool({ toolName: tool.name });
-										if (choice === 'approve') toolsToRevert.add(tool.name);
-									} catch (error) {
-										log.notifyError(
-											`Could not approve "${tool.name}": ${error instanceof Error ? error.message : error}`,
-										);
-									}
-								}
-								needsSeparator = emittedText.length > 0;
-								continue turns;
+				for await (const event of this.deps.ask({
+					session,
+					orgId,
+					message,
+					conversationId,
+					conversationType,
+					cancellation: token,
+				})) {
+					if (token.isCancellationRequested) return;
+					switch (event.kind) {
+						case 'registered':
+							break;
+						case 'status':
+							// Only surface real steps; skip thinking/summarizing churn.
+							if (event.activity) emitStatus(event, gate);
+							break;
+						case 'usage':
+							// Stand-in for VS Code's native context gauge, which a model
+							// provider can't update; the status bar renders the latest.
+							setContextUsage({
+								orgId,
+								orgName: model.detail,
+								totalTokens: event.totalTokens,
+								maxTokens: event.maxTokens,
+								percent: event.percent,
+							});
+							break;
+						case 'conversation':
+							conversationId = event.conversationId;
+							break;
+						case 'chunk':
+							emitText(gate.push(event.text));
+							break;
+						case 'complete':
+							sawComplete = true;
+							completeContent = event.content;
+							sources = event.sources;
+							conversationId = event.conversationId ?? conversationId;
+							break;
+						case 'approval':
+							emitText(
+								'\n\n*RoboRewsty needs approval to run a Rewst-side action. Rewst Buddy no longer exposes Rewst approval as a VS Code chat tool; use the Rewst web app or the MCP approval flow for Rewst-side actions.*\n',
+							);
+							storeContinuity([]);
+							return;
+						case 'error':
+							// A reused conversation the backend can't follow: revert
+							// to a fresh stateless turn once, provided nothing has
+							// streamed yet (avoids double output).
+							if (reusing && emittedText === '') {
+								log.debug(
+									'RoboRewstyChatModelProvider: reuse turn errored before output, downgrading to stateless',
+									reusedId,
+									event.message,
+								);
+								downgrade = true;
+								break turns;
 							}
-							case 'error':
-								// A reused conversation the backend can't follow: revert
-								// to a fresh stateless turn once, provided nothing has
-								// streamed yet (avoids double output).
-								if (reusing && emittedText === '') {
-									log.debug(
-										'RoboRewstyChatModelProvider: reuse turn errored before output, downgrading to stateless',
-										reusedId,
-										event.message,
-									);
-									downgrade = true;
-									break turns;
-								}
-								throw new Error(event.message);
-						}
-						if (sawComplete) break;
+							throw new Error(event.message);
 					}
+					if (sawComplete) break;
+				}
 
-					if (!sawComplete) return; // cancelled or the stream ended early
+				if (!sawComplete) return; // cancelled or the stream ended early
 
-					// Whatever the chunk stream didn't already show.
-					const remainder =
-						gate.streamedAny || gate.blocked ? gate.flush() : stripToolRequestBlocks(completeContent);
+				// Whatever the chunk stream didn't already show.
+				const remainder =
+					gate.streamedAny || gate.blocked ? gate.flush() : stripToolRequestBlocks(completeContent);
 
-					// Always translate, even with no tools passed: a request for an
-					// unavailable tool must surface as the rejection note instead of
-					// being silently stripped by the chunk gate.
-					const { calls, rejectedNames } = translateToolRequests(completeContent, permittedNames);
+				// Always translate, even with no tools passed: a request for an
+				// unavailable tool must surface as the rejection note instead of
+				// being silently stripped by the chunk gate.
+				const { calls, rejectedNames } = translateToolRequests(completeContent, permittedNames);
 
-					if (calls.length > 0) {
-						emitText(remainder);
-						for (const call of calls) progress.report(call);
-						storeContinuity(calls);
-						return;
-					}
-
-					let finalText = remainder;
-					if (rejectedNames.length > 0) finalText += rejectedToolsNote(rejectedNames);
-					if (sources.length > 0) finalText += renderSourcesMarkdown(sources);
-					emitText(finalText);
-					setLastAiAnswer(stripToolRequestBlocks(completeContent));
-					storeContinuity([]);
-					emitBreadcrumb();
+				if (calls.length > 0) {
+					emitText(remainder);
+					for (const call of calls) progress.report(call);
+					storeContinuity(calls);
 					return;
 				}
 
-				// Reached only by breaking out of the turns loop to downgrade.
-				if (!downgrade) return;
-				if (reusedId) {
-					conversationMap.forget(reusedId);
-					fireDelete(reusedId);
-				}
-				conversationId = undefined;
-				emittedText = '';
-				needsSeparator = trailingResults !== undefined;
-				lastStatusLabel = undefined;
+				let finalText = remainder;
+				if (rejectedNames.length > 0) finalText += rejectedToolsNote(rejectedNames);
+				if (sources.length > 0) finalText += renderSourcesMarkdown(sources);
+				emitText(finalText);
+				setLastAiAnswer(stripToolRequestBlocks(completeContent));
+				storeContinuity([]);
+				emitBreadcrumb();
+				return;
 			}
-		} finally {
-			// Undo one-time approvals now that the tool has already run server-side
-			// (modal Approve and in-chat confirmations alike).
-			for (const toolName of new Set([...toolsToRevert, ...takeOnceApprovals(orgId)])) {
-				try {
-					await session.sdk?.removeAllowedTool({ toolName });
-				} catch (error) {
-					log.debug('RoboRewstyChatModelProvider: approval revert failed', toolName, error);
-				}
+
+			// Reached only by breaking out of the turns loop to downgrade.
+			if (!downgrade) return;
+			if (reusedId) {
+				conversationMap.forget(reusedId);
+				fireDelete(reusedId);
 			}
+			conversationId = undefined;
+			emittedText = '';
+			needsSeparator = trailingResults !== undefined;
+			lastStatusLabel = undefined;
 		}
 	}
 
@@ -575,24 +430,16 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 	/** Build this attempt's message: stateless full transcript, or a lean reuse turn. */
 	private async buildTurnMessage(
 		stateless: boolean,
-		approvalResume: string | undefined,
 		messages: readonly vscode.LanguageModelChatRequestMessage[],
 		trailingResults: ReturnType<typeof extractTrailingToolResults>,
 		toolCalls: ReturnType<typeof collectToolCalls> | undefined,
 		customInstructions: string,
-		settings: AiToolSettings,
 		permittedNames: ReadonlySet<string>,
 		tools: readonly vscode.LanguageModelChatTool[],
 	): Promise<string> {
-		// Stateless is checked first on purpose: a downgrade rebuilds the full
-		// transcript even for an approval re-send. The paused message may be a lean
-		// reuse message, which would lose context on a fresh conversation; the
-		// transcript carries the original request, so the allow-listed action still
-		// replays correctly. When reusing, the approval re-send wins (exact replay).
-		if (stateless) return this.buildStatelessMessage(messages, customInstructions, settings, permittedNames, tools);
-		if (approvalResume !== undefined) return approvalResume;
+		if (stateless) return this.buildStatelessMessage(messages, customInstructions, permittedNames, tools);
 		if (trailingResults) return formatToolResultsMessage(trailingResults, toolCalls ?? new Map());
-		return this.buildReuseMessage(messages, customInstructions, settings, permittedNames, tools);
+		return this.buildReuseMessage(messages, customInstructions, permittedNames, tools);
 	}
 
 	/**
@@ -604,18 +451,12 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 	private async buildReuseMessage(
 		messages: readonly vscode.LanguageModelChatRequestMessage[],
 		customInstructions: string,
-		settings: AiToolSettings,
 		permittedNames: ReadonlySet<string>,
 		tools: readonly vscode.LanguageModelChatTool[],
 	): Promise<string> {
 		let message = prependInstructions(this.trailingText(messages), customInstructions);
-		if (settings.enableWorkspaceTools && permittedNames.size > 0) {
-			const overview = await this.deps.workspaceOverview();
-			if (overview) message += `\n\nThe user's VS Code workspace:\n${overview}`;
-		} else {
-			const root = this.deps.workspaceRoot();
-			if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
-		}
+		const root = this.deps.workspaceRoot();
+		if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
 		if (tools.length > 0) message += `\n\n${this.cachedToolInstructions(tools)}`;
 		message += `\n\n${this.cachedNativeToolReminder(permittedNames)}`;
 		return message;
@@ -635,18 +476,12 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 	private async buildStatelessMessage(
 		messages: readonly vscode.LanguageModelChatRequestMessage[],
 		customInstructions: string,
-		settings: AiToolSettings,
 		permittedNames: ReadonlySet<string>,
 		tools: readonly vscode.LanguageModelChatTool[],
 	): Promise<string> {
 		let message = prependInstructions(serializeVisibleChat(messages), customInstructions);
-		if (settings.enableWorkspaceTools && permittedNames.size > 0) {
-			const overview = await this.deps.workspaceOverview();
-			if (overview) message += `\n\nThe user's VS Code workspace:\n${overview}`;
-		} else {
-			const root = this.deps.workspaceRoot();
-			if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
-		}
+		const root = this.deps.workspaceRoot();
+		if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
 		if (tools.length > 0) message += `\n\n${this.cachedToolInstructions(tools)}`;
 		message = [this.cachedEngineeringDirective(permittedNames), message].filter(Boolean).join('\n\n');
 		// Highest-recency line: the directive sits far above the latest user turn

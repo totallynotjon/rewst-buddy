@@ -125,8 +125,10 @@ suite('Unit: McpActions', () => {
 			assert.ok(names.includes('get_template'));
 			assert.ok(names.includes('list_workflows'));
 			assert.ok(names.includes('get_workflow'));
+			assert.ok(names.includes('list_template_links'), 'workspace helper is available on MCP');
 			assert.ok(!names.includes('buddy_graphql'), 'chat write tool is not on MCP');
 			assert.ok(names.includes('buddy_graphql_schema'), 'schema introspection is available on MCP');
+			assert.ok(!names.includes('buddy_result_read'), 'chat result-cache reader is not on MCP');
 		});
 
 		test('an allowlist restricts the exposed tools', () => {
@@ -151,6 +153,13 @@ suite('Unit: McpActions', () => {
 			const result = await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
 			assert.ok(result.text.includes('Welcome (t-1)'));
 			assert.strictEqual(wrapper.getCallsFor('listTemplates').length, 1);
+		});
+
+		test('list_template_links is callable over MCP without an orgId', async () => {
+			useSession('org-1');
+			const result = await callTool({ name: 'list_template_links', arguments: {} }, settings());
+			assert.ok(!result.isError);
+			assert.match(result.text, /No files are linked to Rewst templates/);
 		});
 
 		test('an unknown tool throws unknown_tool', async () => {

@@ -1,5 +1,4 @@
 import { createGraphqlDeps } from '../ui/chat/tools/graphqlTool';
-import { RESULT_READ_TOOL_SPECS } from '../ui/chat/tools/toolOutputCache';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
@@ -35,7 +34,6 @@ const doesNotRequireOrg = new Set<string>([
 	'list_template_links',
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
-	'buddy_result_read',
 ]);
 
 function workflowAccessFor(spec: ToolSpec): CapabilityAccess {
@@ -58,12 +56,12 @@ async function runViaChatToolPath(
 	return result.ok ? result.output : `Error: ${result.output}`;
 }
 
-function chatCapability(
+function mcpCapability(
 	spec: ToolSpec,
 	access: CapabilityAccess,
 	group: CapabilityGroup,
 	enabled: (settings: CapabilitySettings) => boolean,
-	mcp = false,
+	mcp: boolean,
 	run: (input: Record<string, unknown>, ctx: CapabilityContext) => Promise<string> = (input, ctx) =>
 		runViaChatToolPath(spec, input, ctx),
 ): Capability {
@@ -71,7 +69,7 @@ function chatCapability(
 		spec,
 		group,
 		access,
-		chat: true,
+		chat: false,
 		mcp,
 		...(doesNotRequireOrg.has(spec.name) ? { requiresOrg: false as const } : {}),
 		enabled,
@@ -80,12 +78,12 @@ function chatCapability(
 }
 
 export const WORKSPACE_CHAT_CAPABILITIES: Capability[] = WORKSPACE_TOOL_SPECS.map(spec =>
-	chatCapability(spec, 'read', 'workspace', settings => settings.enableWorkspaceTools),
+	mcpCapability(spec, 'read', 'workspace', settings => settings.enableWorkspaceTools, true),
 );
 
 export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec => {
 	const access = workflowAccessFor(spec);
-	return chatCapability(
+	return mcpCapability(
 		spec,
 		access,
 		'workflow',
@@ -94,12 +92,3 @@ export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(
 		access === 'write' ? (input, ctx) => runWorkflowMutationWithApproval(spec, input, ctx) : undefined,
 	);
 });
-
-export const RESULT_READ_CHAT_CAPABILITIES: Capability[] = RESULT_READ_TOOL_SPECS.map(spec =>
-	chatCapability(
-		spec,
-		'read',
-		'result',
-		settings => settings.enableWorkspaceTools || settings.enableGraphqlTool || settings.enableWorkflowTools,
-	),
-);
