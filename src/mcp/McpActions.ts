@@ -18,6 +18,7 @@ const MCP_MAX_OUTPUT_CHARS = 24_000;
 // An external agent can loop fast and each call hits a real org through the
 // user's cookie session, so cap MCP-originated calls independently of the chat.
 const THROTTLE = new SlidingWindowThrottle(30, 10_000);
+type AuditOutcome = 'ok' | 'approval_required' | `error:${McpErrorCode}`;
 
 /** Parameters for one tool call; orgId may also travel inside `arguments`. */
 export interface CallToolParams {
@@ -72,6 +73,33 @@ function truncate(text: string): string {
 function asString(record: Record<string, unknown> | undefined, key: string): string | undefined {
 	const value = record?.[key];
 	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function auditOutcomeForText(text: string): 'ok' | 'approval_required' {
+	const trimmed = text.trimStart();
+	if (!trimmed.startsWith('{')) return 'ok';
+	try {
+		const parsed = JSON.parse(trimmed) as { status?: unknown };
+		return parsed && typeof parsed === 'object' && parsed.status === 'approval_required'
+			? 'approval_required'
+			: 'ok';
+	} catch {
+		return 'ok';
+	}
+}
+
+// The tool name (and orgId, on some paths) originate in the client request, so
+// strip line breaks before logging to keep each audit record on its own line —
+// otherwise a crafted tool name could inject forged audit entries. Unicode line
+// (U+2028) and paragraph (U+2029) separators are stripped too for defense in depth.
+function sanitizeAuditField(value: string): string {
+	return value.replace(/[\r\n\t\u2028\u2029]/g, ' ').trim() || '—';
+}
+
+function logCallToolAudit(tool: string, orgId: string, outcome: AuditOutcome, startedAt: number): void {
+	const safeTool = sanitizeAuditField(tool);
+	const safeOrgId = sanitizeAuditField(orgId);
+	log.info(`[MCP audit] tool=${safeTool} orgId=${safeOrgId} outcome=${outcome} durationMs=${Date.now() - startedAt}`);
 }
 
 /** Validates the session, attempting one refresh, before a capability runs. */
@@ -139,44 +167,55 @@ export async function callTool(
 	params: CallToolParams,
 	settings: McpSettings = readMcpSettings(),
 ): Promise<McpToolResult> {
-	const capability = getCapability(params.name);
-	if (!capability || !capability.mcp) {
-		throw new McpError('unknown_tool', `Unknown tool "${params.name}".`);
-	}
-	if (capability.dangerous && !settings.enableDangerousGraphqlMutation) {
-		throw new McpError(
-			'write_disabled',
-			`"${params.name}" can run arbitrary GraphQL mutations against the live Rewst organization and is disabled. Enable rewst-buddy.mcp.enableDangerousGraphqlMutation in VS Code.`,
-		);
-	}
-	if (!capability.dangerous && capability.access === 'write' && !settings.enableWriteTools) {
-		throw new McpError(
-			'write_disabled',
-			`"${params.name}" changes Rewst data and write tools are disabled. Enable rewst-buddy.mcp.enableWriteTools in VS Code.`,
-		);
-	}
-	if (!isExposed(capability, settings)) {
-		throw new McpError('unknown_tool', `Tool "${params.name}" is not enabled.`);
-	}
-	if (!THROTTLE.tryAcquire()) {
-		throw new McpError(
-			'rate_limited',
-			`Too many MCP calls; slow down and retry in ~${Math.ceil(THROTTLE.retryAfterMs() / 1000)}s.`,
-		);
-	}
-
-	const args = params.arguments ?? {};
-	const ctx = await resolveContext(capability, args, params.orgId);
+	const startedAt = Date.now();
+	let auditOrgId = '—';
+	let auditOutcome: AuditOutcome = 'ok';
 	try {
-		const text = await capability.run(args, ctx);
-		log.info(`MCP callTool ok: ${params.name} org=${ctx.orgId}`);
-		return { text: truncate(text) };
+		const capability = getCapability(params.name);
+		if (!capability || !capability.mcp) {
+			throw new McpError('unknown_tool', `Unknown tool "${params.name}".`);
+		}
+		if (capability.dangerous && !settings.enableDangerousGraphqlMutation) {
+			throw new McpError(
+				'write_disabled',
+				`"${params.name}" can run arbitrary GraphQL mutations against the live Rewst organization and is disabled. Enable rewst-buddy.mcp.enableDangerousGraphqlMutation in VS Code.`,
+			);
+		}
+		if (!capability.dangerous && capability.access === 'write' && !settings.enableWriteTools) {
+			throw new McpError(
+				'write_disabled',
+				`"${params.name}" changes Rewst data and write tools are disabled. Enable rewst-buddy.mcp.enableWriteTools in VS Code.`,
+			);
+		}
+		if (!isExposed(capability, settings)) {
+			throw new McpError('unknown_tool', `Tool "${params.name}" is not enabled.`);
+		}
+		if (!THROTTLE.tryAcquire()) {
+			throw new McpError(
+				'rate_limited',
+				`Too many MCP calls; slow down and retry in ~${Math.ceil(THROTTLE.retryAfterMs() / 1000)}s.`,
+			);
+		}
+
+		const args = params.arguments ?? {};
+		const ctx = await resolveContext(capability, args, params.orgId);
+		auditOrgId = capability.requiresOrg === false ? '—' : ctx.orgId || '—';
+		try {
+			const text = await capability.run(args, ctx);
+			auditOutcome = auditOutcomeForText(text);
+			return { text: truncate(text) };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			auditOutcome = `error:${error instanceof McpError ? error.code : 'graphql_error'}`;
+			// A capability that throws is a tool-execution failure the agent should
+			// see, not a transport error; surface it as an isError result.
+			return { text: message, isError: true };
+		}
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
-		log.info(`MCP callTool error: ${params.name} org=${ctx.orgId}: ${message}`);
-		// A capability that throws is a tool-execution failure the agent should
-		// see, not a transport error; surface it as an isError result.
-		return { text: message, isError: true };
+		auditOutcome = `error:${error instanceof McpError ? error.code : 'internal'}`;
+		throw error;
+	} finally {
+		logCallToolAudit(params.name, auditOrgId, auditOutcome, startedAt);
 	}
 }
 
