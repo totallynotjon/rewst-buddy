@@ -15,7 +15,7 @@ import type { McpSettings } from './settings';
 const { suite, test, setup, teardown } = Mocha;
 
 function settings(over: Partial<McpSettings> = {}): McpSettings {
-	return { enable: true, enableWriteTools: false, enableDangerousGraphqlMutation: false, enabledTools: [], ...over };
+	return { enable: true, enableWriteTools: false, enableDangerousGraphqlMutation: false, ...over };
 }
 
 /** A mock session managing one org, registered with the SessionManager. */
@@ -124,11 +124,6 @@ suite('Unit: McpActions', () => {
 			assert.ok(names.includes('buddy_graphql_schema'), 'schema introspection is available on MCP');
 			assert.ok(!names.includes('rewst_graphql_mutate'), 'raw GraphQL mutation needs its own dangerous toggle');
 			assert.ok(!names.includes('buddy_result_read'), 'chat result-cache reader is not on MCP');
-		});
-
-		test('an allowlist restricts the exposed tools', () => {
-			const names = listTools(settings({ enabledTools: ['list_orgs'] })).map(tool => tool.name);
-			assert.deepStrictEqual(names, ['list_orgs']);
 		});
 	});
 
@@ -522,36 +517,19 @@ suite('Unit: McpActions', () => {
 		});
 	});
 
-	suite('resources honour the allowlist', () => {
+	suite('resources', () => {
 		test('listResources advertises both collections per active org by default', () => {
 			useSession('org-1', 'Acme');
 			const uris = listResources(settings()).map(resource => resource.uri);
 			assert.deepStrictEqual(uris.sort(), ['rewst://org-1/templates', 'rewst://org-1/workflows']);
 		});
 
-		test('listResources hides a collection whose list tool is not allowlisted', () => {
-			useSession('org-1');
-			const uris = listResources(settings({ enabledTools: ['list_templates'] })).map(resource => resource.uri);
-			assert.deepStrictEqual(uris, ['rewst://org-1/templates']);
-		});
-
-		test('readResource rejects a resource whose backing tool is not allowlisted', async () => {
-			useSession('org-1');
-			await assert.rejects(
-				readResource('rewst://org-1/templates', settings({ enabledTools: ['list_orgs'] })),
-				(error: unknown) => error instanceof McpError && error.code === 'unknown_tool',
-			);
-		});
-
-		test('readResource reads an allowlisted collection', async () => {
+		test('readResource reads a collection', async () => {
 			const { wrapper } = useSession('org-1');
 			wrapper.when('listTemplates', {
 				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
 			});
-			const content = await readResource(
-				'rewst://org-1/templates',
-				settings({ enabledTools: ['list_templates'] }),
-			);
+			const content = await readResource('rewst://org-1/templates', settings());
 			assert.ok(content.text.includes('Welcome (t-1)'));
 		});
 
@@ -561,7 +539,7 @@ suite('Unit: McpActions', () => {
 			let limited = false;
 			for (let i = 0; i < 40 && !limited; i++) {
 				try {
-					await readResource('rewst://org-1/templates', settings({ enabledTools: ['list_templates'] }));
+					await readResource('rewst://org-1/templates', settings());
 				} catch (error) {
 					if (error instanceof McpError && error.code === 'rate_limited') limited = true;
 					else throw error;

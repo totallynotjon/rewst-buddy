@@ -150,14 +150,6 @@
 					"type": "boolean",
 					"default": false,
 					"description": "Allow the raw rewst_graphql_mutate MCP tool to run arbitrary GraphQL mutations against the live Rewst organization. This is separate from write tools because it can change anything your Rewst session can change; each mutation still requires per-resource approval inside VS Code."
-				},
-				"rewst-buddy.mcp.enabledTools": {
-					"type": "array",
-					"default": [],
-					"items": {
-						"type": "string"
-					},
-					"description": "Allowlist of MCP capability names to expose. Leave empty to expose all enabled read tools (the default); set names to restrict the surface (e.g. [\"list_orgs\", \"list_templates\"])."
 				}
 			}
 		},

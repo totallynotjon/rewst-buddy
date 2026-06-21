@@ -51,7 +51,6 @@ function isExposed(capability: Capability, settings: McpSettings): boolean {
 	} else if (capability.access === 'write') {
 		if (!settings.enableWriteTools) return false;
 	}
-	if (settings.enabledTools.length > 0 && !settings.enabledTools.includes(capability.spec.name)) return false;
 	return true;
 }
 

@@ -127,11 +127,11 @@ Otherwise VS Code's native MCP client covers user-wired external servers.
 
 ## Settings (`rewst-buddy.mcp.*`)
 
-| Setting                | Default   | Effect                               |
-| ---------------------- | --------- | ------------------------------------ |
-| `mcp.enable`           | `false`   | Master switch; gates MCP actions     |
-| `mcp.enableWriteTools` | `false`   | Allows `access:'write'` capabilities |
-| `mcp.enabledTools`     | all reads | Allowlist of capability names        |
+| Setting                              | Default | Effect                                          |
+| ------------------------------------ | ------- | ----------------------------------------------- |
+| `mcp.enable`                         | `false` | Master switch; gates MCP actions; exposes reads |
+| `mcp.enableWriteTools`               | `false` | Allows `access:'write'` (non-dangerous) tools   |
+| `mcp.enableDangerousGraphqlMutation` | `false` | Allows the raw `rewst_graphql_mutate` tool      |
 
 ## File layout
 
