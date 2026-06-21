@@ -5,9 +5,9 @@ import vscode from 'vscode';
  * The opt-in AI tool capabilities, configured as a single checklist setting
  * `rewst-buddy.ai.tools` (an enum array VS Code renders as checkboxes). This
  * replaced the individual `enable…Tools` booleans. `workspace` is on by default;
- * `web`, `graphql`, and `workflows` are opt-in.
+ * `graphql` and `workflows` are opt-in.
  */
-const ALL_CAPABILITIES = ['workspace', 'web', 'graphql', 'workflows'] as const;
+const ALL_CAPABILITIES = ['workspace', 'graphql', 'workflows'] as const;
 
 export type AiToolCapability = (typeof ALL_CAPABILITIES)[number];
 

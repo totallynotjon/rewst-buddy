@@ -46,7 +46,6 @@ export function readAiToolSettings(): AiToolSettings {
 	return {
 		// Workspace tools also need a workspace folder to be meaningful.
 		enableWorkspaceTools: tools.has('workspace') && (vscode.workspace.workspaceFolders?.length ?? 0) > 0,
-		enableWebTools: tools.has('web'),
 		enableGraphqlTool: tools.has('graphql'),
 		enableWorkflowTools: tools.has('workflows'),
 	};

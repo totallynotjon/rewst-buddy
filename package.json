@@ -58,28 +58,6 @@
 				}
 			},
 			{
-				"name": "web_search",
-				"displayName": "Web Search",
-				"toolReferenceName": "buddyWebSearch",
-				"canBeReferencedInPrompt": true,
-				"tags": [
-					"rewst"
-				],
-				"modelDescription": "Search the public web; returns result titles, URLs, and snippets.",
-				"inputSchema": {
-					"type": "object",
-					"properties": {
-						"query": {
-							"type": "string",
-							"description": "Web search query."
-						}
-					},
-					"required": [
-						"query"
-					]
-				}
-			},
-			{
 				"name": "buddy_workflow_get",
 				"displayName": "Read Rewst Workflow",
 				"toolReferenceName": "buddyWorkflowGet",
@@ -676,18 +654,16 @@
 						"type": "string",
 						"enum": [
 							"workspace",
-							"web",
 							"graphql",
 							"workflows"
 						],
 						"enumDescriptions": [
 							"Workspace context: a compact workspace overview plus the list of files linked to Rewst templates.",
-							"Web search: let Cage-Free Rewsty search the public web (private/loopback hosts are always blocked).",
 							"GraphQL: compose and run GraphQL operations against your Rewst instance using your session (mutations require your approval).",
 							"Workflows: read and edit Rewst workflows, search actions, and render Jinja against executions (edits require your approval)."
 						]
 					},
-					"markdownDescription": "Extra AI tools Cage-Free Rewsty may use — check the ones to enable. `workspace` shares a workspace overview and the template-link list; `web`, `graphql`, and `workflows` let the assistant act against the web or your Rewst instance, where GraphQL and workflow **edits always require your approval**."
+					"markdownDescription": "Extra AI tools Cage-Free Rewsty may use — check the ones to enable. `workspace` shares a workspace overview and the template-link list; `graphql` and `workflows` let the assistant act against your Rewst instance, where GraphQL and workflow **edits always require your approval**."
 				},
 				"rewst-buddy.ai.toolResultCacheLimitMB": {
 					"type": "number",

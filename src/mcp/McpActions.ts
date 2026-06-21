@@ -55,7 +55,6 @@ function capabilitySettings(): CapabilitySettings {
 	return {
 		enableGraphqlTool: tools.has('graphql'),
 		enableWorkflowTools: tools.has('workflows'),
-		enableWebTools: tools.has('web'),
 		enableWorkspaceTools: tools.has('workspace'),
 	};
 }

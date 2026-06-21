@@ -8,7 +8,6 @@ const { suite, test } = Mocha;
 function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
 	return {
 		enableWorkspaceTools: false,
-		enableWebTools: false,
 		enableGraphqlTool: false,
 		enableWorkflowTools: false,
 		...overrides,
@@ -16,8 +15,8 @@ function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
 }
 
 suite('Unit: lmTools', () => {
-	test('exposes all 14 protocol tools with input schemas', () => {
-		assert.strictEqual(ALL_TOOL_SPECS.length, 14);
+	test('exposes all 13 protocol tools with input schemas', () => {
+		assert.strictEqual(ALL_TOOL_SPECS.length, 13);
 		for (const spec of ALL_TOOL_SPECS) {
 			assert.ok(spec.inputSchema, `${spec.name} carries an inputSchema`);
 		}
@@ -41,10 +40,6 @@ suite('Unit: lmTools', () => {
 				'buddy_result_read',
 				'list_template_links',
 			]);
-			assert.deepStrictEqual([...enabledToolNames(settings({ enableWebTools: true }))].sort(), [
-				'buddy_result_read',
-				'web_search',
-			]);
 			assert.deepStrictEqual([...enabledToolNames(settings({ enableGraphqlTool: true }))].sort(), [
 				'buddy_graphql',
 				'buddy_graphql_schema',
@@ -64,16 +59,15 @@ suite('Unit: lmTools', () => {
 			]);
 		});
 
-		test('everything enabled yields all 14', () => {
+		test('everything enabled yields all 13', () => {
 			const names = enabledToolNames(
 				settings({
 					enableWorkspaceTools: true,
-					enableWebTools: true,
 					enableGraphqlTool: true,
 					enableWorkflowTools: true,
 				}),
 			);
-			assert.strictEqual(names.size, 14);
+			assert.strictEqual(names.size, 13);
 		});
 	});
 

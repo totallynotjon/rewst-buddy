@@ -15,7 +15,6 @@ const { User, Assistant } = vscode.LanguageModelChatMessageRole;
 
 const allSettings: AiToolSettings = {
 	enableWorkspaceTools: true,
-	enableWebTools: true,
 	enableGraphqlTool: true,
 	enableWorkflowTools: true,
 };

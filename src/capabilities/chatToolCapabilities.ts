@@ -1,7 +1,6 @@
 import { createGraphqlDeps } from '../ui/chat/tools/graphqlTool';
 import { RESULT_READ_TOOL_SPECS } from '../ui/chat/tools/toolOutputCache';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
-import { WEB_TOOL_SPECS } from '../ui/chat/tools/webTools';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
@@ -34,7 +33,6 @@ const workflowAccess: Record<string, CapabilityAccess> = {
 
 const doesNotRequireOrg = new Set<string>([
 	'list_template_links',
-	'web_search',
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	'buddy_result_read',
@@ -85,10 +83,6 @@ export const WORKSPACE_CHAT_CAPABILITIES: Capability[] = WORKSPACE_TOOL_SPECS.ma
 	chatCapability(spec, 'read', 'workspace', settings => settings.enableWorkspaceTools),
 );
 
-export const WEB_CHAT_CAPABILITIES: Capability[] = WEB_TOOL_SPECS.map(spec =>
-	chatCapability(spec, 'read', 'web', settings => settings.enableWebTools),
-);
-
 export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec => {
 	const access = workflowAccessFor(spec);
 	return chatCapability(
@@ -106,10 +100,6 @@ export const RESULT_READ_CHAT_CAPABILITIES: Capability[] = RESULT_READ_TOOL_SPEC
 		spec,
 		'read',
 		'result',
-		settings =>
-			settings.enableWorkspaceTools ||
-			settings.enableWebTools ||
-			settings.enableGraphqlTool ||
-			settings.enableWorkflowTools,
+		settings => settings.enableWorkspaceTools || settings.enableGraphqlTool || settings.enableWorkflowTools,
 	),
 );

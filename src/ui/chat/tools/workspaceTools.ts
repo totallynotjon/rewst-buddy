@@ -5,7 +5,6 @@ import { anyAiToolEnabled, isAiToolEnabled } from './aiToolSettings';
 import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
 import { GRAPHQL_TOOL_SPECS, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
 import { formatToolOutput, isResultReadTool, runResultReadTool } from './toolOutputCache';
-import { isWebTool, runWebTool, WEB_TOOL_SPECS } from './webTools';
 import { isWorkflowTool, runWorkflowTool, WORKFLOW_TOOL_SPECS } from './workflowTools';
 
 /**
@@ -103,7 +102,6 @@ async function runTool(
 		case 'list_template_links':
 			return { output: listTemplateLinks(deps) };
 		default: {
-			if (isWebTool(request.tool)) return { output: await runWebTool(request) };
 			if (isWorkflowTool(request.tool)) {
 				// runWorkflowTool's deps.isEnabled() gates the graphql capability, not
 				// workflows, so enforce the "workflows" capability here — a remote
@@ -128,7 +126,7 @@ async function runTool(
 				}
 				return { output: runResultReadTool(request) };
 			}
-			const names = [...WORKSPACE_TOOL_SPECS, ...WEB_TOOL_SPECS, ...WORKFLOW_TOOL_SPECS, ...GRAPHQL_TOOL_SPECS]
+			const names = [...WORKSPACE_TOOL_SPECS, ...WORKFLOW_TOOL_SPECS, ...GRAPHQL_TOOL_SPECS]
 				.map(s => s.name)
 				.join(', ');
 			throw new Error(`Unknown tool "${request.tool}". Available: ${names}.`);

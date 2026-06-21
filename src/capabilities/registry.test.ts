@@ -13,7 +13,6 @@ import {
 	mcpCapabilities,
 } from './registry';
 import { RESULT_READ_TOOL_SPECS } from '../ui/chat/tools/toolOutputCache';
-import { WEB_TOOL_SPECS } from '../ui/chat/tools/webTools';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
@@ -28,7 +27,6 @@ const { suite, test, setup } = Mocha;
 
 const GRAPHQL_CHAT_CAPABILITIES = ['buddy_graphql_schema', 'buddy_graphql'];
 const WORKSPACE_CHAT_CAPABILITIES = WORKSPACE_TOOL_SPECS.map(spec => spec.name);
-const WEB_CHAT_CAPABILITIES = WEB_TOOL_SPECS.map(spec => spec.name);
 const WORKFLOW_CHAT_CAPABILITIES = WORKFLOW_TOOL_SPECS.map(spec => spec.name);
 const WORKFLOW_WRITE_CHAT_CAPABILITIES = [
 	WORKFLOW_EDIT_TOOL_NAME,
@@ -38,7 +36,6 @@ const WORKFLOW_WRITE_CHAT_CAPABILITIES = [
 const RESULT_READ_CHAT_CAPABILITIES = RESULT_READ_TOOL_SPECS.map(spec => spec.name);
 const CHAT_CAPABILITIES = [
 	...WORKSPACE_CHAT_CAPABILITIES,
-	...WEB_CHAT_CAPABILITIES,
 	...WORKFLOW_CHAT_CAPABILITIES,
 	...GRAPHQL_CHAT_CAPABILITIES,
 	...RESULT_READ_CHAT_CAPABILITIES,
@@ -48,7 +45,6 @@ function settings(overrides: Partial<CapabilitySettings> = {}): CapabilitySettin
 	return {
 		enableGraphqlTool: false,
 		enableWorkflowTools: false,
-		enableWebTools: false,
 		enableWorkspaceTools: false,
 		...overrides,
 	};
@@ -109,7 +105,6 @@ suite('Unit: capability registry', () => {
 			const byName = new Map(chatCapabilities().map(capability => [capability.spec.name, capability]));
 			const cases: [string, string[], Partial<CapabilitySettings>][] = [
 				['workspace', WORKSPACE_CHAT_CAPABILITIES, { enableWorkspaceTools: true }],
-				['web', WEB_CHAT_CAPABILITIES, { enableWebTools: true }],
 				['workflow', WORKFLOW_CHAT_CAPABILITIES, { enableWorkflowTools: true }],
 			];
 
@@ -131,7 +126,6 @@ suite('Unit: capability registry', () => {
 				assert.strictEqual(capability.enabled(settings()), false, `${name} off by default`);
 				for (const on of [
 					{ enableWorkspaceTools: true },
-					{ enableWebTools: true },
 					{ enableGraphqlTool: true },
 					{ enableWorkflowTools: true },
 				]) {
@@ -151,7 +145,6 @@ suite('Unit: capability registry', () => {
 		test('chatCapabilityNames returns the names in each family', () => {
 			const expected: Record<CapabilityGroup, string[]> = {
 				workspace: WORKSPACE_CHAT_CAPABILITIES,
-				web: WEB_CHAT_CAPABILITIES,
 				workflow: WORKFLOW_CHAT_CAPABILITIES,
 				graphql: GRAPHQL_CHAT_CAPABILITIES,
 				result: RESULT_READ_CHAT_CAPABILITIES,
@@ -170,7 +163,6 @@ suite('Unit: capability registry', () => {
 			assert.ok(hasChatCapability('graphql', new Set(['buddy_graphql_schema'])));
 			assert.ok(!hasChatCapability('workflow', new Set(['buddy_graphql'])));
 			assert.ok(!hasChatCapability('graphql', new Set(['read_file', 'unknown_tool'])));
-			assert.ok(!hasChatCapability('web', new Set<string>()));
 		});
 	});
 
@@ -231,11 +223,7 @@ suite('Unit: capability registry', () => {
 
 		test('non-workflow chat-only tool categories are not exposed to MCP', () => {
 			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
-			for (const name of [
-				...WORKSPACE_CHAT_CAPABILITIES,
-				...WEB_CHAT_CAPABILITIES,
-				...RESULT_READ_CHAT_CAPABILITIES,
-			]) {
+			for (const name of [...WORKSPACE_CHAT_CAPABILITIES, ...RESULT_READ_CHAT_CAPABILITIES]) {
 				assert.ok(!names.has(name), `${name} stays off MCP`);
 			}
 		});

@@ -94,29 +94,6 @@ suite('Integration: engineering directive steering', function () {
 		);
 	});
 
-	test('general web question routes to web_search', async () => {
-		const { requests } = await turn(
-			'Search the web for the current latest stable version of the "graphql-ws" npm package and tell me what it is.',
-		);
-		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');
-		assert.ok(
-			requests.some(request => request.tool === 'web_search'),
-			`expected web_search, got: ${requests.map(r => r.tool).join(', ')}`,
-		);
-	});
-
-	test('a current-events question searches the web instead of refusing', async () => {
-		// The reported failure (#27): a news / "latest in the last N hours" question
-		// gets a "can't browse / no realtime access" refusal with no tool call,
-		// unless the user prefixes "use agents to search". It must search on its own.
-		const { requests } = await turn('What is the latest news out of the Democratic Party in the last 24 hours?');
-		assert.ok(requests.length > 0, 'expected a web_search request, got a prose refusal');
-		assert.ok(
-			requests.some(request => request.tool === 'web_search'),
-			`expected web_search, got: ${requests.map(r => r.tool).join(', ')}`,
-		);
-	});
-
 	test('workflow listing routes to the workflow search tool, not GraphQL or native platform tools', async () => {
 		const { requests } = await turn('List the workflows in this org.');
 		assert.ok(requests.length > 0, 'expected a tool request, got a prose answer');

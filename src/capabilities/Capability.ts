@@ -13,7 +13,7 @@ import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
  */
 
 export type CapabilityAccess = 'read' | 'write';
-export type CapabilityGroup = 'workflow' | 'graphql' | 'web' | 'workspace' | 'result';
+export type CapabilityGroup = 'workflow' | 'graphql' | 'workspace' | 'result';
 
 /**
  * Settings that gate whether a capability is offered at all, independent of
@@ -23,7 +23,6 @@ export type CapabilityGroup = 'workflow' | 'graphql' | 'web' | 'workspace' | 're
 export interface CapabilitySettings {
 	enableGraphqlTool: boolean;
 	enableWorkflowTools: boolean;
-	enableWebTools: boolean;
 	enableWorkspaceTools: boolean;
 }
 

@@ -18,7 +18,6 @@ const { User, Assistant } = vscode.LanguageModelChatMessageRole;
 function settings(overrides: Partial<AiToolSettings> = {}): AiToolSettings {
 	return {
 		enableWorkspaceTools: false,
-		enableWebTools: false,
 		enableGraphqlTool: false,
 		enableWorkflowTools: false,
 		...overrides,
@@ -36,11 +35,11 @@ function fence(request: object): string {
 suite('Unit: toolTranslation', () => {
 	suite('filterToolsBySettings()', () => {
 		test('withholds a rewst tool whose setting is disabled, even when VS Code passes it', () => {
-			const tools = [chatTool('list_template_links'), chatTool('web_search')];
-			const filtered = filterToolsBySettings(tools, settings({ enableWebTools: true }));
+			const tools = [chatTool('list_template_links'), chatTool('buddy_graphql_schema')];
+			const filtered = filterToolsBySettings(tools, settings({ enableGraphqlTool: true }));
 			assert.deepStrictEqual(
 				filtered.map(tool => tool.name),
-				['web_search'],
+				['buddy_graphql_schema'],
 			);
 		});
 

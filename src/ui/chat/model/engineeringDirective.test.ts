@@ -26,7 +26,7 @@ suite('Unit: engineeringDirective', () => {
 	test('always steers complex work into todos and agent delegation', () => {
 		// The Working method section ships unconditionally, so the decomposition /
 		// todo / agent steering is present regardless of the editor tool surface.
-		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['buddy_graphql', 'web_search'])]) {
+		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['buddy_graphql'])]) {
 			const directive = buildEngineeringDirective(tools);
 			assert.ok(/decompose by default/i.test(directive), 'tells the model to decompose');
 			assert.ok(/list of todos/i.test(directive), 'frames the plan as a todo list');
@@ -46,7 +46,7 @@ suite('Unit: engineeringDirective', () => {
 	});
 
 	test('always curbs reflexive documentation search and Jinja rendering', () => {
-		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['buddy_graphql', 'web_search'])]) {
+		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['buddy_graphql'])]) {
 			const directive = buildEngineeringDirective(tools);
 			assert.ok(directive.includes('# Native internal tools: off by default'), 'native-tool policy present');
 			assert.ok(/documentation .*search/i.test(directive), 'names documentation search');
@@ -62,7 +62,7 @@ suite('Unit: engineeringDirective', () => {
 		const directive = buildEngineeringDirective(new Set(['read_file', 'list_template_links']));
 		assert.ok(directive.includes('# Tool-call discipline'));
 		assert.ok(directive.includes('NEVER write placeholder text'));
-		assert.ok(!directive.includes('# Tool selection'), 'no priority bullets without graphql/web tools');
+		assert.ok(!directive.includes('# Tool selection'), 'no priority bullets without graphql/workflow tools');
 		assert.ok(!directive.includes('activate_rewst_graphql_tools'), 'graphql rule withheld');
 	});
 
@@ -105,21 +105,6 @@ suite('Unit: engineeringDirective', () => {
 		assert.ok(directive.includes('purpose-built workflow tools'));
 		assert.ok(!directive.includes('activate_rewst_graphql_tools'), 'graphql rule withheld without graphql tools');
 	});
-
-	test('web tools add their priority bullet', () => {
-		const directive = buildEngineeringDirective(new Set(['web_search']));
-		assert.ok(directive.includes('# Tool selection'));
-		assert.ok(directive.includes('web_search'));
-		assert.ok(!directive.includes('activate_rewst_graphql_tools'));
-	});
-
-	test('web bullet steers current events to web_search and forbids a cannot-browse refusal', () => {
-		const directive = buildEngineeringDirective(new Set(['web_search']));
-		assert.ok(/current events/i.test(directive), 'names current events');
-		assert.ok(/news/i.test(directive), 'names news');
-		assert.ok(/knowledge cutoff/i.test(directive), 'forbids a knowledge-cutoff excuse');
-		assert.ok(/cannot browse|can ?not browse/i.test(directive), 'forbids a cannot-browse refusal');
-	});
 });
 
 suite('Unit: buildNativeToolReminder', () => {
@@ -129,7 +114,7 @@ suite('Unit: buildNativeToolReminder', () => {
 	});
 
 	test('always curbs reflexive doc search and a throwaway native call', () => {
-		for (const tools of [new Set<string>(), new Set(['read_file']), new Set(['web_search'])]) {
+		for (const tools of [new Set<string>(), new Set(['read_file'])]) {
 			const reminder = buildNativeToolReminder(tools);
 			assert.ok(reminder.includes('gitbook_retriever'), 'names the gitbook tool');
 			assert.ok(reminder.includes('listWorkflow'), 'names the throwaway native call to suppress');
@@ -148,14 +133,5 @@ suite('Unit: buildNativeToolReminder', () => {
 		// The old wording said "answer directly", which steered the model into
 		// refusing live-info questions from memory; it now allows reaching for a tool.
 		assert.ok(/answer it directly or with the right tool/i.test(reminder));
-	});
-
-	test('adds the web carve-out only when web_search is available', () => {
-		const withWeb = buildNativeToolReminder(new Set(['web_search']));
-		assert.ok(/web_search/.test(withWeb), 'names web_search when available');
-		assert.ok(/knowledge cutoff/i.test(withWeb), 'forbids a knowledge-cutoff excuse');
-
-		const withoutWeb = buildNativeToolReminder(new Set(['read_file']));
-		assert.ok(!withoutWeb.includes('web_search'), 'never advertises a tool the chat cannot run');
 	});
 });
