@@ -133,6 +133,10 @@ Releases run entirely through GitHub Actions; runbook and one-time setup are in 
 
 Per-change code review happens on each feature PR (CodeRabbit + CI), not at release time.
 
+### Nightly (pre-release) channel
+
+Every push to `main` runs `nightly.yml`, which publishes a `--pre-release` build to the Marketplace. Stable rides **even** minors (`package.json`); nightlies ride the next **odd** minor as `MAJOR.<oddMinor>.<git rev-list --count HEAD>` (e.g. stable `0.44.x` ⇒ nightly `0.45.<build>`), so versions only ever increase across both channels. Stable must stay on an even minor — `nightly.yml` fails fast otherwise. Nightlies are not tagged and get no GitHub release. Details in `docs/dev/releasing.md`.
+
 ## Path Aliases (CRITICAL)
 
 **Must be configured in BOTH files:**

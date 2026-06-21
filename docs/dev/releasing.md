@@ -32,6 +32,36 @@ release skill — these workflows are the whole process.
 > If the auto-tag ever needs re-running by hand, `npm run release:tag` from the
 > merged `main` does the same thing.
 
+## Nightly (pre-release) channel
+
+There are **two Marketplace channels for the one extension**, split by VS Code's
+even/odd minor convention:
+
+- **Stable** rides **even** minors (`package.json` on `main`, e.g. `0.44.x`) and
+  ships only through the Release flow above.
+- **Nightly** rides the next **odd** minor and ships automatically: every push to
+  `main` runs `nightly.yml`, which publishes a `--pre-release` build as
+  `MAJOR.<oddMinor>.<build>`, where `<build>` is `git rev-list --count HEAD` — a
+  monotonic commit count. So stable `0.44.x` ⇒ nightly `0.45.<build>`.
+
+The odd minor is derived from `package.json`, so when a release bumps stable to
+`0.46.0`, nightlies automatically move to `0.47.<build>`. Because even-stable is
+always below the surrounding odd-nightly and the next even-stable is above it,
+versions only ever increase across both channels — the Marketplace's
+single-extension requirement. `nightly.yml` **fails fast** if `package.json` ever
+lands on an odd minor (that would collide with the nightly minor).
+
+Before packaging, the nightly injects the pending `changelog.d/` notes into its
+`CHANGELOG.md` as a preview section (`build.mjs --preview`), so pre-release users
+see "what's new since stable". This is **runner-only and non-destructive** — the
+committed `CHANGELOG.md` and the notes are untouched (the real stable release
+still collates them), and an empty or invalid note never fails the publish.
+
+Nightlies are **not tagged and get no GitHub release** — only stable does. They
+reuse the same `release` environment and `VSCE_PAT` as Publish. Users opt in with
+the extension's **"Switch to Pre-Release Version"** button in the Extensions
+panel.
+
 ## One-time GitHub setup (required for the gates)
 
 These live in repo settings, not in code — set them once:
