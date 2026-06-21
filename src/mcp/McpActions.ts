@@ -1,4 +1,11 @@
-import { CAPABILITY_REGISTRY, getCapability, type Capability, type CapabilityContext } from '@capabilities';
+import {
+	CAPABILITY_REGISTRY,
+	MCP_MAX_OUTPUT_CHARS,
+	formatMcpOutput,
+	getCapability,
+	type Capability,
+	type CapabilityContext,
+} from '@capabilities';
 import { SessionManager, type Session } from '@sessions';
 import { log } from '@utils';
 import type { McpErrorCode, McpResourceDescriptor, McpToolDescriptor, McpToolResult } from './protocol';
@@ -14,7 +21,6 @@ import { SlidingWindowThrottle } from './throttle';
  * external agent did.
  */
 
-const MCP_MAX_OUTPUT_CHARS = 24_000;
 // An external agent can loop fast and each call hits a real org through the
 // user's cookie session, so cap MCP-originated calls independently of the chat.
 const THROTTLE = new SlidingWindowThrottle(30, 10_000);
@@ -63,11 +69,6 @@ function exposedCapabilities(settings: McpSettings): Capability[] {
 function isCapabilityExposed(name: string, settings: McpSettings): boolean {
 	const capability = getCapability(name);
 	return capability ? isExposed(capability, settings) : false;
-}
-
-function truncate(text: string): string {
-	if (text.length <= MCP_MAX_OUTPUT_CHARS) return text;
-	return `${text.slice(0, MCP_MAX_OUTPUT_CHARS)}\n…(output truncated at ${MCP_MAX_OUTPUT_CHARS} characters; narrow your request to see more)`;
 }
 
 function asString(record: Record<string, unknown> | undefined, key: string): string | undefined {
@@ -203,7 +204,7 @@ export async function callTool(
 		try {
 			const text = await capability.run(args, ctx);
 			auditOutcome = auditOutcomeForText(text);
-			return { text: truncate(text) };
+			return { text: formatMcpOutput(params.name, text) };
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			auditOutcome = `error:${error instanceof McpError ? error.code : 'graphql_error'}`;
@@ -285,7 +286,7 @@ export async function readResource(uri: string, settings: McpSettings = readMcpS
 	const args: Record<string, unknown> = { orgId: parsed.orgId };
 	if (parsed.id) args[parsed.collection === 'templates' ? 'templateId' : 'workflowId'] = parsed.id;
 	const ctx = await resolveContext(capability, args, parsed.orgId);
-	const text = truncate(await capability.run(args, ctx));
+	const text = formatMcpOutput(toolName, await capability.run(args, ctx));
 	log.info(`MCP readResource: ${uri}`);
 	return { uri, mimeType: 'text/plain', text };
 }

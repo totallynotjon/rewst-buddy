@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { MCP_MAX_OUTPUT_CHARS, RESULT_READ_TOOL_NAME, _resetMcpResultCacheForTesting } from '@capabilities';
 import { SessionManager, type Session } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import { log } from '@utils';
@@ -121,12 +122,14 @@ suite('Unit: McpActions', () => {
 		_resetMcpThrottleForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
+		_resetMcpResultCacheForTesting();
 	});
 
 	teardown(() => {
 		SessionManager._resetForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
+		_resetMcpResultCacheForTesting();
 	});
 
 	suite('listTools()', () => {
@@ -139,6 +142,7 @@ suite('Unit: McpActions', () => {
 			assert.ok(names.includes('get_workflow'));
 			assert.ok(names.includes('rewst_graphql_query'), 'read-only GraphQL query is available on MCP');
 			assert.ok(names.includes('list_template_links'), 'workspace helper is available on MCP');
+			assert.ok(names.includes(RESULT_READ_TOOL_NAME), 'cached-result reader is available on MCP');
 			assert.ok(!names.includes('buddy_graphql'), 'chat write tool is not on MCP');
 			assert.ok(names.includes('buddy_graphql_schema'), 'schema introspection is available on MCP');
 			assert.ok(!names.includes('rewst_graphql_mutate'), 'raw GraphQL mutation needs its own dangerous toggle');
@@ -162,6 +166,46 @@ suite('Unit: McpActions', () => {
 			const result = await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
 			assert.ok(result.text.includes('Welcome (t-1)'));
 			assert.strictEqual(wrapper.getCallsFor('listTemplates').length, 1);
+		});
+
+		test('oversized tool output returns a cached preview that result_read can page', async () => {
+			const { wrapper } = useSession('org-1');
+			const templates = Array.from({ length: 200 }, (_, i) =>
+				Fixtures.template({
+					id: `template-${i + 1}`,
+					name: `Template ${i + 1} ${'x'.repeat(180)}`,
+				}),
+			);
+			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
+
+			const first = await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
+			const id = /"id":"([^"]+)"/.exec(first.text)?.[1];
+
+			assert.ok(id, 'oversized output includes a cached result id');
+			assert.ok(first.text.startsWith('Template 1'));
+			assert.ok(first.text.includes(`"offset":${MCP_MAX_OUTPUT_CHARS}`));
+			assert.ok(first.text.includes(RESULT_READ_TOOL_NAME));
+			assert.ok(
+				first.text.length < templates.map(template => `${template.name} (${template.id})`).join('\n').length,
+			);
+			const listCalls = wrapper.getCallsFor('listTemplates');
+			assert.strictEqual(listCalls.length, 1, 'the org templates are fetched once for the oversized call');
+			assert.strictEqual(listCalls[0].variables.orgId, 'org-1', 'list_templates is scoped to the requested org');
+
+			const second = await callTool(
+				{ name: RESULT_READ_TOOL_NAME, arguments: { id, offset: MCP_MAX_OUTPUT_CHARS } },
+				settings(),
+			);
+
+			assert.ok(!second.isError);
+			assert.ok(second.text.startsWith(`Cached result "${id}" (list_templates)`));
+			assert.ok(second.text.includes(`characters ${MCP_MAX_OUTPUT_CHARS}-`));
+			assert.ok(second.text.includes('Template'));
+			assert.strictEqual(
+				wrapper.getCallsFor('listTemplates').length,
+				1,
+				'paging serves from the in-memory cache without re-hitting the API',
+			);
 		});
 
 		test('list_template_links is callable over MCP without an orgId', async () => {
