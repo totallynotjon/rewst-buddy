@@ -89,6 +89,7 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 - `Start Server` — Start the session receiver server
 - `Add MCP Server to VS Code` — Register the extension's local MCP server with VS Code's own MCP client in one step, so it appears in the editor's MCP server list ready to start — no config to copy. Turns on `rewst-buddy.mcp.enable` if needed and offers to open the MCP server list. VS Code receives the localhost token directly, so there is no environment variable to set.
 - `Copy MCP Config to Clipboard` — Copy (and open) a credential-free JSON config that points an **external** MCP client (Claude Desktop, Claude Code, Cursor) at the extension's local MCP server. The config carries the token via the standard `Authorization: Bearer` header, referencing it as the `REWST_BUDDY_MCP_TOKEN` environment variable rather than embedding it. Use the command's **Copy token** action to grab the localhost token (set it as that env var), or paste it in place of `${REWST_BUDDY_MCP_TOKEN}` for clients that don't expand env vars. Requires `rewst-buddy.mcp.enable`.
+- `Rotate MCP Token` — Replace the localhost MCP token after a modal confirmation. Existing MCP clients using the old token lose access until you update them; run `Copy MCP Config to Clipboard` afterward to copy the updated token/config for external clients.
 
 ## Settings
 

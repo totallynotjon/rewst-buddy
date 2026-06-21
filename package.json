@@ -333,6 +333,12 @@
 				"command": "rewst-buddy.prefix.AddMcpToVSCode",
 				"title": "Rewst Buddy: Add MCP Server to VS Code",
 				"icon": "$(plug)"
+			},
+			{
+				"command": "rewst-buddy.prefix.RotateMcpToken",
+				"title": "Rotate MCP Token",
+				"category": "Rewst Buddy",
+				"icon": "$(key)"
 			}
 		],
 		"keybindings": [

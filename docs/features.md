@@ -112,6 +112,8 @@ The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement i
 
 Large MCP outputs are bounded at the MCP response boundary; the retired chat-only `buddy_result_read` cache is no longer part of the chat tool protocol.
 
+The local MCP endpoint is guarded by a persistent localhost token. If it is ever exposed, run `Rewst Buddy: Rotate MCP Token` to replace it after a modal confirmation — existing MCP clients holding the old token lose access until you re-copy the config with `Copy MCP Config to Clipboard`.
+
 ### Context and answers
 
 - **Attached context** — files attached via the paperclip or `#file`, and editor selections, are included by the chat itself
