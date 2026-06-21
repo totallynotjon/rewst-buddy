@@ -1,0 +1,112 @@
+name: Nightly (pre-release)
+
+# Fires on every push to main and publishes a pre-release build to the VS Code
+# Marketplace. Users who opt into "pre-release" in the Extensions panel get these
+# nightlies; everyone else stays on the stable channel shipped by publish.yml.
+#
+# Versioning follows VS Code's even/odd convention: stable lives on EVEN minor
+# versions (package.json on main), and nightlies publish on the next ODD minor
+# with the commit count as a monotonic patch number — e.g. stable 0.44.x ->
+# nightly 0.45.<build>. When a release bumps package.json to 0.46.0, nightlies
+# automatically move to 0.47.<build>. Versions only ever increase across both
+# channels, which the Marketplace requires for a single extension.
+#
+# Nightlies are not tagged and get no GitHub release — only the stable Publish
+# workflow does that. The VSCE_PAT lives in the `release` environment, so only
+# these privileged jobs can read it.
+
+on:
+    push:
+        branches: [main]
+
+permissions:
+    contents: read
+
+concurrency:
+    group: nightly
+    cancel-in-progress: true
+
+jobs:
+    nightly:
+        runs-on: ubuntu-latest
+        environment: release
+        steps:
+            - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+              with:
+                  fetch-depth: 0
+                  persist-credentials: false
+
+            # No dependency cache here: this job holds the publish token, and
+            # restoring a cache populated by a less-privileged PR run is a
+            # cache-poisoning vector. Mirrors publish.yml.
+            - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+              with:
+                  node-version: 22
+
+            - run: npm ci
+
+            - name: Resolve the nightly version
+              run: |
+                  STABLE="$(node -p "require('./package.json').version")"
+                  MAJOR="$(echo "$STABLE" | cut -d. -f1)"
+                  MINOR="$(echo "$STABLE" | cut -d. -f2)"
+                  if [ $((MINOR % 2)) -ne 0 ]; then
+                    echo "::error::package.json minor version $MINOR is odd; stable must use even minors so nightlies can own the next odd minor. Bump stable to an even minor."
+                    exit 1
+                  fi
+                  ODD_MINOR=$((MINOR + 1))
+                  BUILD="$(git rev-list --count HEAD)"
+                  VERSION="${MAJOR}.${ODD_MINOR}.${BUILD}"
+                  echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+                  echo "Stable on main is $STABLE; publishing nightly $VERSION"
+
+            - name: Set the package version
+              run: npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+            # Bundle the pending changelog.d/ notes into this nightly's CHANGELOG.md
+            # so pre-release users see "what's new since stable". This is a PREVIEW
+            # (`--preview` writes nothing and deletes no notes) injected only into the
+            # runner's working copy before packaging — the committed CHANGELOG.md and
+            # the notes are untouched, so the real stable release still collates them.
+            # Non-fatal: if there are no pending notes (or one is invalid), the nightly
+            # ships the committed CHANGELOG.md as-is rather than failing the publish.
+            - name: Inject pending changelog notes as a nightly preview
+              run: |
+                  if SECTION="$(node scripts/changelog/build.mjs --version "$VERSION" --preview 2>/dev/null)" \
+                     && printf '%s' "$SECTION" | grep -q '^## \['; then
+                    printf '%s' "$SECTION" > /tmp/nightly-section.md
+                    node -e '
+                      const fs = require("node:fs");
+                      const section = fs.readFileSync("/tmp/nightly-section.md", "utf8").trimEnd();
+                      const cl = fs.readFileSync("CHANGELOG.md", "utf8");
+                      const marker = cl.indexOf("\n## [");
+                      const out = marker === -1
+                        ? cl.replace(/^(# Changelog\s*\n)/, (_, h) => `${h}\n${section}\n`)
+                        : cl.slice(0, marker + 1) + section + "\n\n" + cl.slice(marker + 1);
+                      fs.writeFileSync("CHANGELOG.md", out);
+                    '
+                    echo "Injected pending notes as the $VERSION nightly section."
+                  else
+                    echo "No valid pending notes; shipping the committed CHANGELOG.md as-is."
+                  fi
+
+            - name: Package the pre-release extension
+              run: npx --yes @vscode/vsce package --pre-release --no-dependencies -o "rewst-buddy-nightly-${VERSION}.vsix"
+
+            - name: Upload the vsix as a build artifact
+              uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+              with:
+                  name: rewst-buddy-nightly-${{ env.VERSION }}
+                  path: rewst-buddy-nightly-${{ env.VERSION }}.vsix
+                  if-no-files-found: error
+
+            - name: Publish the pre-release to the VS Code Marketplace
+              env:
+                  VSCE_PAT: ${{ secrets.VSCE_PAT }}
+              run: npx --yes @vscode/vsce publish --pre-release --no-dependencies --packagePath "rewst-buddy-nightly-${VERSION}.vsix"
+
+            # Open VSX (optional). Configure OVSX_PAT in the release environment to enable.
+            # - name: Publish the pre-release to Open VSX
+            #   env:
+            #     OVSX_PAT: ${{ secrets.OVSX_PAT }}
+            #   run: npx --yes ovsx publish "rewst-buddy-nightly-${VERSION}.vsix" --pre-release -p "$OVSX_PAT"
