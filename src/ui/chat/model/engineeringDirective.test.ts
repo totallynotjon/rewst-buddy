@@ -17,7 +17,7 @@ suite('Unit: engineeringDirective', () => {
 		assert.ok(directive.includes('# Rewst Buddy VS Code Context'));
 		assert.ok(!directive.includes('<engineering_layer_directive>'));
 		assert.ok(!/supersedes/i.test(directive));
-		assert.ok(!directive.includes('# Tool-call discipline'));
+		assert.ok(!directive.includes('# Tool protocol guidance'));
 		assert.ok(!directive.includes('# Tool selection'));
 		assert.ok(!directive.includes('# Native internal tools: off by default'));
 		assert.ok(!directive.includes('# Rewst conventions that carry forward'));
@@ -56,7 +56,7 @@ suite('Unit: engineeringDirective', () => {
 
 	test('built-in-only tools still get the discipline rules, without the GraphQL activation rule', () => {
 		const directive = buildEngineeringDirective(new Set(['read_file', 'create_file']));
-		assert.ok(directive.includes('# Tool-call discipline'));
+		assert.ok(directive.includes('# Tool protocol guidance'));
 		assert.ok(directive.includes('NEVER write placeholder text'));
 		assert.ok(!directive.includes('# Tool selection'), 'no priority bullets without graphql/workflow tools');
 		assert.ok(!directive.includes('activate_rewst_graphql_tools'), 'graphql rule withheld');
@@ -77,7 +77,7 @@ suite('Unit: engineeringDirective', () => {
 		const directive = buildEngineeringDirective(new Set(['buddy_graphql', 'buddy_graphql_schema']));
 		assert.ok(!directive.includes('# Tool selection'));
 		assert.ok(!directive.includes('GraphQL, before native wrappers'));
-		assert.ok(directive.includes('# Tool-call discipline'));
+		assert.ok(directive.includes('# Tool protocol guidance'));
 		assert.ok(!directive.includes('activate_rewst_graphql_tools'));
 	});
 
