@@ -37,6 +37,7 @@ export type McpErrorCode =
 	| 'no_session'
 	| 'refresh_failed'
 	| 'write_disabled'
+	| 'org_not_allowlisted'
 	| 'approval_required'
 	| 'rate_limited'
 	| 'graphql_error'

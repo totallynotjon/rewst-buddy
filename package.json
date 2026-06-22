@@ -150,6 +150,14 @@
 					"type": "boolean",
 					"default": false,
 					"description": "Allow the raw rewst_graphql_mutate MCP tool to run arbitrary GraphQL mutations against the live Rewst organization. This is separate from write tools because it can change anything your Rewst session can change; each mutation still requires per-resource approval inside VS Code."
+				},
+				"rewst-buddy.mcp.writeOrgAllowlist": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [],
+					"description": "Organization ids that MCP write tools (including rewst_graphql_mutate) may target. Leave empty to allow any org your sessions manage. When you list one or more org ids, a write against any other org is rejected at the MCP boundary before it runs — a hard limit that does not depend on the approval prompt. Find org ids with the list_orgs tool. Read tools are never restricted."
 				}
 			}
 		},

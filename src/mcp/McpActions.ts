@@ -50,6 +50,28 @@ export class McpError extends Error {
 	}
 }
 
+/**
+ * Enforces the write-org allowlist: a write capability may only run against an
+ * org on rewst-buddy.mcp.writeOrgAllowlist. An empty allowlist means "any managed
+ * org" (logged as a warning, since nothing then caps the blast radius). Reads are
+ * never restricted. This is the reliable, boundary-level gate for the MCP model,
+ * where the per-call approval modal — hosted in VS Code, not the external client —
+ * may never surface to the operator.
+ */
+function assertOrgWriteAllowed(capability: Capability, orgId: string, settings: McpSettings): void {
+	if (capability.access !== 'write') return;
+	if (settings.writeOrgAllowlist.length === 0) {
+		log.info(`[MCP] write allowlist empty; "${capability.spec.name}" may target any managed org (${orgId}).`);
+		return;
+	}
+	if (!settings.writeOrgAllowlist.includes(orgId)) {
+		throw new McpError(
+			'org_not_allowlisted',
+			`Writes to org "${orgId}" are not allowed. Add it to rewst-buddy.mcp.writeOrgAllowlist in VS Code to permit write tools against this org.`,
+		);
+	}
+}
+
 /** Whether a capability is exposed to MCP under the current settings. */
 function isExposed(capability: Capability, settings: McpSettings): boolean {
 	if (!capability.mcp) return false;
@@ -201,6 +223,9 @@ export async function callTool(
 		const args = params.arguments ?? {};
 		const ctx = await resolveContext(capability, args, params.orgId);
 		auditOrgId = capability.requiresOrg === false ? '—' : ctx.orgId || '—';
+		// Reject a disallowed write before the capability runs (and before its
+		// approval modal, which may never surface to an external MCP client).
+		assertOrgWriteAllowed(capability, ctx.orgId, settings);
 		try {
 			const text = await capability.run(args, ctx);
 			auditOutcome = auditOutcomeForText(text);
