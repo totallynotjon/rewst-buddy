@@ -1,4 +1,5 @@
 import { Session, SessionProfile, Sdk } from '@sessions';
+import { context } from '@global';
 
 let cachedSession: Session | undefined;
 
@@ -55,6 +56,10 @@ export async function getTestSession(): Promise<Session> {
 		label: 'Test Session',
 		user: response.user,
 	};
+
+	// Store the validated cookie so session.rawGraphql (which reads the cookie from
+	// secrets via getCookies) works in integration tests, not just the typed SDK.
+	await context.secrets.store(profile.org.id, cookieString.value);
 
 	cachedSession = new Session(sdk, profile);
 	return cachedSession;
