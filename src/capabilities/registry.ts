@@ -12,6 +12,7 @@ import { ORG_VARIABLE_MUTATE_CAPABILITIES } from './orgVariableMutateCapabilitie
 import { TAG_MUTATE_CAPABILITIES } from './tagMutateCapabilities';
 import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 import { TRIGGER_MUTATE_CAPABILITIES } from './triggerMutateCapabilities';
+import { TEMPLATE_MUTATE_CAPABILITIES } from './templateMutateCapabilities';
 
 /**
  * The single source of truth for Rewst capabilities. Surfaces (chat, MCP) filter
@@ -31,6 +32,7 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...TAG_MUTATE_CAPABILITIES,
 	...WORKFLOW_CRUD_CAPABILITIES,
 	...TRIGGER_MUTATE_CAPABILITIES,
+	...TEMPLATE_MUTATE_CAPABILITIES,
 	graphqlMutateCapability,
 	resultReadCapability,
 ];
