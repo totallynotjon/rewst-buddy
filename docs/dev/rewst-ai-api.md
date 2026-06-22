@@ -25,14 +25,16 @@ no further events. This cost us a debugging round; don't repeat it.
 The WS endpoint is not guessable from the schema. It comes from the web app's runtime
 config at `https://app.rewst.io/__ENV.js`:
 
-```
+```text
 NEXT_PUBLIC_API_URI    = https://api.rewst.io/graphql
 NEXT_PUBLIC_API_WS_URI = wss://api.rewst.io/subscriptions
 ```
 
-For multi-region support, fetch `__ENV.js` from the region's app host (or add a
-`wsUrl` field to `RegionConfig` defaulting to the graphql URL with `/graphql` →
-`/subscriptions`). A WS upgrade attempt against `/graphql` returns HTTP 400 — the
+For multi-region support, fetch `__ENV.js` from the region's app host, or set the
+optional `subscriptionsUrl` field on `RegionConfig`. When it is omitted,
+`getSubscriptionsUrl()` derives the endpoint from `graphqlUrl` by swapping the
+scheme to `ws` and `/graphql` → `/subscriptions`. A WS upgrade attempt against
+`/graphql` returns HTTP 400 — the
 upgrade falls through to Apollo Server's HTTP handler (Apollo Server 4 + Express;
 its CSRF guard generates the 400 body).
 
@@ -109,7 +111,7 @@ subscription ConversationMessageSubscription(
 
 One subscription produces a stream of events. `status` values observed live, in order:
 
-```
+```text
 request_registered        metadata: { requestId }            ← save requestId for resume
 thinking                  conversation_id now populated      ← save conversation_id for multi-turn
 summarizing               metadata: { agentName: "roborewsty_supervisor" }
@@ -132,7 +134,7 @@ citations in `metadata.sources`.
 Additional statuses handled by the web app (not all observed live, extracted from
 its bundle — treat as the complete set):
 
-```
+```text
 message, success, error, interrupted, conversation_killed, approval_required,
 streaming_thinking, resume_attached, resume_not_found, resume_forbidden
 ```
@@ -269,7 +271,7 @@ Notes:
 
 `scripts/probe-ai.mjs` — standalone exploration/regression tool, no extension code.
 
-```
+```text
 REWST_TEST_TOKEN=<appSession token> node scripts/probe-ai.mjs <command>
 
 whoami                       validate token; prints user + org

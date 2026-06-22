@@ -43,7 +43,7 @@ For `buddy_workflow_get` detail steering specifically, do **not** say or imply t
 
 ## Directory Structure
 
-```
+```text
 src/
 ├── commands/           # VS Code commands (user interactions)
 │   ├── client/        # Session commands (NewSession, ClearSessions)
@@ -88,7 +88,7 @@ src/
 
 User docs are split between a short landing README and three deep-dive files in `docs/`. When adding or editing user-facing documentation, put content in the file whose purpose it matches — don't duplicate across files.
 
-```
+```text
 README.md             # Marketplace/GitHub landing: banner, about, install,
                       #   3-step quick start, features glance, security, links out.
                       #   Keep short (~100 lines). No exhaustive feature detail.
@@ -288,6 +288,25 @@ All components implement `vscode.Disposable` and push to `context.subscriptions`
 2. **Context menu args**: Use `args[0][0]` not `args[0]` for URI
 3. **Disposables**: Always push to `context.subscriptions` for cleanup
 4. **Template updates**: After modifying template, update `link.template.updatedAt` to prevent false conflicts
+
+## Capability / MCP Tool Authoring
+
+Capabilities live in `src/capabilities/*Capabilities.ts` and are surfaced to the MCP server and chat. Most review round-trips on these tools trace to a few rules — apply them up front instead of in follow-up commits.
+
+- **MCP inputs are NOT validated against `inputSchema`.** `McpActions` passes the raw `arguments` straight to `capability.run()` (see `src/mcp/McpActions.ts`); the schema is only advertised to the client, never enforced. So `run()` must defensively validate/coerce **every** input:
+    - Strings: `requireString` (required) / `asString` (optional) — never read `input.x` directly.
+    - Numbers: clamp — `Math.min(asPositiveInt(input, 'limit') ?? DEFAULT, MAX)`. `asPositiveInt` already rejects `0`, negatives, and fractions (returns `undefined`); preserve that property in any new numeric helper (e.g. `mapWithConcurrency` throws on a non-positive limit).
+    - Enums: validate against the allowed set before use — never blind-cast `input.kind as Kind`. An unexpected value must fall back to a safe default or throw, not slip through.
+- **GraphQL error handling:** after every `rawGraphql`, check `errors` and throw _with context_ — include the serialized errors in the message (`GraphQL error: ...`), never a bare `throw new Error()` (which discards the failure).
+- **Description ↔ behavior parity:** if a tool's `description`/`inputSchema` says it returns or accepts a field, the handler must actually surface/use it. Drift (e.g. fetching `roleIds` but dropping them from the output) gets flagged.
+- **Build list output from the requested inputs, not the response keys.** Iterate the requested `ids`/`triggerIds` and look each up, so a missing or empty (`{}`) response yields deterministic rows (`unknown`) instead of dropped entries or a blank line.
+- **Tests cover every branch, not just the happy path.** Each `kind`/mode and the error/skip paths need a case (e.g. `find_executions_by_variable` needs an `input` _and_ a `context`-with-failed-fetch test). Mock helpers must mirror the real signature — optional vs required params (the mock `rawGraphql` marks `variables?` optional to match `Session.rawGraphql`).
+
+## Docs & changelog hygiene (markdownlint runs in review)
+
+- Every fenced code block needs a language label (use ` ```text ` for plain blocks) — markdownlint MD040 fails otherwise.
+- Don't hardcode volatile numbers (passing-test counts, tool counts that change) in docs; they drift and get flagged. Prefer "full suite green".
+- `changelog.d/` takes **multiple** notes per PR and feature-named files are fine; each file carries exactly one `category:`, so a PR spanning `Added` + `Fixed` needs at least two files. Distinct filenames are what keep collation conflict-free — that, not "one file per PR", is the actual rule.
 
 ## Performance (CRITICAL)
 

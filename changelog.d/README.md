@@ -18,7 +18,7 @@ It asks for a category and a one-line summary and writes the file for you,
 filling in the PR/issue number from `gh` or your branch name. Or write the file
 by hand:
 
-```
+```text
 changelog.d/<pr-or-issue-number>.md      e.g. changelog.d/42.md
 ```
 
