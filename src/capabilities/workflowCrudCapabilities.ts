@@ -1,0 +1,118 @@
+import type { MutationScope } from '../ui/chat/tools/graphqlTool';
+import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import type { Capability, CapabilityContext } from './Capability';
+import { ORG_ID_PROP, asString, requireString } from './inputHelpers';
+import { orgDisplayName, throwOnGraphqlErrors, withMutationApproval } from './mutationApproval';
+
+/**
+ * Workflow create/delete capabilities. create_workflow makes an empty workflow
+ * (edit it afterwards with buddy_workflow_edit) and carries orgId in its input.
+ * delete_workflow acts by id, and one session can manage many orgs, so it first
+ * re-verifies the workflow belongs to the requested org (requireWorkflowInOrg)
+ * before deleting. Both are approval-gated and hidden unless
+ * rewst-buddy.mcp.enableWriteTools. Deleting a workflow also removes its triggers,
+ * tasks, and execution history, so the approval summary calls this out.
+ */
+
+const CREATE_WORKFLOW = `mutation RewstBuddyMcpCreateWorkflow($workflow: WorkflowInput!) {
+  createWorkflow(workflow: $workflow) { id name orgId }
+}`;
+
+const DELETE_WORKFLOW = `mutation RewstBuddyMcpDeleteWorkflow($id: ID!) {
+  deleteWorkflow(id: $id)
+}`;
+
+const WORKFLOW_OWNER = `query RewstBuddyMcpWorkflowOwner($id: ID!) {
+  workflow(where: { id: $id }) { id name orgId }
+}`;
+
+interface WorkflowRow {
+	id?: string;
+	name?: string;
+	orgId?: string;
+}
+
+/**
+ * Fetches a workflow by id and fails closed unless it belongs to the requested
+ * org. Returns the workflow name for the approval scope.
+ */
+async function requireWorkflowInOrg(ctx: CapabilityContext, workflowId: string, orgId: string): Promise<WorkflowRow> {
+	const { data, errors } = await ctx.session.rawGraphql(WORKFLOW_OWNER, { id: workflowId });
+	throwOnGraphqlErrors(errors);
+	const workflow = (data as { workflow?: WorkflowRow } | undefined)?.workflow;
+	if (!workflow || workflow.orgId !== orgId) {
+		throw new Error(`Workflow ${workflowId} is not in org ${orgId}.`);
+	}
+	return workflow;
+}
+
+const createWorkflowSpec: ToolSpec = {
+	name: 'create_workflow',
+	args: '{"orgId": string, "name": string, "description"?: string}',
+	description:
+		'Create a new, empty Rewst workflow in one organization, returning its id and name. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code.',
+	inputSchema: {
+		type: 'object',
+		properties: {
+			...ORG_ID_PROP,
+			name: { type: 'string', description: 'Name for the new workflow.' },
+			description: { type: 'string', description: 'Optional workflow description.' },
+		},
+		required: ['orgId', 'name'],
+	},
+};
+
+async function runCreateWorkflow(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const orgId = requireString(input, 'orgId');
+	const name = requireString(input, 'name');
+	const description = asString(input, 'description');
+	const orgName = orgDisplayName(ctx);
+	const scope: MutationScope = { scopeId: orgId, scopeName: `new workflow "${name}"`, orgId, orgName };
+	const summary = `Create workflow "${name}" in org "${orgName}" (${orgId})`;
+	return withMutationApproval(scope, summary, async () => {
+		const workflow: Record<string, unknown> = { orgId, name };
+		if (description !== undefined) workflow.description = description;
+		const { data, errors } = await ctx.session.rawGraphql(CREATE_WORKFLOW, { workflow });
+		throwOnGraphqlErrors(errors);
+		const created = (data as { createWorkflow?: WorkflowRow } | undefined)?.createWorkflow;
+		if (!created?.id) throw new Error('createWorkflow returned no workflow; the mutation may have failed.');
+		return JSON.stringify({ status: 'created', id: created.id, name: created.name ?? name }, null, 2);
+	});
+}
+
+const deleteWorkflowSpec: ToolSpec = {
+	name: 'delete_workflow',
+	args: '{"orgId": string, "workflowId": string}',
+	description:
+		'Permanently delete one Rewst workflow, identified by org and workflow id. The workflow must belong to the given org. This also removes its triggers, tasks, and execution history and cannot be undone. Requires write tools to be enabled and per-call approval in VS Code.',
+	inputSchema: {
+		type: 'object',
+		properties: {
+			...ORG_ID_PROP,
+			workflowId: { type: 'string', description: 'Id of the workflow to delete.' },
+		},
+		required: ['orgId', 'workflowId'],
+	},
+};
+
+async function runDeleteWorkflow(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const orgId = requireString(input, 'orgId');
+	const workflowId = requireString(input, 'workflowId');
+	const orgName = orgDisplayName(ctx);
+	const current = await requireWorkflowInOrg(ctx, workflowId, orgId);
+	const name = current.name ?? '(unnamed)';
+	const scope: MutationScope = { scopeId: workflowId, scopeName: name, orgId, orgName };
+	const summary = `Delete workflow "${name}" (${workflowId}) and its triggers, tasks, and history in org "${orgName}" (${orgId})`;
+	return withMutationApproval(scope, summary, async () => {
+		const { data, errors } = await ctx.session.rawGraphql(DELETE_WORKFLOW, { id: workflowId });
+		throwOnGraphqlErrors(errors);
+		const deletedId = (data as { deleteWorkflow?: string | null } | undefined)?.deleteWorkflow;
+		if (!deletedId) throw new Error('deleteWorkflow returned no id; the mutation may have failed.');
+		return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);
+	});
+}
+
+export const WORKFLOW_CRUD_CAPABILITIES: Capability[] = [
+	{ spec: createWorkflowSpec, access: 'write', chat: false, mcp: true, run: runCreateWorkflow },
+	{ spec: deleteWorkflowSpec, access: 'write', chat: false, mcp: true, run: runDeleteWorkflow },
+];
