@@ -102,7 +102,7 @@ async function runGraphqlMutate(input: Record<string, unknown>, ctx: CapabilityC
 			return JSON.stringify({
 				status: 'approval_required',
 				message:
-					'The mutation was not run. The user must approve it in VS Code (a modal appears in their editor); retry after they approve.',
+					'The mutation was not run; it needs approval in the VS Code window running Rewst Buddy. Focus that window to respond to the prompt, then retry. The prompt does not appear in the MCP client and cannot be approved if no VS Code window is open.',
 			});
 		}
 		approveMutationScope(scope);

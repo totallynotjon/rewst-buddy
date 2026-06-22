@@ -17,7 +17,13 @@ import type { McpSettings } from './settings';
 const { suite, test, setup, teardown } = Mocha;
 
 function settings(over: Partial<McpSettings> = {}): McpSettings {
-	return { enable: true, enableWriteTools: false, enableDangerousGraphqlMutation: false, ...over };
+	return {
+		enable: true,
+		enableWriteTools: false,
+		enableDangerousGraphqlMutation: false,
+		writeOrgAllowlist: [],
+		...over,
+	};
 }
 
 /** A mock session managing one org, registered with the SessionManager. */
@@ -324,6 +330,125 @@ suite('Unit: McpActions', () => {
 				),
 				(error: unknown) => error instanceof McpError && error.code === 'write_disabled',
 			);
+		});
+
+		test('a write to a non-allowlisted org is rejected before it runs', async () => {
+			useSession('org-1');
+
+			await assert.rejects(
+				callTool(
+					{
+						name: WORKFLOW_EDIT_TOOL_NAME,
+						arguments: {
+							orgId: 'org-1',
+							workflowId: 'wf-1',
+							workflowName: 'Workflow',
+							orgName: 'Acme',
+							operations: [],
+						},
+					},
+					settings({ enableWriteTools: true, writeOrgAllowlist: ['org-other'] }),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'org_not_allowlisted',
+			);
+		});
+
+		test('a write to an allowlisted org passes the boundary guard', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			setMcpMutationApprover(async () => false);
+
+			const result = await callTool(
+				{
+					name: WORKFLOW_EDIT_TOOL_NAME,
+					arguments: {
+						orgId: 'org-1',
+						workflowId: 'wf-1',
+						workflowName: 'MCP Sample Workflow',
+						orgName: 'Acme',
+						operations: [{ op: 'reposition', task: 'start', x: 1, y: 2 }],
+					},
+				},
+				settings({ enableWriteTools: true, writeOrgAllowlist: ['org-1'] }),
+			);
+
+			// Past the allowlist guard; stopped only at approval (declined here).
+			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
+		});
+
+		test('an empty allowlist permits writes to any managed org', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			setMcpMutationApprover(async () => false);
+
+			const result = await callTool(
+				{
+					name: WORKFLOW_EDIT_TOOL_NAME,
+					arguments: {
+						orgId: 'org-1',
+						workflowId: 'wf-1',
+						workflowName: 'MCP Sample Workflow',
+						orgName: 'Acme',
+						operations: [{ op: 'reposition', task: 'start', x: 1, y: 2 }],
+					},
+				},
+				settings({ enableWriteTools: true, writeOrgAllowlist: [] }),
+			);
+
+			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
+		});
+
+		test('the allowlist does not restrict read tools', async () => {
+			useSession('org-1');
+
+			const result = await callTool(
+				{ name: 'list_templates', arguments: { orgId: 'org-1' } },
+				settings({ writeOrgAllowlist: ['org-other'] }),
+			);
+
+			assert.ok(!result.isError);
+		});
+
+		test('rewst_graphql_mutate is blocked when the org is not allowlisted', async () => {
+			useSession('org-1');
+
+			await assert.rejects(
+				callTool(
+					{
+						name: 'rewst_graphql_mutate',
+						arguments: {
+							orgId: 'org-1',
+							query: 'mutation M { updateThing { id } }',
+							scopeId: 'thing-1',
+							scopeName: 'Thing',
+						},
+					},
+					settings({ enableDangerousGraphqlMutation: true, writeOrgAllowlist: ['org-other'] }),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'org_not_allowlisted',
+			);
+		});
+
+		test('rewst_graphql_mutate passes the guard when the org is allowlisted', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			setMcpMutationApprover(async () => false);
+
+			const result = await callTool(
+				{
+					name: 'rewst_graphql_mutate',
+					arguments: {
+						orgId: 'org-1',
+						query: 'mutation M { updateThing { id } }',
+						scopeId: 'thing-1',
+						scopeName: 'Thing',
+					},
+				},
+				settings({ enableDangerousGraphqlMutation: true, writeOrgAllowlist: ['org-1'] }),
+			);
+
+			// Past the allowlist guard; stopped only at approval (declined here).
+			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
 		});
 
 		test('buddy_workflow_edit returns approval_required without executing when the user declines', async () => {
