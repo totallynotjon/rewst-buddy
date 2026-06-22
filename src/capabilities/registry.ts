@@ -9,6 +9,7 @@ import { PACK_INTEGRATION_CAPABILITIES } from './packIntegrationCapabilities';
 import { ORG_USER_CAPABILITIES } from './orgUserCapabilities';
 import { PAGE_TEMPLATE_CAPABILITIES } from './pageTemplateCapabilities';
 import { ORG_VARIABLE_MUTATE_CAPABILITIES } from './orgVariableMutateCapabilities';
+import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 
 /**
  * The single source of truth for Rewst capabilities. Surfaces (chat, MCP) filter
@@ -25,6 +26,7 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...ORG_USER_CAPABILITIES,
 	...PAGE_TEMPLATE_CAPABILITIES,
 	...ORG_VARIABLE_MUTATE_CAPABILITIES,
+	...WORKFLOW_CRUD_CAPABILITIES,
 	graphqlMutateCapability,
 	resultReadCapability,
 ];
