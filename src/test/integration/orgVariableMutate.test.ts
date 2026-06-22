@@ -76,7 +76,10 @@ suite('Integration: org variable write tools', function () {
 		let id: string | undefined;
 
 		const byName = async () => {
-			const { data } = await session.rawGraphql(BY_NAME, { orgId: targetOrgId, name });
+			const { data, errors } = await session.rawGraphql(BY_NAME, { orgId: targetOrgId, name });
+			if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
+				throw new Error(`BY_NAME GraphQL error: ${JSON.stringify(errors)}`);
+			}
 			return ((data as { orgVariables?: { id: string; value?: string }[] } | undefined)?.orgVariables ?? []) as {
 				id: string;
 				value?: string;

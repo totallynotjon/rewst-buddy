@@ -57,6 +57,9 @@ export async function getTestSession(): Promise<Session> {
 		user: response.user,
 	};
 
+	if (!profile.org.id) {
+		throw new Error('getTestSession: the test token resolved no primary org id.');
+	}
 	// Store the validated cookie so session.rawGraphql (which reads the cookie from
 	// secrets via getCookies) works in integration tests, not just the typed SDK.
 	await context.secrets.store(profile.org.id, cookieString.value);

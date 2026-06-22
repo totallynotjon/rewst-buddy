@@ -74,7 +74,10 @@ suite('Integration: tag write tools', function () {
 		let id: string | undefined;
 
 		const byId = async (tagId: string) => {
-			const { data } = await session.rawGraphql(BY_ID, { orgId: targetOrgId, id: tagId });
+			const { data, errors } = await session.rawGraphql(BY_ID, { orgId: targetOrgId, id: tagId });
+			if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
+				throw new Error(`BY_ID GraphQL error: ${JSON.stringify(errors)}`);
+			}
 			return ((data as { tags?: { id: string; name?: string; color?: string }[] } | undefined)?.tags ?? []) as {
 				id: string;
 				name?: string;

@@ -172,4 +172,44 @@ suite('Unit: workflowCrudCapabilities', () => {
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
 		});
 	});
+
+	suite('error and empty-result branches', () => {
+		const inOrg = { data: { workflow: { id: 'w1', name: 'Onboard', orgId: 'org-sandbox' } } };
+
+		test('create surfaces GraphQL errors', async () => {
+			const { ctx } = makeCtx({ create: { errors: [{ message: 'boom' }] } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('create_workflow').run({ orgId: 'org-sandbox', name: 'X' }, ctx),
+				/GraphQL error/,
+			);
+		});
+
+		test('create throws when no workflow is returned', async () => {
+			const { ctx } = makeCtx({ create: { data: { createWorkflow: {} } } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('create_workflow').run({ orgId: 'org-sandbox', name: 'X' }, ctx),
+				/returned no workflow/,
+			);
+		});
+
+		test('delete surfaces a pre-flight GraphQL error', async () => {
+			const { ctx } = makeCtx({ owner: { errors: [{ message: 'boom' }] } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx),
+				/GraphQL error/,
+			);
+		});
+
+		test('delete throws when no id is returned', async () => {
+			const { ctx } = makeCtx({ owner: inOrg, delete: { data: { deleteWorkflow: null } } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx),
+				/returned no id/,
+			);
+		});
+	});
 });

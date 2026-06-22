@@ -399,4 +399,64 @@ suite('Unit: templateMutateCapabilities', () => {
 			assert.strictEqual(wrapper.getCallsFor('deleteTemplate').length, 0);
 		});
 	});
+
+	suite('backend-failure branches', () => {
+		const inOrg = () => ({ data: Fixtures.getTemplateQuery({ id: 't-1', orgId: 'org-sandbox', name: 'T' }) });
+
+		test('create surfaces an SDK error', async () => {
+			const { ctx, wrapper } = sandboxCtx();
+			wrapper.when('createTemplateMinimal', { error: new Error('boom') });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('create_template').run({ orgId: 'org-sandbox', name: 'X', body: '' }, ctx),
+				/boom/,
+			);
+		});
+
+		test('create throws when no template is returned', async () => {
+			const { ctx, wrapper } = sandboxCtx();
+			wrapper.when('createTemplateMinimal', { data: { __typename: 'Mutation', template: null } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('create_template').run({ orgId: 'org-sandbox', name: 'X', body: '' }, ctx),
+				/returned no template/,
+			);
+		});
+
+		test('update_template_body throws when no template is returned', async () => {
+			const { ctx, wrapper } = sandboxCtx();
+			wrapper
+				.when('getTemplate', inOrg())
+				.when('updateTemplateBody', { data: { __typename: 'Mutation', template: null } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('update_template_body').run({ orgId: 'org-sandbox', templateId: 't-1', body: 'x' }, ctx),
+				/returned no template/,
+			);
+		});
+
+		test('rename_template throws when no template is returned', async () => {
+			const { ctx, wrapper } = sandboxCtx();
+			wrapper
+				.when('getTemplate', inOrg())
+				.when('updateTemplateName', { data: { __typename: 'Mutation', template: null } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('rename_template').run({ orgId: 'org-sandbox', templateId: 't-1', name: 'New' }, ctx),
+				/returned no template/,
+			);
+		});
+
+		test('delete_template throws when no id is returned', async () => {
+			const { ctx, wrapper } = sandboxCtx();
+			wrapper
+				.when('getTemplate', inOrg())
+				.when('deleteTemplate', { data: { __typename: 'Mutation', deleteTemplate: null } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx),
+				/returned no id/,
+			);
+		});
+	});
 });

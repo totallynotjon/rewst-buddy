@@ -157,4 +157,37 @@ suite('Unit: triggerMutateCapabilities', () => {
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
 		});
 	});
+
+	suite('error and empty-result branches', () => {
+		const inOrgDisabled = {
+			data: { triggers: [{ id: 't1', name: 'Nightly', enabled: false, orgId: 'org-sandbox' }] },
+		};
+
+		test('surfaces a pre-flight GraphQL error', async () => {
+			const { ctx } = makeCtx({ byId: { errors: [{ message: 'boom' }] } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
+				/GraphQL error/,
+			);
+		});
+
+		test('surfaces a mutation GraphQL error', async () => {
+			const { ctx } = makeCtx({ byId: inOrgDisabled, update: { errors: [{ message: 'boom' }] } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
+				/GraphQL error/,
+			);
+		});
+
+		test('throws when no trigger is returned', async () => {
+			const { ctx } = makeCtx({ byId: inOrgDisabled, update: { data: { updateTrigger: {} } } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
+				/returned no trigger/,
+			);
+		});
+	});
 });

@@ -71,7 +71,10 @@ suite('Integration: workflow CRUD tools', function () {
 		let id: string | undefined;
 
 		const byId = async (workflowId: string) => {
-			const { data } = await session.rawGraphql(BY_ID, { id: workflowId });
+			const { data, errors } = await session.rawGraphql(BY_ID, { id: workflowId });
+			if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
+				throw new Error(`BY_ID GraphQL error: ${JSON.stringify(errors)}`);
+			}
 			return (data as { workflow?: { id: string; orgId?: string } | null } | undefined)?.workflow ?? null;
 		};
 

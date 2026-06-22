@@ -70,7 +70,10 @@ suite('Integration: trigger write tools', function () {
 	});
 
 	test('toggles an existing trigger and restores it', async function () {
-		const { data } = await session.rawGraphql(FIRST_TRIGGER, { orgId: targetOrgId });
+		const { data, errors } = await session.rawGraphql(FIRST_TRIGGER, { orgId: targetOrgId });
+		if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
+			throw new Error(`FIRST_TRIGGER GraphQL error: ${JSON.stringify(errors)}`);
+		}
 		const trigger = (data as { triggers?: { id: string; enabled?: boolean }[] } | undefined)?.triggers?.[0];
 		if (!trigger) {
 			console.log('[itest] no trigger in sandbox; skipping toggle');
@@ -107,10 +110,13 @@ suite('Integration: trigger write tools', function () {
 			console.log('[itest] restored trigger to original state');
 		} finally {
 			if (changed) {
-				try {
-					await session.rawGraphql(RESTORE, { trigger: { id: triggerId, enabled: original } });
-				} catch {
-					// best-effort restore
+				// Best-effort restore; surface a failure as a warning rather than throwing
+				// from finally (which would mask the test result).
+				const { errors: restoreErrors } = await session
+					.rawGraphql(RESTORE, { trigger: { id: triggerId, enabled: original } })
+					.catch((e: unknown) => ({ errors: [String(e)] }));
+				if (Array.isArray(restoreErrors) ? restoreErrors.length > 0 : restoreErrors != null) {
+					console.warn(`[itest] restore trigger failed: ${JSON.stringify(restoreErrors)}`);
 				}
 			}
 		}

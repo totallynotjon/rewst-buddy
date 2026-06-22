@@ -409,6 +409,48 @@ suite('Unit: McpActions', () => {
 			assert.ok(!result.isError);
 		});
 
+		test('rewst_graphql_mutate is blocked when the org is not allowlisted', async () => {
+			useSession('org-1');
+
+			await assert.rejects(
+				callTool(
+					{
+						name: 'rewst_graphql_mutate',
+						arguments: {
+							orgId: 'org-1',
+							query: 'mutation M { updateThing { id } }',
+							scopeId: 'thing-1',
+							scopeName: 'Thing',
+						},
+					},
+					settings({ enableDangerousGraphqlMutation: true, writeOrgAllowlist: ['org-other'] }),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'org_not_allowlisted',
+			);
+		});
+
+		test('rewst_graphql_mutate passes the guard when the org is allowlisted', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			setMcpMutationApprover(async () => false);
+
+			const result = await callTool(
+				{
+					name: 'rewst_graphql_mutate',
+					arguments: {
+						orgId: 'org-1',
+						query: 'mutation M { updateThing { id } }',
+						scopeId: 'thing-1',
+						scopeName: 'Thing',
+					},
+				},
+				settings({ enableDangerousGraphqlMutation: true, writeOrgAllowlist: ['org-1'] }),
+			);
+
+			// Past the allowlist guard; stopped only at approval (declined here).
+			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
+		});
+
 		test('buddy_workflow_edit returns approval_required without executing when the user declines', async () => {
 			const { session, wrapper } = useSession('org-1', 'Acme');
 			useRawGraphqlWrapper(session, wrapper);

@@ -222,4 +222,55 @@ suite('Unit: tagMutateCapabilities', () => {
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
 		});
 	});
+
+	suite('error and empty-result branches', () => {
+		const inOrgRow = {
+			data: { tags: [{ id: 'g1', name: 'old', color: '#111111', description: 'd', orgId: 'org-sandbox' }] },
+		};
+
+		test('create surfaces GraphQL errors', async () => {
+			const { ctx } = makeCtx({ create: { errors: [{ message: 'boom' }] } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('create_tag').run({ orgId: 'org-sandbox', name: 'x' }, ctx),
+				/GraphQL error/,
+			);
+		});
+
+		test('create throws when no tag is returned', async () => {
+			const { ctx } = makeCtx({ create: { data: { createTag: {} } } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('create_tag').run({ orgId: 'org-sandbox', name: 'x' }, ctx),
+				/returned no tag/,
+			);
+		});
+
+		test('update surfaces a pre-flight GraphQL error', async () => {
+			const { ctx } = makeCtx({ byId: { errors: [{ message: 'boom' }] } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'x' }, ctx),
+				/GraphQL error/,
+			);
+		});
+
+		test('update throws when no tag is returned', async () => {
+			const { ctx } = makeCtx({ byId: inOrgRow, update: { data: { updateTag: {} } } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'x' }, ctx),
+				/returned no tag/,
+			);
+		});
+
+		test('delete throws when no id is returned', async () => {
+			const { ctx } = makeCtx({ byId: inOrgRow, delete: { data: { deleteTag: null } } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('delete_tag').run({ orgId: 'org-sandbox', tagId: 'g1' }, ctx),
+				/returned no id/,
+			);
+		});
+	});
 });

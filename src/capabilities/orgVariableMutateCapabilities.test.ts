@@ -303,4 +303,60 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
 		});
 	});
+
+	suite('error and empty-result branches', () => {
+		const inOrgRow = {
+			data: {
+				orgVariables: [
+					{ id: 'v1', name: 'API_KEY', category: 'general', cascade: false, orgId: 'org-sandbox' },
+				],
+			},
+		};
+
+		test('create surfaces GraphQL errors', async () => {
+			const { ctx, calls } = makeCtx({ create: { errors: [{ message: 'boom' }] } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('create_org_variable').run({ orgId: 'org-sandbox', name: 'X', value: 'y' }, ctx),
+				/GraphQL error/,
+			);
+			assert.strictEqual(callsFor(calls, 'create').length, 1);
+		});
+
+		test('create throws when no variable is returned', async () => {
+			const { ctx } = makeCtx({ create: { data: { createOrgVariable: {} } } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('create_org_variable').run({ orgId: 'org-sandbox', name: 'X', value: 'y' }, ctx),
+				/returned no variable/,
+			);
+		});
+
+		test('update surfaces a pre-flight GraphQL error', async () => {
+			const { ctx } = makeCtx({ byId: { errors: [{ message: 'boom' }] } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1', value: 'y' }, ctx),
+				/GraphQL error/,
+			);
+		});
+
+		test('update throws when no variable is returned', async () => {
+			const { ctx } = makeCtx({ byId: inOrgRow, update: { data: { updateOrgVariables: [] } } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1', value: 'y' }, ctx),
+				/returned no variable/,
+			);
+		});
+
+		test('delete throws when no id is returned', async () => {
+			const { ctx } = makeCtx({ byId: inOrgRow, delete: { data: { deleteOrgVariable: null } } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx),
+				/returned no id/,
+			);
+		});
+	});
 });
