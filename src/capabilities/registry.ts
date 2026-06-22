@@ -8,6 +8,7 @@ import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
 import { PACK_INTEGRATION_CAPABILITIES } from './packIntegrationCapabilities';
 import { ORG_USER_CAPABILITIES } from './orgUserCapabilities';
 import { PAGE_TEMPLATE_CAPABILITIES } from './pageTemplateCapabilities';
+import { TEMPLATE_MUTATE_CAPABILITIES } from './templateMutateCapabilities';
 
 /**
  * The single source of truth for Rewst capabilities. Surfaces (chat, MCP) filter
@@ -23,6 +24,7 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...PACK_INTEGRATION_CAPABILITIES,
 	...ORG_USER_CAPABILITIES,
 	...PAGE_TEMPLATE_CAPABILITIES,
+	...TEMPLATE_MUTATE_CAPABILITIES,
 	graphqlMutateCapability,
 	resultReadCapability,
 ];
