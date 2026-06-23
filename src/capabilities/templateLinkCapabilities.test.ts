@@ -195,6 +195,19 @@ suite('Unit: templateLinkCapabilities', () => {
 			assert.strictEqual(out.status, 'linked');
 			assert.ok(LinkManager.isLinked(uri));
 		});
+
+		test('propagates an operational fetch error instead of reporting template_not_found', async () => {
+			const { deps, uri } = makeLinkDeps({
+				getTemplate: async () => {
+					throw new Error('Network error: ECONNRESET');
+				},
+			});
+			await assert.rejects(
+				() => runLink({ templateId: 't1', uri: 'greeting.j2' }, makeCtx(), deps),
+				/Network error/,
+			);
+			assert.ok(!LinkManager.isLinked(uri), 'no link created on an operational failure');
+		});
 	});
 
 	suite('resolvePathToUri', () => {

@@ -195,7 +195,12 @@ export async function runBundleClone(
 			let referenced: FullTemplateFragment;
 			try {
 				referenced = await deps.getTemplate(sourceSession, refKey);
-			} catch {
+			} catch (error) {
+				// Only a genuine "not found" is a missing reference. A transient
+				// auth/network/SDK failure must abort (before any writes) rather than
+				// silently producing a partial clone with stale references.
+				const message = error instanceof Error ? error.message : String(error);
+				if (!/not found/i.test(message)) throw error;
 				missingReferences.push(refKey);
 				continue;
 			}
@@ -301,5 +306,13 @@ const bundleCloneSpec: ToolSpec = {
 };
 
 export const TEMPLATE_CLONE_CAPABILITIES: Capability[] = [
-	{ spec: bundleCloneSpec, access: 'write', chat: false, mcp: true, run: (input, ctx) => runBundleClone(input, ctx) },
+	{
+		spec: bundleCloneSpec,
+		access: 'write',
+		chat: false,
+		mcp: true,
+		// Explicit: a write tool is org-scoped (the allowlist needs a concrete orgId).
+		requiresOrg: true,
+		run: (input, ctx) => runBundleClone(input, ctx),
+	},
 ];

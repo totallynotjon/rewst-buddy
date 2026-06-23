@@ -23,13 +23,20 @@ export async function getTemplateFromAnySession(
 	getTemplate: (session: Session, templateId: string) => Promise<FullTemplateFragment>,
 	templateId: string,
 ): Promise<{ template: FullTemplateFragment; session: Session } | undefined> {
+	// A session that does not manage the template's org throws a "not found"
+	// error — expected, so try the next session. But an auth/network/SDK failure
+	// must not be silently swallowed into a "not found" outcome; remember it and,
+	// if no session resolves the id, surface it rather than masking an outage.
+	let operationalError: unknown;
 	for (const session of sessions) {
 		try {
 			return { template: await getTemplate(session, templateId), session };
-		} catch {
-			// Try the next session.
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (!/not found/i.test(message)) operationalError = error;
 		}
 	}
+	if (operationalError !== undefined) throw operationalError;
 	return undefined;
 }
 

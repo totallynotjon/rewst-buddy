@@ -308,6 +308,21 @@ suite('Unit: templateCloneCapabilities', () => {
 			assert.strictEqual(out.count, 1);
 		});
 
+		test('aborts without creating anything when a reference fetch fails operationally', async () => {
+			const remote = { [A]: tmpl(A, { body: refBody([B]) }) };
+			const { deps, calls } = makeCloneDeps(remote);
+			const base = deps.getTemplate;
+			deps.getTemplate = async (s, id) => {
+				if (id === B) throw new Error('Network error: ECONNRESET');
+				return base(s, id);
+			};
+			await assert.rejects(
+				() => runBundleClone({ orgId: 'tgt-org', rootTemplateId: A }, makeCtx(), deps),
+				/Network error/,
+			);
+			assert.strictEqual(calls.create.length, 0, 'no clones created on an operational failure');
+		});
+
 		test('rolls back every created template when an update fails', async () => {
 			const remote = { [A]: tmpl(A, { body: refBody([B]) }), [B]: tmpl(B) };
 			const { deps, calls } = makeCloneDeps(remote, { failUpdateAt: 2 });
