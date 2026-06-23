@@ -5,7 +5,21 @@ import { findAllTemplateReferences, getHash, log, makeUniqueUri, writeTextFile }
 import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
-import { determineSyncAction } from './syncDecision';
+import { determineSyncAction, type SyncDecision } from './syncDecision';
+
+/**
+ * Everything needed to act on a sync without re-fetching: the link, the session
+ * resolved for its org, the remote template (body intact), the current local
+ * body, and the computed action. Shared by the save-driven sync and the
+ * non-interactive MCP sync tools so they decide identically.
+ */
+export interface SyncDecisionContext {
+	link: TemplateLink;
+	session: Session;
+	remoteTemplate: FullTemplateFragment;
+	localBody: string;
+	decision: SyncDecision;
+}
 
 export const SyncManager = new (class _ implements vscode.Disposable {
 	private syncingUris = new Set<string>();
@@ -173,8 +187,8 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			this.addLink(link, doc.uri);
 
 			log.info('Saved updated info to template');
-		} catch {
-			throw log.error('Failure in response from ticket update, unknown if successful');
+		} catch (e) {
+			throw log.error('Failure in response from ticket update, unknown if successful', e);
 		}
 	}
 
@@ -213,56 +227,18 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			}
 		}
 
-		const link = LinkManager.getTemplateLink(doc.uri);
+		const { link, session, remoteTemplate, localBody, decision } = await this.computeSyncDecision(doc);
 		log.debug('syncTemplateInternal: syncing template', {
 			templateId: link.template.id,
 			templateName: link.template.name,
+			action: decision.action,
 		});
-
-		const session = SessionManager.getSessionForOrg(link.org.id);
-
-		let remoteTemplate;
-		try {
-			log.trace('syncTemplateInternal: fetching remote template');
-			remoteTemplate = await session.getTemplate(link.template.id);
-		} catch {
-			throw log.error('syncTemplateInternal: failed to fetch remote template');
-		}
-
-		const localBody = doc.getText();
-		const currentBodyHash = getHash(localBody);
-
-		log.debug('syncTemplateInternal: comparing states', {
-			localUpdatedAt: link.template.updatedAt,
-			remoteUpdatedAt: remoteTemplate.updatedAt,
-			storedBodyHash: link.bodyHash,
-			currentBodyHash,
-		});
-
-		const decision = determineSyncAction({
-			localUpdatedAt: link.template.updatedAt,
-			remoteUpdatedAt: remoteTemplate.updatedAt,
-			localBody,
-			remoteBody: remoteTemplate.body,
-		});
-
-		log.debug('syncTemplateInternal: decision', decision.action);
 
 		switch (decision.action) {
-			case 'update-metadata': {
-				// Bodies match - just update link metadata with latest remote info
-				remoteTemplate.body = '';
-				const templateLink: TemplateLink = {
-					type: 'Template',
-					bodyHash: currentBodyHash,
-					referencedTemplateIds: findAllTemplateReferences(localBody),
-					template: remoteTemplate,
-					uriString: doc.uri.toString(),
-					org: session.profile.org,
-				};
-				this.addLink(templateLink, doc.uri);
+			case 'update-metadata':
+				// Bodies match - just refresh link metadata with the latest remote info.
+				this.refreshLinkMetadata(doc, session, remoteTemplate, localBody);
 				break;
-			}
 
 			case 'download-remote':
 				log.debug('syncTemplateInternal: downloading remote (local empty)');
@@ -279,6 +255,67 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 				await this.handleConflict(doc, session, remoteTemplate);
 				break;
 		}
+	}
+
+	/**
+	 * Gathers the remote template and computes the sync action for a linked
+	 * document without mutating local or remote state. The interactive
+	 * save-driven sync and the non-interactive MCP sync tools both build on this
+	 * so they decide identically. Throws if the document is not a template link
+	 * or the remote template cannot be fetched.
+	 */
+	async computeSyncDecision(doc: vscode.TextDocument): Promise<SyncDecisionContext> {
+		const link = LinkManager.getTemplateLink(doc.uri);
+		const session = SessionManager.getSessionForOrg(link.org.id);
+
+		let remoteTemplate: FullTemplateFragment;
+		try {
+			log.trace('computeSyncDecision: fetching remote template', link.template.id);
+			remoteTemplate = await session.getTemplate(link.template.id);
+		} catch (e) {
+			throw log.error('computeSyncDecision: failed to fetch remote template', e);
+		}
+
+		const localBody = doc.getText();
+		const decision = determineSyncAction({
+			localUpdatedAt: link.template.updatedAt,
+			remoteUpdatedAt: remoteTemplate.updatedAt,
+			localBody,
+			remoteBody: remoteTemplate.body,
+		});
+
+		log.debug('computeSyncDecision: states', {
+			localUpdatedAt: link.template.updatedAt,
+			remoteUpdatedAt: remoteTemplate.updatedAt,
+			storedBodyHash: link.bodyHash,
+			currentBodyHash: getHash(localBody),
+			action: decision.action,
+		});
+
+		return { link, session, remoteTemplate, localBody, decision };
+	}
+
+	/**
+	 * Refreshes a template link's metadata from the latest remote state when the
+	 * local and remote bodies already match (the 'update-metadata' action). The
+	 * link stores an empty body, matching how links are persisted elsewhere.
+	 */
+	refreshLinkMetadata(
+		doc: vscode.TextDocument,
+		session: Session,
+		remoteTemplate: FullTemplateFragment,
+		localBody: string,
+	): void {
+		remoteTemplate.body = '';
+		const templateLink: TemplateLink = {
+			type: 'Template',
+			bodyHash: getHash(localBody),
+			referencedTemplateIds: findAllTemplateReferences(localBody),
+			template: remoteTemplate,
+			uriString: doc.uri.toString(),
+			org: session.profile.org,
+		};
+		this.addLink(templateLink, doc.uri);
 	}
 
 	private async handleConflict(doc: vscode.TextDocument, session: Session, remoteTemplate: FullTemplateFragment) {
