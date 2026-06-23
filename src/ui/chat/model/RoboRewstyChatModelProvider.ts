@@ -190,6 +190,12 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		const session = this.deps.sessionForOrg(orgId);
 		const tools = options.tools ?? [];
 		const permittedNames = new Set(tools.map(tool => tool.name));
+		const buddyTools = tools.filter(tool => /buddy|rewst|workflow|graphql|jinja/i.test(tool.name)).map(t => t.name);
+		log.info(
+			`RoboRewstyChatModelProvider: received ${tools.length} tool(s) in options.tools; ` +
+				`${buddyTools.length} look Rewst/MCP-related${buddyTools.length ? ` [${buddyTools.join(', ')}]` : ''}. ` +
+				`All names: ${tools.map(t => t.name).join(', ') || '(none)'}`,
+		);
 		const { customInstructions, conversationType, showActivity } = this.deps.aiConfig();
 
 		const trailingResults = extractTrailingToolResults(messages);
