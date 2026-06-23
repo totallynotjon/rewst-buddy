@@ -14,6 +14,8 @@ import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 import { TRIGGER_MUTATE_CAPABILITIES } from './triggerMutateCapabilities';
 import { TEMPLATE_MUTATE_CAPABILITIES } from './templateMutateCapabilities';
 import { TEMPLATE_SYNC_CAPABILITIES } from './templateSyncCapabilities';
+import { TEMPLATE_LINK_CAPABILITIES } from './templateLinkCapabilities';
+import { TEMPLATE_CLONE_CAPABILITIES } from './templateCloneCapabilities';
 
 /**
  * The single source of truth for Rewst capabilities. Surfaces (chat, MCP) filter
@@ -35,6 +37,8 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...TRIGGER_MUTATE_CAPABILITIES,
 	...TEMPLATE_MUTATE_CAPABILITIES,
 	...TEMPLATE_SYNC_CAPABILITIES,
+	...TEMPLATE_LINK_CAPABILITIES,
+	...TEMPLATE_CLONE_CAPABILITIES,
 	graphqlMutateCapability,
 	resultReadCapability,
 ];
