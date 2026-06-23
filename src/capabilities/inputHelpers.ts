@@ -4,6 +4,35 @@
  * one consistent argument-parsing contract.
  */
 
+import type { FullTemplateFragment, Session } from '@sessions';
+
+/** Pretty-prints a value as the JSON string capabilities return to callers. */
+export function json(value: unknown): string {
+	return JSON.stringify(value, null, 2);
+}
+
+/**
+ * Fetches a template by id from whichever active session can resolve it,
+ * returning the resolving session too. A requiresOrg:false tool has no
+ * org-targeted session and one machine can manage several orgs, so try each
+ * session rather than assuming the first. Returns undefined when no session
+ * resolves the id.
+ */
+export async function getTemplateFromAnySession(
+	sessions: readonly Session[],
+	getTemplate: (session: Session, templateId: string) => Promise<FullTemplateFragment>,
+	templateId: string,
+): Promise<{ template: FullTemplateFragment; session: Session } | undefined> {
+	for (const session of sessions) {
+		try {
+			return { template: await getTemplate(session, templateId), session };
+		} catch {
+			// Try the next session.
+		}
+	}
+	return undefined;
+}
+
 export function asString(input: Record<string, unknown>, key: string): string | undefined {
 	const value = input[key];
 	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
