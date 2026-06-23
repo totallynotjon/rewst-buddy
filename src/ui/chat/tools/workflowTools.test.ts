@@ -403,6 +403,15 @@ suite('Unit: workflowTools', () => {
 			assert.throws(() => applyOperations(sampleTasks() as never, num, NO_ACTIONS), /not an array or scalar/);
 		});
 
+		test('an empty or whitespace-only input string clears to an empty object, not an error', () => {
+			// An empty string is "no input", not malformed JSON — it yields {}.
+			for (const value of ['', '   ']) {
+				const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: value } }];
+				const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+				assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.input, {}, `"${value}" -> {}`);
+			}
+		});
+
 		test('update_task parses a JSON-string "with" loop config back to an object', () => {
 			// `with` is a {items, concurrency} object and is vulnerable to the same
 			// string-blob corruption as input; it must be parsed, not stored verbatim.
