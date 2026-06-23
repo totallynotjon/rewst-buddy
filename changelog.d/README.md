@@ -28,8 +28,7 @@ category: Added
 pr: 42
 ---
 
-- **Short bold lead** — the entry exactly as it should read in the changelog.
-  Nested bullets and extra lines are allowed for richer entries.
+- **Short bold lead** — one sentence on what changed for the user.
 ```
 
 - **`category`** (required): `Added`, `Changed`, or `Fixed` (also accepts
@@ -37,8 +36,11 @@ pr: 42
   are auto-corrected.
 - **`pr`** (optional): the PR number. If you name the file `<number>.md` it is
   inferred. The collator appends `(#<pr>)` to the first line for you.
-- **Body**: the Markdown bullet(s) as they should appear under the category
-  heading. Start with `- `.
+- **Body**: the Markdown bullet as it should appear under the category heading.
+  Start with `- `. A changelog note is for users to skim — **keep it to 1–2
+  short sentences (50-word hard cap, enforced by `check.mjs`).** Deeper
+  explanation of how a feature works goes in `docs/`; coding conventions and
+  internal detail go in `CLAUDE.md` or internal docs, never in a note.
 
 ## How it ships
 

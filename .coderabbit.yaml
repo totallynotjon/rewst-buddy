@@ -33,13 +33,17 @@ reviews:
     path_instructions:
         - path: 'src/**/*.ts'
           instructions: >-
-              New features must ship with tests: colocated *.test.ts unit tests, plus
-              an integration test under src/test/integration/ when live API or
-              assistant behavior is involved. Flag missing tests. Do not add obvious or
-              redundant comments — match the surrounding comment density and idiom.
-              Performance matters (editor extension): prefer Map-based O(1) lookups
-              over array.find/filter for repeated lookups, async I/O over sync, and
-              early returns. Context-menu commands read the URI from args[0][0], not
+              Tests are the contract: functionality is defined by tests, written
+              test-first. Any new or changed behavior that lacks a colocated *.test.ts
+              case asserting that behavior (plus an integration test under
+              src/test/integration/ when live API or assistant behavior is involved) is
+              a blocking issue — request changes, do not approve. The test must assert
+              the behavior, not merely that the code runs; flag tests that only cover
+              the happy path and skip the error, edge, and skip branches. Do not add
+              obvious or redundant comments — match the surrounding comment density and
+              idiom. Performance matters (editor extension): prefer Map-based O(1)
+              lookups over array.find/filter for repeated lookups, async I/O over sync,
+              and early returns. Context-menu commands read the URI from args[0][0], not
               args[0]. Fire-and-forget persistence should not block user actions.
               Review assertively: surface edge cases, error-handling gaps, race
               conditions, and lower-confidence concerns rather than withholding them,
@@ -73,6 +77,28 @@ reviews:
               Command titles in contributes.commands and settings in
               contributes.configuration must stay in sync with the docs (docs/
               reference.md command list and settings table) and CLAUDE.md.
+        - path: 'changelog.d/**/*.md'
+          instructions: >-
+              Changelog notes are for users to skim, not feature write-ups. Keep each
+              entry to 1–2 short sentences — a bold lead plus one sentence of what
+              changed for the user (hard cap: 50 words, enforced by
+              scripts/changelog/check.mjs). Flag any note that explains in depth how a
+              feature works, narrates implementation, or documents coding conventions,
+              internal architecture, or contributor workflow — that detail belongs in
+              docs/ (user-facing) or CLAUDE.md (internal), not the changelog. Does not
+              apply to README.md in this directory.
+        - path: 'docs/**/*.md'
+          instructions: >-
+              User-facing documentation: how to install, configure, and use the
+              extension. Flag coding conventions, test-writing rules, contributor
+              workflow, and internal architecture or implementation detail — those
+              belong in CLAUDE.md or internal docs, never in user docs. Command titles
+              and the settings table must match package.json contributes.
+        - path: 'README.md'
+          instructions: >-
+              Marketplace/GitHub landing page — short and user-facing. Flag coding
+              conventions, contributor workflow, or internal technical detail; those
+              live in CLAUDE.md or internal docs, not here.
 
     # Auto-label PRs by area so reviews and history are easy to scan.
     auto_apply_labels: true
