@@ -431,12 +431,25 @@ suite('Unit: workflowTools', () => {
 			const start = tasks.find(t => t.name === 'start')!;
 			assert.strictEqual(start.join, 2);
 			assert.strictEqual(start.timeout, 300);
+			// A direct integer (non-string) is accepted as-is.
+			const ints: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { join: 3, timeout: 400 } }];
+			const direct = applyOperations(sampleTasks() as never, ints, NO_ACTIONS).tasks.find(
+				t => t.name === 'start',
+			)!;
+			assert.strictEqual(direct.join, 3);
+			assert.strictEqual(direct.timeout, 400);
 			const bad: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { join: 'soon' } }];
 			assert.throws(() => applyOperations(sampleTasks() as never, bad, NO_ACTIONS), /join must be an integer/);
-			// join/timeout are GraphQL Int; a float is rejected, not silently sent.
+			// join/timeout are GraphQL Int; a float — number or numeric string — is
+			// rejected, not silently sent.
 			const float: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { timeout: 1.5 } }];
 			assert.throws(
 				() => applyOperations(sampleTasks() as never, float, NO_ACTIONS),
+				/timeout must be an integer/,
+			);
+			const floatStr: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { timeout: '1.5' } }];
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, floatStr, NO_ACTIONS),
 				/timeout must be an integer/,
 			);
 		});

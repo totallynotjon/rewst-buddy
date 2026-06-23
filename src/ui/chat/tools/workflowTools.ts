@@ -1043,8 +1043,12 @@ export function applyOperations(
 				// Workflow inputs (the run/call form in the UI) are driven by the
 				// ordered input name list plus `parameters` (the action-parameter form:
 				// label/required/multiline) — with inputSchema kept in step. They are
-				// NOT varsSchema (trigger variables). The Rewst builder sets all three;
-				// we mirror that so inputs actually appear in the UI.
+				// NOT varsSchema: that declares the workflow's *variables* — inputs whose
+				// values are set statically in each trigger's settings (Trigger.vars),
+				// constant per trigger fire — as opposed to run/call inputs, which the
+				// caller supplies per execution. set_inputs only edits inputs, never
+				// varsSchema. The Rewst builder sets the three input fields together; we
+				// mirror that so inputs actually appear in the UI.
 				const defs = Array.isArray(operation.inputs)
 					? (operation.inputs as Record<string, unknown>[])
 					: undefined;
