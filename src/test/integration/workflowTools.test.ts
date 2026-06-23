@@ -359,4 +359,102 @@ suite('Integration: workflowTools', function () {
 			await deps.execute('mutation ($id: ID!) { deleteWorkflow(id: $id) }', { id: wfId });
 		}
 	});
+
+	test('buddy_workflow_edit leaves workflow-level settings (output, tags, notes, humanSecondsSaved) intact', async function () {
+		// Unlike the tasks array (a full replace), updateWorkflow leaves omitted
+		// TOP-LEVEL fields untouched, so workflowToInput can omit output/tags/notes
+		// without wiping them. This guards that partial-update guarantee — and catches
+		// a regression where workflowToInput starts sending an empty value that clobbers.
+		const created = (await deps.execute(
+			'mutation ($workflow: WorkflowInput!) { createWorkflow(workflow: $workflow) { id } }',
+			{ workflow: { orgId: ORG_ID, name: '[RB TEST] workflow-level round-trip' } },
+		)) as { data?: { createWorkflow?: { id?: string } }; errors?: unknown };
+		const wfId = created.data?.createWorkflow?.id;
+		assert.ok(wfId, `createWorkflow returned an id (${JSON.stringify(created.errors)})`);
+
+		try {
+			// Seed a task plus workflow-level output, a note, and humanSecondsSaved;
+			// add a tag too when the org has one.
+			await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: wfId,
+						workflowName: '[RB TEST] workflow-level round-trip',
+						orgId: ORG_ID,
+						orgName: ORG_ID,
+						operations: [{ op: 'add_task', name: 'noop1', action: 'core.noop' }],
+					},
+				},
+				deps,
+			);
+			const read = (await deps.execute(
+				'query ($where: WorkflowWhereInput) { workflow(where: $where) { name tasks { id name actionId input metadata transitionMode join next { when label do publish } } } }',
+				{ where: { id: wfId, orgId: ORG_ID } },
+			)) as { data?: { workflow?: { name?: string; tasks?: Record<string, unknown>[] } } };
+			const tags = (await deps.execute('query ($where: TagWhereInput) { tags(where: $where) { id } }', {
+				where: { orgId: ORG_ID },
+			})) as { data?: { tags?: ({ id?: string } | null)[] } };
+			const tagId = (tags.data?.tags ?? []).find(t => t?.id)?.id;
+
+			const seedFields: Record<string, unknown> = {
+				humanSecondsSaved: 777,
+				output: [{ audit_out: '{{ 1 }}' }],
+				notes: [{ title: 'Sticky', content: 'remember me', index: 0 }],
+			};
+			if (tagId) seedFields.tagIds = [tagId];
+			await deps.execute(
+				'mutation ($workflow: WorkflowInput!) { updateWorkflow(workflow: $workflow, createPatch: false) { id } }',
+				{
+					workflow: {
+						id: wfId,
+						orgId: ORG_ID,
+						name: read.data!.workflow!.name,
+						tasks: read.data!.workflow!.tasks,
+						...seedFields,
+					},
+				},
+			);
+
+			// A content-neutral edit (workflowToInput omits these top-level fields).
+			await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: wfId,
+						workflowName: read.data!.workflow!.name,
+						orgId: ORG_ID,
+						orgName: ORG_ID,
+						operations: [{ op: 'add_task', name: 'noop2', action: 'core.noop' }],
+					},
+				},
+				deps,
+			);
+
+			const after = (await deps.execute(
+				'query ($where: WorkflowWhereInput) { workflow(where: $where) { humanSecondsSaved output tags { id } notes { title content } } }',
+				{ where: { id: wfId, orgId: ORG_ID } },
+			)) as {
+				data?: {
+					workflow?: {
+						humanSecondsSaved?: number;
+						output?: unknown;
+						tags?: { id?: string }[];
+						notes?: { title?: string; content?: string }[];
+					};
+				};
+			};
+			const wf = after.data!.workflow!;
+			assert.strictEqual(wf.humanSecondsSaved, 777, 'humanSecondsSaved left intact');
+			assert.deepStrictEqual(wf.output, [{ audit_out: '{{ 1 }}' }], 'output definitions left intact');
+			assert.deepStrictEqual(wf.notes, [{ title: 'Sticky', content: 'remember me' }], 'canvas notes left intact');
+			if (tagId)
+				assert.ok(
+					(wf.tags ?? []).some(t => t.id === tagId),
+					'tag left intact',
+				);
+		} finally {
+			await deps.execute('mutation ($id: ID!) { deleteWorkflow(id: $id) }', { id: wfId });
+		}
+	});
 });
