@@ -219,7 +219,7 @@ suite('Integration: workflowTools', function () {
 		}
 	});
 
-	test('buddy_workflow_edit preserves a task pack override and parses a JSON-string input (#81)', async function () {
+	test('buddy_workflow_edit preserves all advanced task settings and parses a JSON-string input (#81)', async function () {
 		// Discover the org's core pack id so the seeded override is valid and portable.
 		const cfgs = (await deps.execute(
 			'query ($orgId: ID!) { packConfigs(where: { orgId: $orgId }) { packId pack { ref } } }',
@@ -268,29 +268,39 @@ suite('Integration: workflowTools', function () {
 			)) as { data?: { workflow?: { name?: string; tasks?: Record<string, unknown>[] } } };
 			const probe = (read.data?.workflow?.tasks ?? []).find(t => t.name === 'probe')!;
 			assert.ok(probe, 'probe task created');
+			// Load the task with a broad spread of advanced settings; the edit below
+			// touches none of them, so every one must survive the round-trip.
+			const seededTask = {
+				...probe,
+				description: 'advanced settings probe',
+				transitionMode: 'FOLLOW_ALL',
+				join: 2,
+				publishResultAs: 'probe_result',
+				timeout: 300,
+				humanSecondsSaved: 42,
+				isMocked: true,
+				mockInput: { sample: 'value' },
+				runAsOrgId: ORG_ID,
+				retry: { count: '3', delay: '5', when: '{{ FAILED }}' },
+				with: { items: '{{ CTX.list }}', concurrency: '4' },
+				metadata: { ...(probe.metadata as Record<string, unknown>), note: 'keep me' },
+				packOverrides: [{ packId: corePackId, configSelectionMode: 'USE_DEFAULT' }],
+			};
 			const seeded = (await deps.execute(
 				'mutation ($workflow: WorkflowInput!) { updateWorkflow(workflow: $workflow, createPatch: false) { tasks { name packOverrides { packId } } } }',
-				{
-					workflow: {
-						id: wfId,
-						orgId: ORG_ID,
-						name: read.data!.workflow!.name,
-						tasks: [
-							{ ...probe, packOverrides: [{ packId: corePackId, configSelectionMode: 'USE_DEFAULT' }] },
-						],
-					},
-				},
+				{ workflow: { id: wfId, orgId: ORG_ID, name: read.data!.workflow!.name, tasks: [seededTask] } },
 			)) as {
 				data?: { updateWorkflow?: { tasks?: { name?: string; packOverrides?: { packId?: string }[] }[] } };
 				errors?: unknown;
 			};
 			assert.ok(
 				seeded.data?.updateWorkflow?.tasks?.[0]?.packOverrides?.length,
-				`seeding the pack override succeeded (${JSON.stringify(seeded.errors)})`,
+				`seeding the advanced settings succeeded (${JSON.stringify(seeded.errors)})`,
 			);
 
-			// The action edit under test: change the input via a JSON STRING — the shape
-			// that used to be stored as a char-indexed blob — and keep the override.
+			// The action edit under test touches ONLY the input (via a JSON string — the
+			// shape that used to be stored as a char-indexed blob). Everything else on
+			// the task must be carried through untouched.
 			await runWorkflowTool(
 				{
 					tool: 'buddy_workflow_edit',
@@ -308,21 +318,37 @@ suite('Integration: workflowTools', function () {
 			);
 
 			const after = (await deps.execute(
-				'query ($where: WorkflowWhereInput) { workflow(where: $where) { tasks { name input packOverrides { packId configSelectionMode } } } }',
+				'query ($where: WorkflowWhereInput) { workflow(where: $where) { tasks { name input description transitionMode join publishResultAs timeout humanSecondsSaved isMocked mockInput runAsOrgId metadata retry { count delay when } with { items concurrency } packOverrides { packId configSelectionMode } } } }',
 				{ where: { id: wfId, orgId: ORG_ID } },
-			)) as {
-				data?: {
-					workflow?: { tasks?: { name?: string; input?: unknown; packOverrides?: { packId?: string }[] }[] };
-				};
-			};
-			const edited = (after.data?.workflow?.tasks ?? []).find(t => t.name === 'probe')!;
+			)) as { data?: { workflow?: { tasks?: Record<string, unknown>[] } } };
+			const edited = (after.data?.workflow?.tasks ?? []).find(t => t.name === 'probe')! as Record<
+				string,
+				unknown
+			>;
 			assert.deepStrictEqual(
 				edited.input,
 				{ a: 9, nested: { b: 8 } },
 				'JSON-string input parsed to an object, not a char-indexed blob',
 			);
+			// Every advanced setting survived the unrelated input edit.
+			assert.strictEqual(edited.description, 'advanced settings probe', 'description preserved');
+			assert.strictEqual(edited.transitionMode, 'FOLLOW_ALL', 'transitionMode preserved');
+			assert.strictEqual(edited.join, 2, 'join preserved');
+			assert.strictEqual(edited.publishResultAs, 'probe_result', 'publishResultAs preserved');
+			assert.strictEqual(edited.timeout, 300, 'timeout preserved');
+			assert.strictEqual(edited.humanSecondsSaved, 42, 'humanSecondsSaved preserved');
+			assert.strictEqual(edited.isMocked, true, 'isMocked preserved');
+			assert.deepStrictEqual(edited.mockInput, { sample: 'value' }, 'mockInput preserved');
+			assert.strictEqual(edited.runAsOrgId, ORG_ID, 'runAsOrgId preserved');
+			assert.deepStrictEqual(edited.retry, { count: '3', delay: '5', when: '{{ FAILED }}' }, 'retry preserved');
+			assert.deepStrictEqual(edited.with, { items: '{{ CTX.list }}', concurrency: '4' }, 'with (loop) preserved');
+			assert.strictEqual(
+				(edited.metadata as Record<string, unknown>)?.note,
+				'keep me',
+				'custom metadata preserved',
+			);
 			assert.ok(
-				(edited.packOverrides ?? []).some(o => o.packId === corePackId),
+				((edited.packOverrides as { packId?: string }[]) ?? []).some(o => o.packId === corePackId),
 				'the per-task integration override survived the edit',
 			);
 		} finally {

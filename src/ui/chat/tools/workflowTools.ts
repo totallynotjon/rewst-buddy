@@ -799,14 +799,14 @@ function asObject(value: unknown): Record<string, unknown> {
 }
 
 /**
- * A task's `input` is the action's parameter object. MCP clients sometimes
- * deliver it as a JSON-encoded string; assigning that verbatim stores it as a
- * char-indexed blob ({"0":"{","1":"\"",...}) and breaks the action. Parse a JSON
- * string back to its object, treat null/undefined as an empty input, and reject
- * anything else (a non-object string, an array, a scalar) rather than silently
- * corrupting or wiping the task's parameters.
+ * Several task fields are JSON objects (`input`, `with`). MCP clients sometimes
+ * deliver them as a JSON-encoded string; assigning that verbatim stores it as a
+ * char-indexed blob ({"0":"{","1":"\"",...}) and breaks the task. Parse a JSON
+ * string back to its object, treat null/undefined as empty, and reject anything
+ * else (a non-object string, an array, a scalar) rather than silently corrupting
+ * or wiping the field. `label` names the field in the error message.
  */
-function coerceTaskInput(value: unknown): Record<string, unknown> {
+function coerceObjectField(value: unknown, label: string): Record<string, unknown> {
 	if (typeof value === 'string') {
 		const trimmed = value.trim();
 		if (trimmed === '') return {};
@@ -814,18 +814,34 @@ function coerceTaskInput(value: unknown): Record<string, unknown> {
 		try {
 			parsed = JSON.parse(trimmed);
 		} catch {
-			throw new Error('task "input" must be a JSON object; received a string that is not valid JSON.');
+			throw new Error(`${label} must be a JSON object; received a string that is not valid JSON.`);
 		}
 		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-			throw new Error('task "input" must be a JSON object, not a JSON array or scalar.');
+			throw new Error(`${label} must be a JSON object, not a JSON array or scalar.`);
 		}
 		return parsed as Record<string, unknown>;
 	}
 	if (value == null) return {};
 	if (typeof value !== 'object' || Array.isArray(value)) {
-		throw new Error('task "input" must be a JSON object, not an array or scalar.');
+		throw new Error(`${label} must be a JSON object, not an array or scalar.`);
 	}
 	return value as Record<string, unknown>;
+}
+
+function coerceTaskInput(value: unknown): Record<string, unknown> {
+	return coerceObjectField(value, 'task "input"');
+}
+
+/**
+ * Numeric task settings (`join`, `timeout`) are typed Int on the wire. A blind
+ * cast of a string-number would be sent verbatim and rejected by the mutation;
+ * coerce a numeric string to a number and reject anything non-numeric with a
+ * clear error. `label` names the field in the error message.
+ */
+function coerceTaskNumber(value: unknown, label: string): number {
+	if (typeof value === 'number' && Number.isFinite(value)) return value;
+	if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
+	throw new Error(`${label} must be a number.`);
 }
 
 /** Resolves a task reference (id or name) to the task, or throws a clear error. */
@@ -891,12 +907,13 @@ export function applyOperations(
 					// condition is met). join defaults to 1 (proceed on one inbound path);
 					// set join: 0 explicitly for an actual join/merge task.
 					transitionMode: str(operation.transitionMode) ?? 'FOLLOW_FIRST',
-					join: typeof operation.join === 'number' ? operation.join : 1,
+					join: operation.join == null ? 1 : coerceTaskNumber(operation.join, 'join'),
 					next: [],
 				};
 				if (str(operation.publishResultAs) != null) task.publishResultAs = str(operation.publishResultAs);
-				if (typeof operation.timeout === 'number') task.timeout = operation.timeout;
-				if (operation.with && typeof operation.with === 'object') task.with = operation.with as RawTask['with'];
+				if (operation.timeout != null) task.timeout = coerceTaskNumber(operation.timeout, 'timeout');
+				if (operation.with != null)
+					task.with = coerceObjectField(operation.with, 'task "with"') as RawTask['with'];
 				// Explicit position wins; otherwise layoutNewTasks places it below its parent.
 				if (typeof operation.x === 'number' && typeof operation.y === 'number') {
 					setPosition(task, operation.x, operation.y);
@@ -918,10 +935,10 @@ export function applyOperations(
 				else if (str(set.action)) task.actionId = resolveActionId(str(set.action)!);
 				if ('publishResultAs' in set) task.publishResultAs = set.publishResultAs as string;
 				if ('transitionMode' in set) task.transitionMode = set.transitionMode as string;
-				if ('join' in set) task.join = set.join as number;
-				if ('timeout' in set) task.timeout = set.timeout as number;
+				if ('join' in set) task.join = coerceTaskNumber(set.join, 'join');
+				if ('timeout' in set) task.timeout = coerceTaskNumber(set.timeout, 'timeout');
 				if ('description' in set) task.description = set.description as string;
-				if ('with' in set) task.with = set.with as RawTask['with'];
+				if ('with' in set) task.with = coerceObjectField(set.with, 'task "with"') as RawTask['with'];
 				applied.push(`update_task ${task.name} (${task.id})`);
 				break;
 			}

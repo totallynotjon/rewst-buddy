@@ -168,6 +168,55 @@ suite('Unit: workflowTools', () => {
 			// A task without overrides resends an empty list, never a stray null entry.
 			assert.deepStrictEqual(tasks[1].packOverrides, []);
 		});
+
+		test('resends every advanced task setting unchanged (no edit silently drops one)', () => {
+			// updateWorkflow replaces the whole task, so every advanced setting the
+			// builder can put on a task must survive the read -> write round-trip.
+			const loaded = {
+				id: 'tt01',
+				name: 'loaded',
+				actionId: 'act-1',
+				action: { ref: 'some.action' },
+				description: 'does a thing',
+				input: { a: 1, nested: { b: 2 } },
+				metadata: { x: 10, y: 20, note: 'keep me' },
+				transitionMode: 'FOLLOW_ALL',
+				publishResultAs: 'result_alias',
+				join: 2,
+				timeout: 300,
+				humanSecondsSaved: 42,
+				isMocked: true,
+				mockInput: { sample: 'value' },
+				runAsOrgId: 'org-9',
+				securitySchema: { policy: 'strict' },
+				packOverrides: [{ packId: 'pack-1', packConfigId: 'cfg-1', configSelectionMode: 'USE_SELECTED_ID' }],
+				retry: { count: '3', delay: '5', when: '{{ FAILED }}' },
+				with: { items: '{{ CTX.list }}', concurrency: '4' },
+				next: [{ when: '{{ SUCCEEDED }}', label: 'ok', do: [], publish: [{ key: 'k', value: 'v' }] }],
+			};
+			const w = { ...sampleWorkflow(), tasks: [loaded] };
+			const out = (workflowToInput(w as never, [loaded] as never).tasks as Record<string, unknown>[])[0];
+			// Every advanced setting is present and unchanged on the write payload.
+			for (const field of [
+				'description',
+				'transitionMode',
+				'publishResultAs',
+				'join',
+				'timeout',
+				'humanSecondsSaved',
+				'isMocked',
+				'mockInput',
+				'runAsOrgId',
+				'securitySchema',
+				'retry',
+				'with',
+			] as const) {
+				assert.deepStrictEqual(out[field], (loaded as Record<string, unknown>)[field], `${field} preserved`);
+			}
+			assert.deepStrictEqual(out.input, loaded.input, 'input preserved');
+			assert.deepStrictEqual(out.metadata, loaded.metadata, 'metadata (incl. extra keys) preserved');
+			assert.deepStrictEqual(out.packOverrides, loaded.packOverrides, 'pack override preserved');
+		});
 	});
 
 	suite('applyOperations()', () => {
@@ -352,6 +401,39 @@ suite('Unit: workflowTools', () => {
 			assert.throws(() => applyOperations(sampleTasks() as never, arr, NO_ACTIONS), /not an array or scalar/);
 			const num: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: 7 } }];
 			assert.throws(() => applyOperations(sampleTasks() as never, num, NO_ACTIONS), /not an array or scalar/);
+		});
+
+		test('update_task parses a JSON-string "with" loop config back to an object', () => {
+			// `with` is a {items, concurrency} object and is vulnerable to the same
+			// string-blob corruption as input; it must be parsed, not stored verbatim.
+			const ops: WorkflowOperation[] = [
+				{ op: 'update_task', name: 'start', set: { with: '{"items": "{{ CTX.list }}", "concurrency": "4"}' } },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.with, {
+				items: '{{ CTX.list }}',
+				concurrency: '4',
+			});
+		});
+
+		test('update_task coerces a numeric-string join/timeout and rejects a non-number', () => {
+			const ok: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { join: '2', timeout: '300' } }];
+			const { tasks } = applyOperations(sampleTasks() as never, ok, NO_ACTIONS);
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.join, 2);
+			assert.strictEqual(start.timeout, 300);
+			const bad: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { join: 'soon' } }];
+			assert.throws(() => applyOperations(sampleTasks() as never, bad, NO_ACTIONS), /join must be a number/);
+		});
+
+		test('add_task coerces a numeric-string join and a JSON-string with', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'notify', action: 'core.noop', join: '0', with: '{"items": "{{ CTX.x }}"}' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const notify = tasks.find(t => t.name === 'notify')!;
+			assert.strictEqual(notify.join, 0);
+			assert.deepStrictEqual(notify.with, { items: '{{ CTX.x }}' });
 		});
 
 		test('update_task preserves a task pack override (integration override) it does not touch', () => {
