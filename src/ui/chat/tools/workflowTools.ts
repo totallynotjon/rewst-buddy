@@ -802,8 +802,9 @@ function asObject(value: unknown): Record<string, unknown> {
  * A task's `input` is the action's parameter object. MCP clients sometimes
  * deliver it as a JSON-encoded string; assigning that verbatim stores it as a
  * char-indexed blob ({"0":"{","1":"\"",...}) and breaks the action. Parse a JSON
- * string back to its object, and reject a string that is not a JSON object
- * rather than silently corrupting the task.
+ * string back to its object, treat null/undefined as an empty input, and reject
+ * anything else (a non-object string, an array, a scalar) rather than silently
+ * corrupting or wiping the task's parameters.
  */
 function coerceTaskInput(value: unknown): Record<string, unknown> {
 	if (typeof value === 'string') {
@@ -820,7 +821,11 @@ function coerceTaskInput(value: unknown): Record<string, unknown> {
 		}
 		return parsed as Record<string, unknown>;
 	}
-	return asObject(value);
+	if (value == null) return {};
+	if (typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error('task "input" must be a JSON object, not an array or scalar.');
+	}
+	return value as Record<string, unknown>;
 }
 
 /** Resolves a task reference (id or name) to the task, or throws a clear error. */

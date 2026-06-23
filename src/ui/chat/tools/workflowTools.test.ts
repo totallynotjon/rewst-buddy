@@ -347,6 +347,11 @@ suite('Unit: workflowTools', () => {
 				() => applyOperations(sampleTasks() as never, scalar, NO_ACTIONS),
 				/not a JSON array or scalar/,
 			);
+			// A non-string array/scalar is rejected too, not silently coerced to {}.
+			const arr: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: [1, 2] } }];
+			assert.throws(() => applyOperations(sampleTasks() as never, arr, NO_ACTIONS), /not an array or scalar/);
+			const num: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: 7 } }];
+			assert.throws(() => applyOperations(sampleTasks() as never, num, NO_ACTIONS), /not an array or scalar/);
 		});
 
 		test('update_task preserves a task pack override (integration override) it does not touch', () => {
