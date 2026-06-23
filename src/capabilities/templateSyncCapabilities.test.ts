@@ -192,6 +192,15 @@ suite('Unit: templateSyncCapabilities', () => {
 			assert.strictEqual(approverCalled, false);
 		});
 
+		test('metadata-sync returns the refreshed remote template name, not the stale link name', async () => {
+			const target = makeTarget({ action: 'update-metadata', templateName: 'Old Name' });
+			target.context.remoteTemplate.name = 'New Remote Name';
+			const { deps } = makeDeps(target);
+			const out = JSON.parse(await runSync({ orgId: 'org-sandbox', uri: 'greeting.j2' }, makeCtx(), deps));
+			assert.strictEqual(out.status, 'in-sync');
+			assert.strictEqual(out.name, 'New Remote Name');
+		});
+
 		test('downloads when the local file is empty, never prompting for approval', async () => {
 			const { deps, calls } = makeDeps(makeTarget({ action: 'download-remote', localBody: '' }));
 			let approverCalled = false;
@@ -359,6 +368,18 @@ suite('Unit: templateSyncCapabilities', () => {
 			const { deps, calls } = makeDeps(
 				makeTarget({ action: 'upload-local', orgId: 'org-sandbox', remoteOrgId: 'org-OTHER' }),
 			);
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => runSync({ orgId: 'org-sandbox', uri: 'greeting.j2' }, makeCtx(), deps),
+				/Template t1 is not in org org-sandbox/,
+			);
+			assert.strictEqual(calls.upload, 0);
+		});
+
+		test('fails closed when the remote template has no orgId', async () => {
+			const target = makeTarget({ action: 'upload-local', orgId: 'org-sandbox' });
+			delete (target.context.remoteTemplate as { orgId?: unknown }).orgId;
+			const { deps, calls } = makeDeps(target);
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
 				() => runSync({ orgId: 'org-sandbox', uri: 'greeting.j2' }, makeCtx(), deps),

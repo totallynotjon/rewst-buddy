@@ -269,8 +269,10 @@ export async function runSync(
 	if (link.org.id !== orgId) {
 		throw new Error(`"${uri}" is linked to org ${link.org.id}, not ${orgId}.`);
 	}
+	// Fail closed: a write tool must re-verify the resource's org, so reject an
+	// absent/non-string remote orgId as well as a mismatch.
 	const remoteOrgId = (remoteTemplate as { orgId?: unknown }).orgId;
-	if (typeof remoteOrgId === 'string' && remoteOrgId !== orgId) {
+	if (typeof remoteOrgId !== 'string' || remoteOrgId !== orgId) {
 		throw new Error(`Template ${link.template.id} is not in org ${orgId}.`);
 	}
 
@@ -298,7 +300,7 @@ export async function runSync(
 			{
 				status: 'in-sync',
 				templateId: link.template.id,
-				name: link.template.name,
+				name: remoteTemplate.name,
 				message: 'Bodies already match; refreshed the local link metadata. Nothing was uploaded or downloaded.',
 			},
 			null,
