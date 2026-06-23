@@ -218,4 +218,243 @@ suite('Integration: workflowTools', function () {
 			await edit(originalLabel);
 		}
 	});
+
+	test('buddy_workflow_edit preserves all advanced task settings and parses a JSON-string input (#81)', async function () {
+		// Discover the org's core pack id so the seeded override is valid and portable.
+		const cfgs = (await deps.execute(
+			'query ($orgId: ID!) { packConfigs(where: { orgId: $orgId }) { packId pack { ref } } }',
+			{
+				orgId: ORG_ID,
+			},
+		)) as { data?: { packConfigs?: ({ packId?: string; pack?: { ref?: string } } | null)[] } };
+		const corePackId = (cfgs.data?.packConfigs ?? []).find(c => c?.pack?.ref === 'core')?.packId;
+		if (!corePackId) {
+			log.debug('#81 round-trip: no core pack config found — skipping');
+			this.skip();
+		}
+
+		const created = (await deps.execute(
+			'mutation ($workflow: WorkflowInput!) { createWorkflow(workflow: $workflow) { id } }',
+			{
+				workflow: { orgId: ORG_ID, name: '[RB TEST] #81 action-edit round-trip' },
+			},
+		)) as { data?: { createWorkflow?: { id?: string } }; errors?: unknown };
+		const wfId = created.data?.createWorkflow?.id;
+		assert.ok(wfId, `createWorkflow returned an id (${JSON.stringify(created.errors)})`);
+
+		try {
+			// Seed a noop task carrying a nested-object input via the high-level tool.
+			await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: wfId,
+						workflowName: '[RB TEST] #81 action-edit round-trip',
+						orgId: ORG_ID,
+						orgName: ORG_ID,
+						operations: [
+							{ op: 'add_task', name: 'probe', action: 'core.noop', input: { a: 1, nested: { b: 2 } } },
+						],
+					},
+				},
+				deps,
+			);
+
+			// Attach a pack override (the integration-override the tool must not drop)
+			// by resending the read-back task with packOverrides added.
+			const read = (await deps.execute(
+				'query ($where: WorkflowWhereInput) { workflow(where: $where) { id name orgId tasks { id name actionId input metadata transitionMode join next { when label do publish } } } }',
+				{ where: { id: wfId, orgId: ORG_ID } },
+			)) as { data?: { workflow?: { name?: string; tasks?: Record<string, unknown>[] } } };
+			const probe = (read.data?.workflow?.tasks ?? []).find(t => t.name === 'probe')!;
+			assert.ok(probe, 'probe task created');
+			// Load the task with a broad spread of advanced settings; the edit below
+			// touches none of them, so every one must survive the round-trip.
+			const seededTask = {
+				...probe,
+				description: 'advanced settings probe',
+				transitionMode: 'FOLLOW_ALL',
+				join: 2,
+				publishResultAs: 'probe_result',
+				timeout: 300,
+				humanSecondsSaved: 42,
+				isMocked: true,
+				mockInput: { sample: 'value' },
+				runAsOrgId: ORG_ID,
+				retry: { count: '3', delay: '5', when: '{{ FAILED }}' },
+				with: { items: '{{ CTX.list }}', concurrency: '4' },
+				metadata: { ...(probe.metadata as Record<string, unknown>), note: 'keep me' },
+				packOverrides: [{ packId: corePackId, configSelectionMode: 'USE_DEFAULT' }],
+			};
+			const seeded = (await deps.execute(
+				'mutation ($workflow: WorkflowInput!) { updateWorkflow(workflow: $workflow, createPatch: false) { tasks { name packOverrides { packId } } } }',
+				{ workflow: { id: wfId, orgId: ORG_ID, name: read.data!.workflow!.name, tasks: [seededTask] } },
+			)) as {
+				data?: { updateWorkflow?: { tasks?: { name?: string; packOverrides?: { packId?: string }[] }[] } };
+				errors?: unknown;
+			};
+			assert.ok(
+				seeded.data?.updateWorkflow?.tasks?.[0]?.packOverrides?.length,
+				`seeding the advanced settings succeeded (${JSON.stringify(seeded.errors)})`,
+			);
+
+			// The action edit under test touches ONLY the input (via a JSON string — the
+			// shape that used to be stored as a char-indexed blob). Everything else on
+			// the task must be carried through untouched.
+			await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: wfId,
+						workflowName: read.data!.workflow!.name,
+						orgId: ORG_ID,
+						orgName: ORG_ID,
+						operations: [
+							{ op: 'update_task', name: 'probe', set: { input: '{"a": 9, "nested": {"b": 8}}' } },
+						],
+					},
+				},
+				deps,
+			);
+
+			const after = (await deps.execute(
+				'query ($where: WorkflowWhereInput) { workflow(where: $where) { tasks { name input description transitionMode join publishResultAs timeout humanSecondsSaved isMocked mockInput runAsOrgId metadata retry { count delay when } with { items concurrency } packOverrides { packId configSelectionMode } } } }',
+				{ where: { id: wfId, orgId: ORG_ID } },
+			)) as { data?: { workflow?: { tasks?: Record<string, unknown>[] } } };
+			const edited = (after.data?.workflow?.tasks ?? []).find(t => t.name === 'probe')! as Record<
+				string,
+				unknown
+			>;
+			assert.deepStrictEqual(
+				edited.input,
+				{ a: 9, nested: { b: 8 } },
+				'JSON-string input parsed to an object, not a char-indexed blob',
+			);
+			// Every advanced setting survived the unrelated input edit.
+			assert.strictEqual(edited.description, 'advanced settings probe', 'description preserved');
+			assert.strictEqual(edited.transitionMode, 'FOLLOW_ALL', 'transitionMode preserved');
+			assert.strictEqual(edited.join, 2, 'join preserved');
+			assert.strictEqual(edited.publishResultAs, 'probe_result', 'publishResultAs preserved');
+			assert.strictEqual(edited.timeout, 300, 'timeout preserved');
+			assert.strictEqual(edited.humanSecondsSaved, 42, 'humanSecondsSaved preserved');
+			assert.strictEqual(edited.isMocked, true, 'isMocked preserved');
+			assert.deepStrictEqual(edited.mockInput, { sample: 'value' }, 'mockInput preserved');
+			assert.strictEqual(edited.runAsOrgId, ORG_ID, 'runAsOrgId preserved');
+			assert.deepStrictEqual(edited.retry, { count: '3', delay: '5', when: '{{ FAILED }}' }, 'retry preserved');
+			assert.deepStrictEqual(edited.with, { items: '{{ CTX.list }}', concurrency: '4' }, 'with (loop) preserved');
+			assert.strictEqual(
+				(edited.metadata as Record<string, unknown>)?.note,
+				'keep me',
+				'custom metadata preserved',
+			);
+			const coreOverride = (
+				(edited.packOverrides as { packId?: string; configSelectionMode?: string }[]) ?? []
+			).find(o => o.packId === corePackId);
+			assert.deepStrictEqual(
+				coreOverride,
+				{ packId: corePackId, configSelectionMode: 'USE_DEFAULT' },
+				'the per-task integration override survived the edit with its full shape intact',
+			);
+		} finally {
+			await deps.execute('mutation ($id: ID!) { deleteWorkflow(id: $id) }', { id: wfId });
+		}
+	});
+
+	test('buddy_workflow_edit leaves workflow-level settings (output, tags, notes, humanSecondsSaved) intact', async function () {
+		// Unlike the tasks array (a full replace), updateWorkflow leaves omitted
+		// TOP-LEVEL fields untouched, so workflowToInput can omit output/tags/notes
+		// without wiping them. This guards that partial-update guarantee — and catches
+		// a regression where workflowToInput starts sending an empty value that clobbers.
+		const created = (await deps.execute(
+			'mutation ($workflow: WorkflowInput!) { createWorkflow(workflow: $workflow) { id } }',
+			{ workflow: { orgId: ORG_ID, name: '[RB TEST] workflow-level round-trip' } },
+		)) as { data?: { createWorkflow?: { id?: string } }; errors?: unknown };
+		const wfId = created.data?.createWorkflow?.id;
+		assert.ok(wfId, `createWorkflow returned an id (${JSON.stringify(created.errors)})`);
+
+		try {
+			// Seed a task plus workflow-level output, a note, and humanSecondsSaved;
+			// add a tag too when the org has one.
+			await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: wfId,
+						workflowName: '[RB TEST] workflow-level round-trip',
+						orgId: ORG_ID,
+						orgName: ORG_ID,
+						operations: [{ op: 'add_task', name: 'noop1', action: 'core.noop' }],
+					},
+				},
+				deps,
+			);
+			const read = (await deps.execute(
+				'query ($where: WorkflowWhereInput) { workflow(where: $where) { name tasks { id name actionId input metadata transitionMode join next { when label do publish } } } }',
+				{ where: { id: wfId, orgId: ORG_ID } },
+			)) as { data?: { workflow?: { name?: string; tasks?: Record<string, unknown>[] } } };
+			const tags = (await deps.execute('query ($where: TagWhereInput) { tags(where: $where) { id } }', {
+				where: { orgId: ORG_ID },
+			})) as { data?: { tags?: ({ id?: string } | null)[] } };
+			const tagId = (tags.data?.tags ?? []).find(t => t?.id)?.id;
+
+			const seedFields: Record<string, unknown> = {
+				humanSecondsSaved: 777,
+				output: [{ audit_out: '{{ 1 }}' }],
+				notes: [{ title: 'Sticky', content: 'remember me', index: 0 }],
+			};
+			if (tagId) seedFields.tagIds = [tagId];
+			await deps.execute(
+				'mutation ($workflow: WorkflowInput!) { updateWorkflow(workflow: $workflow, createPatch: false) { id } }',
+				{
+					workflow: {
+						id: wfId,
+						orgId: ORG_ID,
+						name: read.data!.workflow!.name,
+						tasks: read.data!.workflow!.tasks,
+						...seedFields,
+					},
+				},
+			);
+
+			// A content-neutral edit (workflowToInput omits these top-level fields).
+			await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: wfId,
+						workflowName: read.data!.workflow!.name,
+						orgId: ORG_ID,
+						orgName: ORG_ID,
+						operations: [{ op: 'add_task', name: 'noop2', action: 'core.noop' }],
+					},
+				},
+				deps,
+			);
+
+			const after = (await deps.execute(
+				'query ($where: WorkflowWhereInput) { workflow(where: $where) { humanSecondsSaved output tags { id } notes { title content } } }',
+				{ where: { id: wfId, orgId: ORG_ID } },
+			)) as {
+				data?: {
+					workflow?: {
+						humanSecondsSaved?: number;
+						output?: unknown;
+						tags?: { id?: string }[];
+						notes?: { title?: string; content?: string }[];
+					};
+				};
+			};
+			const wf = after.data!.workflow!;
+			assert.strictEqual(wf.humanSecondsSaved, 777, 'humanSecondsSaved left intact');
+			assert.deepStrictEqual(wf.output, [{ audit_out: '{{ 1 }}' }], 'output definitions left intact');
+			assert.deepStrictEqual(wf.notes, [{ title: 'Sticky', content: 'remember me' }], 'canvas notes left intact');
+			if (tagId)
+				assert.ok(
+					(wf.tags ?? []).some(t => t.id === tagId),
+					'tag left intact',
+				);
+		} finally {
+			await deps.execute('mutation ($id: ID!) { deleteWorkflow(id: $id) }', { id: wfId });
+		}
+	});
 });

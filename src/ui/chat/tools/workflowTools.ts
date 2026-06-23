@@ -259,6 +259,18 @@ interface RawTransition {
 	targetHandles?: unknown;
 }
 
+// A task's integration override: pins which pack config (integration connection)
+// the action runs against instead of the org default. packId is required; the
+// rest are optional. Dropping these on an edit silently reverts the task to the
+// default integration, so they must round-trip.
+interface PackOverride {
+	configSelectionMode?: string | null;
+	configFallbackMode?: string | null;
+	packId: string;
+	packConfigId?: string | null;
+	searchInput?: string | null;
+}
+
 interface RawTask {
 	id: string;
 	name: string;
@@ -266,6 +278,7 @@ interface RawTask {
 	action?: { id?: string | null; ref?: string | null; name?: string | null } | null;
 	description?: string | null;
 	input?: unknown;
+	packOverrides?: PackOverride[] | null;
 	metadata?: unknown;
 	transitionMode?: string | null;
 	publishResultAs?: string | null;
@@ -311,6 +324,7 @@ const WORKFLOW_GET_QUERY = `query RewstBuddyWorkflowGet($where: WorkflowWhereInp
 			id name actionId description input metadata
 			transitionMode publishResultAs join timeout humanSecondsSaved
 			isMocked mockInput runAsOrgId securitySchema
+			packOverrides { configSelectionMode configFallbackMode packId packConfigId searchInput }
 			action { id ref name }
 			retry { count delay when }
 			with { items concurrency }
@@ -400,6 +414,16 @@ function transitionToInput(t: RawTransition): Record<string, unknown> {
 	return input;
 }
 
+/** Strips a read-back pack override down to the fields PackOverrideInput accepts. */
+function packOverrideToInput(o: PackOverride): Record<string, unknown> {
+	const out: Record<string, unknown> = { packId: o.packId };
+	if (o.packConfigId != null) out.packConfigId = o.packConfigId;
+	if (o.configSelectionMode != null) out.configSelectionMode = o.configSelectionMode;
+	if (o.configFallbackMode != null) out.configFallbackMode = o.configFallbackMode;
+	if (o.searchInput != null) out.searchInput = o.searchInput;
+	return out;
+}
+
 function taskToInput(t: RawTask): Record<string, unknown> {
 	const input: Record<string, unknown> = {
 		id: t.id,
@@ -408,6 +432,9 @@ function taskToInput(t: RawTask): Record<string, unknown> {
 		metadata: t.metadata ?? {},
 		next: (t.next ?? []).map(transitionToInput),
 	};
+	// updateWorkflow replaces the whole task, so the per-task integration overrides
+	// must be resent or every edit reverts the task to the default integration.
+	if (t.packOverrides != null) input.packOverrides = t.packOverrides.map(packOverrideToInput);
 	if (t.actionId) input.actionId = t.actionId;
 	if (t.description != null) input.description = t.description;
 	if (t.transitionMode != null) input.transitionMode = t.transitionMode;
@@ -771,6 +798,55 @@ function asObject(value: unknown): Record<string, unknown> {
 	return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+/**
+ * Several task fields are JSON objects (`input`, `with`). MCP clients sometimes
+ * deliver them as a JSON-encoded string; assigning that verbatim stores it as a
+ * char-indexed blob ({"0":"{","1":"\"",...}) and breaks the task. Parse a JSON
+ * string back to its object, treat null/undefined as empty, and reject anything
+ * else (a non-object string, an array, a scalar) rather than silently corrupting
+ * or wiping the field. `label` names the field in the error message.
+ */
+function coerceObjectField(value: unknown, label: string): Record<string, unknown> {
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		if (trimmed === '') return {};
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(trimmed);
+		} catch {
+			throw new Error(`${label} must be a JSON object; received a string that is not valid JSON.`);
+		}
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			throw new Error(`${label} must be a JSON object, not a JSON array or scalar.`);
+		}
+		return parsed as Record<string, unknown>;
+	}
+	if (value == null) return {};
+	if (typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error(`${label} must be a JSON object, not an array or scalar.`);
+	}
+	return value as Record<string, unknown>;
+}
+
+function coerceTaskInput(value: unknown): Record<string, unknown> {
+	return coerceObjectField(value, 'task "input"');
+}
+
+/**
+ * Numeric task settings (`join`, `timeout`) are typed Int on the wire, so a
+ * float fails at the mutation boundary just as a blind-cast string would. Coerce
+ * a numeric string to a number and accept only integers, rejecting anything else
+ * with a clear error. `label` names the field in the error message.
+ */
+function coerceTaskNumber(value: unknown, label: string): number {
+	if (typeof value === 'number' && Number.isInteger(value)) return value;
+	if (typeof value === 'string' && value.trim() !== '') {
+		const parsed = Number(value);
+		if (Number.isInteger(parsed)) return parsed;
+	}
+	throw new Error(`${label} must be an integer.`);
+}
+
 /** Resolves a task reference (id or name) to the task, or throws a clear error. */
 function resolveTask(tasks: RawTask[], ref: string): RawTask {
 	const byId = tasks.find(t => t.id === ref);
@@ -828,18 +904,19 @@ export function applyOperations(
 					id,
 					name,
 					actionId: subWorkflowId ?? resolveActionId(action!),
-					input: asObject(operation.input),
+					input: coerceTaskInput(operation.input),
 					metadata: {},
 					// FOLLOW_FIRST is the sane default (take the first transition whose
 					// condition is met). join defaults to 1 (proceed on one inbound path);
 					// set join: 0 explicitly for an actual join/merge task.
 					transitionMode: str(operation.transitionMode) ?? 'FOLLOW_FIRST',
-					join: typeof operation.join === 'number' ? operation.join : 1,
+					join: operation.join == null ? 1 : coerceTaskNumber(operation.join, 'join'),
 					next: [],
 				};
 				if (str(operation.publishResultAs) != null) task.publishResultAs = str(operation.publishResultAs);
-				if (typeof operation.timeout === 'number') task.timeout = operation.timeout;
-				if (operation.with && typeof operation.with === 'object') task.with = operation.with as RawTask['with'];
+				if (operation.timeout != null) task.timeout = coerceTaskNumber(operation.timeout, 'timeout');
+				if (operation.with != null)
+					task.with = coerceObjectField(operation.with, 'task "with"') as RawTask['with'];
 				// Explicit position wins; otherwise layoutNewTasks places it below its parent.
 				if (typeof operation.x === 'number' && typeof operation.y === 'number') {
 					setPosition(task, operation.x, operation.y);
@@ -856,15 +933,15 @@ export function applyOperations(
 				const task = resolveTask(next, ref);
 				const set = asObject(operation.set);
 				if (str(set.name)) task.name = str(set.name)!;
-				if ('input' in set) task.input = set.input;
+				if ('input' in set) task.input = coerceTaskInput(set.input);
 				if (str(set.subWorkflowId)) task.actionId = str(set.subWorkflowId)!;
 				else if (str(set.action)) task.actionId = resolveActionId(str(set.action)!);
 				if ('publishResultAs' in set) task.publishResultAs = set.publishResultAs as string;
 				if ('transitionMode' in set) task.transitionMode = set.transitionMode as string;
-				if ('join' in set) task.join = set.join as number;
-				if ('timeout' in set) task.timeout = set.timeout as number;
+				if ('join' in set) task.join = coerceTaskNumber(set.join, 'join');
+				if ('timeout' in set) task.timeout = coerceTaskNumber(set.timeout, 'timeout');
 				if ('description' in set) task.description = set.description as string;
-				if ('with' in set) task.with = set.with as RawTask['with'];
+				if ('with' in set) task.with = coerceObjectField(set.with, 'task "with"') as RawTask['with'];
 				applied.push(`update_task ${task.name} (${task.id})`);
 				break;
 			}
@@ -966,8 +1043,12 @@ export function applyOperations(
 				// Workflow inputs (the run/call form in the UI) are driven by the
 				// ordered input name list plus `parameters` (the action-parameter form:
 				// label/required/multiline) — with inputSchema kept in step. They are
-				// NOT varsSchema (trigger variables). The Rewst builder sets all three;
-				// we mirror that so inputs actually appear in the UI.
+				// NOT varsSchema: that declares the workflow's *variables* — inputs whose
+				// values are set statically in each trigger's settings (Trigger.vars),
+				// constant per trigger fire — as opposed to run/call inputs, which the
+				// caller supplies per execution. set_inputs only edits inputs, never
+				// varsSchema. The Rewst builder sets the three input fields together; we
+				// mirror that so inputs actually appear in the UI.
 				const defs = Array.isArray(operation.inputs)
 					? (operation.inputs as Record<string, unknown>[])
 					: undefined;
@@ -1240,6 +1321,11 @@ function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary
 		node.name = t.name;
 		node.action = t.action?.ref ?? t.actionId;
 		if (t.input && Object.keys(t.input as object).length > 0) node.input = t.input;
+		// Surface per-task integration overrides so an edit visibly preserves them
+		// (the tool resends them untouched; they are not edited through operations).
+		if (t.packOverrides && t.packOverrides.length > 0) {
+			node.packOverrides = t.packOverrides.map(packOverrideToInput);
+		}
 		if (t.publishResultAs) node.publishResultAs = t.publishResultAs;
 		// The tool normalizes every saved task to FOLLOW_FIRST + join 1, so only
 		// surface a deliberately non-default mode/join (a FOLLOW_ALL fan-out or a

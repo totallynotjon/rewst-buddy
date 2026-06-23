@@ -150,8 +150,11 @@ These three trip up assistants constantly; verified live and encoded in the tool
   action-parameter form: `{name: {type, label, default, required, multiline,
 description}}`), and `inputSchema` (a JSON-Schema mirror) together. Setting only
   `inputSchema` shows nothing in the UI (verified: a stale `inputSchema` entry never
-  rendered while `input` + `action.parameters` did). `varsSchema` is a separate
-  variables map (trigger/config vars) — putting inputs there is the classic mistake.
+  rendered while `input` + `action.parameters` did). `varsSchema` declares the
+  workflow's **variables** — inputs whose values are set statically in each
+  trigger's settings (`Trigger.vars`), constant per trigger fire, as opposed to
+  run/call inputs the caller supplies per execution. Putting run/call inputs
+  there is the classic mistake.
   `WorkflowInput.parameters` writes `Workflow.action.parameters`. Omitting
   `parameters`/`output` from `updateWorkflow` does **not** clear them (partial update
   for these fields, unlike `tasks` which is replaced wholesale). The `set_inputs`
