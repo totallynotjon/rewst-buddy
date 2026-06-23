@@ -33,6 +33,27 @@ suite('Unit: engineeringDirective', () => {
 			assert.ok(/todo-list tool/i.test(directive), 'prefers a todo-list tool when present');
 			assert.ok(/agent/i.test(directive), 'tells the model to delegate to agents');
 			assert.ok(/on your own initiative/i.test(directive), 'no need to be asked to use todos/agents');
+			// Todos must be marked off as progress happens, not batched at the end.
+			assert.ok(/keep its status current/i.test(directive), 'keeps the todo status current as work lands');
+			assert.ok(
+				/flip that item to completed the moment it is done/i.test(directive),
+				'marks each todo complete the moment it finishes',
+			);
+			assert.ok(
+				/never batch the updates to the end/i.test(directive),
+				'forbids batching todo status updates to the end',
+			);
+			// The list must be driven to the end and reconciled before declaring done,
+			// so the model cannot believe it finished while todos remain unchecked.
+			assert.ok(/drive the list all the way to the end/i.test(directive), 'drives the todo list to completion');
+			assert.ok(
+				/reconcile against the recorded list rather than your own memory/i.test(directive),
+				'reconciles against recorded todo state, not memory of what it did',
+			);
+			assert.ok(
+				/never report work as done while its todo is unchecked or while steps remain/i.test(directive),
+				'forbids declaring done while todos remain unchecked',
+			);
 			// The todo/agent tools collide with native tool names; the steering must
 			// keep them on the vscode-tool protocol, not native function calls.
 			assert.ok(
