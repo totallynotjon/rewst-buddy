@@ -139,6 +139,35 @@ suite('Unit: workflowTools', () => {
 			const input = workflowToInput(w as never, w.tasks as never);
 			assert.deepStrictEqual(input.parameters, w.action.parameters, 'parameters preserved');
 		});
+
+		test('resends a task pack override (integration override) so an edit does not drop it', () => {
+			// updateWorkflow replaces the whole task; without resending packOverrides
+			// the task silently reverts to the default integration (#81).
+			const w = sampleWorkflow();
+			(w.tasks[0] as Record<string, unknown>).packOverrides = [
+				{
+					packId: 'pack-1',
+					packConfigId: 'cfg-1',
+					configSelectionMode: 'USE_SELECTED_ID',
+					configFallbackMode: 'FAIL_ACTION',
+					searchInput: null,
+				},
+			];
+			// The API returns an empty list for a task with no override; it stays empty.
+			(w.tasks[1] as Record<string, unknown>).packOverrides = [];
+			const input = workflowToInput(w as never, w.tasks as never);
+			const tasks = input.tasks as Record<string, unknown>[];
+			assert.deepStrictEqual(tasks[0].packOverrides, [
+				{
+					packId: 'pack-1',
+					packConfigId: 'cfg-1',
+					configSelectionMode: 'USE_SELECTED_ID',
+					configFallbackMode: 'FAIL_ACTION',
+				},
+			]);
+			// A task without overrides resends an empty list, never a stray null entry.
+			assert.deepStrictEqual(tasks[1].packOverrides, []);
+		});
 	});
 
 	suite('applyOperations()', () => {
@@ -283,6 +312,51 @@ suite('Unit: workflowTools', () => {
 			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: { msg: 'hi' } } }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
 			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.input, { msg: 'hi' });
+		});
+
+		test('update_task parses a JSON-string input back to an object (not a char-indexed blob)', () => {
+			// MCP clients sometimes deliver input as a JSON string; assigning it verbatim
+			// stored it as {"0":"{","1":"\"",...} and broke the action (#81).
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'update_task',
+					name: 'start',
+					set: { input: '{"top": 250, "client_kwargs": {"use_delegated_admin": true}}' },
+				},
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.input, {
+				top: 250,
+				client_kwargs: { use_delegated_admin: true },
+			});
+		});
+
+		test('add_task parses a JSON-string input back to an object', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'notify', action: 'core.noop', input: '{"x": 1}' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'notify')!.input, { x: 1 });
+		});
+
+		test('a non-object input string is a hard error, not silent corruption', () => {
+			const bad: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: 'not json' } }];
+			assert.throws(() => applyOperations(sampleTasks() as never, bad, NO_ACTIONS), /must be a JSON object/);
+			const scalar: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: '42' } }];
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, scalar, NO_ACTIONS),
+				/not a JSON array or scalar/,
+			);
+		});
+
+		test('update_task preserves a task pack override (integration override) it does not touch', () => {
+			const tasks = sampleTasks();
+			(tasks[0] as Record<string, unknown>).packOverrides = [{ packId: 'pack-1', packConfigId: 'cfg-1' }];
+			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: { msg: 'hi' } } }];
+			const result = applyOperations(tasks as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(result.tasks.find(t => t.name === 'start')!.packOverrides, [
+				{ packId: 'pack-1', packConfigId: 'cfg-1' },
+			]);
 		});
 
 		test('delete_task removes the task and edges pointing at it', () => {

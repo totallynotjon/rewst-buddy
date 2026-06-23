@@ -218,4 +218,115 @@ suite('Integration: workflowTools', function () {
 			await edit(originalLabel);
 		}
 	});
+
+	test('buddy_workflow_edit preserves a task pack override and parses a JSON-string input (#81)', async function () {
+		// Discover the org's core pack id so the seeded override is valid and portable.
+		const cfgs = (await deps.execute(
+			'query ($orgId: ID!) { packConfigs(where: { orgId: $orgId }) { packId pack { ref } } }',
+			{
+				orgId: ORG_ID,
+			},
+		)) as { data?: { packConfigs?: ({ packId?: string; pack?: { ref?: string } } | null)[] } };
+		const corePackId = (cfgs.data?.packConfigs ?? []).find(c => c?.pack?.ref === 'core')?.packId;
+		if (!corePackId) {
+			log.debug('#81 round-trip: no core pack config found — skipping');
+			this.skip();
+		}
+
+		const created = (await deps.execute(
+			'mutation ($workflow: WorkflowInput!) { createWorkflow(workflow: $workflow) { id } }',
+			{
+				workflow: { orgId: ORG_ID, name: '[RB TEST] #81 action-edit round-trip' },
+			},
+		)) as { data?: { createWorkflow?: { id?: string } }; errors?: unknown };
+		const wfId = created.data?.createWorkflow?.id;
+		assert.ok(wfId, `createWorkflow returned an id (${JSON.stringify(created.errors)})`);
+
+		try {
+			// Seed a noop task carrying a nested-object input via the high-level tool.
+			await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: wfId,
+						workflowName: '[RB TEST] #81 action-edit round-trip',
+						orgId: ORG_ID,
+						orgName: ORG_ID,
+						operations: [
+							{ op: 'add_task', name: 'probe', action: 'core.noop', input: { a: 1, nested: { b: 2 } } },
+						],
+					},
+				},
+				deps,
+			);
+
+			// Attach a pack override (the integration-override the tool must not drop)
+			// by resending the read-back task with packOverrides added.
+			const read = (await deps.execute(
+				'query ($where: WorkflowWhereInput) { workflow(where: $where) { id name orgId tasks { id name actionId input metadata transitionMode join next { when label do publish } } } }',
+				{ where: { id: wfId, orgId: ORG_ID } },
+			)) as { data?: { workflow?: { name?: string; tasks?: Record<string, unknown>[] } } };
+			const probe = (read.data?.workflow?.tasks ?? []).find(t => t.name === 'probe')!;
+			assert.ok(probe, 'probe task created');
+			const seeded = (await deps.execute(
+				'mutation ($workflow: WorkflowInput!) { updateWorkflow(workflow: $workflow, createPatch: false) { tasks { name packOverrides { packId } } } }',
+				{
+					workflow: {
+						id: wfId,
+						orgId: ORG_ID,
+						name: read.data!.workflow!.name,
+						tasks: [
+							{ ...probe, packOverrides: [{ packId: corePackId, configSelectionMode: 'USE_DEFAULT' }] },
+						],
+					},
+				},
+			)) as {
+				data?: { updateWorkflow?: { tasks?: { name?: string; packOverrides?: { packId?: string }[] }[] } };
+				errors?: unknown;
+			};
+			assert.ok(
+				seeded.data?.updateWorkflow?.tasks?.[0]?.packOverrides?.length,
+				`seeding the pack override succeeded (${JSON.stringify(seeded.errors)})`,
+			);
+
+			// The action edit under test: change the input via a JSON STRING — the shape
+			// that used to be stored as a char-indexed blob — and keep the override.
+			await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: wfId,
+						workflowName: read.data!.workflow!.name,
+						orgId: ORG_ID,
+						orgName: ORG_ID,
+						operations: [
+							{ op: 'update_task', name: 'probe', set: { input: '{"a": 9, "nested": {"b": 8}}' } },
+						],
+					},
+				},
+				deps,
+			);
+
+			const after = (await deps.execute(
+				'query ($where: WorkflowWhereInput) { workflow(where: $where) { tasks { name input packOverrides { packId configSelectionMode } } } }',
+				{ where: { id: wfId, orgId: ORG_ID } },
+			)) as {
+				data?: {
+					workflow?: { tasks?: { name?: string; input?: unknown; packOverrides?: { packId?: string }[] }[] };
+				};
+			};
+			const edited = (after.data?.workflow?.tasks ?? []).find(t => t.name === 'probe')!;
+			assert.deepStrictEqual(
+				edited.input,
+				{ a: 9, nested: { b: 8 } },
+				'JSON-string input parsed to an object, not a char-indexed blob',
+			);
+			assert.ok(
+				(edited.packOverrides ?? []).some(o => o.packId === corePackId),
+				'the per-task integration override survived the edit',
+			);
+		} finally {
+			await deps.execute('mutation ($id: ID!) { deleteWorkflow(id: $id) }', { id: wfId });
+		}
+	});
 });

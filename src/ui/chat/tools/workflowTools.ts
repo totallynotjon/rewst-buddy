@@ -259,6 +259,18 @@ interface RawTransition {
 	targetHandles?: unknown;
 }
 
+// A task's integration override: pins which pack config (integration connection)
+// the action runs against instead of the org default. packId is required; the
+// rest are optional. Dropping these on an edit silently reverts the task to the
+// default integration, so they must round-trip.
+interface PackOverride {
+	configSelectionMode?: string | null;
+	configFallbackMode?: string | null;
+	packId: string;
+	packConfigId?: string | null;
+	searchInput?: string | null;
+}
+
 interface RawTask {
 	id: string;
 	name: string;
@@ -266,6 +278,7 @@ interface RawTask {
 	action?: { id?: string | null; ref?: string | null; name?: string | null } | null;
 	description?: string | null;
 	input?: unknown;
+	packOverrides?: PackOverride[] | null;
 	metadata?: unknown;
 	transitionMode?: string | null;
 	publishResultAs?: string | null;
@@ -311,6 +324,7 @@ const WORKFLOW_GET_QUERY = `query RewstBuddyWorkflowGet($where: WorkflowWhereInp
 			id name actionId description input metadata
 			transitionMode publishResultAs join timeout humanSecondsSaved
 			isMocked mockInput runAsOrgId securitySchema
+			packOverrides { configSelectionMode configFallbackMode packId packConfigId searchInput }
 			action { id ref name }
 			retry { count delay when }
 			with { items concurrency }
@@ -400,6 +414,16 @@ function transitionToInput(t: RawTransition): Record<string, unknown> {
 	return input;
 }
 
+/** Strips a read-back pack override down to the fields PackOverrideInput accepts. */
+function packOverrideToInput(o: PackOverride): Record<string, unknown> {
+	const out: Record<string, unknown> = { packId: o.packId };
+	if (o.packConfigId != null) out.packConfigId = o.packConfigId;
+	if (o.configSelectionMode != null) out.configSelectionMode = o.configSelectionMode;
+	if (o.configFallbackMode != null) out.configFallbackMode = o.configFallbackMode;
+	if (o.searchInput != null) out.searchInput = o.searchInput;
+	return out;
+}
+
 function taskToInput(t: RawTask): Record<string, unknown> {
 	const input: Record<string, unknown> = {
 		id: t.id,
@@ -408,6 +432,9 @@ function taskToInput(t: RawTask): Record<string, unknown> {
 		metadata: t.metadata ?? {},
 		next: (t.next ?? []).map(transitionToInput),
 	};
+	// updateWorkflow replaces the whole task, so the per-task integration overrides
+	// must be resent or every edit reverts the task to the default integration.
+	if (t.packOverrides != null) input.packOverrides = t.packOverrides.map(packOverrideToInput);
 	if (t.actionId) input.actionId = t.actionId;
 	if (t.description != null) input.description = t.description;
 	if (t.transitionMode != null) input.transitionMode = t.transitionMode;
@@ -771,6 +798,31 @@ function asObject(value: unknown): Record<string, unknown> {
 	return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+/**
+ * A task's `input` is the action's parameter object. MCP clients sometimes
+ * deliver it as a JSON-encoded string; assigning that verbatim stores it as a
+ * char-indexed blob ({"0":"{","1":"\"",...}) and breaks the action. Parse a JSON
+ * string back to its object, and reject a string that is not a JSON object
+ * rather than silently corrupting the task.
+ */
+function coerceTaskInput(value: unknown): Record<string, unknown> {
+	if (typeof value === 'string') {
+		const trimmed = value.trim();
+		if (trimmed === '') return {};
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(trimmed);
+		} catch {
+			throw new Error('task "input" must be a JSON object; received a string that is not valid JSON.');
+		}
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+			throw new Error('task "input" must be a JSON object, not a JSON array or scalar.');
+		}
+		return parsed as Record<string, unknown>;
+	}
+	return asObject(value);
+}
+
 /** Resolves a task reference (id or name) to the task, or throws a clear error. */
 function resolveTask(tasks: RawTask[], ref: string): RawTask {
 	const byId = tasks.find(t => t.id === ref);
@@ -828,7 +880,7 @@ export function applyOperations(
 					id,
 					name,
 					actionId: subWorkflowId ?? resolveActionId(action!),
-					input: asObject(operation.input),
+					input: coerceTaskInput(operation.input),
 					metadata: {},
 					// FOLLOW_FIRST is the sane default (take the first transition whose
 					// condition is met). join defaults to 1 (proceed on one inbound path);
@@ -856,7 +908,7 @@ export function applyOperations(
 				const task = resolveTask(next, ref);
 				const set = asObject(operation.set);
 				if (str(set.name)) task.name = str(set.name)!;
-				if ('input' in set) task.input = set.input;
+				if ('input' in set) task.input = coerceTaskInput(set.input);
 				if (str(set.subWorkflowId)) task.actionId = str(set.subWorkflowId)!;
 				else if (str(set.action)) task.actionId = resolveActionId(str(set.action)!);
 				if ('publishResultAs' in set) task.publishResultAs = set.publishResultAs as string;
@@ -1240,6 +1292,11 @@ function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary
 		node.name = t.name;
 		node.action = t.action?.ref ?? t.actionId;
 		if (t.input && Object.keys(t.input as object).length > 0) node.input = t.input;
+		// Surface per-task integration overrides so an edit visibly preserves them
+		// (the tool resends them untouched; they are not edited through operations).
+		if (t.packOverrides && t.packOverrides.length > 0) {
+			node.packOverrides = t.packOverrides.map(packOverrideToInput);
+		}
 		if (t.publishResultAs) node.publishResultAs = t.publishResultAs;
 		// The tool normalizes every saved task to FOLLOW_FIRST + join 1, so only
 		// surface a deliberately non-default mode/join (a FOLLOW_ALL fan-out or a
