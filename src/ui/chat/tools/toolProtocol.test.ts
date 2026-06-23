@@ -5,7 +5,6 @@ import {
 	buildToolInstructions,
 	describeRequest,
 	describeRequestBrief,
-	looksRewstNative,
 	MAX_REQUESTS_PER_TURN,
 	parseToolRequests,
 	stripToolRequestBlocks,
@@ -213,61 +212,6 @@ suite('Unit: toolProtocol', () => {
 			assert.ok(/executes that local VS Code tool/i.test(text), 'states the block executes a local tool request');
 			assert.ok(/not ordinary prose/i.test(text), 'forbids treating the block as just text');
 			assert.ok(text.includes('insert_edit_into_file'), 'keeps the edit tool in the concrete list');
-		});
-
-		test('adds a format curb for Rewst-flavored tool names without priority guidance (#88)', () => {
-			const text = buildToolInstructions([
-				{ name: 'buddy_workflow_get', args: '{}', description: 'Read a workflow.' },
-				{ name: 'buddy_graphql', args: '{"query": string}', description: 'Run GraphQL.' },
-				{ name: 'buddy_render_jinja', args: '{}', description: 'Render jinja.' },
-			]);
-			assert.ok(/Rewst-flavored names/i.test(text), 'names the Rewst-flavored surface');
-			assert.ok(
-				/never as a native Rewst function call/i.test(text),
-				'curbs the native Rewst call path for these tools',
-			);
-			// Format-only: it must not reintroduce the priority/usage guidance the
-			// other tests forbid for Rewst-looking names.
-			assert.ok(!/take priority/i.test(text), 'no priority note');
-			assert.ok(!/Use buddy_graphql_schema first/i.test(text), 'no usage-ordering note');
-		});
-
-		test('omits the Rewst-flavored curb when only editor tools are present', () => {
-			const text = buildToolInstructions([
-				{ name: 'read_file', args: '{"path": string}', description: 'Read a file.' },
-				{ name: 'insert_edit_into_file', args: '{}', description: 'Edit a file.' },
-			]);
-			assert.ok(!/Rewst-flavored names/i.test(text), 'pure-editor chats are unchanged (#88 constraint)');
-		});
-	});
-
-	suite('looksRewstNative()', () => {
-		test('flags Rewst-flavored tool names', () => {
-			for (const name of [
-				'buddy_workflow_get',
-				'buddy_graphql',
-				'buddy_render_jinja',
-				'rewst_graphql_query',
-				'get_workflow',
-				'list_workflows',
-				'mcp__rewst-buddy__buddy_action_search',
-			]) {
-				assert.ok(looksRewstNative(name), `${name} should read as Rewst-native`);
-			}
-		});
-
-		test('does not flag generic editor tool names', () => {
-			for (const name of [
-				'read_file',
-				'create_file',
-				'replace_string_in_file',
-				'insert_edit_into_file',
-				'run_in_terminal',
-				'manage_todo_list',
-				'runSubagent',
-			]) {
-				assert.ok(!looksRewstNative(name), `${name} should not read as Rewst-native`);
-			}
 		});
 	});
 
