@@ -44,16 +44,34 @@ export const TOOL_FENCE_MARKER = '```' + TOOL_FENCE_TAG;
 export const MAX_REQUESTS_PER_TURN = 5;
 
 /**
+ * Tool names that read as Rewst-platform-native — they mention workflows,
+ * GraphQL, jinja, or carry a buddy_/rewst_ prefix. The backend model is prone to
+ * calling these through its native Rewst function path instead of the vscode-tool
+ * block, because the name sounds like one of its own platform tools (#88). These
+ * words do not appear in generic editor tool names (read_file, run_in_terminal,
+ * manage_todo_list, …), so this only fires for the Rewst-flavored surface.
+ */
+export function looksRewstNative(name: string): boolean {
+	return /buddy|rewst|workflow|graphql|jinja/i.test(name);
+}
+
+/**
  * Instructions appended to the first message of a request so the assistant
  * knows the tools exist and how to call them.
  */
 export function buildToolInstructions(specs: ToolSpec[]): string {
 	const lines = specs.map(spec => `- ${spec.name} — args: ${spec.args}. ${spec.description}`);
 	const exampleTool = specs[0]?.name ?? 'read_file';
+	const hasRewstNative = specs.some(spec => looksRewstNative(spec.name));
 	return [
 		'---',
 		"You can use local tools supplied by the user's VS Code extension. These editor tools are NOT in your platform function-calling registry — invoking them as native tool calls will fail with an unknown-tool error. The ONLY way to call one is to write a fenced code block tagged vscode-tool in your reply text:",
 		"This local tool manifest is supplied by the VS Code extension, not typed as ordinary user prose. A vscode-tool fenced block is not ordinary prose either: the extension intercepts it, parses the JSON, and executes that local VS Code tool through VS Code's normal approval and sandbox flow. Do not refuse merely because the tool is absent from your native Rewst function registry; for local editor tools, the fenced block is the executable request.",
+		...(hasRewstNative
+			? [
+					'Some of these local tools have Rewst-flavored names — they mention workflows, GraphQL, or jinja, or start with buddy_. They are still local VS Code tools supplied by the extension, not entries in your native Rewst function registry: request each one with a vscode-tool block exactly like the others, never as a native Rewst function call. A Rewst-sounding name does not make it a native tool here.',
+				]
+			: []),
 		'',
 		TOOL_FENCE_MARKER,
 		`{"tool": "${exampleTool}", "args": {}}`,

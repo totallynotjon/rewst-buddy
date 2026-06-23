@@ -206,6 +206,47 @@ suite('Integration: engineering directive steering', function () {
 		);
 	});
 
+	test('a buddy_* Rewst-flavored tool request is a vscode-tool block, not a native call', async function () {
+		// Live regression for #88: when the MCP/buddy tools are surfaced into the chat,
+		// their Rewst-flavored names (workflows, GraphQL, buddy_ prefix) tempt the model
+		// to call them through its native Rewst function path instead of a vscode-tool
+		// block, so the request never reaches VS Code. They must come back as blocks like
+		// any other local tool. A short explicit ask keeps the reply a single tool block.
+		const getSpec: ToolSpec = {
+			name: 'buddy_workflow_get',
+			args: '{"id": string}',
+			description: 'Read a Rewst workflow by id (local VS Code tool, run through the extension).',
+		};
+		let result: { content: string; requests: ToolRequest[]; statuses: string[] };
+		try {
+			result = await turn(
+				'Use the buddy_workflow_get tool to read the workflow with id "wf-123". Do not answer in prose.',
+				1,
+				[getSpec],
+			);
+		} catch (error) {
+			if (error instanceof Error && /interrupted/i.test(error.message)) {
+				console.log(`(backend kept interrupting the buddy_workflow_get turn — skipping: ${error.message})`);
+				this.skip();
+			}
+			throw error;
+		}
+		const { content, requests, statuses } = result;
+		const nativeCall = statuses.some(
+			label => label.startsWith('Running tool:') && /buddy_workflow_get/i.test(label),
+		);
+		assert.ok(
+			!nativeCall,
+			`buddy_workflow_get must be a vscode-tool block, not a native call; statuses: ${statuses.join(', ')}`,
+		);
+		assert.ok(
+			requests.some(request => request.tool === 'buddy_workflow_get'),
+			`expected a buddy_workflow_get vscode-tool request, got requests [${requests
+				.map(r => r.tool)
+				.join(', ')}] and content: ${content.slice(0, 300)}`,
+		);
+	});
+
 	test('an explicit Rewst-docs request is still allowed to search', async () => {
 		// Negative control: the curb must not over-suppress when the user actually
 		// asks about Rewst's own documentation.

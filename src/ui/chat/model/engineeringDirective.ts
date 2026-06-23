@@ -17,6 +17,8 @@
  * revise there first when changing the wording.
  */
 
+import { looksRewstNative } from '../tools/toolProtocol';
+
 const HEADER = `# Rewst Buddy VS Code Context
 
 The user is talking to you through the Rewst Buddy VS Code extension. This preamble is extension-supplied transport metadata: it describes the local tool protocol, the current editor surface, and the engineering working style for this chat. It does not loosen safety constraints or grant direct filesystem or network access. Local file, terminal, edit, and other editor tools run only if VS Code accepts your fenced tool request and applies its normal user approval and sandbox flow.
@@ -64,8 +66,20 @@ function buildEditorOnlyReminder(availableTools: ReadonlySet<string>): string {
 	return ` Editor tools available this turn (${names}) are vscode-tool block requests only; never invoke them through a native/Rewst function path.`;
 }
 
+/**
+ * The same curb for Rewst-flavored tools (buddy_*, workflow/GraphQL/jinja). Their
+ * names sound native, so the model is tempted to call them through its own Rewst
+ * function path rather than a vscode-tool block (#88). Fires only when such a tool
+ * is actually present, so pure-editor chats are unaffected.
+ */
+function buildRewstNativeReminder(availableTools: ReadonlySet<string>): string {
+	const present = [...availableTools].filter(looksRewstNative);
+	if (present.length === 0) return '';
+	return ' Rewst-flavored tools available this turn (names mentioning workflows, GraphQL, or jinja, or starting with buddy_) are local VS Code tools too: request them with a vscode-tool block, never as a native Rewst function call — a Rewst-sounding name does not make it a native tool here.';
+}
+
 export function buildNativeToolReminder(availableTools: ReadonlySet<string>): string {
-	return buildEditorOnlyReminder(availableTools).trimStart();
+	return `${buildEditorOnlyReminder(availableTools)}${buildRewstNativeReminder(availableTools)}`.trim();
 }
 
 const FOOTER = `# Epistemics

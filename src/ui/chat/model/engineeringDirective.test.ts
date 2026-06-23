@@ -137,4 +137,16 @@ suite('Unit: buildNativeToolReminder', () => {
 		const reminder = buildNativeToolReminder(new Set());
 		assert.strictEqual(reminder, '');
 	});
+
+	test('curbs Rewst-flavored tools to vscode-tool blocks when present (#88)', () => {
+		const reminder = buildNativeToolReminder(new Set(['buddy_workflow_get', 'buddy_graphql']));
+		assert.ok(/Rewst-flavored tools/i.test(reminder), 'names the Rewst-flavored surface');
+		assert.ok(/vscode-tool block/i.test(reminder), 'requires the vscode-tool protocol');
+		assert.ok(/native Rewst function call/i.test(reminder), 'forbids the native Rewst call path');
+	});
+
+	test('stays empty for pure-editor chats so non-MCP behavior is unchanged (#88)', () => {
+		const reminder = buildNativeToolReminder(new Set(['read_file', 'list_files']));
+		assert.ok(!/Rewst-flavored tools/i.test(reminder), 'no Rewst-flavored curb without a Rewst tool');
+	});
 });
