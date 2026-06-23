@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { canonicalCategory, parseNote, renderSection, validateNote } from './lib.mjs';
+import { MAX_NOTE_WORDS, canonicalCategory, parseNote, renderSection, validateNote } from './lib.mjs';
 
 test('canonicalCategory: canonical names pass through', () => {
 	assert.equal(canonicalCategory('Added'), 'Added');
@@ -51,6 +51,21 @@ test('validateNote: flags missing/invalid category and empty body', () => {
 	assert.equal(validateNote({ name: 'b.md', category: null, body: '- x' }).length, 1);
 	assert.equal(validateNote({ name: 'c.md', category: 'Nope', body: '- x' }).length, 1);
 	assert.equal(validateNote({ name: 'd.md', category: 'Added', body: '' }).length, 1);
+});
+
+test('validateNote: a body at the word cap passes, one word over fails', () => {
+	const words = n => '- ' + Array.from({ length: n }, (_, i) => `w${i}`).join(' ');
+	assert.deepEqual(validateNote({ name: 'ok.md', category: 'Added', body: words(MAX_NOTE_WORDS) }), []);
+	const errs = validateNote({ name: 'long.md', category: 'Added', body: words(MAX_NOTE_WORDS + 1) });
+	assert.equal(errs.length, 1);
+	assert.match(errs[0], /too long|words/i);
+});
+
+test('validateNote: bullet markers and em dashes do not count toward the word cap', () => {
+	// `- ` and `—` carry no word characters; `**Lead**` is one word. So this body
+	// counts as exactly MAX_NOTE_WORDS (one lead + filler) and is not penalised.
+	const body = '- **Lead** — ' + Array.from({ length: MAX_NOTE_WORDS - 1 }, (_, i) => `w${i}`).join(' ');
+	assert.deepEqual(validateNote({ name: 'dash.md', category: 'Fixed', body }), []);
 });
 
 test('renderSection: orders categories and appends the PR link once', () => {

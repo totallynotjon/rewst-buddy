@@ -120,7 +120,7 @@ The changelog is generated from **per-PR note files** — never hand-edit `CHANG
 
 - Add **one file per PR**: `changelog.d/<pr-or-issue-number>.md`. Scaffold it with `npm run changelog:new`, or write it directly.
 - Frontmatter `category:` is `Added`, `Changed`, or `Fixed` (also accepts `Deprecated`, `Removed`, `Security`; common synonyms auto-correct). Optional `pr:` sets the PR link; a numeric filename is the fallback. When the PR number is only known after opening the PR, set `pr:` then and push that one-line change.
-- The body is the Markdown bullet exactly as it should read in the changelog (multi-line / nested bullets allowed).
+- The body is the Markdown bullet exactly as it should read in the changelog. **Keep it to 1–2 short sentences** — a bold lead plus one sentence of what changed for the user. A 50-word hard cap is enforced by `npm run changelog:check`. The changelog is for users to skim: deep functionality explanation goes in `docs/`, and coding conventions or internal detail go in this `CLAUDE.md` or internal docs — never in a changelog note.
 - One file per PR is what keeps the changelog conflict-free — **never edit `CHANGELOG.md` directly.** Details: `changelog.d/README.md`.
 - CI requires a note on every PR (`npm run changelog:check`); a PR that genuinely needs none carries the `skip-changelog` label.
 
@@ -308,6 +308,7 @@ Capabilities live in `src/capabilities/*Capabilities.ts` and are surfaced to the
 - Every fenced code block needs a language label (use ` ```text ` for plain blocks) — markdownlint MD040 fails otherwise.
 - Don't hardcode volatile numbers (passing-test counts, tool counts that change) in docs; they drift and get flagged. Prefer "full suite green".
 - `changelog.d/` takes **multiple** notes per PR and feature-named files are fine; each file carries exactly one `category:`, so a PR spanning `Added` + `Fixed` needs at least two files. Distinct filenames are what keep collation conflict-free — that, not "one file per PR", is the actual rule.
+- **No coding conventions or internal technical detail in the changelog or user docs.** The changelog (`changelog.d/`, `CHANGELOG.md`) and external docs (`README.md`, `docs/`) are written for users. Conventions, architecture, and contributor/test workflow live in this `CLAUDE.md` or internal docs. Changelog entries stay at 1–2 short sentences (≤50 words, enforced by `changelog:check`); when a feature needs a deeper explanation it goes in `docs/`, not the note.
 
 ## Performance (CRITICAL)
 
@@ -345,7 +346,7 @@ Hover, completion, and definition providers are called frequently during editing
 
 ## Testing
 
-**IMPORTANT: All new features must include tests.** When implementing new functionality, add corresponding unit tests (and integration tests if the feature involves API calls).
+**IMPORTANT: Write the test first.** Tests are the definition and contract of behavior — every feature and fix starts with a failing test that asserts the intended behavior, then the implementation that makes it pass. No functionality changes without a test that defines it: a colocated `*.test.ts` unit test, plus an integration test when live API or assistant behavior is involved. CodeRabbit treats a functionality change with no test as a blocking issue.
 
 ### Running Tests
 
@@ -553,7 +554,7 @@ All fixture methods accept partial overrides for customization.
 
 ## Test-Driven Development Requirements
 
-**MANDATORY:** All new features must include tests. When implementing new functionality:
+**MANDATORY — tests come first.** Tests are the contract: they define what the software does. Write the failing test before the implementation, watch it fail (red), write the minimum code to pass it (green), then refactor. No functionality lands without a test that defined it first. When implementing new functionality:
 
 ### 1. Plan for Testability
 
@@ -569,7 +570,9 @@ Before writing code, consider:
 - **Separation of Concerns**: Separate business logic from VS Code UI interactions
 - **Event-Driven**: Use event emitters for reactive updates (easier to test than direct calls)
 
-### 2. Write Tests Alongside Implementation
+### 2. Write the Test First (Red → Green → Refactor)
+
+Author the test before the code it covers. It must fail first — that proves it tests something — then you write the implementation that makes it pass. The examples below are the assertions you write up front: the contract the implementation must satisfy.
 
 **For SDK-dependent features:**
 

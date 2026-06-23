@@ -19,6 +19,16 @@ import { join } from 'node:path';
 
 export const NOTES_DIR = 'changelog.d';
 
+// A changelog entry is for users to skim, not a feature write-up: keep it to
+// 1–2 short sentences. This is the hard ceiling CI enforces — detail belongs in
+// docs/, not here. Bullet markers and em dashes carry no word characters, so
+// they don't count against it.
+export const MAX_NOTE_WORDS = 50;
+
+function countWords(text) {
+	return (String(text ?? '').match(/\S+/g) ?? []).filter(token => /[A-Za-z0-9]/.test(token)).length;
+}
+
 // "Keep a Changelog" categories, in the order they render in a release section.
 export const CATEGORY_ORDER = ['Added', 'Changed', 'Deprecated', 'Removed', 'Fixed', 'Security'];
 
@@ -126,6 +136,14 @@ export function validateNote(note) {
 	}
 	if (!note.body) {
 		errors.push(`${note.name}: empty body`);
+	} else {
+		const words = countWords(note.body);
+		if (words > MAX_NOTE_WORDS) {
+			errors.push(
+				`${note.name}: changelog entry is ${words} words — keep it to 1–2 short sentences ` +
+					`(max ${MAX_NOTE_WORDS} words). Move functionality detail to docs/.`,
+			);
+		}
 	}
 	return errors;
 }

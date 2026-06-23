@@ -115,7 +115,7 @@ try {
 	await mkdir(NOTES_DIR, { recursive: true });
 	await writeFile(filepath, contents);
 	console.log(`\nCreated ${filepath}:\n\n${contents}`);
-	console.log('Edit it to add detail or nested bullets, then commit it with your change.');
+	console.log('Keep it to 1–2 short sentences (50-word cap); put deeper detail in docs/. Then commit it with your change.');
 } finally {
 	close();
 }
