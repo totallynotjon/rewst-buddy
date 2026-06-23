@@ -425,14 +425,20 @@ suite('Unit: workflowTools', () => {
 			});
 		});
 
-		test('update_task coerces a numeric-string join/timeout and rejects a non-number', () => {
+		test('update_task coerces a numeric-string join/timeout and rejects a non-integer', () => {
 			const ok: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { join: '2', timeout: '300' } }];
 			const { tasks } = applyOperations(sampleTasks() as never, ok, NO_ACTIONS);
 			const start = tasks.find(t => t.name === 'start')!;
 			assert.strictEqual(start.join, 2);
 			assert.strictEqual(start.timeout, 300);
 			const bad: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { join: 'soon' } }];
-			assert.throws(() => applyOperations(sampleTasks() as never, bad, NO_ACTIONS), /join must be a number/);
+			assert.throws(() => applyOperations(sampleTasks() as never, bad, NO_ACTIONS), /join must be an integer/);
+			// join/timeout are GraphQL Int; a float is rejected, not silently sent.
+			const float: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { timeout: 1.5 } }];
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, float, NO_ACTIONS),
+				/timeout must be an integer/,
+			);
 		});
 
 		test('add_task coerces a numeric-string join and a JSON-string with', () => {

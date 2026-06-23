@@ -347,9 +347,13 @@ suite('Integration: workflowTools', function () {
 				'keep me',
 				'custom metadata preserved',
 			);
-			assert.ok(
-				((edited.packOverrides as { packId?: string }[]) ?? []).some(o => o.packId === corePackId),
-				'the per-task integration override survived the edit',
+			const coreOverride = (
+				(edited.packOverrides as { packId?: string; configSelectionMode?: string }[]) ?? []
+			).find(o => o.packId === corePackId);
+			assert.deepStrictEqual(
+				coreOverride,
+				{ packId: corePackId, configSelectionMode: 'USE_DEFAULT' },
+				'the per-task integration override survived the edit with its full shape intact',
 			);
 		} finally {
 			await deps.execute('mutation ($id: ID!) { deleteWorkflow(id: $id) }', { id: wfId });

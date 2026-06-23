@@ -833,15 +833,18 @@ function coerceTaskInput(value: unknown): Record<string, unknown> {
 }
 
 /**
- * Numeric task settings (`join`, `timeout`) are typed Int on the wire. A blind
- * cast of a string-number would be sent verbatim and rejected by the mutation;
- * coerce a numeric string to a number and reject anything non-numeric with a
- * clear error. `label` names the field in the error message.
+ * Numeric task settings (`join`, `timeout`) are typed Int on the wire, so a
+ * float fails at the mutation boundary just as a blind-cast string would. Coerce
+ * a numeric string to a number and accept only integers, rejecting anything else
+ * with a clear error. `label` names the field in the error message.
  */
 function coerceTaskNumber(value: unknown, label: string): number {
-	if (typeof value === 'number' && Number.isFinite(value)) return value;
-	if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
-	throw new Error(`${label} must be a number.`);
+	if (typeof value === 'number' && Number.isInteger(value)) return value;
+	if (typeof value === 'string' && value.trim() !== '') {
+		const parsed = Number(value);
+		if (Number.isInteger(parsed)) return parsed;
+	}
+	throw new Error(`${label} must be an integer.`);
 }
 
 /** Resolves a task reference (id or name) to the task, or throws a clear error. */
