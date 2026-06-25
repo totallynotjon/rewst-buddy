@@ -1,5 +1,11 @@
 import vscode from 'vscode';
-import { buildToolInstructions, parseToolRequests, type ToolRequest, type ToolSpec } from '../tools/toolProtocol';
+import {
+	buildToolInstructions,
+	parseToolRequests,
+	type ToolRequest,
+	type ToolResult,
+	type ToolSpec,
+} from '../tools/toolProtocol';
 
 /**
  * Translates between VS Code's language-model tool-calling contract and
@@ -9,16 +15,19 @@ import { buildToolInstructions, parseToolRequests, type ToolRequest, type ToolSp
  * VS Code executes and answers with tool-result parts.
  */
 
+/** Converts VS Code's chat tools into the text protocol's tool specs. */
+export function chatToolSpecs(tools: readonly vscode.LanguageModelChatTool[]): ToolSpec[] {
+	return tools.map(tool => ({
+		name: tool.name,
+		description: tool.description,
+		args: tool.inputSchema ? JSON.stringify(tool.inputSchema) : '{}',
+		inputSchema: tool.inputSchema,
+	}));
+}
+
 /** Instruction text advertising the given chat tools via the text protocol. */
 export function buildInstructionsForChatTools(tools: readonly vscode.LanguageModelChatTool[]): string {
-	const specs: ToolSpec[] = tools.map(tool => {
-		return {
-			name: tool.name,
-			description: tool.description,
-			args: tool.inputSchema ? JSON.stringify(tool.inputSchema) : '{}',
-		};
-	});
-	return buildToolInstructions(specs);
+	return buildToolInstructions(chatToolSpecs(tools));
 }
 
 export interface TranslatedToolCalls {
@@ -44,10 +53,62 @@ export function translateToolRequests(content: string, permittedNames: ReadonlyS
 			rejectedNames.push(request.tool);
 			continue;
 		}
-		const callId = `rewst-${request.tool}-${++callCounter}-${Date.now().toString(36)}`;
-		calls.push(new vscode.LanguageModelToolCallPart(callId, request.tool, request.args));
+		calls.push(toToolCallPart(request));
 	}
 	return { calls, rejectedNames };
+}
+
+function toToolCallPart(request: ToolRequest): vscode.LanguageModelToolCallPart {
+	const callId = `rewst-${request.tool}-${++callCounter}-${Date.now().toString(36)}`;
+	return new vscode.LanguageModelToolCallPart(callId, request.tool, request.args);
+}
+
+export interface PartitionedToolRequests {
+	/** Built-in/external tool calls VS Code's chat orchestrator runs and replays. */
+	vscodeCalls: vscode.LanguageModelToolCallPart[];
+	/** Rewst (buddy) tool requests the extension runs in-process via the MCP surface. */
+	buddyRequests: ToolRequest[];
+	/** Names the model requested that belong to neither set. */
+	rejectedNames: string[];
+}
+
+/**
+ * Splits a reply's tool requests by who runs them. Buddy (MCP) tools are handled
+ * in-process so they never depend on VS Code's capped options.tools list, so a
+ * name in the buddy set is routed there even when VS Code also passed it as a
+ * built-in tool this turn; everything else is a VS Code call or a rejection.
+ */
+export function partitionToolRequests(
+	content: string,
+	vscodeNames: ReadonlySet<string>,
+	buddyNames: ReadonlySet<string>,
+): PartitionedToolRequests {
+	const vscodeCalls: vscode.LanguageModelToolCallPart[] = [];
+	const buddyRequests: ToolRequest[] = [];
+	const rejectedNames: string[] = [];
+	for (const request of parseToolRequests(content)) {
+		if (buddyNames.has(request.tool)) buddyRequests.push(request);
+		else if (vscodeNames.has(request.tool)) vscodeCalls.push(toToolCallPart(request));
+		else rejectedNames.push(request.tool);
+	}
+	return { vscodeCalls, buddyRequests, rejectedNames };
+}
+
+/**
+ * Compact message feeding in-process (buddy/MCP) tool outputs back into the same
+ * backend conversation that emitted the requests. Mirrors
+ * {@link formatToolResultsMessage}; a failed result is labeled so the model
+ * reads it as an error to recover from, not as tool data.
+ */
+export function formatInProcessToolResults(results: readonly ToolResult[]): string {
+	const sections: string[] = ['Tool results:'];
+	for (const result of results) {
+		const argsLabel = result.argsLabel ? ` ${result.argsLabel}` : '';
+		const status = result.ok ? '' : ' (error)';
+		sections.push(`### ${result.tool}${argsLabel}${status}\n\`\`\`\n${result.output}\n\`\`\``);
+	}
+	sections.push('Reply with more vscode-tool blocks if you need anything else, or give your final answer.');
+	return sections.join('\n\n');
 }
 
 interface ToolCallInfo {

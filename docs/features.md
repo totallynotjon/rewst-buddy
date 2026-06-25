@@ -112,6 +112,8 @@ The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement i
 
 When the server is registered with VS Code's own MCP client (the `Add MCP Server to VS Code` command), flipping any of these exposure switches re-advertises the server with a new version, so VS Code reconnects and refreshes the tool set in chat — no window reload needed.
 
+**Cage-Free Rewsty uses these Rewst tools directly.** When the MCP server is on, Cage-Free Rewsty advertises the same exposed Rewst tools in its `vscode-tool` protocol and runs them in-process. That keeps them available even when VS Code's limit of 128 tools per chat request would otherwise drop them — the cap is easy to hit once many built-in or other MCP tools are enabled, and dropped Rewst tools are why the assistant used to mis-call them. They honor the same read/write switches, write-org allowlist, and approval as any other MCP call. With the MCP server off, no Rewst tools are advertised in chat.
+
 Oversized MCP results are cached in memory and returned with a preview plus a short id; page or search the cached result with the MCP-only `result_read` tool. The retired chat-only `buddy_result_read` cache is no longer part of the chat tool protocol.
 
 The local MCP endpoint is guarded by a persistent localhost token. If it is ever exposed, run `Rewst Buddy: Rotate MCP Token` to replace it after a modal confirmation — existing MCP clients holding the old token lose access until you re-copy the config with `Copy MCP Config to Clipboard`.

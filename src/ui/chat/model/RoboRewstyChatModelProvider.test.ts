@@ -61,6 +61,8 @@ function makeHarness(turns: ConversationEvent[][], overrides: Partial<ProviderDe
 		sessionForOrg: () => session,
 		workspaceRoot: () => undefined,
 		aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: true }),
+		buddyToolSpecs: () => [],
+		runBuddyTool: async () => ({ text: '', isError: false }),
 		...overrides,
 	};
 
@@ -114,6 +116,14 @@ const READ_FILE_TOOL: vscode.LanguageModelChatTool = {
 	name: 'read_file',
 	description: 'read a file',
 	inputSchema: { type: 'object' },
+};
+
+// A Rewst (buddy) tool the MCP server exposes; advertised and run in-process,
+// never through options.tools.
+const BUDDY_GET_SPEC = {
+	name: 'buddy_workflow_get',
+	description: 'Fetch a workflow',
+	args: '{"type":"object"}',
 };
 
 suite('Unit: RoboRewstyChatModelProvider', () => {
@@ -227,6 +237,138 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.strictEqual(calls[0].name, 'read_file');
 		assert.deepStrictEqual(calls[0].input, { path: 'a.txt' });
 		assert.ok(!textOf(harness.parts).includes('vscode-tool'), 'fence never renders');
+	});
+
+	test('advertises buddy MCP tools when the MCP server is connected', async () => {
+		const harness = makeHarness([completeTurn('hi')], { buddyToolSpecs: () => [BUDDY_GET_SPEC] });
+		await harness.run([message(User, [text('what workflows exist?')])]);
+
+		// Sourced from the MCP surface, not options.tools — so it survives VS Code's
+		// 128-tool cap even with no tools passed this turn.
+		assert.ok(harness.captured[0].message.includes('buddy_workflow_get'), 'buddy tool advertised');
+		assert.ok(harness.captured[0].message.includes('Fetch a workflow'), 'buddy description advertised');
+	});
+
+	test('advertises no buddy tools when the MCP server is disconnected', async () => {
+		const harness = makeHarness([completeTurn('hi')]); // default: buddyToolSpecs → []
+		await harness.run([message(User, [text('hi')])]);
+		assert.ok(!/\bbuddy_/.test(harness.captured[0].message), 'nothing buddy-related is advertised');
+	});
+
+	test('runs a buddy tool in-process and feeds results back without emitting a tool call', async () => {
+		const reply =
+			'Looking it up.\n```vscode-tool\n{"tool": "buddy_workflow_get", "args": {"workflowId": "w1"}}\n```';
+		const buddyCalls: { name: string; args: unknown; orgId: string }[] = [];
+		const harness = makeHarness([completeTurn(reply, 'conv-1'), completeTurn('It is named Deploy.', 'conv-1')], {
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async (name, args, orgId) => {
+				buddyCalls.push({ name, args, orgId });
+				return { text: 'name: Deploy', isError: false };
+			},
+		});
+
+		await harness.run([message(User, [text('what is workflow w1 called?')])]);
+
+		assert.deepStrictEqual(buddyCalls, [
+			{ name: 'buddy_workflow_get', args: { workflowId: 'w1' }, orgId: 'org-1' },
+		]);
+		assert.strictEqual(callsOf(harness.parts).length, 0, 'buddy tools never surface as VS Code tool calls');
+		assert.ok(visibleText(harness.parts).includes('It is named Deploy.'), 'the final answer streams');
+
+		// Two backend turns within one chat response: the tool round, then the answer.
+		assert.strictEqual(harness.captured.length, 2);
+		assert.strictEqual(
+			harness.captured[1].conversationId,
+			'conv-1',
+			'results feed back into the warm conversation',
+		);
+		assert.ok(harness.captured[1].message.includes('Tool results:'), 'results sent compactly');
+		assert.ok(harness.captured[1].message.includes('name: Deploy'), 'tool output fed back to the backend');
+		assert.ok(harness.captured[1].message.includes('buddy_workflow_get'));
+	});
+
+	test('a built-in tool still round-trips through VS Code when buddy tools are advertised', async () => {
+		const reply = 'Checking.\n```vscode-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+		let buddyRan = false;
+		const harness = makeHarness([completeTurn(reply)], {
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async () => {
+				buddyRan = true;
+				return { text: '', isError: false };
+			},
+		});
+
+		await harness.run([message(User, [text('read a.txt')])], [READ_FILE_TOOL]);
+
+		const calls = callsOf(harness.parts);
+		assert.strictEqual(calls.length, 1, 'the built-in call is emitted for VS Code to run');
+		assert.strictEqual(calls[0].name, 'read_file');
+		assert.strictEqual(buddyRan, false, 'a built-in request never runs through the buddy path');
+		assert.ok(harness.captured[0].message.includes('read_file'), 'both surfaces advertised together');
+		assert.ok(harness.captured[0].message.includes('buddy_workflow_get'));
+	});
+
+	test('a reply with both a buddy and a built-in tool runs buddy in-process and defers the built-in', async () => {
+		// One-step steering keeps these apart in practice, but if the backend mixes
+		// them the buddy round wins: the built-in call is deferred (not emitted), and
+		// the backend can re-request it after seeing the buddy results.
+		const reply =
+			'Both.\n```vscode-tool\n{"tool": "buddy_workflow_get", "args": {"workflowId": "w1"}}\n```\n' +
+			'```vscode-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+		let buddyRan = 0;
+		const harness = makeHarness(
+			[completeTurn(reply, 'conv-1'), completeTurn('Deploy, and a.txt next.', 'conv-1')],
+			{
+				buddyToolSpecs: () => [BUDDY_GET_SPEC],
+				runBuddyTool: async () => {
+					buddyRan += 1;
+					return { text: 'name: Deploy', isError: false };
+				},
+			},
+		);
+
+		await harness.run([message(User, [text('look at workflow w1 and a.txt')])], [READ_FILE_TOOL]);
+
+		assert.strictEqual(buddyRan, 1, 'the buddy tool ran in-process');
+		assert.strictEqual(callsOf(harness.parts).length, 0, 'the built-in call is deferred, not emitted this round');
+		assert.strictEqual(harness.captured.length, 2, 'buddy results feed back into a second backend turn');
+		assert.ok(harness.captured[1].message.includes('Tool results:'), 'the second turn carries the buddy results');
+	});
+
+	test('a buddy tool that has run blocks a stateless downgrade so a write never re-applies', async () => {
+		const buddyReply = '```vscode-tool\n{"tool": "buddy_workflow_run", "args": {"workflowId": "w1"}}\n```';
+		const buddyCalls: unknown[] = [];
+		const harness = makeHarness(
+			[
+				completeTurn('Hello', 'conv-1'),
+				completeTurn(buddyReply, 'conv-1'),
+				[{ kind: 'error', message: 'conversation not found' }],
+				// Only reached if a downgrade wrongly restarts the turn — proves replay.
+				completeTurn(buddyReply, 'conv-1'),
+				completeTurn('Done.', 'conv-1'),
+			],
+			{
+				aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: false }),
+				buddyToolSpecs: () => [{ name: 'buddy_workflow_run', description: 'Run a workflow', args: '{}' }],
+				runBuddyTool: async (name, args, orgId) => {
+					buddyCalls.push({ name, args, orgId });
+					return { text: 'ok', isError: false };
+				},
+			},
+		);
+
+		await harness.run([message(User, [text('hi')])]);
+		// Warm reuse turn: runs the buddy tool, then the backend loses the conversation.
+		await assert.rejects(
+			() =>
+				harness.run([
+					message(User, [text('hi')]),
+					message(Assistant, [text('Hello')]),
+					message(User, [text('run workflow w1')]),
+				]),
+			/conversation not found/,
+		);
+		assert.strictEqual(buddyCalls.length, 1, 'the buddy tool ran once and was not replayed by a downgrade');
 	});
 
 	test('a tool request with no tools available surfaces the rejection note', async () => {
