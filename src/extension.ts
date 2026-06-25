@@ -25,9 +25,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	log.init();
 
 	log.info(`Starting activation of extension ${extPrefix}`);
-	setMcpMutationApprover(async (scope, operation) => {
+	setMcpMutationApprover(async (scope, operation, origin) => {
+		const requester = origin === 'chat' ? 'Cage-Free Rewsty' : 'An external MCP client';
 		const choice = await vscode.window.showWarningMessage(
-			`An external MCP client wants to run a mutation against ${scope.scopeName} (${scope.scopeId}) in org ${scope.orgName} (${scope.orgId}).`,
+			`${requester} wants to run a mutation against ${scope.scopeName} (${scope.scopeId}) in org ${scope.orgName} (${scope.orgId}).`,
 			{ modal: true, detail: operation },
 			'Approve',
 		);

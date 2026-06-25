@@ -1,4 +1,5 @@
 export type { Capability, CapabilityAccess, CapabilityContext } from './Capability';
+export { currentApprovalOrigin, runWithApprovalOrigin, type ApprovalOrigin } from './approvalOrigin';
 export {
 	CAPABILITY_REGISTRY,
 	chatCapabilities,

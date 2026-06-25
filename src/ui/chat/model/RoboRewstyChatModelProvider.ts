@@ -10,8 +10,15 @@ import { extPrefix } from '@global';
 import { log } from '@utils';
 import vscode from 'vscode';
 import { ChunkGate } from '../tools/chunkGate';
-import { stripToolRequestBlocks } from '../tools/toolProtocol';
+import {
+	buildToolInstructions,
+	stripToolRequestBlocks,
+	type ToolRequest,
+	type ToolResult,
+	type ToolSpec,
+} from '../tools/toolProtocol';
 import { prependInstructions } from '../promptContext';
+import { buddyChatToolSpecs, runBuddyChatTool, type BuddyToolResult } from './buddyChatTools';
 import { buildEngineeringDirective, buildNativeToolReminder } from './engineeringDirective';
 import { conversationMap, nextTurnKey, prefixKey, spineDepth } from './conversationMap';
 import { formatBreadcrumb, parseLatestBreadcrumb } from './breadcrumb';
@@ -20,16 +27,20 @@ import { setContextUsage } from './contextUsage';
 import { serializeVisibleChat } from './statelessTranscript';
 import { renderSourcesMarkdown } from './sources';
 import {
-	buildInstructionsForChatTools,
+	chatToolSpecs,
 	collectToolCalls,
 	extractTrailingToolResults,
+	formatInProcessToolResults,
 	formatToolResultsMessage,
+	partitionToolRequests,
 	rejectedToolsNote,
-	translateToolRequests,
 } from './toolTranslation';
 
 const VENDOR = 'rewst-buddy';
 const FAMILY = 'roborewsty';
+// Backstop on in-process buddy tool rounds within one chat response, so a backend
+// that keeps requesting tools without ever answering can't loop indefinitely.
+export const MAX_BUDDY_TOOL_ROUNDS = 8;
 // The backend manages its own context window; these are picker-display
 // estimates, not enforced limits.
 const MAX_INPUT_TOKENS = 128_000;
@@ -42,6 +53,32 @@ export interface ProviderDeps {
 	sessionForOrg(orgId: string): Session;
 	workspaceRoot(): string | undefined;
 	aiConfig(): { customInstructions: string; conversationType: string; showActivity: boolean };
+	/** Rewst (buddy) tools to advertise this turn; empty unless the MCP server is on. */
+	buddyToolSpecs(): ToolSpec[];
+	/** Runs one buddy tool in-process through the MCP capability surface. */
+	runBuddyTool(name: string, args: Record<string, unknown>, orgId: string): Promise<BuddyToolResult>;
+}
+
+/** Caps a buddy tool's args line in the activity card so a big arg blob can't flood the chat. */
+export function truncateArgsLabel(argsLabel: string, maxLength = 140): string {
+	return argsLabel.length > maxLength ? `${argsLabel.slice(0, maxLength - 1)}…` : argsLabel;
+}
+
+/**
+ * Appends a re-request hint to the in-process results message when a buddy round
+ * shared a reply with native (VS Code) or unavailable tool requests. Those aren't
+ * run on the buddy path, so the backend is told to re-issue them rather than
+ * having them silently dropped.
+ */
+function withDeferredToolsNote(
+	message: string,
+	vscodeCalls: readonly vscode.LanguageModelToolCallPart[],
+	rejectedNames: readonly string[],
+): string {
+	const names = [...new Set([...vscodeCalls.map(call => call.name), ...rejectedNames])];
+	if (names.length === 0) return message;
+	const list = names.map(name => `\`${name}\``).join(', ');
+	return `${message}\n\nOther tool requests in that reply were not run here (${list}). Re-request any you still need in a separate reply.`;
 }
 
 /**
@@ -49,12 +86,18 @@ export interface ProviderDeps {
  * (no invocation round-trip). A tool status renders as a compact card-like
  * blockquote — tool name, then its args on a second line — to read as close to
  * VS Code's native tool pills as plain markdown allows; other activity (a doc
- * search) stays a plain italic line (#22).
+ * search) stays a plain italic line (#22). In-process buddy tools (run by the
+ * extension through the user's session) are labeled "Buddy tool" so they read
+ * apart from the backend's own server-side "Rewst tool" calls (#88).
  */
-function formatActivityLine(status: { label: string; tool?: { name: string; args?: string } }): string {
+function formatActivityLine(status: {
+	label: string;
+	tool?: { name: string; args?: string; local?: boolean };
+}): string {
 	if (status.tool) {
 		const args = status.tool.args ? `\n> \`${status.tool.args}\`` : '';
-		return `\n\n> 🔧 **Rewst tool** · \`${status.tool.name}\`${args}\n`;
+		const kind = status.tool.local ? 'Buddy tool' : 'Rewst tool';
+		return `\n\n> 🔧 **${kind}** · \`${status.tool.name}\`${args}\n`;
 	}
 	return `\n\n> _${status.label}_\n`;
 }
@@ -72,6 +115,8 @@ export const defaultProviderDeps: ProviderDeps = {
 			showActivity: config.get<boolean>('showActivity', true),
 		};
 	},
+	buddyToolSpecs: buddyChatToolSpecs,
+	runBuddyTool: runBuddyChatTool,
 };
 
 /**
@@ -127,14 +172,14 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		return value;
 	}
 
-	private cachedToolInstructions(tools: readonly vscode.LanguageModelChatTool[]): string {
-		const key = tools
-			.map(tool => tool.name)
+	private cachedToolInstructions(specs: readonly ToolSpec[]): string {
+		const key = specs
+			.map(spec => spec.name)
 			.sort()
 			.join('|');
 		let value = this.toolInstructionsCache.get(key);
 		if (value === undefined) {
-			value = buildInstructionsForChatTools(tools);
+			value = buildToolInstructions([...specs]);
 			this.toolInstructionsCache.set(key, value);
 		}
 		return value;
@@ -189,7 +234,15 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		const orgId = model.id;
 		const session = this.deps.sessionForOrg(orgId);
 		const tools = options.tools ?? [];
-		const permittedNames = new Set(tools.map(tool => tool.name));
+		const vscodeNames = new Set(tools.map(tool => tool.name));
+		// Buddy (MCP) tools the chat advertises and runs in-process, so they survive
+		// VS Code's 128-tool cap on options.tools. A name VS Code already passed this
+		// turn stays on the native path (keeping its built-in approval card) and is
+		// dropped here to avoid a duplicate advertisement.
+		const buddySpecs = this.deps.buddyToolSpecs().filter(spec => !vscodeNames.has(spec.name));
+		const buddyNames = new Set(buddySpecs.map(spec => spec.name));
+		const permittedNames = new Set<string>([...vscodeNames, ...buddyNames]);
+		const advertisedSpecs = [...chatToolSpecs(tools), ...buddySpecs];
 		const { customInstructions, conversationType, showActivity } = this.deps.aiConfig();
 
 		const trailingResults = extractTrailingToolResults(messages);
@@ -226,7 +279,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		// blockquote lines so a multi-step turn is legible. Housekeeping statuses
 		// (thinking, summarizing) are filtered out by the caller (event.activity).
 		const emitStatus = (
-			status: { label: string; tool?: { name: string; args?: string } },
+			status: { label: string; tool?: { name: string; args?: string; local?: boolean } },
 			gate: ChunkGate,
 		): void => {
 			if (!showActivity || status.label === lastStatusLabel) return;
@@ -268,16 +321,21 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		for (;;) {
 			const reusing = conversationId !== undefined;
 			const reusedId = conversationId;
-			const message = await this.buildTurnMessage(
+			let message = await this.buildTurnMessage(
 				!reusing,
 				messages,
 				trailingResults,
 				toolCalls,
 				customInstructions,
 				permittedNames,
-				tools,
+				advertisedSpecs,
 			);
 			let downgrade = false;
+			// In-process buddy tool rounds taken within this chat response.
+			let buddyRounds = 0;
+			// Once a buddy tool has actually run, its side effects (and the consumed
+			// backend round) make a stateless restart unsafe — a write would re-apply.
+			let ranBuddyTool = false;
 
 			// Each iteration is one backend turn. A reused conversation that the
 			// backend cannot follow downgrades to a stateless retry.
@@ -338,8 +396,9 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 						case 'error':
 							// A reused conversation the backend can't follow: revert
 							// to a fresh stateless turn once, provided nothing has
-							// streamed yet (avoids double output).
-							if (reusing && emittedText === '') {
+							// streamed yet (avoids double output) and no buddy tool has
+							// run (a stateless restart would re-execute its side effects).
+							if (reusing && emittedText === '' && !ranBuddyTool) {
 								log.debug(
 									'RoboRewstyChatModelProvider: reuse turn errored before output, downgrading to stateless',
 									reusedId,
@@ -359,15 +418,74 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				const remainder =
 					gate.streamedAny || gate.blocked ? gate.flush() : stripToolRequestBlocks(completeContent);
 
-				// Always translate, even with no tools passed: a request for an
+				// Always partition, even with no tools passed: a request for an
 				// unavailable tool must surface as the rejection note instead of
 				// being silently stripped by the chunk gate.
-				const { calls, rejectedNames } = translateToolRequests(completeContent, permittedNames);
+				const { vscodeCalls, buddyRequests, rejectedNames } = partitionToolRequests(
+					completeContent,
+					vscodeNames,
+					buddyNames,
+				);
 
-				if (calls.length > 0) {
+				// Buddy (MCP) tools run in-process and feed their results back into the
+				// same warm conversation, so they never depend on VS Code's capped
+				// options.tools list. Native/unavailable requests in the same reply are
+				// not run here; the results message tells the backend to re-issue them.
+				if (buddyRequests.length > 0) {
 					emitText(remainder);
-					for (const call of calls) progress.report(call);
-					storeContinuity(calls);
+					// Cap BEFORE running: a capped round must not execute, or a write
+					// would take effect with no result fed back and no final answer.
+					if (buddyRounds >= MAX_BUDDY_TOOL_ROUNDS) {
+						needsSeparator = true;
+						emitText(
+							'*Stopped after several Rewst tool calls without a final answer. Ask again to continue.*\n',
+						);
+						storeContinuity([]);
+						emitBreadcrumb();
+						return;
+					}
+					buddyRounds += 1;
+					const results: ToolResult[] = [];
+					for (const request of buddyRequests) {
+						// Stop launching further tools (a later one may be a write) once
+						// the user cancels mid-sequence.
+						if (token.isCancellationRequested) return;
+						const argsJson = JSON.stringify(request.args);
+						const argsLabel = argsJson === '{}' ? '' : argsJson;
+						emitStatus(
+							{
+								// Args are part of the dedupe label so repeated calls to one
+								// tool with different args still render as distinct cards.
+								label: `Running Buddy tool: ${request.tool} ${argsJson}`,
+								// local: true → renders as "Buddy tool", apart from the
+								// backend's server-side "Rewst tool" calls. The card already
+								// shows the name on its own line, so args is the args alone.
+								tool: {
+									name: request.tool,
+									args: argsLabel ? truncateArgsLabel(argsLabel) : undefined,
+									local: true,
+								},
+							},
+							gate,
+						);
+						const result = await this.deps.runBuddyTool(request.tool, request.args, orgId);
+						ranBuddyTool = true;
+						results.push({
+							tool: request.tool,
+							argsLabel,
+							ok: !result.isError,
+							output: result.text,
+						});
+					}
+					message = withDeferredToolsNote(formatInProcessToolResults(results), vscodeCalls, rejectedNames);
+					needsSeparator = true;
+					continue turns;
+				}
+
+				if (vscodeCalls.length > 0) {
+					emitText(remainder);
+					for (const call of vscodeCalls) progress.report(call);
+					storeContinuity(vscodeCalls);
 					return;
 				}
 
@@ -438,11 +556,11 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		toolCalls: ReturnType<typeof collectToolCalls> | undefined,
 		customInstructions: string,
 		permittedNames: ReadonlySet<string>,
-		tools: readonly vscode.LanguageModelChatTool[],
+		specs: readonly ToolSpec[],
 	): Promise<string> {
-		if (stateless) return this.buildStatelessMessage(messages, customInstructions, permittedNames, tools);
+		if (stateless) return this.buildStatelessMessage(messages, customInstructions, permittedNames, specs);
 		if (trailingResults) return formatToolResultsMessage(trailingResults, toolCalls ?? new Map());
-		return this.buildReuseMessage(messages, customInstructions, permittedNames, tools);
+		return this.buildReuseMessage(messages, customInstructions, permittedNames, specs);
 	}
 
 	/**
@@ -455,12 +573,12 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		messages: readonly vscode.LanguageModelChatRequestMessage[],
 		customInstructions: string,
 		permittedNames: ReadonlySet<string>,
-		tools: readonly vscode.LanguageModelChatTool[],
+		specs: readonly ToolSpec[],
 	): Promise<string> {
 		let message = prependInstructions(this.trailingText(messages), customInstructions);
 		const root = this.deps.workspaceRoot();
 		if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
-		if (tools.length > 0) message += `\n\n${this.cachedToolInstructions(tools)}`;
+		if (specs.length > 0) message += `\n\n${this.cachedToolInstructions(specs)}`;
 		message += `\n\n${this.cachedNativeToolReminder(permittedNames)}`;
 		return message;
 	}
@@ -480,12 +598,12 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		messages: readonly vscode.LanguageModelChatRequestMessage[],
 		customInstructions: string,
 		permittedNames: ReadonlySet<string>,
-		tools: readonly vscode.LanguageModelChatTool[],
+		specs: readonly ToolSpec[],
 	): Promise<string> {
 		let message = prependInstructions(serializeVisibleChat(messages), customInstructions);
 		const root = this.deps.workspaceRoot();
 		if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
-		if (tools.length > 0) message += `\n\n${this.cachedToolInstructions(tools)}`;
+		if (specs.length > 0) message += `\n\n${this.cachedToolInstructions(specs)}`;
 		message = [this.cachedEngineeringDirective(permittedNames), message].filter(Boolean).join('\n\n');
 		// Highest-recency line: the directive sits far above the latest user turn
 		// (buried in the transcript), so repeat the native-tool curb last.

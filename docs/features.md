@@ -112,6 +112,16 @@ The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement i
 
 When the server is registered with VS Code's own MCP client (the `Add MCP Server to VS Code` command), flipping any of these exposure switches re-advertises the server with a new version, so VS Code reconnects and refreshes the tool set in chat — no window reload needed.
 
+**Cage-Free Rewsty uses these Rewst tools directly.** When the MCP server is on, Cage-Free Rewsty advertises the same exposed Rewst tools in its `vscode-tool` protocol and runs them in-process. That keeps them available even when VS Code's limit of 128 tools per chat request would otherwise drop them — the cap is easy to hit once many built-in or other MCP tools are enabled, and dropped Rewst tools are why the assistant used to mis-call them. They honor the same read/write switches, write-org allowlist, and approval as any other MCP call. With the MCP server off, no Rewst tools are advertised in chat.
+
+**Enabling vs. registering — when you need each.** The master switch (`rewst-buddy.mcp.enable`) and registering the server with VS Code (`Add MCP Server to VS Code`) are independent:
+
+- **Cage-Free Rewsty only needs the switch.** It sources and runs the tools in-process, so `rewst-buddy.mcp.enable` alone is enough — you do not have to register the server with VS Code to use Rewst tools in Cage-Free Rewsty chat.
+- **Register the server to reach other consumers.** Add it to VS Code's MCP client to use Rewst tools with **other** chat models (Copilot or any model in agent mode), or copy its config (`Copy MCP Config to Clipboard`) for **external** MCP clients. Those paths flow through VS Code's tool surface and are subject to the 128-tool cap.
+- **Doing both is fine.** If VS Code also passes a Rewst tool to Cage-Free Rewsty (under the cap), the chat keeps it on VS Code's native path that turn and never double-advertises it.
+
+The per-call write approval modal names the requester — **Cage-Free Rewsty** for an in-process chat call, or **an external MCP client** for the HTTP/MCP surface — so you can see who is asking before you approve.
+
 Oversized MCP results are cached in memory and returned with a preview plus a short id; page or search the cached result with the MCP-only `result_read` tool. The retired chat-only `buddy_result_read` cache is no longer part of the chat tool protocol.
 
 The local MCP endpoint is guarded by a persistent localhost token. If it is ever exposed, run `Rewst Buddy: Rotate MCP Token` to replace it after a modal confirmation — existing MCP clients holding the old token lose access until you re-copy the config with `Copy MCP Config to Clipboard`.
