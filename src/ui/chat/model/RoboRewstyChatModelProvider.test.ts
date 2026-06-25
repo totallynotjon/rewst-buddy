@@ -6,7 +6,12 @@ import { onDidChangeContextUsage, type ContextUsage } from './contextUsage';
 import vscode from 'vscode';
 import { conversationMap } from './conversationMap';
 import { parseLatestBreadcrumb } from './breadcrumb';
-import { RoboRewstyChatModelProvider, type ProviderDeps } from './RoboRewstyChatModelProvider';
+import {
+	MAX_BUDDY_TOOL_ROUNDS,
+	RoboRewstyChatModelProvider,
+	truncateArgsLabel,
+	type ProviderDeps,
+} from './RoboRewstyChatModelProvider';
 
 const { suite, test, setup } = Mocha;
 
@@ -297,6 +302,54 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(!out.includes('buddy_workflow_get {'), 'the args line does not repeat the tool name');
 	});
 
+	suite('truncateArgsLabel()', () => {
+		test('returns args at or below the limit unchanged', () => {
+			assert.strictEqual(truncateArgsLabel('{"a":1}'), '{"a":1}');
+			const atLimit = 'x'.repeat(10);
+			assert.strictEqual(truncateArgsLabel(atLimit, 10), atLimit);
+		});
+
+		test('truncates over-long args to the limit with an ellipsis', () => {
+			const out = truncateArgsLabel('x'.repeat(20), 10);
+			assert.strictEqual(out, 'xxxxxxxxx…');
+			assert.strictEqual([...out].length, 10, 'capped to maxLength characters including the ellipsis');
+		});
+	});
+
+	test('renders distinct cards for repeated buddy calls with different args', async () => {
+		const reply =
+			'Two.\n```vscode-tool\n{"tool":"buddy_workflow_get","args":{"workflowId":"a"}}\n```\n' +
+			'```vscode-tool\n{"tool":"buddy_workflow_get","args":{"workflowId":"b"}}\n```';
+		const harness = makeHarness([completeTurn(reply, 'conv-1'), completeTurn('done', 'conv-1')], {
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async () => ({ text: 'ok', isError: false }),
+		});
+
+		await harness.run([message(User, [text('look at a and b')])]);
+
+		const out = textOf(harness.parts);
+		assert.ok(out.includes('`{"workflowId":"a"}`'), 'the first call card shows its args');
+		assert.ok(out.includes('`{"workflowId":"b"}`'), 'the second call is not suppressed by activity dedupe');
+	});
+
+	test('caps in-process buddy rounds and never executes the capped round', async () => {
+		// Every backend turn re-requests the buddy tool, so only the round cap stops it.
+		const buddyReply = '```vscode-tool\n{"tool":"buddy_workflow_get","args":{}}\n```';
+		let calls = 0;
+		const harness = makeHarness([completeTurn(buddyReply, 'conv-1')], {
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async () => {
+				calls += 1;
+				return { text: 'x', isError: false };
+			},
+		});
+
+		await harness.run([message(User, [text('loop')])]);
+
+		assert.strictEqual(calls, MAX_BUDDY_TOOL_ROUNDS, 'runs exactly the cap — the capped round never executes');
+		assert.ok(visibleText(harness.parts).includes('Stopped'), 'shows the stop note instead of running again');
+	});
+
 	test('a built-in tool still round-trips through VS Code when buddy tools are advertised', async () => {
 		const reply = 'Checking.\n```vscode-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
 		let buddyRan = false;
@@ -343,6 +396,12 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.strictEqual(callsOf(harness.parts).length, 0, 'the built-in call is deferred, not emitted this round');
 		assert.strictEqual(harness.captured.length, 2, 'buddy results feed back into a second backend turn');
 		assert.ok(harness.captured[1].message.includes('Tool results:'), 'the second turn carries the buddy results');
+		// The deferred native call is named so the backend can re-issue it — not dropped.
+		assert.ok(harness.captured[1].message.includes('not run here'), 'the deferred native call is flagged');
+		assert.ok(
+			harness.captured[1].message.includes('read_file'),
+			'the deferred native tool is named for re-request',
+		);
 	});
 
 	test('cancelling mid-sequence stops the remaining in-process buddy tools', async () => {

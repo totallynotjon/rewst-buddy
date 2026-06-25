@@ -40,7 +40,7 @@ const VENDOR = 'rewst-buddy';
 const FAMILY = 'roborewsty';
 // Backstop on in-process buddy tool rounds within one chat response, so a backend
 // that keeps requesting tools without ever answering can't loop indefinitely.
-const MAX_BUDDY_TOOL_ROUNDS = 8;
+export const MAX_BUDDY_TOOL_ROUNDS = 8;
 // The backend manages its own context window; these are picker-display
 // estimates, not enforced limits.
 const MAX_INPUT_TOKENS = 128_000;
@@ -60,8 +60,25 @@ export interface ProviderDeps {
 }
 
 /** Caps a buddy tool's args line in the activity card so a big arg blob can't flood the chat. */
-function truncateArgsLabel(argsLabel: string, maxLength = 140): string {
+export function truncateArgsLabel(argsLabel: string, maxLength = 140): string {
 	return argsLabel.length > maxLength ? `${argsLabel.slice(0, maxLength - 1)}…` : argsLabel;
+}
+
+/**
+ * Appends a re-request hint to the in-process results message when a buddy round
+ * shared a reply with native (VS Code) or unavailable tool requests. Those aren't
+ * run on the buddy path, so the backend is told to re-issue them rather than
+ * having them silently dropped.
+ */
+function withDeferredToolsNote(
+	message: string,
+	vscodeCalls: readonly vscode.LanguageModelToolCallPart[],
+	rejectedNames: readonly string[],
+): string {
+	const names = [...new Set([...vscodeCalls.map(call => call.name), ...rejectedNames])];
+	if (names.length === 0) return message;
+	const list = names.map(name => `\`${name}\``).join(', ');
+	return `${message}\n\nOther tool requests in that reply were not run here (${list}). Re-request any you still need in a separate reply.`;
 }
 
 /**
@@ -412,11 +429,22 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 
 				// Buddy (MCP) tools run in-process and feed their results back into the
 				// same warm conversation, so they never depend on VS Code's capped
-				// options.tools list. Built-in calls in the same reply are deferred —
-				// the one-step-per-reply steering keeps them apart in practice, and the
-				// backend re-requests any it still needs after seeing the results.
+				// options.tools list. Native/unavailable requests in the same reply are
+				// not run here; the results message tells the backend to re-issue them.
 				if (buddyRequests.length > 0) {
 					emitText(remainder);
+					// Cap BEFORE running: a capped round must not execute, or a write
+					// would take effect with no result fed back and no final answer.
+					if (buddyRounds >= MAX_BUDDY_TOOL_ROUNDS) {
+						needsSeparator = true;
+						emitText(
+							'*Stopped after several Rewst tool calls without a final answer. Ask again to continue.*\n',
+						);
+						storeContinuity([]);
+						emitBreadcrumb();
+						return;
+					}
+					buddyRounds += 1;
 					const results: ToolResult[] = [];
 					for (const request of buddyRequests) {
 						// Stop launching further tools (a later one may be a write) once
@@ -426,7 +454,9 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 						const argsLabel = argsJson === '{}' ? '' : argsJson;
 						emitStatus(
 							{
-								label: `Running Buddy tool: ${request.tool}…`,
+								// Args are part of the dedupe label so repeated calls to one
+								// tool with different args still render as distinct cards.
+								label: `Running Buddy tool: ${request.tool} ${argsJson}`,
 								// local: true → renders as "Buddy tool", apart from the
 								// backend's server-side "Rewst tool" calls. The card already
 								// shows the name on its own line, so args is the args alone.
@@ -447,17 +477,8 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 							output: result.text,
 						});
 					}
-					message = formatInProcessToolResults(results);
+					message = withDeferredToolsNote(formatInProcessToolResults(results), vscodeCalls, rejectedNames);
 					needsSeparator = true;
-					if (++buddyRounds >= MAX_BUDDY_TOOL_ROUNDS) {
-						// needsSeparator (set just above) supplies the leading break.
-						emitText(
-							'*Stopped after several Rewst tool calls without a final answer. Ask again to continue.*\n',
-						);
-						storeContinuity([]);
-						emitBreadcrumb();
-						return;
-					}
 					continue turns;
 				}
 

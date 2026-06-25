@@ -19,8 +19,13 @@ suite('Unit: approvalOrigin', () => {
 		assert.strictEqual(currentApprovalOrigin(), 'mcp');
 	});
 
-	test('runWithApprovalOrigin sets the in-flight origin and does not leak out', async () => {
-		const seen = await runWithApprovalOrigin('chat', async () => currentApprovalOrigin());
+	test('runWithApprovalOrigin sets the in-flight origin and survives an async hop', async () => {
+		const seen = await runWithApprovalOrigin('chat', async () => {
+			// The origin must persist across awaited boundaries — capability runs and
+			// the approval prompt are async, so read it after a microtask.
+			await Promise.resolve();
+			return currentApprovalOrigin();
+		});
 		assert.strictEqual(seen, 'chat');
 		assert.strictEqual(currentApprovalOrigin(), 'mcp', 'origin does not leak outside the scope');
 	});
