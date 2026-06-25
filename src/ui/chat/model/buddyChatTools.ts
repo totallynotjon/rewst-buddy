@@ -53,7 +53,9 @@ export async function runBuddyChatTool(
 	orgId: string,
 ): Promise<BuddyToolResult> {
 	try {
-		const result = await callTool({ name, arguments: args, orgId });
+		// origin: 'chat' so a write's approval modal names Cage-Free Rewsty rather
+		// than an external MCP client.
+		const result = await callTool({ name, arguments: args, orgId, origin: 'chat' });
 		return { text: result.text, isError: result.isError ?? false };
 	} catch (error) {
 		const message = error instanceof McpError || error instanceof Error ? error.message : String(error);

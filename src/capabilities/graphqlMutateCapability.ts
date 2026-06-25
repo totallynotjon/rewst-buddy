@@ -6,9 +6,10 @@ import {
 	type MutationScope,
 } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import { currentApprovalOrigin, type ApprovalOrigin } from './approvalOrigin';
 import type { Capability, CapabilityContext } from './Capability';
 
-export type McpMutationApprover = (scope: MutationScope, operation: string) => Promise<boolean>;
+export type McpMutationApprover = (scope: MutationScope, operation: string, origin: ApprovalOrigin) => Promise<boolean>;
 
 let approver: McpMutationApprover = async () => false;
 
@@ -21,7 +22,7 @@ export function _resetMcpMutationApproverForTesting(): void {
 }
 
 export function requestMcpMutationApproval(scope: MutationScope, operation: string): Promise<boolean> {
-	return approver(scope, operation);
+	return approver(scope, operation, currentApprovalOrigin());
 }
 
 const graphqlMutateSpec: ToolSpec = {
@@ -98,7 +99,7 @@ async function runGraphqlMutate(input: Record<string, unknown>, ctx: CapabilityC
 	const operation = formatOperationSummary(query, variables);
 
 	if (!isMutationScopeApproved(scope)) {
-		if (!(await approver(scope, operation))) {
+		if (!(await requestMcpMutationApproval(scope, operation))) {
 			return JSON.stringify({
 				status: 'approval_required',
 				message:

@@ -3,6 +3,8 @@ import {
 	MCP_MAX_OUTPUT_CHARS,
 	formatMcpOutput,
 	getCapability,
+	runWithApprovalOrigin,
+	type ApprovalOrigin,
 	type Capability,
 	type CapabilityContext,
 } from '@capabilities';
@@ -31,6 +33,8 @@ export interface CallToolParams {
 	name: string;
 	arguments?: Record<string, unknown>;
 	orgId?: string;
+	/** Who is calling, for the approval modal wording. Defaults to an external MCP client. */
+	origin?: ApprovalOrigin;
 }
 
 /** A single resource's text content. */
@@ -227,7 +231,9 @@ export async function callTool(
 		// approval modal, which may never surface to an external MCP client).
 		assertOrgWriteAllowed(capability, ctx.orgId, settings);
 		try {
-			const text = await capability.run(args, ctx);
+			// Tag the in-flight call with its origin so the deep approval modal can
+			// name the caller (the chat vs an external MCP client).
+			const text = await runWithApprovalOrigin(params.origin ?? 'mcp', () => capability.run(args, ctx));
 			auditOutcome = auditOutcomeForText(text);
 			return { text: formatMcpOutput(params.name, text) };
 		} catch (error) {
