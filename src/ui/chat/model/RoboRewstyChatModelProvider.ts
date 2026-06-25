@@ -12,7 +12,6 @@ import vscode from 'vscode';
 import { ChunkGate } from '../tools/chunkGate';
 import {
 	buildToolInstructions,
-	describeRequestBrief,
 	stripToolRequestBlocks,
 	type ToolRequest,
 	type ToolResult,
@@ -60,17 +59,28 @@ export interface ProviderDeps {
 	runBuddyTool(name: string, args: Record<string, unknown>, orgId: string): Promise<BuddyToolResult>;
 }
 
+/** Caps a buddy tool's args line in the activity card so a big arg blob can't flood the chat. */
+function truncateArgsLabel(argsLabel: string, maxLength = 140): string {
+	return argsLabel.length > maxLength ? `${argsLabel.slice(0, maxLength - 1)}…` : argsLabel;
+}
+
 /**
  * Native Rewst tools run server-side, so they can't be true VS Code tool cards
  * (no invocation round-trip). A tool status renders as a compact card-like
  * blockquote — tool name, then its args on a second line — to read as close to
  * VS Code's native tool pills as plain markdown allows; other activity (a doc
- * search) stays a plain italic line (#22).
+ * search) stays a plain italic line (#22). In-process buddy tools (run by the
+ * extension through the user's session) are labeled "Buddy tool" so they read
+ * apart from the backend's own server-side "Rewst tool" calls (#88).
  */
-function formatActivityLine(status: { label: string; tool?: { name: string; args?: string } }): string {
+function formatActivityLine(status: {
+	label: string;
+	tool?: { name: string; args?: string; local?: boolean };
+}): string {
 	if (status.tool) {
 		const args = status.tool.args ? `\n> \`${status.tool.args}\`` : '';
-		return `\n\n> 🔧 **Rewst tool** · \`${status.tool.name}\`${args}\n`;
+		const kind = status.tool.local ? 'Buddy tool' : 'Rewst tool';
+		return `\n\n> 🔧 **${kind}** · \`${status.tool.name}\`${args}\n`;
 	}
 	return `\n\n> _${status.label}_\n`;
 }
@@ -252,7 +262,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		// blockquote lines so a multi-step turn is legible. Housekeeping statuses
 		// (thinking, summarizing) are filtered out by the caller (event.activity).
 		const emitStatus = (
-			status: { label: string; tool?: { name: string; args?: string } },
+			status: { label: string; tool?: { name: string; args?: string; local?: boolean } },
 			gate: ChunkGate,
 		): void => {
 			if (!showActivity || status.label === lastStatusLabel) return;
@@ -412,19 +422,27 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 						// Stop launching further tools (a later one may be a write) once
 						// the user cancels mid-sequence.
 						if (token.isCancellationRequested) return;
+						const argsJson = JSON.stringify(request.args);
+						const argsLabel = argsJson === '{}' ? '' : argsJson;
 						emitStatus(
 							{
-								label: `Running Rewst tool: ${request.tool}…`,
-								tool: { name: request.tool, args: describeRequestBrief(request) },
+								label: `Running Buddy tool: ${request.tool}…`,
+								// local: true → renders as "Buddy tool", apart from the
+								// backend's server-side "Rewst tool" calls. The card already
+								// shows the name on its own line, so args is the args alone.
+								tool: {
+									name: request.tool,
+									args: argsLabel ? truncateArgsLabel(argsLabel) : undefined,
+									local: true,
+								},
 							},
 							gate,
 						);
 						const result = await this.deps.runBuddyTool(request.tool, request.args, orgId);
 						ranBuddyTool = true;
-						const argsJson = JSON.stringify(request.args);
 						results.push({
 							tool: request.tool,
-							argsLabel: argsJson === '{}' ? '' : argsJson,
+							argsLabel,
 							ok: !result.isError,
 							output: result.text,
 						});

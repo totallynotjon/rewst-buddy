@@ -287,6 +287,14 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(harness.captured[1].message.includes('Tool results:'), 'results sent compactly');
 		assert.ok(harness.captured[1].message.includes('name: Deploy'), 'tool output fed back to the backend');
 		assert.ok(harness.captured[1].message.includes('buddy_workflow_get'));
+
+		// In-process buddy calls render as a "Buddy tool" card (distinct from the
+		// backend's "Rewst tool"), showing the name once, then the args alone.
+		const out = textOf(harness.parts);
+		assert.ok(out.includes('🔧 **Buddy tool** · `buddy_workflow_get`'), 'renders as a distinct Buddy tool card');
+		assert.ok(!out.includes('🔧 **Rewst tool** · `buddy_workflow_get`'), 'not labeled as a backend Rewst tool');
+		assert.ok(out.includes('`{"workflowId":"w1"}`'), 'the args line shows the args alone');
+		assert.ok(!out.includes('buddy_workflow_get {'), 'the args line does not repeat the tool name');
 	});
 
 	test('a built-in tool still round-trips through VS Code when buddy tools are advertised', async () => {
