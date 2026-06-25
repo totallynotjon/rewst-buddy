@@ -42,6 +42,7 @@ interface Harness {
 	parts: vscode.LanguageModelResponsePart[];
 	session: Session;
 	wrapper: ReturnType<typeof createMockSession>['wrapper'];
+	tokenSource: vscode.CancellationTokenSource;
 	run(messages: vscode.LanguageModelChatRequestMessage[], tools?: vscode.LanguageModelChatTool[]): Promise<void>;
 }
 
@@ -69,7 +70,7 @@ function makeHarness(turns: ConversationEvent[][], overrides: Partial<ProviderDe
 	const provider = new RoboRewstyChatModelProvider(deps);
 	const parts: vscode.LanguageModelResponsePart[] = [];
 	const progress: vscode.Progress<vscode.LanguageModelResponsePart> = { report: part => parts.push(part) };
-	const token = new vscode.CancellationTokenSource().token;
+	const tokenSource = new vscode.CancellationTokenSource();
 	const model = { id: 'org-1' } as vscode.LanguageModelChatInformation;
 
 	return {
@@ -78,6 +79,7 @@ function makeHarness(turns: ConversationEvent[][], overrides: Partial<ProviderDe
 		parts,
 		session,
 		wrapper,
+		tokenSource,
 		run: (messages, tools) =>
 			provider.provideLanguageModelChatResponse(
 				model,
@@ -87,7 +89,7 @@ function makeHarness(turns: ConversationEvent[][], overrides: Partial<ProviderDe
 					toolMode: vscode.LanguageModelChatToolMode.Auto,
 				} as vscode.ProvideLanguageModelChatResponseOptions,
 				progress,
-				token,
+				tokenSource.token,
 			),
 	};
 }
@@ -333,6 +335,26 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.strictEqual(callsOf(harness.parts).length, 0, 'the built-in call is deferred, not emitted this round');
 		assert.strictEqual(harness.captured.length, 2, 'buddy results feed back into a second backend turn');
 		assert.ok(harness.captured[1].message.includes('Tool results:'), 'the second turn carries the buddy results');
+	});
+
+	test('cancelling mid-sequence stops the remaining in-process buddy tools', async () => {
+		const reply =
+			'Two.\n```vscode-tool\n{"tool": "buddy_workflow_run", "args": {"id": "a"}}\n```\n' +
+			'```vscode-tool\n{"tool": "buddy_workflow_run", "args": {"id": "b"}}\n```';
+		const ran: unknown[] = [];
+		const harness = makeHarness([completeTurn(reply, 'conv-1'), completeTurn('done', 'conv-1')], {
+			buddyToolSpecs: () => [{ name: 'buddy_workflow_run', description: 'Run a workflow', args: '{}' }],
+			runBuddyTool: async (_name, args) => {
+				ran.push(args);
+				harness.tokenSource.cancel(); // user hits stop after the first tool launches
+				return { text: 'ok', isError: false };
+			},
+		});
+
+		await harness.run([message(User, [text('run a then b')])]);
+
+		assert.strictEqual(ran.length, 1, 'only the first tool runs; the second is skipped after cancellation');
+		assert.strictEqual(harness.captured.length, 1, 'no further backend turn is started after cancellation');
 	});
 
 	test('a buddy tool that has run blocks a stateless downgrade so a write never re-applies', async () => {

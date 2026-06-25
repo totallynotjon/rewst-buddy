@@ -409,6 +409,9 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 					emitText(remainder);
 					const results: ToolResult[] = [];
 					for (const request of buddyRequests) {
+						// Stop launching further tools (a later one may be a write) once
+						// the user cancels mid-sequence.
+						if (token.isCancellationRequested) return;
 						emitStatus(
 							{
 								label: `Running Rewst tool: ${request.tool}…`,

@@ -1,14 +1,22 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
-import type { McpToolDescriptor } from '@mcp';
+import vscode from 'vscode';
+import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import { _resetMcpThrottleForTesting, type McpToolDescriptor } from '@mcp';
+import { SessionManager } from '@sessions';
 import { buddyChatToolSpecs, runBuddyChatTool, toolSpecsFromDescriptors } from './buddyChatTools';
 
-const { suite, test, setup } = Mocha;
+const { suite, test, setup, teardown } = Mocha;
 
 suite('Unit: buddyChatTools', () => {
 	setup(() => {
 		initTestEnvironment();
+		SessionManager._resetForTesting();
+		_resetMcpThrottleForTesting();
+	});
+
+	teardown(() => {
+		SessionManager._resetForTesting();
 	});
 
 	suite('toolSpecsFromDescriptors()', () => {
@@ -32,6 +40,18 @@ suite('Unit: buddyChatTools', () => {
 			// buddy tools injected into Cage-Free Rewsty.
 			assert.deepStrictEqual(buddyChatToolSpecs(), []);
 		});
+
+		test('advertises the MCP-exposed read tools once the server is enabled', async () => {
+			const config = vscode.workspace.getConfiguration('rewst-buddy.mcp');
+			await config.update('enable', true, vscode.ConfigurationTarget.Global);
+			try {
+				const names = buddyChatToolSpecs().map(spec => spec.name);
+				assert.ok(names.length > 0, 'enabling the server advertises the exposed tools');
+				assert.ok(names.includes('list_orgs'), 'a known read tool is advertised');
+			} finally {
+				await config.update('enable', undefined, vscode.ConfigurationTarget.Global);
+			}
+		});
 	});
 
 	suite('runBuddyChatTool()', () => {
@@ -41,6 +61,19 @@ suite('Unit: buddyChatTools', () => {
 			const result = await runBuddyChatTool('definitely_not_a_buddy_tool', {}, 'org-x');
 			assert.strictEqual(result.isError, true);
 			assert.ok(result.text.includes('definitely_not_a_buddy_tool'), 'the error text names the tool');
+		});
+
+		test('returns a successful result from a tool that runs in-process', async () => {
+			// list_orgs reads from the session profile (no API), so it succeeds purely
+			// in-process and exercises the normal { text, isError: false } return path.
+			const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
+			const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+			SessionManager._setSessionsForTesting([session]);
+
+			const result = await runBuddyChatTool('list_orgs', {}, 'org-1');
+
+			assert.strictEqual(result.isError, false);
+			assert.ok(result.text.includes('Test Org'), 'the tool output is returned as text');
 		});
 	});
 });
