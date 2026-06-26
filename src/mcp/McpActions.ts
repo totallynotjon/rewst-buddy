@@ -8,6 +8,7 @@ import {
 	type Capability,
 	type CapabilityContext,
 } from '@capabilities';
+import { WorkingScopeManager } from '@models';
 import { SessionManager, type Session } from '@sessions';
 import { log } from '@utils';
 import type { McpErrorCode, McpResourceDescriptor, McpToolDescriptor, McpToolResult } from './protocol';
@@ -55,25 +56,84 @@ export class McpError extends Error {
 }
 
 /**
- * Enforces the write-org allowlist: a write capability may only run against an
- * org on rewst-buddy.mcp.writeOrgAllowlist. An empty allowlist means "any managed
- * org" (logged as a warning, since nothing then caps the blast radius). Reads are
- * never restricted. This is the reliable, boundary-level gate for the MCP model,
- * where the per-call approval modal — hosted in VS Code, not the external client —
- * may never surface to the operator.
+ * The orgs a tool may operate on: the user's pinned working orgs folded together
+ * with the persistent `alwaysAllowedOrgs` setting (see WorkingScopeManager and
+ * McpSettings). This is the ambient, model-immutable blast-radius cap behind #87.
  */
-function assertOrgWriteAllowed(capability: Capability, orgId: string, settings: McpSettings): void {
-	if (capability.access !== 'write') return;
-	if (settings.writeOrgAllowlist.length === 0) {
-		log.info(`[MCP] write allowlist empty; "${capability.spec.name}" may target any managed org (${orgId}).`);
+function effectiveAllowedOrgs(settings: McpSettings): Set<string> {
+	return new Set([...WorkingScopeManager.getOrgs(), ...settings.alwaysAllowedOrgs]);
+}
+
+/**
+ * Enforces the working scope at the boundary, the reliable gate for the MCP model
+ * where the per-call approval modal — hosted in VS Code, not the external client —
+ * may never surface to the operator:
+ *
+ * - Writes must target an org in the effective allowed set. Empty set ⇒ no writes
+ *   (the safe default: pin a working org or set alwaysAllowedOrgs to permit one).
+ * - When a working workflow is pinned, a write that names a workflow must name one
+ *   in scope.
+ * - Reads are scoped to the effective set only under strict scope and only once a
+ *   working org is pinned; with nothing pinned, reads stay cross-org so the user
+ *   can still browse and choose what to pin.
+ *
+ * Org-agnostic discovery tools (requiresOrg:false, e.g. list_orgs, the working-
+ * scope tools) are never gated, so the user can always find an org and pin it.
+ */
+function assertScopeAllowed(
+	capability: Capability,
+	orgId: string,
+	args: Record<string, unknown>,
+	settings: McpSettings,
+): void {
+	if (capability.requiresOrg === false) return;
+	const effective = effectiveAllowedOrgs(settings);
+	const workingOrgs = WorkingScopeManager.getOrgs();
+
+	if (capability.access === 'write') {
+		if (!effective.has(orgId)) {
+			throw new McpError('org_out_of_scope', writeOutOfScopeMessage(orgId, effective));
+		}
+		const workflows = WorkingScopeManager.getWorkflows();
+		if (workflows.length > 0) {
+			// rewst_graphql_mutate names its workflow target via scopeId/scopeName, so
+			// resolve from both — otherwise a mutation against another workflow in an
+			// allowed org would slip past this gate.
+			const scopeName = asString(args, 'scopeName');
+			const workflowId =
+				asString(args, 'workflowId') ??
+				(scopeName?.toLowerCase() === 'workflow' ? asString(args, 'scopeId') : undefined);
+			if (workflowId && !workflows.includes(workflowId)) {
+				throw new McpError(
+					'workflow_out_of_scope',
+					`Workflow "${workflowId}" is not in the working scope (${workflows.join(', ')}). ` +
+						'Change the working workflow in VS Code (Rewst Buddy: Set Working Scope) to edit a different one.',
+				);
+			}
+		}
 		return;
 	}
-	if (!settings.writeOrgAllowlist.includes(orgId)) {
+
+	if (settings.workingOrgScope === 'strict' && workingOrgs.length > 0 && !effective.has(orgId)) {
 		throw new McpError(
-			'org_not_allowlisted',
-			`Writes to org "${orgId}" are not allowed. Add it to rewst-buddy.mcp.writeOrgAllowlist in VS Code to permit write tools against this org.`,
+			'org_out_of_scope',
+			`Reads are scoped to the working orgs (${[...effective].join(', ')}); org "${orgId}" is not one of them. ` +
+				'Change the working scope in VS Code (Rewst Buddy: Set Working Scope), or set rewst-buddy.mcp.workingOrgScope to "writes" to read across orgs.',
 		);
 	}
+}
+
+function writeOutOfScopeMessage(orgId: string, effective: Set<string>): string {
+	if (effective.size === 0) {
+		return (
+			`No working org is set, so writes are not allowed (attempted org "${orgId}"). ` +
+			'Set one in VS Code (Rewst Buddy: Set Working Scope), or add it to rewst-buddy.mcp.alwaysAllowedOrgs.'
+		);
+	}
+	return (
+		`Writes are scoped to ${[...effective].join(', ')}; org "${orgId}" is not in scope. ` +
+		'Change the working scope in VS Code (Rewst Buddy: Set Working Scope) to write to a different org.'
+	);
 }
 
 /** Whether a capability is exposed to MCP under the current settings. */
@@ -148,12 +208,17 @@ async function ensureValidSession(session: Session): Promise<void> {
 	}
 }
 
-/** Resolves the session + org context a capability runs against. */
-async function resolveContext(
+/**
+ * Resolves the session + org context a capability runs against. This does no
+ * authenticated I/O — session validation/refresh is deferred to the call site so
+ * it runs only after the scope gate, keeping an out-of-scope request from
+ * touching Rewst.
+ */
+function resolveContext(
 	capability: Capability,
 	args: Record<string, unknown>,
 	requestOrgId: string | undefined,
-): Promise<CapabilityContext> {
+): CapabilityContext {
 	const sessions = SessionManager.getActiveSessions();
 	if (sessions.length === 0) {
 		throw new McpError(
@@ -164,17 +229,23 @@ async function resolveContext(
 	if (capability.requiresOrg === false) {
 		return { session: sessions[0], orgId: sessions[0].profile.org.id, sessions };
 	}
-	const orgId = asString(args, 'orgId') ?? requestOrgId;
+	// When the org is omitted and exactly one working org is pinned, target it —
+	// the model never has to name it and so cannot misname it.
+	const workingOrgs = WorkingScopeManager.getOrgs();
+	const soleWorkingOrg = workingOrgs.length === 1 ? workingOrgs[0] : undefined;
+	const orgId = asString(args, 'orgId') ?? requestOrgId ?? soleWorkingOrg;
 	if (!orgId) {
 		throw new McpError('org_required', 'This tool requires an "orgId" argument. Call list_orgs to find one.');
 	}
+	// Surface the resolved org back into the arguments so capabilities that read
+	// `orgId` from their input (the common case) see the injected working org.
+	args.orgId = orgId;
 	let session: Session;
 	try {
 		session = SessionManager.getSessionForOrg(orgId);
 	} catch {
 		throw new McpError('org_not_found', `No active session manages org "${orgId}". Call list_orgs for valid ids.`);
 	}
-	await ensureValidSession(session);
 	return { session, orgId, sessions };
 }
 
@@ -225,11 +296,14 @@ export async function callTool(
 		}
 
 		const args = params.arguments ?? {};
-		const ctx = await resolveContext(capability, args, params.orgId);
+		const ctx = resolveContext(capability, args, params.orgId);
 		auditOrgId = capability.requiresOrg === false ? '—' : ctx.orgId || '—';
-		// Reject a disallowed write before the capability runs (and before its
+		// Reject an out-of-scope call before the capability runs (and before any
 		// approval modal, which may never surface to an external MCP client).
-		assertOrgWriteAllowed(capability, ctx.orgId, settings);
+		assertScopeAllowed(capability, ctx.orgId, args, settings);
+		// Validate/refresh the session only after the scope gate passes, so an
+		// out-of-scope request triggers no authenticated Rewst traffic.
+		if (capability.requiresOrg !== false) await ensureValidSession(ctx.session);
 		try {
 			// Tag the in-flight call with its origin so the deep approval modal can
 			// name the caller (the chat vs an external MCP client).
@@ -316,7 +390,10 @@ export async function readResource(uri: string, settings: McpSettings = readMcpS
 
 	const args: Record<string, unknown> = { orgId: parsed.orgId };
 	if (parsed.id) args[parsed.collection === 'templates' ? 'templateId' : 'workflowId'] = parsed.id;
-	const ctx = await resolveContext(capability, args, parsed.orgId);
+	const ctx = resolveContext(capability, args, parsed.orgId);
+	// Resources run read capabilities directly, so honour the working scope here too.
+	assertScopeAllowed(capability, ctx.orgId, args, settings);
+	await ensureValidSession(ctx.session);
 	const text = formatMcpOutput(toolName, await capability.run(args, ctx));
 	log.info(`MCP readResource: ${uri}`);
 	return { uri, mimeType: 'text/plain', text };

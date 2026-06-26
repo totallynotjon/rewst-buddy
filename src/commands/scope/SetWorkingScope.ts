@@ -1,0 +1,74 @@
+import { WorkingScopeManager } from '@models';
+import { SessionManager } from '@sessions';
+import { log } from '@utils';
+import vscode, { QuickPickItem } from 'vscode';
+import GenericCommand from '../GenericCommand';
+
+interface OrgPickItem extends QuickPickItem {
+	id: string;
+}
+
+/**
+ * Sets the working scope's orgs from a multi-select of every managed org. The
+ * working scope is the ambient blast-radius cap: writes (and, under strict scope,
+ * reads) are limited to the selected orgs. Selecting none clears the org scope.
+ */
+export class SetWorkingScope extends GenericCommand {
+	commandName = 'SetWorkingScope';
+
+	async execute(): Promise<void> {
+		const sessions = SessionManager.getActiveSessions();
+		if (sessions.length === 0) {
+			log.notifyError('No active Rewst sessions. Start a session before setting the working scope.');
+			return;
+		}
+
+		const orgNames = new Map<string, string>();
+		for (const session of sessions) {
+			const { org, allManagedOrgs } = session.profile;
+			if (org?.id) orgNames.set(org.id, org.name ?? org.id);
+			for (const managed of allManagedOrgs ?? []) {
+				if (managed?.id) orgNames.set(managed.id, managed.name ?? managed.id);
+			}
+		}
+
+		const pinned = new Set(WorkingScopeManager.getOrgs());
+		const byLabel = (a: OrgPickItem, b: OrgPickItem) => a.label.localeCompare(b.label);
+		const orgItems = [...orgNames].map(([id, name]) => ({
+			id,
+			label: name,
+			description: id,
+			picked: pinned.has(id),
+		}));
+		const inScope = orgItems.filter(item => item.picked).sort(byLabel);
+		const others = orgItems.filter(item => !item.picked).sort(byLabel);
+
+		// Show the orgs already in scope first, grouped under a separator, so the
+		// current selection is obvious instead of scattered through the list.
+		const items: (OrgPickItem | vscode.QuickPickItem)[] = [];
+		if (inScope.length > 0) {
+			items.push({ label: 'In scope', kind: vscode.QuickPickItemKind.Separator }, ...inScope);
+			items.push({ label: 'Other organizations', kind: vscode.QuickPickItemKind.Separator });
+		}
+		items.push(...others);
+
+		const picked = await vscode.window.showQuickPick(items, {
+			canPickMany: true,
+			placeHolder: 'Select the orgs to work on — writes (and reads, in strict mode) are limited to these',
+		});
+		if (picked === undefined) return; // cancelled
+
+		const selectedIds = picked
+			.map(item => (item as OrgPickItem).id)
+			.filter((id): id is string => typeof id === 'string');
+		// This picker represents the whole visible scope, but only edits orgs — clear
+		// any workflow pins (which can only be set over MCP) so a stale workflow scope
+		// can't keep blocking writes after the user re-picks orgs here.
+		WorkingScopeManager.applyChange({ orgs: selectedIds, workflows: [], replace: true });
+		log.notifyInfo(
+			picked.length > 0
+				? `Working scope set to ${picked.length} org${picked.length === 1 ? '' : 's'}.`
+				: 'Working org scope cleared.',
+		);
+	}
+}

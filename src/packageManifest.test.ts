@@ -83,4 +83,16 @@ suite('Unit: package manifest', () => {
 		assert.ok(ids.includes('rewst-buddy.prefix.ResumeRewstAiConversation'));
 		assert.ok(ids.includes('rewst-buddy.prefix.ApplyRewstAiEdit'));
 	});
+
+	test('working-scope settings replace the write allowlist and the commands are contributed', () => {
+		const properties = manifest.contributes.configuration?.properties ?? {};
+		assert.strictEqual(properties['rewst-buddy.mcp.writeOrgAllowlist'], undefined, 'legacy allowlist key removed');
+		assert.strictEqual(properties['rewst-buddy.mcp.alwaysAllowedOrgs']?.type, 'array');
+		assert.deepStrictEqual(properties['rewst-buddy.mcp.alwaysAllowedOrgs']?.default, []);
+		assert.strictEqual(properties['rewst-buddy.mcp.workingOrgScope']?.default, 'strict');
+
+		const ids = manifest.contributes.commands.map(entry => entry.command);
+		assert.ok(ids.includes('rewst-buddy.SetWorkingScope'));
+		assert.ok(ids.includes('rewst-buddy.ClearWorkingScope'));
+	});
 });

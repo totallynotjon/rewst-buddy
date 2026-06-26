@@ -14,6 +14,12 @@ export {
 	type McpMutationApprover,
 } from './graphqlMutateCapability';
 export {
+	_resetWorkingScopeApproverForTesting,
+	setWorkingScopeApprover,
+	type WorkingScopeApprover,
+	type WorkingScopeChangeRequest,
+} from './workingScopeCapability';
+export {
 	MCP_MAX_OUTPUT_CHARS,
 	RESULT_READ_TOOL_NAME,
 	_resetMcpResultCacheForTesting,
