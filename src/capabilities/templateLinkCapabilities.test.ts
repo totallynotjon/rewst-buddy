@@ -150,6 +150,25 @@ suite('Unit: templateLinkCapabilities', () => {
 			assert.strictEqual(LinkManager.getTemplateLink(uri).template.id, 't1', 'replaced');
 		});
 
+		test('overwriting a link clears the old template-id reverse lookup (#90 — no stale results)', async () => {
+			// The "tool returns stale results" symptom at the capability boundary:
+			// re-linking via overwrite used to leave the OLD template id pointing at
+			// the file, so getTemplateLinkFromId (hover, ctrl-click, open-by-id)
+			// resolved to it. Assert the reverse lookup moves with the link.
+			const uri = vscode.Uri.file('/ws/greeting.j2');
+			addLink('/ws/greeting.j2', 'old-template');
+			const { deps } = makeLinkDeps({});
+
+			const replaced = JSON.parse(
+				await runLink({ templateId: 't1', uri: 'greeting.j2', overwrite: true }, makeCtx(), deps),
+			);
+			assert.strictEqual(replaced.status, 'linked');
+			assert.deepStrictEqual(LinkManager.getTemplateLinkFromId('old-template'), [], 'old reverse lookup cleared');
+			const current = LinkManager.getTemplateLinkFromId('t1');
+			assert.strictEqual(current.length, 1, 'new reverse lookup populated');
+			assert.strictEqual(current[0].uriString, uri.toString());
+		});
+
 		test('returns template_not_found when no session resolves the template', async () => {
 			const { deps, uri } = makeLinkDeps({
 				getTemplate: async () => {
