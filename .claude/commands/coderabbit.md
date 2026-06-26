@@ -25,16 +25,17 @@ Hand the loop the fully-resolved pass text — do **not** loop on `/coderabbit` 
 
 ## Review pass (one iteration — this is what the loop runs)
 
-Review pass for PR **#\<N\>** in **\<owner\>/\<repo\>**. Only act on comments authored by `coderabbitai[bot]`.
+Review pass for PR **#\<N\>** in **\<owner\>/\<repo\>**. Only act on comments authored by CodeRabbit. Match the first comment's `author.login` to `coderabbitai`, or any login containing `coderabbit` — GitHub's GraphQL may report the bot as `coderabbitai` (no `[bot]` suffix), so an exact `coderabbitai[bot]` match silently misses every thread.
 
-1. **Fetch unresolved CodeRabbit threads** via GraphQL — these carry the resolution state the REST comments API doesn't:
+1. **Fetch unresolved CodeRabbit threads** via GraphQL — these carry the resolution state the REST comments API doesn't. **Paginate**: `reviewThreads(first:100)` truncates on a large PR, so keep fetching with the `after:`/`endCursor` cursor until `pageInfo.hasNextPage` is false and merge the `nodes` from every page before filtering — otherwise the loop can declare the review clean while threads beyond the first 100 are still open:
 
     ```bash
     gh api graphql -f query='
-      query($owner:String!,$repo:String!,$num:Int!){
+      query($owner:String!,$repo:String!,$num:Int!,$cursor:String){
         repository(owner:$owner,name:$repo){
           pullRequest(number:$num){
-            reviewThreads(first:100){
+            reviewThreads(first:100, after:$cursor){
+              pageInfo{ hasNextPage endCursor }
               nodes{
                 id isResolved isOutdated
                 comments(first:50){ nodes{ databaseId author{login} body path line } }
@@ -42,10 +43,10 @@ Review pass for PR **#\<N\>** in **\<owner\>/\<repo\>**. Only act on comments au
             }
           }
         }
-      }' -F owner=<owner> -F repo=<repo> -F num=<N>
+      }' -F owner=<owner> -F repo=<repo> -F num=<N> -F cursor=<endCursor-from-prior-page-or-omit-for-page-1>
     ```
 
-    Keep threads where `isResolved=false` and the first comment's `author.login = "coderabbitai[bot]"`.
+    Keep threads where `isResolved=false` and the first comment's `author.login` is `coderabbitai` (or contains `coderabbit`).
 
 2. **Address each unresolved thread:**
     - Legit finding → make the smallest correct fix. Tests first, per CLAUDE.md (colocated `*.test.ts`; integration test when live API / assistant behavior is involved). Type-check with `mcp__ide__getDiagnostics`.
@@ -65,7 +66,7 @@ Review pass for PR **#\<N\>** in **\<owner\>/\<repo\>**. Only act on comments au
 
 3. **If code changed this pass:** run the relevant tests (`npm run test:grep -- "<suite>"`, then `npm run test:unit`), confirm zero diagnostics, commit with a normal-English message explaining the _why_, and `git push origin <branch>` so CodeRabbit re-reviews. (Sandbox org only for live tests; never delete data without asking.)
 
-4. **Stop condition — end the loop when the PR is clean:** zero unresolved CodeRabbit threads **and** CodeRabbit has finished reviewing the latest pushed commit (`gh pr view <N> --json reviews,statusCheckRollup` shows no pending CodeRabbit run and no new comments). Report the PR URL and the threads addressed, and do **not** schedule another iteration. Otherwise, let the loop fire again in 4 minutes — CodeRabbit may post fresh comments after each push.
+4. **Stop condition — end the loop when the PR is clean:** re-run the **paginated unresolved-thread query from step 1** (all pages) and stop only when it returns **zero** unresolved CodeRabbit threads, after confirming CodeRabbit has finished its run on HEAD (`gh pr view <N> --json statusCheckRollup` shows the CodeRabbit check is no longer pending). Gate on that thread query, not on `gh pr view --json reviews` summaries — review/summary state lags behind freshly opened inline threads, so it can stop while still-open comments exist. Report the PR URL and the threads addressed, and do **not** schedule another iteration. Otherwise, let the loop fire again in 4 minutes — CodeRabbit may post fresh comments after each push.
 
 ## Project rules (do not violate)
 
