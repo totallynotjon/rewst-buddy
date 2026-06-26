@@ -112,7 +112,7 @@ The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement i
 
 When the server is registered with VS Code's own MCP client (the `Add MCP Server to VS Code` command), flipping any of these exposure switches re-advertises the server with a new version, so VS Code reconnects and refreshes the tool set in chat — no window reload needed.
 
-**Cage-Free Rewsty uses these Rewst tools directly.** When the MCP server is on, Cage-Free Rewsty advertises the same exposed Rewst tools in its `vscode-tool` protocol and runs them in-process. That keeps them available even when VS Code's limit of 128 tools per chat request would otherwise drop them — the cap is easy to hit once many built-in or other MCP tools are enabled, and dropped Rewst tools are why the assistant used to mis-call them. They honor the same read/write switches, write-org allowlist, and approval as any other MCP call. With the MCP server off, no Rewst tools are advertised in chat.
+**Cage-Free Rewsty uses these Rewst tools directly.** When the MCP server is on, Cage-Free Rewsty advertises the same exposed Rewst tools in its `vscode-tool` protocol and runs them in-process. That keeps them available even when VS Code's limit of 128 tools per chat request would otherwise drop them — the cap is easy to hit once many built-in or other MCP tools are enabled, and dropped Rewst tools are why the assistant used to mis-call them. They honor the same read/write switches, [working scope](#working-scope), and approval as any other MCP call. With the MCP server off, no Rewst tools are advertised in chat.
 
 **Enabling vs. registering — when you need each.** The master switch (`rewst-buddy.mcp.enable`) and registering the server with VS Code (`Add MCP Server to VS Code`) are independent:
 
@@ -127,6 +127,21 @@ Oversized MCP results are cached in memory and returned with a preview plus a sh
 The local MCP endpoint is guarded by a persistent localhost token. If it is ever exposed, run `Rewst Buddy: Rotate MCP Token` to replace it after a modal confirmation — existing MCP clients holding the old token lose access until you re-copy the config with `Copy MCP Config to Clipboard`.
 
 **Multiple VS Code windows:** the MCP server binds a single localhost port, so only one window can host it — the first window to bind owns the `/mcp` endpoint, and the server exposes **that window's** active Rewst sessions. Other windows still try to start the server but lose the port bind; their sessions are not reachable over MCP while another window owns it. Tools that take an `orgId` resolve it among the owning window's sessions, so to expose a particular org through MCP, make sure that org's session is signed in in the window that owns the server (close the owning window to let another take over the port).
+
+### Working scope
+
+The **working scope** narrows which orgs (and, optionally, which workflows) Rewst tools may operate on — the same gate for Cage-Free Rewsty's in-process tools and for external MCP clients. It is the reliable, model-immutable blast-radius cap: tools resolve the target org from the scope instead of trusting an `orgId` the model supplies, so a confused or poisoned model can't escape to another org by naming it.
+
+Set it with the **Rewst Scope** status bar item (bottom-left) or the `Set Working Scope` command, which lists every org your sessions manage for a multi-select. The scope holds multiple orgs and workflows, so you can deliberately work across several at once. `Clear Working Scope` empties it.
+
+How the scope is enforced:
+
+- **Writes** must target an org in the effective allowed set — the working orgs plus `rewst-buddy.mcp.alwaysAllowedOrgs`. With nothing pinned and none always-allowed, writes are blocked. When a working **workflow** is pinned, a write that edits a workflow must target one in scope.
+- **Reads** are limited to the effective set only under strict scope (`rewst-buddy.mcp.workingOrgScope` = `strict`, the default) and only once a working org is pinned. With nothing pinned, reads span all orgs so you can browse and choose; set the mode to `writes` to keep reads cross-org even when a working org is pinned.
+- **Org discovery** (`list_orgs`, `get_working_scope`) is never scoped, so you can always find an org and pin it.
+- **`alwaysAllowedOrgs`** is a persistent standing allowance — orgs that are always in scope without re-pinning (e.g. a sandbox). It replaces the former `writeOrgAllowlist`; old values are still read.
+
+An AI assistant can read the scope with `get_working_scope` and _request_ a change with `set_working_scope`, but the change only applies after you confirm a VS Code modal — to work on a different org or workflow, the model asks, and you approve, rather than the model widening its own reach.
 
 ### Context and answers
 

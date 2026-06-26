@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { MCP_MAX_OUTPUT_CHARS, RESULT_READ_TOOL_NAME, _resetMcpResultCacheForTesting } from '@capabilities';
+import { WorkingScopeManager } from '@models';
 import { SessionManager, type Session } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import { log } from '@utils';
@@ -21,7 +22,8 @@ function settings(over: Partial<McpSettings> = {}): McpSettings {
 		enable: true,
 		enableWriteTools: false,
 		enableDangerousGraphqlMutation: false,
-		writeOrgAllowlist: [],
+		alwaysAllowedOrgs: [],
+		workingOrgScope: 'strict',
 		...over,
 	};
 }
@@ -125,6 +127,7 @@ suite('Unit: McpActions', () => {
 	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
+		WorkingScopeManager._resetForTesting();
 		_resetMcpThrottleForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
@@ -133,6 +136,7 @@ suite('Unit: McpActions', () => {
 
 	teardown(() => {
 		SessionManager._resetForTesting();
+		WorkingScopeManager._resetForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
 		_resetMcpResultCacheForTesting();
@@ -343,84 +347,141 @@ suite('Unit: McpActions', () => {
 			);
 		});
 
-		test('a write to a non-allowlisted org is rejected before it runs', async () => {
+		function workflowEditCall(orgId = 'org-1', workflowId = 'wf-1') {
+			return {
+				name: WORKFLOW_EDIT_TOOL_NAME,
+				arguments: {
+					orgId,
+					workflowId,
+					workflowName: 'MCP Sample Workflow',
+					orgName: 'Acme',
+					operations: [{ op: 'reposition', task: 'start', x: 1, y: 2 }],
+				},
+			};
+		}
+
+		test('a write with no working org and no always-allowed org is rejected', async () => {
 			useSession('org-1');
 
 			await assert.rejects(
-				callTool(
-					{
-						name: WORKFLOW_EDIT_TOOL_NAME,
-						arguments: {
-							orgId: 'org-1',
-							workflowId: 'wf-1',
-							workflowName: 'Workflow',
-							orgName: 'Acme',
-							operations: [],
-						},
-					},
-					settings({ enableWriteTools: true, writeOrgAllowlist: ['org-other'] }),
-				),
-				(error: unknown) => error instanceof McpError && error.code === 'org_not_allowlisted',
+				callTool(workflowEditCall(), settings({ enableWriteTools: true })),
+				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
 			);
 		});
 
-		test('a write to an allowlisted org passes the boundary guard', async () => {
-			const { session, wrapper } = useSession('org-1', 'Acme');
-			useRawGraphqlWrapper(session, wrapper);
-			setMcpMutationApprover(async () => false);
-
-			const result = await callTool(
-				{
-					name: WORKFLOW_EDIT_TOOL_NAME,
-					arguments: {
-						orgId: 'org-1',
-						workflowId: 'wf-1',
-						workflowName: 'MCP Sample Workflow',
-						orgName: 'Acme',
-						operations: [{ op: 'reposition', task: 'start', x: 1, y: 2 }],
-					},
-				},
-				settings({ enableWriteTools: true, writeOrgAllowlist: ['org-1'] }),
-			);
-
-			// Past the allowlist guard; stopped only at approval (declined here).
-			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
-		});
-
-		test('an empty allowlist permits writes to any managed org', async () => {
-			const { session, wrapper } = useSession('org-1', 'Acme');
-			useRawGraphqlWrapper(session, wrapper);
-			setMcpMutationApprover(async () => false);
-
-			const result = await callTool(
-				{
-					name: WORKFLOW_EDIT_TOOL_NAME,
-					arguments: {
-						orgId: 'org-1',
-						workflowId: 'wf-1',
-						workflowName: 'MCP Sample Workflow',
-						orgName: 'Acme',
-						operations: [{ op: 'reposition', task: 'start', x: 1, y: 2 }],
-					},
-				},
-				settings({ enableWriteTools: true, writeOrgAllowlist: [] }),
-			);
-
-			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
-		});
-
-		test('the allowlist does not restrict read tools', async () => {
+		test('a write to an org outside the effective scope is rejected', async () => {
 			useSession('org-1');
+
+			await assert.rejects(
+				callTool(workflowEditCall(), settings({ enableWriteTools: true, alwaysAllowedOrgs: ['org-other'] })),
+				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
+			);
+		});
+
+		test('a write to an always-allowed org passes the boundary guard', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			setMcpMutationApprover(async () => false);
+
+			const result = await callTool(
+				workflowEditCall(),
+				settings({ enableWriteTools: true, alwaysAllowedOrgs: ['org-1'] }),
+			);
+
+			// Past the scope guard; stopped only at approval (declined here).
+			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
+		});
+
+		test('a write to a pinned working org passes the boundary guard', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			setMcpMutationApprover(async () => false);
+			WorkingScopeManager.setOrgs(['org-1']);
+
+			const result = await callTool(workflowEditCall(), settings({ enableWriteTools: true }));
+
+			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
+		});
+
+		test('a write to a workflow outside the working workflows is rejected', async () => {
+			useSession('org-1');
+			WorkingScopeManager.setOrgs(['org-1']);
+			WorkingScopeManager.setWorkflows(['wf-other']);
+
+			await assert.rejects(
+				callTool(workflowEditCall('org-1', 'wf-1'), settings({ enableWriteTools: true })),
+				(error: unknown) => error instanceof McpError && error.code === 'workflow_out_of_scope',
+			);
+		});
+
+		test('a write to a pinned working workflow passes the boundary guard', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			setMcpMutationApprover(async () => false);
+			WorkingScopeManager.setOrgs(['org-1']);
+			WorkingScopeManager.setWorkflows(['wf-1']);
+
+			const result = await callTool(workflowEditCall('org-1', 'wf-1'), settings({ enableWriteTools: true }));
+
+			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
+		});
+
+		test('a read outside the working orgs is rejected under strict scope', async () => {
+			useSession('org-1');
+			WorkingScopeManager.setOrgs(['org-other']);
+
+			await assert.rejects(
+				callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings()),
+				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
+			);
+		});
+
+		test('reads stay cross-org when nothing is pinned', async () => {
+			const { wrapper } = useSession('org-1');
+			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery([]) });
+
+			const result = await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
+
+			assert.ok(!result.isError);
+		});
+
+		test('writes-only scope leaves reads unrestricted even when a working org is pinned', async () => {
+			const { wrapper } = useSession('org-1');
+			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery([]) });
+			WorkingScopeManager.setOrgs(['org-other']);
 
 			const result = await callTool(
 				{ name: 'list_templates', arguments: { orgId: 'org-1' } },
-				settings({ writeOrgAllowlist: ['org-other'] }),
+				settings({ workingOrgScope: 'writes' }),
 			);
 
 			assert.ok(!result.isError);
 		});
 
-		test('rewst_graphql_mutate is blocked when the org is not allowlisted', async () => {
+		test('omitting orgId targets the sole pinned working org', async () => {
+			const { wrapper } = useSession('org-1');
+			wrapper.when('listTemplates', {
+				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
+			});
+			WorkingScopeManager.setOrgs(['org-1']);
+
+			const result = await callTool({ name: 'list_templates' }, settings());
+
+			assert.ok(result.text.includes('Welcome (t-1)'));
+			assert.strictEqual(wrapper.getCallsFor('listTemplates')[0].variables.orgId, 'org-1');
+		});
+
+		test('the working scope does not restrict org-discovery tools', async () => {
+			useSession('org-1', 'Acme');
+			WorkingScopeManager.setOrgs(['org-other']);
+
+			const result = await callTool({ name: 'list_orgs' }, settings());
+
+			assert.ok(result.text.includes('Acme (org-1)'));
+			assert.ok(!result.isError);
+		});
+
+		test('rewst_graphql_mutate is blocked when the org is out of scope', async () => {
 			useSession('org-1');
 
 			await assert.rejects(
@@ -434,13 +495,13 @@ suite('Unit: McpActions', () => {
 							scopeName: 'Thing',
 						},
 					},
-					settings({ enableDangerousGraphqlMutation: true, writeOrgAllowlist: ['org-other'] }),
+					settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-other'] }),
 				),
-				(error: unknown) => error instanceof McpError && error.code === 'org_not_allowlisted',
+				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
 			);
 		});
 
-		test('rewst_graphql_mutate passes the guard when the org is allowlisted', async () => {
+		test('rewst_graphql_mutate passes the guard when the org is in scope', async () => {
 			const { session, wrapper } = useSession('org-1', 'Acme');
 			useRawGraphqlWrapper(session, wrapper);
 			setMcpMutationApprover(async () => false);
@@ -455,10 +516,10 @@ suite('Unit: McpActions', () => {
 						scopeName: 'Thing',
 					},
 				},
-				settings({ enableDangerousGraphqlMutation: true, writeOrgAllowlist: ['org-1'] }),
+				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 
-			// Past the allowlist guard; stopped only at approval (declined here).
+			// Past the scope guard; stopped only at approval (declined here).
 			assert.strictEqual(JSON.parse(result.text).status, 'approval_required');
 		});
 
@@ -478,7 +539,7 @@ suite('Unit: McpActions', () => {
 						operations: [{ op: 'reposition', task: 'start', x: 100, y: 200 }],
 					},
 				},
-				settings({ enableWriteTools: true }),
+				settings({ enableWriteTools: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 
 			assert.ok(!result.isError);
@@ -507,7 +568,7 @@ suite('Unit: McpActions', () => {
 						operations: [{ op: 'reposition', task: 'start', x: 100, y: 200 }],
 					},
 				},
-				settings({ enableWriteTools: true }),
+				settings({ enableWriteTools: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 
 			assert.ok(!result.isError);
@@ -600,7 +661,9 @@ suite('Unit: McpActions', () => {
 		});
 
 		test('rewst_graphql_mutate is exposed by the dangerous toggle without enableWriteTools', () => {
-			const names = listTools(settings({ enableDangerousGraphqlMutation: true })).map(tool => tool.name);
+			const names = listTools(
+				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
+			).map(tool => tool.name);
 			assert.ok(names.includes('rewst_graphql_mutate'));
 			assert.ok(!names.includes(WORKFLOW_EDIT_TOOL_NAME));
 			assert.ok(!names.includes(WORKFLOW_AUTOLAYOUT_TOOL_NAME));
@@ -619,7 +682,7 @@ suite('Unit: McpActions', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableDangerousGraphqlMutation: true }),
+				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 			assert.strictEqual(result.isError, true);
 			assert.ok(result.text.includes('use rewst_graphql_query'));
@@ -637,7 +700,7 @@ suite('Unit: McpActions', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableDangerousGraphqlMutation: true }),
+				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 			assert.strictEqual(result.isError, true);
 			assert.ok(result.text.includes('Subscriptions are not supported'));
@@ -658,7 +721,7 @@ suite('Unit: McpActions', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableDangerousGraphqlMutation: true }),
+				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 
 			assert.ok(!result.isError);
@@ -685,11 +748,11 @@ suite('Unit: McpActions', () => {
 
 			const first = await callTool(
 				{ name: 'rewst_graphql_mutate', arguments: args },
-				settings({ enableDangerousGraphqlMutation: true }),
+				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 			const second = await callTool(
 				{ name: 'rewst_graphql_mutate', arguments: args },
-				settings({ enableDangerousGraphqlMutation: true }),
+				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 
 			assert.ok(!first.isError);
@@ -753,6 +816,7 @@ suite('Unit: MCP audit logging', () => {
 	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
+		WorkingScopeManager._resetForTesting();
 		_resetMcpThrottleForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
@@ -760,6 +824,7 @@ suite('Unit: MCP audit logging', () => {
 
 	teardown(() => {
 		SessionManager._resetForTesting();
+		WorkingScopeManager._resetForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
 	});
@@ -890,7 +955,7 @@ suite('Unit: MCP audit logging', () => {
 						scopeName: 'Workflow',
 					},
 				},
-				settings({ enableDangerousGraphqlMutation: true }),
+				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 		} finally {
 			capture.restore();

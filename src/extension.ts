@@ -1,8 +1,15 @@
 import { CommandInitiater } from '@commands';
-import { setMcpMutationApprover } from '@capabilities';
+import { setMcpMutationApprover, setWorkingScopeApprover } from '@capabilities';
 import { extPrefix, context as globalVSContext } from '@global';
 import { McpDefinitionProvider, McpServerController } from '@mcp';
-import { LinkManager, SyncManager, SyncOnSaveManager, TemplateBundleManager, TemplateMetadataStore } from '@models';
+import {
+	LinkManager,
+	SyncManager,
+	SyncOnSaveManager,
+	TemplateBundleManager,
+	TemplateMetadataStore,
+	WorkingScopeManager,
+} from '@models';
 import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
@@ -15,6 +22,7 @@ import {
 	RoboRewstyChatModelProvider,
 	SessionTreeDataProvider,
 	StatusBar,
+	WorkingScopeStatusBar,
 	type PersistedConversationMap,
 } from '@ui';
 import { log } from '@utils';
@@ -30,6 +38,21 @@ export async function activate(context: vscode.ExtensionContext) {
 		const choice = await vscode.window.showWarningMessage(
 			`${requester} wants to run a mutation against ${scope.scopeName} (${scope.scopeId}) in org ${scope.orgName} (${scope.orgId}).`,
 			{ modal: true, detail: operation },
+			'Approve',
+		);
+		return choice === 'Approve';
+	});
+
+	setWorkingScopeApprover(async (request, origin) => {
+		const requester = origin === 'chat' ? 'Cage-Free Rewsty' : 'An external MCP client';
+		const verb = request.replace ? 'set' : 'add to';
+		const orgList = request.orgs.map(org => `${org.name} (${org.id})`).join(', ');
+		const detailParts: string[] = [];
+		if (request.orgs.length > 0) detailParts.push(`Orgs: ${orgList}`);
+		if (request.workflows.length > 0) detailParts.push(`Workflows: ${request.workflows.join(', ')}`);
+		const choice = await vscode.window.showWarningMessage(
+			`${requester} wants to ${verb} the working scope. Tools will then be allowed to operate within it.`,
+			{ modal: true, detail: detailParts.join('\n') },
 			'Approve',
 		);
 		return choice === 'Approve';
@@ -92,7 +115,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(new RoboRewstyChatModelProvider().init());
 	context.subscriptions.push(ProposedContentProvider.init());
+	context.subscriptions.push(WorkingScopeManager);
 	context.subscriptions.push(new StatusBar());
+	context.subscriptions.push(new WorkingScopeStatusBar());
 	context.subscriptions.push(new ContextUsageStatusBar());
 
 	log.info(`Finished activation of extension ${extPrefix}`);
