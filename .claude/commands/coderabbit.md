@@ -25,7 +25,7 @@ Hand the loop the fully-resolved pass text — do **not** loop on `/coderabbit` 
 
 ## Review pass (one iteration — this is what the loop runs)
 
-Review pass for PR **#\<N\>** in **\<owner\>/\<repo\>**. Only act on comments authored by CodeRabbit. Match the first comment's `author.login` to `coderabbitai`, or any login containing `coderabbit` — GitHub's GraphQL may report the bot as `coderabbitai` (no `[bot]` suffix), so an exact `coderabbitai[bot]` match silently misses every thread.
+Review pass for PR **#\<N\>** in **\<owner\>/\<repo\>**. Only act on comments authored by CodeRabbit. Match the first comment's `author.login` by **exact equality** against the known CodeRabbit identities — `coderabbitai` or `coderabbitai[bot]` — never a substring/`contains` test, which could match an unrelated login. GitHub's GraphQL reports this repo's bot as `coderabbitai` (no `[bot]` suffix), so matching only `coderabbitai[bot]` silently misses every thread; include both forms and add any other confirmed alias explicitly.
 
 1. **Fetch unresolved CodeRabbit threads** via GraphQL — these carry the resolution state the REST comments API doesn't. **Paginate**: `reviewThreads(first:100)` truncates on a large PR, so keep fetching with the `after:`/`endCursor` cursor until `pageInfo.hasNextPage` is false and merge the `nodes` from every page before filtering — otherwise the loop can declare the review clean while threads beyond the first 100 are still open:
 
@@ -46,7 +46,7 @@ Review pass for PR **#\<N\>** in **\<owner\>/\<repo\>**. Only act on comments au
       }' -F owner=<owner> -F repo=<repo> -F num=<N> -F cursor=<endCursor-from-prior-page-or-omit-for-page-1>
     ```
 
-    Keep threads where `isResolved=false` and the first comment's `author.login` is `coderabbitai` (or contains `coderabbit`).
+    Keep threads where `isResolved=false` and the first comment's `author.login` is exactly `coderabbitai` or `coderabbitai[bot]`.
 
 2. **Address each unresolved thread:**
     - Legit finding → make the smallest correct fix. Tests first, per CLAUDE.md (colocated `*.test.ts`; integration test when live API / assistant behavior is involved). Type-check with `mcp__ide__getDiagnostics`.
