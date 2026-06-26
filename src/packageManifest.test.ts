@@ -58,7 +58,7 @@ suite('Unit: package manifest', () => {
 		const names = declared.map(tool => tool.name);
 		assert.deepStrictEqual(declared, [], 'languageModelTools contribution is empty');
 		assert.ok(!names.some(name => name.startsWith('buddy_')), 'no buddy_* LM tools are contributed');
-		assert.ok(!names.some(name => name === 'list_template_links'), 'list_template_links is not an LM tool');
+		assert.ok(!names.some(name => name === 'search_template_links'), 'search_template_links is not an LM tool');
 	});
 
 	test('the @rewst chat participant is retired', () => {

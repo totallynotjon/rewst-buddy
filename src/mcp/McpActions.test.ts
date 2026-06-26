@@ -147,7 +147,8 @@ suite('Unit: McpActions', () => {
 			assert.ok(names.includes('list_workflows'));
 			assert.ok(names.includes('get_workflow'));
 			assert.ok(names.includes('rewst_graphql_query'), 'read-only GraphQL query is available on MCP');
-			assert.ok(names.includes('list_template_links'), 'workspace helper is available on MCP');
+			assert.ok(names.includes('search_template_links'), 'workspace helper is available on MCP');
+			assert.ok(names.includes('buddy_template_link_status'), 'per-file link status is available on MCP');
 			assert.ok(names.includes(RESULT_READ_TOOL_NAME), 'cached-result reader is available on MCP');
 			assert.ok(!names.includes('buddy_graphql'), 'chat write tool is not on MCP');
 			assert.ok(names.includes('buddy_graphql_schema'), 'schema introspection is available on MCP');
@@ -214,11 +215,21 @@ suite('Unit: McpActions', () => {
 			);
 		});
 
-		test('list_template_links is callable over MCP without an orgId', async () => {
+		test('search_template_links is callable over MCP without an orgId', async () => {
 			useSession('org-1');
-			const result = await callTool({ name: 'list_template_links', arguments: {} }, settings());
+			const result = await callTool({ name: 'search_template_links', arguments: {} }, settings());
 			assert.ok(!result.isError);
 			assert.match(result.text, /No files are linked to Rewst templates/);
+		});
+
+		test('buddy_template_link_status reports linked:false for an unlinked file without an orgId', async () => {
+			useSession('org-1');
+			const result = await callTool(
+				{ name: 'buddy_template_link_status', arguments: { uri: '/ws/unlinked.j2' } },
+				settings(),
+			);
+			assert.ok(!result.isError);
+			assert.match(result.text, /"linked":\s*false/);
 		});
 
 		test('an unknown tool throws unknown_tool', async () => {

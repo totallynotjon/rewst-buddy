@@ -9,6 +9,7 @@ import vscode from 'vscode';
 import {
 	resolvePathToUri,
 	runLink,
+	runLinkStatus,
 	runSyncOnSave,
 	runUnlink,
 	TEMPLATE_LINK_CAPABILITIES,
@@ -147,6 +148,25 @@ suite('Unit: templateLinkCapabilities', () => {
 			);
 			assert.strictEqual(replaced.status, 'linked');
 			assert.strictEqual(LinkManager.getTemplateLink(uri).template.id, 't1', 'replaced');
+		});
+
+		test('overwriting a link clears the old template-id reverse lookup (#90 — no stale results)', async () => {
+			// The "tool returns stale results" symptom at the capability boundary:
+			// re-linking via overwrite used to leave the OLD template id pointing at
+			// the file, so getTemplateLinkFromId (hover, ctrl-click, open-by-id)
+			// resolved to it. Assert the reverse lookup moves with the link.
+			const uri = vscode.Uri.file('/ws/greeting.j2');
+			addLink('/ws/greeting.j2', 'old-template');
+			const { deps } = makeLinkDeps({});
+
+			const replaced = JSON.parse(
+				await runLink({ templateId: 't1', uri: 'greeting.j2', overwrite: true }, makeCtx(), deps),
+			);
+			assert.strictEqual(replaced.status, 'linked');
+			assert.deepStrictEqual(LinkManager.getTemplateLinkFromId('old-template'), [], 'old reverse lookup cleared');
+			const current = LinkManager.getTemplateLinkFromId('t1');
+			assert.strictEqual(current.length, 1, 'new reverse lookup populated');
+			assert.strictEqual(current[0].uriString, uri.toString());
 		});
 
 		test('returns template_not_found when no session resolves the template', async () => {
@@ -288,6 +308,39 @@ suite('Unit: templateLinkCapabilities', () => {
 				() => runSyncOnSave({ uri: 'greeting.j2', enabled: 'yes' }, makeCtx()),
 				/"enabled" must be a boolean/,
 			);
+		});
+	});
+
+	suite('buddy_template_link_status', () => {
+		test('is a read tool, mcp-only, org-agnostic', () => {
+			const c = TEMPLATE_LINK_CAPABILITIES.find(x => x.spec.name === 'buddy_template_link_status');
+			assert.ok(c, 'capability registered');
+			assert.strictEqual(c.access, 'read');
+			assert.strictEqual(c.mcp, true);
+			assert.strictEqual(c.chat, false);
+			assert.strictEqual(c.requiresOrg, false);
+		});
+
+		test('reports linked:true with template, org, and sync-on-save state', () => {
+			const uri = addLink('/ws/greeting.j2', 't1');
+			SyncOnSaveManager.enableSync(uri);
+
+			const out = JSON.parse(runLinkStatus({ uri: 'greeting.j2' }));
+
+			assert.strictEqual(out.linked, true);
+			assert.strictEqual(out.templateId, 't1');
+			assert.strictEqual(out.orgId, 'org-1');
+			assert.strictEqual(out.syncOnSave, true);
+			assert.strictEqual(out.path, uri.fsPath);
+		});
+
+		test('reports linked:false when no template is linked', () => {
+			const out = JSON.parse(runLinkStatus({ uri: 'nope.j2' }));
+			assert.strictEqual(out.linked, false);
+		});
+
+		test('rejects a missing uri', () => {
+			assert.throws(() => runLinkStatus({}), /Missing required string argument "uri"/);
 		});
 	});
 });
