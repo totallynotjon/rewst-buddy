@@ -96,7 +96,7 @@ Talk to Rewst's AI assistant directly from VS Code's chat — as its own model, 
 
 ### Workspace and editor tools
 
-File and workspace work in Cage-Free Rewsty chat comes from VS Code itself: in agent mode, VS Code passes its built-in tools (read, search, edit, terminal, diagnostics, todo, agent tools, and similar) through `options.tools`. Rewst Buddy advertises and relays those built-ins through the `vscode-tool` protocol with VS Code's normal approval and review UI. Rewst Buddy no longer contributes its own `buddy_*` tools, `search_template_links`, `buddy_approval`, or `buddy_result_read` as VS Code language-model tools.
+In agent mode, file and workspace work in Cage-Free Rewsty chat uses VS Code's own built-in tools — read, search, edit, terminal, diagnostics, and the rest — with VS Code's normal approval and review UI. Rewst-specific actions come from the Rewst Buddy MCP server instead (next section).
 
 Cage-Free Rewsty is still told your VS Code working directory when one is open, so file-oriented built-in tools have useful local context.
 

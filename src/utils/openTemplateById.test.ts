@@ -13,34 +13,40 @@ const { suite, test, setup, teardown } = Mocha;
  * a stale templateIdIndex entry would silently open the wrong file. These tests
  * stub vscode.open to record which uri (if any) is opened.
  */
+interface QuickPickItemWithLink {
+	link: TemplateLink;
+}
+
 suite('Unit: openTemplateById', () => {
 	const opened: string[] = [];
-	let restore: (() => void) | undefined;
+	const restores: (() => void)[] = [];
+	// Resolves the QuickPick shown when several files share a template id; default
+	// returns undefined (the user cancelled).
+	let pickResolver: (items: readonly QuickPickItemWithLink[]) => QuickPickItemWithLink | undefined = () => undefined;
+
+	function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): void {
+		const original = obj[key];
+		Object.defineProperty(obj, key, { value: impl, configurable: true, writable: true });
+		restores.push(() => Object.defineProperty(obj, key, { value: original, configurable: true, writable: true }));
+	}
 
 	setup(() => {
 		initTestEnvironment();
 		LinkManager._resetForTesting();
 		opened.length = 0;
+		pickResolver = () => undefined;
 
-		const original = vscode.commands.executeCommand;
-		Object.defineProperty(vscode.commands, 'executeCommand', {
-			value: (async (command: string, uri?: vscode.Uri) => {
-				if (command === 'vscode.open' && uri) opened.push(uri.toString());
-				return undefined;
-			}) as typeof vscode.commands.executeCommand,
-			configurable: true,
-			writable: true,
-		});
-		restore = () =>
-			Object.defineProperty(vscode.commands, 'executeCommand', {
-				value: original,
-				configurable: true,
-				writable: true,
-			});
+		stub(vscode.commands, 'executeCommand', (async (command: string, uri?: vscode.Uri) => {
+			if (command === 'vscode.open' && uri) opened.push(uri.toString());
+			return undefined;
+		}) as typeof vscode.commands.executeCommand);
+
+		stub(vscode.window, 'showQuickPick', (async (items: readonly QuickPickItemWithLink[]) =>
+			pickResolver(items)) as unknown as typeof vscode.window.showQuickPick);
 	});
 
 	teardown(() => {
-		restore?.();
+		while (restores.length) restores.pop()!();
 		LinkManager._resetForTesting();
 	});
 
@@ -81,5 +87,26 @@ suite('Unit: openTemplateById', () => {
 		assert.ok(result);
 		assert.strictEqual(result.template.id, 'tpl-new');
 		assert.deepStrictEqual(opened, [uri.toString()]);
+	});
+
+	test('prompts with a QuickPick when several files share a template id and opens the chosen one', async () => {
+		const wanted = vscode.Uri.file('/ws/second.j2');
+		LinkManager.addLink(link('/ws/first.j2', 'shared'));
+		LinkManager.addLink(link('/ws/second.j2', 'shared'));
+		pickResolver = items => items.find(item => item.link.uriString === wanted.toString());
+
+		const result = await openTemplateById('shared');
+		assert.ok(result);
+		assert.strictEqual(result.uriString, wanted.toString());
+		assert.deepStrictEqual(opened, [wanted.toString()]);
+	});
+
+	test('returns null and opens nothing when the multi-link QuickPick is cancelled', async () => {
+		LinkManager.addLink(link('/ws/first.j2', 'shared'));
+		LinkManager.addLink(link('/ws/second.j2', 'shared'));
+		pickResolver = () => undefined; // user dismissed the picker
+
+		assert.strictEqual(await openTemplateById('shared'), null);
+		assert.deepStrictEqual(opened, []);
 	});
 });
