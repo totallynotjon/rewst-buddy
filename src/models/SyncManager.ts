@@ -6,6 +6,18 @@ import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { determineSyncAction, type SyncDecision } from './syncDecision';
+import type { Org } from './types';
+
+/**
+ * The org a template actually belongs to, taken from the template itself — not
+ * from the session's primary org. One session manages a parent org plus its
+ * sub-orgs, so a sub-org template's link must record the sub-org, matching how
+ * the link commands build it. Falls back to the orgId when the organization
+ * relation is absent.
+ */
+export function orgFromTemplate(template: FullTemplateFragment): Org {
+	return { id: template.orgId, name: template.organization?.name ?? template.orgId };
+}
 
 /**
  * Everything needed to act on a sync without re-fetching: the link, the session
@@ -302,7 +314,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 	 */
 	refreshLinkMetadata(
 		doc: vscode.TextDocument,
-		session: Session,
+		_session: Session,
 		remoteTemplate: FullTemplateFragment,
 		localBody: string,
 	): void {
@@ -313,7 +325,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			referencedTemplateIds: findAllTemplateReferences(localBody),
 			template: remoteTemplate,
 			uriString: doc.uri.toString(),
-			org: session.profile.org,
+			org: orgFromTemplate(remoteTemplate),
 		};
 		this.addLink(templateLink, doc.uri);
 	}
@@ -347,7 +359,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	async applyTemplateToDocument(doc: vscode.TextDocument, session: Session, remoteTemplate: FullTemplateFragment) {
+	async applyTemplateToDocument(doc: vscode.TextDocument, _session: Session, remoteTemplate: FullTemplateFragment) {
 		log.trace('applyTemplateToDocument: applying remote template', {
 			templateId: remoteTemplate.id,
 			bodyLength: remoteTemplate.body?.length ?? 0,
@@ -370,7 +382,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			referencedTemplateIds: findAllTemplateReferences(body),
 			template: remoteTemplate,
 			uriString: doc.uri.toString(),
-			org: session.profile.org,
+			org: orgFromTemplate(remoteTemplate),
 		};
 
 		this.addLink(templateLink, doc.uri);

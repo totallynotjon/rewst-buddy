@@ -5,7 +5,7 @@ import { getHash } from '@utils';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
-import { SyncManager } from './SyncManager';
+import { SyncManager, orgFromTemplate } from './SyncManager';
 
 const { suite, test, setup, teardown } = Mocha;
 
@@ -304,6 +304,99 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 		const updatedLink = LinkManager.getTemplateLink(uri);
 		assert.strictEqual(updatedLink.template.updatedAt, updatedAt);
 		assert.strictEqual(updatedLink.bodyHash, bodyHash);
+	});
+
+	// One session manages a parent org plus its sub-orgs. A sync must record the
+	// org the template actually belongs to (from the template), not the session's
+	// primary org — otherwise sub-org templates report the main org. See issue #94.
+	test('orgFromTemplate uses the template org, falling back to orgId without an organization', () => {
+		const withOrg = Fixtures.fullTemplate({
+			orgId: 'sub-org',
+			organization: Fixtures.org({ id: 'sub-org', name: 'Sub Org' }),
+		});
+		assert.deepStrictEqual(orgFromTemplate(withOrg), { id: 'sub-org', name: 'Sub Org' });
+
+		const withoutOrg = Fixtures.fullTemplate({ orgId: 'sub-org', organization: null as any });
+		assert.deepStrictEqual(orgFromTemplate(withoutOrg), { id: 'sub-org', name: 'sub-org' });
+	});
+
+	test('refreshLinkMetadata keeps a sub-org template in its sub-org, not the session org', () => {
+		const mainOrg = Fixtures.orgModel({ id: 'main-org', name: 'Main Org' });
+		const { session } = createMockSession({
+			profile: { org: mainOrg, allManagedOrgs: [mainOrg, { id: 'sub-org', name: 'Sub Org' }] },
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		const uri = vscode.Uri.file('/test/sub-org-template.txt');
+		const body = '// sub org template body';
+		// The link is created in the sub-org, as the link commands build it.
+		const existing: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org: { id: 'sub-org', name: 'Sub Org' },
+			template: { id: 'tpl-1', name: 'Sub Tpl', updatedAt: '0' } as any,
+			bodyHash: getHash(body),
+		};
+		LinkManager.addLink(existing);
+
+		const doc = createMockDocument({ uri, content: body });
+		const remoteTemplate = Fixtures.fullTemplate({
+			id: 'tpl-1',
+			name: 'Sub Tpl',
+			body,
+			updatedAt: '2024-02-02T00:00:00Z',
+			orgId: 'sub-org',
+			organization: Fixtures.org({ id: 'sub-org', name: 'Sub Org' }),
+		});
+
+		SyncManager.refreshLinkMetadata(doc, session, remoteTemplate, body);
+
+		const link = LinkManager.getTemplateLink(uri);
+		assert.strictEqual(link.org.id, 'sub-org', 'link must stay in the sub-org');
+		assert.strictEqual(link.org.name, 'Sub Org');
+		assert.notStrictEqual(link.org.id, mainOrg.id, 'must not be rewritten to the session primary org');
+	});
+
+	test('applyTemplateToDocument records the template sub-org, not the session org', async () => {
+		const mainOrg = Fixtures.orgModel({ id: 'main-org', name: 'Main Org' });
+		const { session } = createMockSession({
+			profile: { org: mainOrg, allManagedOrgs: [mainOrg, { id: 'sub-org', name: 'Sub Org' }] },
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		const uri = vscode.Uri.file('/test/apply-sub-org.txt');
+		const body = '// downloaded body';
+		// Pre-set with the session (main) org so a clobber would be visible.
+		const existing: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org: mainOrg,
+			template: { id: 'tpl-2', name: 'Sub Tpl 2', updatedAt: '0' } as any,
+			bodyHash: getHash('old'),
+		};
+		LinkManager.addLink(existing);
+
+		const doc = createMockDocument({ uri, content: 'old' });
+		const remoteTemplate = Fixtures.fullTemplate({
+			id: 'tpl-2',
+			name: 'Sub Tpl 2',
+			body,
+			updatedAt: '2024-03-03T00:00:00Z',
+			orgId: 'sub-org',
+			organization: Fixtures.org({ id: 'sub-org', name: 'Sub Org' }),
+		});
+
+		// applyTemplateToDocument updates the link before persisting; the final
+		// save of a non-open mock document throws in the unit host, which we ignore.
+		try {
+			await SyncManager.applyTemplateToDocument(doc, session, remoteTemplate);
+		} catch {
+			// expected: vscode.workspace.save of an unopened mock document fails here
+		}
+
+		const link = LinkManager.getTemplateLink(uri);
+		assert.strictEqual(link.org.id, 'sub-org', 'downloaded link must record the template sub-org');
+		assert.strictEqual(link.org.name, 'Sub Org');
 	});
 
 	test('should attempt to apply remote template when local unchanged and remote is newer', async () => {
