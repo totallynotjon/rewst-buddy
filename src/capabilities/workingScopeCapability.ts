@@ -152,14 +152,13 @@ async function runSetWorkingScope(input: Record<string, unknown>, ctx: Capabilit
 		);
 	}
 
-	if (orgIds.length > 0) {
-		if (replace) WorkingScopeManager.setOrgs(orgIds);
-		else WorkingScopeManager.addOrgs(orgIds);
-	}
-	if (workflowIds.length > 0) {
-		if (replace) WorkingScopeManager.setWorkflows(workflowIds);
-		else WorkingScopeManager.addWorkflows(workflowIds);
-	}
+	// Apply orgs and workflows in one commit so a combined change is atomic — a
+	// half-applied scope must never be persisted or published.
+	WorkingScopeManager.applyChange({
+		orgs: orgIds.length > 0 ? orgIds : undefined,
+		workflows: workflowIds.length > 0 ? workflowIds : undefined,
+		replace,
+	});
 
 	return JSON.stringify({ status: 'ok', scope: currentScope() }, null, 2);
 }

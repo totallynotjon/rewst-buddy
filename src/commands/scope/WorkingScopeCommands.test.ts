@@ -50,6 +50,20 @@ suite('Unit: WorkingScope commands', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), ['org-1']);
 	});
 
+	test('SetWorkingScope clears stale workflow pins when it replaces org scope', async () => {
+		useSession('org-1', 'Acme');
+		WorkingScopeManager.setWorkflows(['wf-1']);
+		vscode.window.showQuickPick = (async (items: readonly { id: string }[]) => {
+			const resolved = await items;
+			return resolved.filter(item => item.id === 'org-1');
+		}) as unknown as typeof vscode.window.showQuickPick;
+
+		await new SetWorkingScope().execute();
+
+		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), ['org-1']);
+		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), [], 'workflow pins are cleared with the org change');
+	});
+
 	test('SetWorkingScope lists the orgs already in scope first', async () => {
 		const { session } = createMockSession({
 			profile: {

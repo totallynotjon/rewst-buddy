@@ -130,7 +130,7 @@ The local MCP endpoint is guarded by a persistent localhost token. If it is ever
 
 ### Working scope
 
-The **working scope** narrows which orgs (and, optionally, which workflows) Rewst tools may operate on — the same gate for Cage-Free Rewsty's in-process tools and for external MCP clients. It is the reliable, model-immutable blast-radius cap: tools resolve the target org from the scope instead of trusting an `orgId` the model supplies, so a confused or poisoned model can't escape to another org by naming it.
+The **working scope** narrows which orgs (and, optionally, which workflows) Rewst tools may operate on — the same gate for Cage-Free Rewsty's in-process tools and for external MCP clients. It is the reliable, model-immutable blast-radius cap: a tool call targeting an org outside the scope is rejected, so a confused or poisoned model can't escape to another org by naming one. (When a call omits the org and exactly one is pinned, that org is used.)
 
 Set it with the **Rewst Scope** status bar item (bottom-left) or the `Set Working Scope` command, which lists every org your sessions manage for a multi-select. The scope holds multiple orgs and workflows, so you can deliberately work across several at once. `Clear Working Scope` empties it.
 

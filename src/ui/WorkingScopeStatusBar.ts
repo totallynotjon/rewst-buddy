@@ -27,7 +27,7 @@ export class WorkingScopeStatusBar implements vscode.Disposable {
 			this.item.text = '$(globe) Rewst Scope: unset';
 			this.item.backgroundColor = undefined;
 			this.item.tooltip = new vscode.MarkdownString(
-				'**Rewst working scope: unset**\n\nNo org is pinned, so writes are blocked and reads span all orgs. Click to pin the orgs you want to work on.',
+				'**Rewst working scope: unset**\n\nNo org is pinned, so writes are blocked unless an org is always-allowed, and reads span all orgs. Click to pin the orgs you want to work on.',
 			);
 			this.item.show();
 			return;
@@ -42,7 +42,7 @@ export class WorkingScopeStatusBar implements vscode.Disposable {
 		const lines = ['**Rewst working scope**', ''];
 		if (orgs.length > 0) lines.push(`Orgs: ${orgs.join(', ')}`);
 		if (workflows.length > 0) lines.push(`Workflows: ${workflows.join(', ')}`);
-		lines.push('', 'Tools may only operate within this scope. Click to change it.');
+		lines.push('', 'Writes stay within this scope; reads too under strict mode. Click to change it.');
 		this.item.tooltip = new vscode.MarkdownString(lines.join('\n'));
 		this.item.show();
 	}

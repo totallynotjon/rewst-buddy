@@ -96,7 +96,13 @@ function assertScopeAllowed(
 		}
 		const workflows = WorkingScopeManager.getWorkflows();
 		if (workflows.length > 0) {
-			const workflowId = asString(args, 'workflowId');
+			// rewst_graphql_mutate names its workflow target via scopeId/scopeName, so
+			// resolve from both — otherwise a mutation against another workflow in an
+			// allowed org would slip past this gate.
+			const scopeName = asString(args, 'scopeName');
+			const workflowId =
+				asString(args, 'workflowId') ??
+				(scopeName?.toLowerCase() === 'workflow' ? asString(args, 'scopeId') : undefined);
 			if (workflowId && !workflows.includes(workflowId)) {
 				throw new McpError(
 					'workflow_out_of_scope',
@@ -202,12 +208,17 @@ async function ensureValidSession(session: Session): Promise<void> {
 	}
 }
 
-/** Resolves the session + org context a capability runs against. */
-async function resolveContext(
+/**
+ * Resolves the session + org context a capability runs against. This does no
+ * authenticated I/O — session validation/refresh is deferred to the call site so
+ * it runs only after the scope gate, keeping an out-of-scope request from
+ * touching Rewst.
+ */
+function resolveContext(
 	capability: Capability,
 	args: Record<string, unknown>,
 	requestOrgId: string | undefined,
-): Promise<CapabilityContext> {
+): CapabilityContext {
 	const sessions = SessionManager.getActiveSessions();
 	if (sessions.length === 0) {
 		throw new McpError(
@@ -235,7 +246,6 @@ async function resolveContext(
 	} catch {
 		throw new McpError('org_not_found', `No active session manages org "${orgId}". Call list_orgs for valid ids.`);
 	}
-	await ensureValidSession(session);
 	return { session, orgId, sessions };
 }
 
@@ -286,11 +296,14 @@ export async function callTool(
 		}
 
 		const args = params.arguments ?? {};
-		const ctx = await resolveContext(capability, args, params.orgId);
+		const ctx = resolveContext(capability, args, params.orgId);
 		auditOrgId = capability.requiresOrg === false ? '—' : ctx.orgId || '—';
 		// Reject an out-of-scope call before the capability runs (and before any
 		// approval modal, which may never surface to an external MCP client).
 		assertScopeAllowed(capability, ctx.orgId, args, settings);
+		// Validate/refresh the session only after the scope gate passes, so an
+		// out-of-scope request triggers no authenticated Rewst traffic.
+		if (capability.requiresOrg !== false) await ensureValidSession(ctx.session);
 		try {
 			// Tag the in-flight call with its origin so the deep approval modal can
 			// name the caller (the chat vs an external MCP client).
@@ -377,9 +390,10 @@ export async function readResource(uri: string, settings: McpSettings = readMcpS
 
 	const args: Record<string, unknown> = { orgId: parsed.orgId };
 	if (parsed.id) args[parsed.collection === 'templates' ? 'templateId' : 'workflowId'] = parsed.id;
-	const ctx = await resolveContext(capability, args, parsed.orgId);
+	const ctx = resolveContext(capability, args, parsed.orgId);
 	// Resources run read capabilities directly, so honour the working scope here too.
 	assertScopeAllowed(capability, ctx.orgId, args, settings);
+	await ensureValidSession(ctx.session);
 	const text = formatMcpOutput(toolName, await capability.run(args, ctx));
 	log.info(`MCP readResource: ${uri}`);
 	return { uri, mimeType: 'text/plain', text };

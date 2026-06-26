@@ -61,7 +61,10 @@ export class SetWorkingScope extends GenericCommand {
 		const selectedIds = picked
 			.map(item => (item as OrgPickItem).id)
 			.filter((id): id is string => typeof id === 'string');
-		WorkingScopeManager.setOrgs(selectedIds);
+		// This picker represents the whole visible scope, but only edits orgs — clear
+		// any workflow pins (which can only be set over MCP) so a stale workflow scope
+		// can't keep blocking writes after the user re-picks orgs here.
+		WorkingScopeManager.applyChange({ orgs: selectedIds, workflows: [], replace: true });
 		log.notifyInfo(
 			picked.length > 0
 				? `Working scope set to ${picked.length} org${picked.length === 1 ? '' : 's'}.`

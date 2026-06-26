@@ -102,4 +102,29 @@ suite('Unit: workingScopeCapability', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), ['org-1']);
 		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-keep']);
 	});
+
+	test('set_working_scope adds a workflow-only change after approval', async () => {
+		const ctx = ctxFor('org-1');
+		WorkingScopeManager.setWorkflows(['wf-existing']);
+		setWorkingScopeApprover(async () => true);
+
+		const parsed = JSON.parse(await setWorkingScopeCapability.run({ workflows: ['wf-1'] }, ctx)) as {
+			status: string;
+			scope: { orgs: string[]; workflows: string[] };
+		};
+
+		assert.strictEqual(parsed.status, 'ok');
+		assert.deepStrictEqual(parsed.scope.workflows.sort(), ['wf-1', 'wf-existing']);
+		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), [], 'org scope is untouched by a workflow-only call');
+	});
+
+	test('set_working_scope replaces workflows-only when replace is true', async () => {
+		const ctx = ctxFor('org-1');
+		WorkingScopeManager.setWorkflows(['wf-existing']);
+		setWorkingScopeApprover(async () => true);
+
+		await setWorkingScopeCapability.run({ workflows: ['wf-1'], replace: true }, ctx);
+
+		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-1']);
+	});
 });

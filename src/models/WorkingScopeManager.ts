@@ -1,4 +1,5 @@
 import { context } from '@global';
+import { log } from '@utils';
 import vscode from 'vscode';
 
 /**
@@ -112,6 +113,26 @@ export const WorkingScopeManager = new (class _ implements vscode.Disposable {
 		this.commit();
 	}
 
+	/**
+	 * Applies an org and/or workflow change in a single commit, so a combined
+	 * change can't publish a half-applied scope or lose part of itself to a
+	 * persistence race. A dimension whose array is omitted is left untouched;
+	 * `replace` replaces the provided dimension instead of adding to it.
+	 */
+	applyChange(change: { orgs?: readonly string[]; workflows?: readonly string[]; replace?: boolean }): void {
+		this.ensureLoaded();
+		const { orgs, workflows, replace = false } = change;
+		if (orgs) {
+			if (replace) this.orgs = new Set(normalizeIds(orgs));
+			else for (const id of normalizeIds(orgs)) this.orgs.add(id);
+		}
+		if (workflows) {
+			if (replace) this.workflows = new Set(normalizeIds(workflows));
+			else for (const id of normalizeIds(workflows)) this.workflows.add(id);
+		}
+		this.commit();
+	}
+
 	clear(): void {
 		this.ensureLoaded();
 		this.orgs.clear();
@@ -127,8 +148,11 @@ export const WorkingScopeManager = new (class _ implements vscode.Disposable {
 	private commit(): void {
 		const state = this.snapshot();
 		// Fire-and-forget persistence: the user action returns immediately and the
-		// write flushes in the background, matching the extension's other managers.
-		void context.globalState.update(this.stateKey, state);
+		// write flushes in the background. Log (don't swallow) a failed write so a
+		// stale persisted scope is surfaced rather than an unhandled rejection.
+		Promise.resolve(context.globalState.update(this.stateKey, state)).catch(error =>
+			log.error('WorkingScopeManager: failed to persist working scope', error),
+		);
 		this.changeEmitter.fire(state);
 	}
 

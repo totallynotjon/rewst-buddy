@@ -35,7 +35,7 @@ When editing a linked template, a status indicator appears in the **bottom-left 
 
 The status bar item hides when viewing non-linked files.
 
-A **Rewst Scope** item also sits in the bottom-left, always visible: it shows the current [working scope](features.md#working-scope) (`$(globe) unset` when nothing is pinned, otherwise the org/workflow counts). Click it to run `Set Working Scope`.
+A **Rewst Scope** item also sits in the bottom-left, always visible: it shows the current [working scope](features.md#working-scope) (`$(globe) Rewst Scope: unset` when nothing is pinned, otherwise the org/workflow counts). Click it to run `Set Working Scope`.
 
 A second item appears in the **bottom-right corner** showing Cage-Free Rewsty's context-window usage (`$(dashboard) 42%`) once a chat turn reports it; hover for the token breakdown and organization. This stands in for VS Code's native "Context Window" gauge, which can't be driven by a third-party model provider (see [Ask Rewst AI](features.md#ask-rewst-ai-cage-free-rewsty)).
 
@@ -51,7 +51,7 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 **Working Scope**
 
 - `Set Working Scope` — Pick the orgs that Rewst tools (in chat and over MCP) may operate on. Writes are limited to this scope; reads too under strict mode. See [Working Scope](features.md#working-scope).
-- `Clear Working Scope` — Remove the pinned orgs and workflows. With nothing pinned, writes are blocked until you set a scope again.
+- `Clear Working Scope` — Remove the pinned orgs and workflows. With nothing pinned and no always-allowed orgs, writes are blocked until you set a scope again.
 
 **Folder Operations**
 

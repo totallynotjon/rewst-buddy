@@ -64,6 +64,47 @@ suite('Unit: WorkingScopeManager', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), []);
 	});
 
+	test('addWorkflows unions and removeWorkflows drops, without touching orgs', () => {
+		WorkingScopeManager.setOrgs(['org-1']);
+		WorkingScopeManager.setWorkflows(['wf-1']);
+		WorkingScopeManager.addWorkflows(['wf-2', 'wf-1']);
+		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-1', 'wf-2']);
+
+		WorkingScopeManager.removeWorkflows(['wf-1', 'wf-missing']);
+		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-2']);
+		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), ['org-1'], 'org scope is untouched');
+	});
+
+	test('applyChange commits a combined org+workflow change in a single event', () => {
+		WorkingScopeManager.setOrgs(['org-existing']);
+		let fires = 0;
+		const sub = WorkingScopeManager.onDidChangeScope(() => {
+			fires++;
+		});
+
+		WorkingScopeManager.applyChange({ orgs: ['org-1'], workflows: ['wf-1'], replace: false });
+
+		assert.strictEqual(fires, 1, 'one event for the whole change, not one per dimension');
+		assert.deepStrictEqual(WorkingScopeManager.getOrgs().sort(), ['org-1', 'org-existing']);
+		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-1']);
+		sub.dispose();
+	});
+
+	test('applyChange replaces only the named dimension and leaves an omitted one alone', () => {
+		WorkingScopeManager.setOrgs(['org-1']);
+		WorkingScopeManager.setWorkflows(['wf-keep']);
+
+		// Replace orgs, omit workflows → workflows untouched.
+		WorkingScopeManager.applyChange({ orgs: ['org-2'], replace: true });
+		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), ['org-2']);
+		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-keep']);
+
+		// An explicit empty array replaces (clears) that dimension.
+		WorkingScopeManager.applyChange({ workflows: [], replace: true });
+		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), []);
+		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), ['org-2'], 'orgs untouched when omitted');
+	});
+
 	test('clear empties both sets and emits', () => {
 		WorkingScopeManager.setOrgs(['org-1']);
 		WorkingScopeManager.setWorkflows(['wf-1']);

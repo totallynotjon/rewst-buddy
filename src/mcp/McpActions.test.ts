@@ -481,6 +481,44 @@ suite('Unit: McpActions', () => {
 			assert.ok(!result.isError);
 		});
 
+		test('an out-of-scope call is rejected before the session is validated', async () => {
+			const { session } = useSession('org-1');
+			WorkingScopeManager.setOrgs(['org-other']);
+			let validated = 0;
+			(session as unknown as { validate: () => Promise<boolean> }).validate = async () => {
+				validated++;
+				return true;
+			};
+
+			await assert.rejects(
+				callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings()),
+				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
+			);
+			assert.strictEqual(validated, 0, 'no authenticated session I/O happens for an out-of-scope request');
+		});
+
+		test('rewst_graphql_mutate against an out-of-scope workflow is rejected via scopeId', async () => {
+			useSession('org-1');
+			WorkingScopeManager.setOrgs(['org-1']);
+			WorkingScopeManager.setWorkflows(['wf-allowed']);
+
+			await assert.rejects(
+				callTool(
+					{
+						name: 'rewst_graphql_mutate',
+						arguments: {
+							orgId: 'org-1',
+							query: 'mutation M { updateWorkflow { id } }',
+							scopeId: 'wf-other',
+							scopeName: 'Workflow',
+						},
+					},
+					settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'workflow_out_of_scope',
+			);
+		});
+
 		test('rewst_graphql_mutate is blocked when the org is out of scope', async () => {
 			useSession('org-1');
 
