@@ -183,6 +183,40 @@ suite('Unit: LinkManager', () => {
 			assert.strictEqual(LinkManager.getTemplateLinkFromId(templateId).length, 2);
 		});
 
+		test('re-linking a uri to a different template/org clears the old indexes', () => {
+			// Issue #90: overwriting a link with a different template id / org left the
+			// old templateIdIndex and orgIdIndex entries behind, so reverse lookups
+			// (hover, ctrl-click, open-by-id) returned the stale file.
+			const uri = vscode.Uri.file('/test/relink.txt');
+			const orgA = { id: 'org-A', name: 'Org A' };
+			const orgB = { id: 'org-B', name: 'Org B' };
+
+			const first: TemplateLink = {
+				uriString: uri.toString(),
+				org: orgA,
+				type: 'Template',
+				template: { id: 'tpl-A', name: 'A', updatedAt: '' } as any,
+				bodyHash: 'h1',
+			};
+			LinkManager.addLink(first);
+			assert.strictEqual(LinkManager.getTemplateLinkFromId('tpl-A').length, 1);
+
+			const second: TemplateLink = {
+				uriString: uri.toString(),
+				org: orgB,
+				type: 'Template',
+				template: { id: 'tpl-B', name: 'B', updatedAt: '' } as any,
+				bodyHash: 'h2',
+			};
+			LinkManager.addLink(second);
+
+			assert.deepStrictEqual(LinkManager.getTemplateLinkFromId('tpl-A'), [], 'old template index cleared');
+			assert.strictEqual(LinkManager.getTemplateLinkFromId('tpl-B').length, 1, 'new template index populated');
+			assert.strictEqual(LinkManager.getTemplateLink(uri).template.id, 'tpl-B');
+			assert.strictEqual(LinkManager.getOrgTemplateLinks(orgA).length, 0, 'old org index cleared');
+			assert.strictEqual(LinkManager.getOrgTemplateLinks(orgB).length, 1, 'new org index populated');
+		});
+
 		test('should not grow index across repeated sync cycles', () => {
 			const uri = vscode.Uri.file('/test/synced.txt');
 			const link: TemplateLink = {

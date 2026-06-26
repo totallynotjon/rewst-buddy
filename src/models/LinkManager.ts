@@ -200,6 +200,14 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	addLink(link: Link): _ {
 		log.trace('LinkManager.addLink:', link);
+		// Re-linking the same uri to a different template/org must drop the previous
+		// link's secondary-index entries first; otherwise a stale templateIdIndex /
+		// orgIdIndex entry survives and reverse lookups return the old file (#90).
+		const previous = this.linkMap.get(link.uriString);
+		if (previous && previous !== link) {
+			if (previous.type === 'Template') this.removeFromTemplateIndex(previous as TemplateLink);
+			this.removeFromOrgIndex(previous.org.id, link.uriString);
+		}
 		this.linkMap.set(link.uriString, link);
 		if (link.type === 'Template') {
 			this.addToTemplateIndex(link as TemplateLink);

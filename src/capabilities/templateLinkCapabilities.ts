@@ -13,7 +13,7 @@ import { resolveLinkedUri } from './templateSyncCapabilities';
  * only the extension's own link state and never call a Rewst write API, so —
  * per the project's decision that local-only mutations are read-tier — they are
  * exposed as access:'read' (ungated). They reach the LinkManager /
- * SyncOnSaveManager singletons directly, like list_template_links. They derive
+ * SyncOnSaveManager singletons directly, like search_template_links. They derive
  * the org from the link/template, not from ctx.orgId (requiresOrg is false).
  *
  * MCP arguments are not validated against inputSchema, so every input is coerced
@@ -163,7 +163,7 @@ export async function runUnlink(input: Record<string, unknown>, _ctx: Capability
 			status: 'not_linked',
 			uri: rawUri,
 			message:
-				'No template is linked to this file (or the path matches more than one link). Check list_template_links and pass a fuller path.',
+				'No template is linked to this file (or the path matches more than one link). Check search_template_links and pass a fuller path.',
 		});
 	}
 	const { uri, link } = resolved;
@@ -180,6 +180,39 @@ export async function runUnlink(input: Record<string, unknown>, _ctx: Capability
 		templateName: name,
 		orgId,
 		message: 'Link removed. The local file and the remote template are untouched.',
+	});
+}
+
+/**
+ * Reports whether one local file is linked, reading only local link state — no
+ * network or remote comparison (that is buddy_template_sync_status). Reuses
+ * resolveLinkedUri, which returns undefined when a bare relative path matches
+ * more than one link; the not-linked payload says so rather than implying the
+ * file is definitely unlinked.
+ */
+export function runLinkStatus(input: Record<string, unknown>): string {
+	const rawUri = requireString(input, 'uri');
+	const resolved = resolveLinkedUri(rawUri);
+	if (!resolved) {
+		return json({
+			linked: false,
+			uri: rawUri,
+			message:
+				'No Rewst template is linked to this file (or a relative path matched more than one link). Pass a fuller path or file URI to disambiguate.',
+		});
+	}
+	const { uri, link } = resolved;
+	return json({
+		linked: true,
+		path: uri.fsPath,
+		uri: uri.toString(),
+		templateId: link.template.id,
+		templateName: link.template.name,
+		orgId: link.org.id,
+		orgName: link.org.name,
+		syncOnSave: SyncOnSaveManager.isUriSynced(uri),
+		message:
+			'Linked. This reflects local link state only (no remote comparison). Use buddy_template_sync_status to compare with the Rewst template, or search_template_links to list linked files.',
 	});
 }
 
@@ -233,7 +266,8 @@ const linkSpec: ToolSpec = {
 			},
 			uri: {
 				type: 'string',
-				description: 'Absolute path, workspace-relative path, or file:// URI of the existing local file to link.',
+				description:
+					'Absolute path, workspace-relative path, or file:// URI of the existing local file to link.',
 			},
 			orgId: {
 				type: 'string',
@@ -241,7 +275,8 @@ const linkSpec: ToolSpec = {
 			},
 			overwrite: {
 				type: 'boolean',
-				description: 'If the file is already linked, replace the existing link instead of failing. Default false.',
+				description:
+					'If the file is already linked, replace the existing link instead of failing. Default false.',
 			},
 		},
 		required: ['templateId', 'uri'],
@@ -252,13 +287,13 @@ const unlinkSpec: ToolSpec = {
 	name: 'buddy_template_unlink',
 	args: '{"uri": string}',
 	description:
-		'Remove the link between a local file and its Rewst template. The local file and the remote template are left untouched; only the local association (and its sync-on-save setting) is removed. Identify the file by the path shown in list_template_links or its file URI. Returns not_linked if no template is linked to it.',
+		'Remove the link between a local file and its Rewst template. The local file and the remote template are left untouched; only the local association (and its sync-on-save setting) is removed. Identify the file by the path shown in search_template_links or its file URI. Returns not_linked if no template is linked to it.',
 	inputSchema: {
 		type: 'object',
 		properties: {
 			uri: {
 				type: 'string',
-				description: 'Path or file URI of the linked file, as shown by list_template_links.',
+				description: 'Path or file URI of the linked file, as shown by search_template_links.',
 			},
 		},
 		required: ['uri'],
@@ -283,6 +318,23 @@ const syncOnSaveSpec: ToolSpec = {
 	},
 };
 
+const linkStatusSpec: ToolSpec = {
+	name: 'buddy_template_link_status',
+	args: '{"uri": string}',
+	description:
+		'Report whether one local file is linked to a Rewst template, reading only local link state (no network or remote comparison). Identify the file by an absolute path, a workspace-relative path, or a file:// URI. Returns linked:false when nothing is linked; otherwise the template id and name, org id and name, and whether sync-on-save is on. For an up-to-date comparison with the Rewst template use buddy_template_sync_status; to list linked files use search_template_links.',
+	inputSchema: {
+		type: 'object',
+		properties: {
+			uri: {
+				type: 'string',
+				description: 'Absolute path, workspace-relative path, or file:// URI of the local file to check.',
+			},
+		},
+		required: ['uri'],
+	},
+};
+
 export const TEMPLATE_LINK_CAPABILITIES: Capability[] = [
 	{
 		spec: linkSpec,
@@ -292,6 +344,15 @@ export const TEMPLATE_LINK_CAPABILITIES: Capability[] = [
 		mcp: true,
 		requiresOrg: false,
 		run: (input, ctx) => runLink(input, ctx),
+	},
+	{
+		spec: linkStatusSpec,
+		group: 'workspace',
+		access: 'read',
+		chat: false,
+		mcp: true,
+		requiresOrg: false,
+		run: input => Promise.resolve(runLinkStatus(input)),
 	},
 	{
 		spec: unlinkSpec,

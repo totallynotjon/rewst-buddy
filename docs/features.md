@@ -96,7 +96,7 @@ Talk to Rewst's AI assistant directly from VS Code's chat — as its own model, 
 
 ### Workspace and editor tools
 
-File and workspace work in Cage-Free Rewsty chat comes from VS Code itself: in agent mode, VS Code passes its built-in tools (read, search, edit, terminal, diagnostics, todo, agent tools, and similar) through `options.tools`. Rewst Buddy advertises and relays those built-ins through the `vscode-tool` protocol with VS Code's normal approval and review UI. Rewst Buddy no longer contributes its own `buddy_*` tools, `list_template_links`, `buddy_approval`, or `buddy_result_read` as VS Code language-model tools.
+File and workspace work in Cage-Free Rewsty chat comes from VS Code itself: in agent mode, VS Code passes its built-in tools (read, search, edit, terminal, diagnostics, todo, agent tools, and similar) through `options.tools`. Rewst Buddy advertises and relays those built-ins through the `vscode-tool` protocol with VS Code's normal approval and review UI. Rewst Buddy no longer contributes its own `buddy_*` tools, `search_template_links`, `buddy_approval`, or `buddy_result_read` as VS Code language-model tools.
 
 Cage-Free Rewsty is still told your VS Code working directory when one is open, so file-oriented built-in tools have useful local context.
 
@@ -104,7 +104,7 @@ Cage-Free Rewsty is still told your VS Code working directory when one is open, 
 
 Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of the chat LM tool surface. MCP exposure uses three switches:
 
-- `rewst-buddy.mcp.enable` exposes all read capabilities: `list_orgs`, `list_templates`, `get_template`, `list_workflows`, `get_workflow`, `rewst_graphql_query`, `buddy_graphql_schema`, `list_template_links`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_render_jinja`, `buddy_action_search`, and `result_read`.
+- `rewst-buddy.mcp.enable` exposes all read capabilities: `list_orgs`, `list_templates`, `get_template`, `list_workflows`, `get_workflow`, `rewst_graphql_query`, `buddy_graphql_schema`, `search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_render_jinja`, `buddy_action_search`, and `result_read`.
 - `rewst-buddy.mcp.enableWriteTools` adds the workflow write helpers `buddy_workflow_edit`, `buddy_workflow_autolayout`, and `buddy_workflow_run`.
 - `rewst-buddy.mcp.enableDangerousGraphqlMutation` unlocks only `rewst_graphql_mutate`, the raw GraphQL mutation tool.
 

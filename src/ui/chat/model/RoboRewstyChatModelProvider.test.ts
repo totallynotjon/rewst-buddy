@@ -237,7 +237,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		await harness.run([message(User, [text('check a.txt')])], [READ_FILE_TOOL]);
 
 		assert.ok(harness.captured[0].message.includes('read_file'), 'tool instructions injected');
-		assert.ok(!harness.captured[0].message.includes('list_template_links'), 'Rewst tools are not advertised');
+		assert.ok(!harness.captured[0].message.includes('search_template_links'), 'Rewst tools are not advertised');
 		assert.ok(!/\bbuddy_/.test(harness.captured[0].message), 'buddy_* tools are not advertised');
 		const calls = callsOf(harness.parts);
 		assert.strictEqual(calls.length, 1);

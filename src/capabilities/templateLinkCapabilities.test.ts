@@ -9,6 +9,7 @@ import vscode from 'vscode';
 import {
 	resolvePathToUri,
 	runLink,
+	runLinkStatus,
 	runSyncOnSave,
 	runUnlink,
 	TEMPLATE_LINK_CAPABILITIES,
@@ -288,6 +289,39 @@ suite('Unit: templateLinkCapabilities', () => {
 				() => runSyncOnSave({ uri: 'greeting.j2', enabled: 'yes' }, makeCtx()),
 				/"enabled" must be a boolean/,
 			);
+		});
+	});
+
+	suite('buddy_template_link_status', () => {
+		test('is a read tool, mcp-only, org-agnostic', () => {
+			const c = TEMPLATE_LINK_CAPABILITIES.find(x => x.spec.name === 'buddy_template_link_status');
+			assert.ok(c, 'capability registered');
+			assert.strictEqual(c.access, 'read');
+			assert.strictEqual(c.mcp, true);
+			assert.strictEqual(c.chat, false);
+			assert.strictEqual(c.requiresOrg, false);
+		});
+
+		test('reports linked:true with template, org, and sync-on-save state', () => {
+			const uri = addLink('/ws/greeting.j2', 't1');
+			SyncOnSaveManager.enableSync(uri);
+
+			const out = JSON.parse(runLinkStatus({ uri: 'greeting.j2' }));
+
+			assert.strictEqual(out.linked, true);
+			assert.strictEqual(out.templateId, 't1');
+			assert.strictEqual(out.orgId, 'org-1');
+			assert.strictEqual(out.syncOnSave, true);
+			assert.strictEqual(out.path, uri.fsPath);
+		});
+
+		test('reports linked:false when no template is linked', () => {
+			const out = JSON.parse(runLinkStatus({ uri: 'nope.j2' }));
+			assert.strictEqual(out.linked, false);
+		});
+
+		test('rejects a missing uri', () => {
+			assert.throws(() => runLinkStatus({}), /Missing required string argument "uri"/);
 		});
 	});
 });

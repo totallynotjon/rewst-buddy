@@ -28,12 +28,29 @@ export const defaultDeps: WorkspaceToolDeps = {
 	templateLinks: () => LinkManager.getAllTemplateLinks(),
 };
 
+const SEARCH_DEFAULT_LIMIT = 20;
+const SEARCH_MAX_LIMIT = 50;
+
 export const WORKSPACE_TOOL_SPECS: ToolSpec[] = [
 	{
-		name: 'list_template_links',
-		args: '{}',
-		description: 'List local files linked to Rewst templates (path, template name, template id, org).',
-		inputSchema: { type: 'object', properties: {} },
+		name: 'search_template_links',
+		args: '{"query"?: string, "limit"?: number}',
+		description:
+			'Search the local files linked to Rewst templates, returning a bounded list of matches (path, template name, template id, org). Pass query to filter by a case-insensitive substring of the file path, template name, template id, or org name; omit it to list the linked files (still bounded). Results are capped at limit (default 20, max 50) with a note when more match. To check whether one specific file is linked, prefer buddy_template_link_status.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				query: {
+					type: 'string',
+					description:
+						'Optional case-insensitive substring to match against the file path, template name, template id, or org name.',
+				},
+				limit: {
+					type: 'number',
+					description: `Maximum number of matches to return (default ${SEARCH_DEFAULT_LIMIT}, max ${SEARCH_MAX_LIMIT}).`,
+				},
+			},
+		},
 	},
 ];
 
@@ -42,13 +59,42 @@ interface ToolOutcome {
 	output: string;
 }
 
-function listTemplateLinks(deps: WorkspaceToolDeps): string {
+/** Positive integer in [1, max], else the fallback (MCP inputs are unvalidated). */
+function coercePositiveLimit(value: unknown, fallback: number, max: number): number {
+	if (typeof value === 'number' && Number.isInteger(value) && value > 0) return Math.min(value, max);
+	return fallback;
+}
+
+function searchTemplateLinks(deps: WorkspaceToolDeps, args: Record<string, unknown>): string {
 	const links = deps.templateLinks();
 	if (links.length === 0) return 'No files are linked to Rewst templates.';
-	const lines = links.map(link => {
-		const relative = deps.asRelativePath(vscode.Uri.parse(link.uriString));
-		return `${relative} ← "${link.template.name}" (template ${link.template.id}, org ${link.org.name})`;
-	});
+
+	const rawQuery = typeof args.query === 'string' ? args.query.trim() : '';
+	const query = rawQuery.toLowerCase();
+	const limit = coercePositiveLimit(args.limit, SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT);
+
+	const rows = links
+		.map(link => ({ relative: deps.asRelativePath(vscode.Uri.parse(link.uriString)), link }))
+		.filter(({ relative, link }) => {
+			if (query === '') return true;
+			const haystack = [relative, link.template.name, link.template.id, link.org.name].join('\n').toLowerCase();
+			return haystack.includes(query);
+		})
+		.sort((a, b) => a.relative.localeCompare(b.relative));
+
+	if (rows.length === 0) return `No linked files match "${rawQuery}".`;
+
+	const lines = rows
+		.slice(0, limit)
+		.map(
+			({ relative, link }) =>
+				`${relative} ← "${link.template.name}" (template ${link.template.id}, org ${link.org.name})`,
+		);
+	if (rows.length > lines.length) {
+		lines.push(
+			`… ${rows.length - lines.length} more not shown; refine with a more specific query or raise limit (max ${SEARCH_MAX_LIMIT}).`,
+		);
+	}
 	return lines.join('\n');
 }
 
@@ -81,8 +127,8 @@ async function runTool(
 	graphqlDeps?: GraphqlToolDeps,
 ): Promise<ToolOutcome> {
 	switch (request.tool) {
-		case 'list_template_links':
-			return { output: listTemplateLinks(deps) };
+		case 'search_template_links':
+			return { output: searchTemplateLinks(deps, request.args) };
 		default: {
 			if (isWorkflowTool(request.tool)) {
 				return { output: await runWorkflowTool(request, graphqlDeps) };
@@ -122,7 +168,7 @@ export async function buildWorkspaceOverview(deps: WorkspaceToolDeps = defaultDe
 
 	const linkCount = deps.templateLinks().length;
 	if (linkCount > 0) {
-		sections.push(`${linkCount} file(s) are linked to Rewst templates (list_template_links shows them).`);
+		sections.push(`${linkCount} file(s) are linked to Rewst templates (search_template_links lists them).`);
 	}
 	return sections.join('\n');
 }

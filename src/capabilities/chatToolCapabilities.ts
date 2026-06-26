@@ -25,7 +25,7 @@ const workflowAccess: Record<string, CapabilityAccess> = {
 };
 
 const doesNotRequireOrg = new Set<string>([
-	'list_template_links',
+	'search_template_links',
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 ]);
