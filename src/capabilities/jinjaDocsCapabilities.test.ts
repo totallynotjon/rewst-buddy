@@ -183,5 +183,54 @@ suite('Unit: jinjaDocsCapabilities', () => {
 			await cap('get_jinja_filter_docs').run({}, ctx);
 			assert.strictEqual(seenBase, 'https://engine.rewst.io');
 		});
+
+		// Raw MCP arguments are passed to run() without inputSchema validation, so
+		// run() must coerce defensively. asString() drops non-string values, which
+		// makes a bad name/search behave as if it were absent.
+		test('ignores non-string name/search arguments instead of throwing', async () => {
+			_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
+			const { ctx } = fakeCtx({});
+
+			// Both fields wrong-typed → treated as no arguments → the index listing.
+			const index = await cap('get_jinja_filter_docs').run({ name: 123, search: [] }, ctx);
+			assert.ok(index.includes('3 Jinja filters'));
+			assert.ok(!index.includes('absolute value'));
+
+			// Wrong-typed name is ignored, but a valid search still applies.
+			const searched = await cap('get_jinja_filter_docs').run({ name: 123, search: 'uppercase' }, ctx);
+			assert.ok(searched.includes('Convert a value to uppercase.'));
+		});
+
+		test('does not cache a failed fetch; a later call retries', async () => {
+			let calls = 0;
+			_setJinjaFilterFetcherForTesting(async () => {
+				calls++;
+				if (calls === 1) throw new Error('engine unavailable');
+				return parseJinjaFilters(SAMPLE_PAYLOAD);
+			});
+			const { ctx } = fakeCtx({});
+
+			await assert.rejects(() => cap('get_jinja_filter_docs').run({}, ctx), /engine unavailable/);
+			const output = await cap('get_jinja_filter_docs').run({ name: 'abs' }, ctx);
+			assert.ok(output.includes('Return the absolute value of the argument.'));
+			assert.strictEqual(calls, 2, 'a failed fetch is retried, not served from cache');
+		});
+
+		test('default fetcher throws with status detail on a non-OK response', async () => {
+			_resetJinjaFilterFetcherForTesting(); // exercise the real defaultFetcher
+			const originalFetch = globalThis.fetch;
+			globalThis.fetch = (async () => ({
+				ok: false,
+				status: 503,
+				statusText: 'Service Unavailable',
+				json: async () => [],
+			})) as unknown as typeof fetch;
+			try {
+				const { ctx } = fakeCtx({});
+				await assert.rejects(() => cap('get_jinja_filter_docs').run({}, ctx), /HTTP 503 Service Unavailable/);
+			} finally {
+				globalThis.fetch = originalFetch;
+			}
+		});
 	});
 });

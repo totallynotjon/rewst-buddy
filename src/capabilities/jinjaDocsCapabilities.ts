@@ -17,6 +17,8 @@ const FILTERS_PATH = '/jinja/intellisense/filters';
 const DEFAULT_ENGINE_BASE = 'https://engine.rewst.io';
 /** Upper bound on filters rendered for a search, before output-level capping. */
 const MAX_SEARCH_RESULTS = 25;
+/** Abort the catalog fetch if the engine host stalls, so a call can't hang. */
+const FETCH_TIMEOUT_MS = 10_000;
 
 export interface JinjaFilterDoc {
 	/** Filter name as used in a pipe, e.g. `center`. */
@@ -165,7 +167,7 @@ function engineBaseFrom(ctx: CapabilityContext): string {
 
 async function defaultFetcher(engineBaseUrl: string): Promise<JinjaFilterDoc[]> {
 	const url = `${engineBaseUrl}${FILTERS_PATH}`;
-	const response = await fetch(url);
+	const response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 	if (!response.ok) {
 		throw new Error(
 			`Failed to fetch Jinja filter docs from ${url}: HTTP ${response.status} ${response.statusText}`,
