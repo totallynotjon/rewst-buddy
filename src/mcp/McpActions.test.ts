@@ -100,6 +100,14 @@ function workflowMutationRawGraphqlResponse(request: { query?: string }): { data
 	throw new Error(`Unexpected rawGraphql operation in workflow mutation test: ${query}`);
 }
 
+function workflowRunRawGraphqlResponse(request: { query?: string }): { data: unknown } {
+	const query = request.query ?? '';
+	if (query.includes('RewstBuddyTestWorkflow')) {
+		return { data: { data: { testWorkflow: { executionId: 'exec-new' } } } };
+	}
+	throw new Error(`Unexpected rawGraphql operation in workflow run test: ${query}`);
+}
+
 function detectGraphqlOperation(query: string): string {
 	const match = /\b(query|mutation|subscription)\s+([A-Za-z_][A-Za-z0-9_]*)/.exec(query);
 	return match ? `${match[1]} ${match[2]}` : 'rawGraphql';
@@ -616,6 +624,42 @@ suite('Unit: McpActions', () => {
 			const calls = wrapper.getCallsFor('rawGraphql');
 			assert.ok(calls.some(call => String(call.variables.query).includes('RewstBuddyWorkflowGet')));
 			assert.ok(calls.some(call => String(call.variables.query).includes('RewstBuddyWorkflowUpdate')));
+		});
+
+		test('buddy_workflow_run asks for approval every time even after the workflow was approved', async () => {
+			const { session, wrapper } = useSession('org-1', 'Acme');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when<unknown>('rawGraphql', workflowRunRawGraphqlResponse);
+			let approvals = 0;
+			setMcpMutationApprover(async () => {
+				approvals++;
+				return true;
+			});
+			const runRequest = {
+				name: WORKFLOW_RUN_TOOL_NAME,
+				arguments: {
+					orgId: 'org-1',
+					workflowId: 'wf-1',
+					workflowName: 'MCP Sample Workflow',
+					orgName: 'Acme',
+					wait: false,
+				},
+			};
+
+			const first = await callTool(
+				runRequest,
+				settings({ enableWriteTools: true, alwaysAllowedOrgs: ['org-1'] }),
+			);
+			const second = await callTool(
+				runRequest,
+				settings({ enableWriteTools: true, alwaysAllowedOrgs: ['org-1'] }),
+			);
+
+			assert.ok(!first.isError, first.text);
+			assert.ok(!second.isError, second.text);
+			assert.match(first.text, /exec-new/);
+			assert.match(second.text, /exec-new/);
+			assert.strictEqual(approvals, 2, 'running/testing a workflow requires a fresh modal every time');
 		});
 
 		test('an org-scoped tool without orgId throws org_required', async () => {

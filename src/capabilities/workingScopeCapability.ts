@@ -29,6 +29,11 @@ export interface WorkingScopeChangeRequest {
 
 export type WorkingScopeApprover = (request: WorkingScopeChangeRequest, origin: ApprovalOrigin) => Promise<boolean>;
 
+export interface WorkingScopeApprovalText {
+	message: string;
+	detail: string;
+}
+
 // Defaults to reject so a misconfigured host never silently widens scope.
 let approver: WorkingScopeApprover = async () => false;
 
@@ -72,6 +77,31 @@ function managedOrgs(sessions: Session[]): Map<string, string> {
 
 function currentScope(): { orgs: string[]; workflows: string[] } {
 	return { orgs: WorkingScopeManager.getOrgs(), workflows: WorkingScopeManager.getWorkflows() };
+}
+
+function formatNamedOrg(org: NamedOrg): string {
+	return `${org.name} (${org.id})`;
+}
+
+function formatWorkflowId(id: string): string {
+	return `workflow ${id}`;
+}
+
+export function workingScopeApprovalText(
+	request: WorkingScopeChangeRequest,
+	origin: ApprovalOrigin,
+): WorkingScopeApprovalText {
+	const requester = origin === 'chat' ? 'Cage-Free Rewsty' : 'An external MCP client';
+	const verb = request.replace ? 'set' : 'add to';
+	const targets = [...request.orgs.map(formatNamedOrg), ...request.workflows.map(formatWorkflowId)];
+	const targetSummary = targets.length > 0 ? targets.join(', ') : 'the requested targets';
+	const detailParts: string[] = [];
+	if (request.orgs.length > 0) detailParts.push(`Orgs: ${request.orgs.map(formatNamedOrg).join(', ')}`);
+	if (request.workflows.length > 0) detailParts.push(`Workflows: ${request.workflows.join(', ')}`);
+	return {
+		message: `${requester} wants to ${verb} the working scope for ${targetSummary}. Tools will then be allowed to operate within it.`,
+		detail: detailParts.join('\n'),
+	};
 }
 
 const getWorkingScopeSpec: ToolSpec = {

@@ -48,11 +48,12 @@ export async function runWorkflowMutationWithApproval(
 	const scope = workflowEditScope(spec.name, input);
 	if (!scope) return missingScopeResult(spec.name);
 
-	if (!isMutationScopeApproved(scope)) {
+	const alwaysPrompt = spec.name === WORKFLOW_RUN_TOOL_NAME;
+	if (alwaysPrompt || !isMutationScopeApproved(scope)) {
 		if (!(await requestMcpMutationApproval(scope, operationSummary(spec.name, scope)))) {
 			return approvalRequiredResult();
 		}
-		approveMutationScope(scope);
+		if (!alwaysPrompt) approveMutationScope(scope);
 	}
 
 	return runWorkflowTool({ tool: spec.name, args: input }, createGraphqlDeps(ctx.session));

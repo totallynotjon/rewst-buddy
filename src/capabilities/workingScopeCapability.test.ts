@@ -9,6 +9,7 @@ import {
 	getWorkingScopeCapability,
 	setWorkingScopeApprover,
 	setWorkingScopeCapability,
+	workingScopeApprovalText,
 } from './workingScopeCapability';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -126,5 +127,22 @@ suite('Unit: workingScopeCapability', () => {
 		await setWorkingScopeCapability.run({ workflows: ['wf-1'], replace: true }, ctx);
 
 		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-1']);
+	});
+
+	test('working scope approval text surfaces requested org names and workflow ids in the visible message', () => {
+		const text = workingScopeApprovalText(
+			{
+				orgs: [{ id: 'org-1', name: 'Acme' }],
+				workflows: ['wf-1'],
+				replace: false,
+			},
+			'chat',
+		);
+
+		assert.match(text.message, /Cage-Free Rewsty/);
+		assert.match(text.message, /Acme \(org-1\)/);
+		assert.match(text.message, /wf-1/);
+		assert.match(text.detail, /Orgs: Acme \(org-1\)/);
+		assert.match(text.detail, /Workflows: wf-1/);
 	});
 });
