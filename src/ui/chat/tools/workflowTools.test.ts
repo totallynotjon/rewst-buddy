@@ -782,6 +782,7 @@ suite('Unit: workflowTools', () => {
 				pollError: string;
 				renderResult: unknown;
 				taskLogs: unknown[];
+				executions: unknown[];
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
 			}> = {},
 		) {
@@ -825,7 +826,7 @@ suite('Unit: workflowTools', () => {
 					}
 					return {
 						data: {
-							workflowExecutions: [
+							workflowExecutions: over.executions ?? [
 								{ id: 'ex-2', status: 'failed', createdAt: '2000', numSuccessfulTasks: 1 },
 								{ id: 'ex-1', status: 'failed', createdAt: '1000', numSuccessfulTasks: 2 },
 							],
@@ -1128,6 +1129,43 @@ suite('Unit: workflowTools', () => {
 			const call = calls.find(c => c.query.includes('RewstBuddyExecutions'))!;
 			assert.deepStrictEqual((call.variables!.where as { status?: string }).status, 'failed');
 			assert.deepStrictEqual(call.variables!.order, [['createdAt', 'desc']], 'requests newest-first');
+		});
+
+		test('buddy_workflow_executions rootOnly:false searches by workflow id without the org root filter', async () => {
+			const { deps, calls } = makeDeps({
+				executions: [
+					{
+						id: 'sub-ex-1',
+						status: 'succeeded',
+						createdAt: '3000',
+						numSuccessfulTasks: 5,
+						parentExecutionId: 'parent-ex-1',
+					},
+				],
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_executions',
+					args: { workflowId: 'wf-sub', orgId: 'org-1', rootOnly: false },
+				},
+				deps,
+			);
+
+			assert.match(output, /sub-ex-1/);
+			assert.match(output, /parent parent-ex-1/);
+			const call = calls.find(c => c.query.includes('RewstBuddyExecutions'))!;
+			assert.deepStrictEqual(call.variables!.where, { workflowId: 'wf-sub' });
+		});
+
+		test('buddy_workflow_executions empty root-only results mention sub-workflow search', async () => {
+			const { deps } = makeDeps({ executions: [] });
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_workflow_executions', args: { workflowId: 'wf-sub', orgId: 'org-1' } },
+				deps,
+			);
+
+			assert.match(output, /No recent root-level executions/);
+			assert.match(output, /rootOnly:false/);
 		});
 
 		test('buddy_workflow_run with wait:false returns the execution id without polling', async () => {

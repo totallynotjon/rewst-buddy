@@ -66,7 +66,12 @@ function makeHarness(turns: ConversationEvent[][], overrides: Partial<ProviderDe
 		sessions: () => [session],
 		sessionForOrg: () => session,
 		workspaceRoot: () => undefined,
-		aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: true }),
+		aiConfig: () => ({
+			customInstructions: '',
+			conversationType: 'HELP_DOCS',
+			showActivity: true,
+			maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
+		}),
 		buddyToolSpecs: () => [],
 		runBuddyTool: async () => ({ text: '', isError: false }),
 		...overrides,
@@ -350,6 +355,29 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(visibleText(harness.parts).includes('Stopped'), 'shows the stop note instead of running again');
 	});
 
+	test('uses the configured in-process buddy round cap', async () => {
+		const buddyReply = '```vscode-tool\n{"tool":"buddy_workflow_get","args":{}}\n```';
+		let calls = 0;
+		const harness = makeHarness([completeTurn(buddyReply, 'conv-1')], {
+			aiConfig: () => ({
+				customInstructions: '',
+				conversationType: 'HELP_DOCS',
+				showActivity: true,
+				maxBuddyToolRounds: 2,
+			}),
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async () => {
+				calls += 1;
+				return { text: 'x', isError: false };
+			},
+		});
+
+		await harness.run([message(User, [text('loop')])]);
+
+		assert.strictEqual(calls, 2, 'uses the configured cap instead of the default');
+		assert.ok(visibleText(harness.parts).includes('Stopped'), 'shows the stop note at the configured cap');
+	});
+
 	test('a built-in tool still round-trips through VS Code when buddy tools are advertised', async () => {
 		const reply = 'Checking.\n```vscode-tool\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
 		let buddyRan = false;
@@ -437,7 +465,12 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 				completeTurn('Done.', 'conv-1'),
 			],
 			{
-				aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: false }),
+				aiConfig: () => ({
+					customInstructions: '',
+					conversationType: 'HELP_DOCS',
+					showActivity: false,
+					maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
+				}),
 				buddyToolSpecs: () => [{ name: 'buddy_workflow_run', description: 'Run a workflow', args: '{}' }],
 				runBuddyTool: async (name, args, orgId) => {
 					buddyCalls.push({ name, args, orgId });
@@ -707,6 +740,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 				customInstructions: 'answer in haiku',
 				conversationType: 'HELP_DOCS',
 				showActivity: true,
+				maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
 			}),
 		});
 		await harness.run([message(User, [text('hi')])]);
@@ -754,7 +788,12 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 
 	test('suppresses activity lines when showActivity is off', async () => {
 		const harness = makeHarness([activityTurn], {
-			aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: false }),
+			aiConfig: () => ({
+				customInstructions: '',
+				conversationType: 'HELP_DOCS',
+				showActivity: false,
+				maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
+			}),
 		});
 		await harness.run([message(User, [text('hi')])]);
 		const out = textOf(harness.parts);
@@ -793,7 +832,12 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		const subscription = onDidChangeContextUsage(usage => captured.push(usage));
 		try {
 			const harness = makeHarness([usageTurn], {
-				aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: false }),
+				aiConfig: () => ({
+					customInstructions: '',
+					conversationType: 'HELP_DOCS',
+					showActivity: false,
+					maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
+				}),
 			});
 			await harness.run([message(User, [text('hi')])]);
 

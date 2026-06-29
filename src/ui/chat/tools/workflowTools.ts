@@ -162,9 +162,9 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	},
 	{
 		name: 'buddy_workflow_executions',
-		args: '{"workflowId": string, "orgId": string, "status"?: string, "limit"?: number}',
+		args: '{"workflowId": string, "orgId": string, "status"?: string, "limit"?: number, "rootOnly"?: boolean}',
 		description:
-			'List a workflow\'s recent executions, most recent first — typically to find recent FAILED runs to debug. Pass status to filter (e.g. "failed", "succeeded", "running"; lowercase). Returns each execution\'s id, status, time, and successful-task count. Feed a failed execution\'s id to buddy_render_jinja (executionId) to inspect the context it produced and see why a condition or expression went wrong.',
+			'List a workflow\'s recent executions, most recent first — typically to find recent FAILED runs to debug. Pass status to filter (e.g. "failed", "succeeded", "running"; lowercase). By default, searches root-level executions in the workflow\'s org; pass rootOnly:false for workflows that are only called as sub-workflows. Returns each execution\'s id, status, time, successful-task count, and parent/root execution links when present. Feed a failed execution\'s id to buddy_render_jinja (executionId) to inspect the context it produced and see why a condition or expression went wrong.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -176,6 +176,11 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 						'Filter by execution status, lowercase (e.g. "failed", "succeeded", "running"). Omit for any.',
 				},
 				limit: { type: 'number', description: 'Max executions to return (default 10).' },
+				rootOnly: {
+					type: 'boolean',
+					description:
+						'True/default searches root-level executions in the workflow org. False searches by workflow id only, which can find executions created when the workflow is called as a sub-workflow.',
+				},
 			},
 			required: ['workflowId', 'orgId'],
 		},
@@ -1237,7 +1242,7 @@ const TEST_WORKFLOW_MUTATION = `mutation RewstBuddyTestWorkflow($id: ID!, $orgId
 
 const WORKFLOW_EXECUTIONS_QUERY = `query RewstBuddyExecutions($where: WorkflowExecutionWhereInput, $order: [[String!]!], $limit: Int) {
 	workflowExecutions(where: $where, order: $order, limit: $limit) {
-		id status createdAt numSuccessfulTasks
+		id status createdAt numSuccessfulTasks orgId originatingExecutionId parentExecutionId
 	}
 }`;
 
@@ -1727,6 +1732,9 @@ interface ExecutionRow {
 	status?: string | null;
 	createdAt?: string | null;
 	numSuccessfulTasks?: number | null;
+	orgId?: string | null;
+	originatingExecutionId?: string | null;
+	parentExecutionId?: string | null;
 }
 
 async function runWorkflowExecutions(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
@@ -1735,18 +1743,29 @@ async function runWorkflowExecutions(request: ToolRequest, deps: GraphqlToolDeps
 	if (!workflowId || !orgId) throw new Error('buddy_workflow_executions requires "workflowId" and "orgId".');
 	const status = asStringArg(request.args, 'status');
 	const limit = typeof request.args.limit === 'number' ? Math.max(1, Math.min(50, request.args.limit)) : 10;
-	const where = { workflowId, orgId, ...(status ? { status } : {}) };
+	const rootOnly = request.args.rootOnly !== false;
+	const where = { workflowId, ...(rootOnly ? { orgId } : {}), ...(status ? { status } : {}) };
 	const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, { where, order: [['createdAt', 'desc']], limit });
 	const error = firstErrorMessage(result);
 	if (error) throw new Error(`Failed to list executions: ${error}`);
 	const rows = (
 		(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
 	).filter((e): e is ExecutionRow => !!e);
+	if (rows.length === 0 && rootOnly) {
+		return `No ${status ?? 'recent'} root-level executions for workflow ${workflowId}. If this workflow is called as a sub-workflow, retry with rootOnly:false.`;
+	}
 	if (rows.length === 0) return `No ${status ?? 'recent'} executions for workflow ${workflowId}.`;
 	const fmt = (e: ExecutionRow): string => {
 		const ts = Number(e.createdAt);
 		const when = Number.isFinite(ts) ? new Date(ts).toISOString() : (e.createdAt ?? '?');
-		return `- ${e.id}  ${e.status}  ${when}  (${e.numSuccessfulTasks ?? '?'} task(s) ok)`;
+		const links = [
+			e.orgId ? `org ${e.orgId}` : undefined,
+			e.parentExecutionId ? `parent ${e.parentExecutionId}` : undefined,
+			e.originatingExecutionId ? `root ${e.originatingExecutionId}` : undefined,
+		]
+			.filter(Boolean)
+			.join('  ');
+		return `- ${e.id}  ${e.status}  ${when}  (${e.numSuccessfulTasks ?? '?'} task(s) ok)${links ? `  ${links}` : ''}`;
 	};
 	return formatWorkflowOutput(
 		`${rows.length} ${status ?? 'recent'} execution(s), newest first:\n${rows.map(fmt).join('\n')}\n\nInspect one with buddy_render_jinja {"executionId": "<id>", "template": "{{ CTX.<field> }}"}.`,
