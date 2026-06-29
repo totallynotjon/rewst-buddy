@@ -5,7 +5,7 @@ import {
 	isMutationScopeApproved,
 	type MutationScope,
 } from './graphqlTool';
-import { asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
+import { asBooleanArg, asStringArg, type ToolRequest, type ToolSpec } from './toolProtocol';
 
 /**
  * High-level Rewst workflow tools for RoboRewsty. These bundle the multi-step
@@ -1743,7 +1743,7 @@ async function runWorkflowExecutions(request: ToolRequest, deps: GraphqlToolDeps
 	if (!workflowId || !orgId) throw new Error('buddy_workflow_executions requires "workflowId" and "orgId".');
 	const status = asStringArg(request.args, 'status');
 	const limit = typeof request.args.limit === 'number' ? Math.max(1, Math.min(50, request.args.limit)) : 10;
-	const rootOnly = request.args.rootOnly !== false;
+	const rootOnly = asBooleanArg(request.args, 'rootOnly') ?? true;
 	const where = { workflowId, ...(rootOnly ? { orgId } : {}), ...(status ? { status } : {}) };
 	const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, { where, order: [['createdAt', 'desc']], limit });
 	const error = firstErrorMessage(result);

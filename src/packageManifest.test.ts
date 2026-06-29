@@ -83,6 +83,8 @@ suite('Unit: package manifest', () => {
 		const setting = properties['rewst-buddy.ai.maxBuddyToolRounds'];
 		assert.strictEqual(setting?.type, 'number');
 		assert.strictEqual(setting?.default, 8);
+		assert.strictEqual((setting as { minimum?: number }).minimum, 1);
+		assert.strictEqual((setting as { maximum?: number }).maximum, 100);
 		assert.match(setting?.description ?? '', /tool calls/i);
 	});
 

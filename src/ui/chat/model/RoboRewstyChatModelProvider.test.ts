@@ -403,7 +403,34 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		await harness.run([message(User, [text('loop')])]);
 
 		assert.strictEqual(calls, 2, 'uses the configured cap instead of the default');
-		assert.ok(visibleText(harness.parts).includes('Stopped'), 'shows the stop note at the configured cap');
+		assert.match(
+			visibleText(harness.parts),
+			/Stopped after 2 Rewst tool calls/,
+			'stop note reflects the configured cap, not a hardcoded "several"',
+		);
+	});
+
+	test('the stop note is singular when the cap is 1', async () => {
+		const buddyReply = '```vscode-tool\n{"tool":"buddy_workflow_get","args":{}}\n```';
+		let calls = 0;
+		const harness = makeHarness([completeTurn(buddyReply, 'conv-1')], {
+			aiConfig: () => ({
+				customInstructions: '',
+				conversationType: 'HELP_DOCS',
+				showActivity: true,
+				maxBuddyToolRounds: 1,
+			}),
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async () => {
+				calls += 1;
+				return { text: 'x', isError: false };
+			},
+		});
+
+		await harness.run([message(User, [text('loop')])]);
+
+		assert.strictEqual(calls, 1, 'runs exactly the cap of 1');
+		assert.match(visibleText(harness.parts), /Stopped after 1 Rewst tool call\b/, 'singular "call" at a cap of 1');
 	});
 
 	test('a built-in tool still round-trips through VS Code when buddy tools are advertised', async () => {

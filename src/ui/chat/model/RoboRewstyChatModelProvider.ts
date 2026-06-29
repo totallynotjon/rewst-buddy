@@ -450,7 +450,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 					if (buddyRounds >= maxBuddyToolRounds) {
 						needsSeparator = true;
 						emitText(
-							'*Stopped after several Rewst tool calls without a final answer. Ask again to continue.*\n',
+							`*Stopped after ${maxBuddyToolRounds} Rewst tool call${maxBuddyToolRounds === 1 ? '' : 's'} without a final answer. Ask again to continue.*\n`,
 						);
 						storeContinuity([]);
 						emitBreadcrumb();

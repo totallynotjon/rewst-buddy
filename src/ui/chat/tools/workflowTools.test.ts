@@ -1165,6 +1165,27 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(call.variables!.where, { workflowId: 'wf-sub' });
 		});
 
+		test('buddy_workflow_executions coerces the string "false" rootOnly to the sub-workflow search', async () => {
+			const { deps, calls } = makeDeps({
+				executions: [{ id: 'sub-ex-1', status: 'succeeded', createdAt: '3000', parentExecutionId: 'p-1' }],
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_executions',
+					args: { workflowId: 'wf-sub', orgId: 'org-1', rootOnly: 'false' },
+				},
+				deps,
+			);
+
+			assert.match(output, /sub-ex-1/);
+			const call = calls.find(c => c.query.includes('RewstBuddyExecutions'))!;
+			assert.deepStrictEqual(
+				call.variables!.where,
+				{ workflowId: 'wf-sub' },
+				'the string "false" must not slip through as the default root-only filter',
+			);
+		});
+
 		test('buddy_workflow_executions empty root-only results mention sub-workflow search', async () => {
 			const { deps } = makeDeps({ executions: [] });
 			const output = await runWorkflowTool(
