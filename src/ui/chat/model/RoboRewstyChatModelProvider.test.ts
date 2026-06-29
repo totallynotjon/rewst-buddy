@@ -8,6 +8,7 @@ import { conversationMap } from './conversationMap';
 import { parseLatestBreadcrumb } from './breadcrumb';
 import {
 	MAX_BUDDY_TOOL_ROUNDS,
+	normalizeBuddyToolRounds,
 	RoboRewstyChatModelProvider,
 	truncateArgsLabel,
 	type ProviderDeps,
@@ -66,7 +67,12 @@ function makeHarness(turns: ConversationEvent[][], overrides: Partial<ProviderDe
 		sessions: () => [session],
 		sessionForOrg: () => session,
 		workspaceRoot: () => undefined,
-		aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: true }),
+		aiConfig: () => ({
+			customInstructions: '',
+			conversationType: 'HELP_DOCS',
+			showActivity: true,
+			maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
+		}),
 		buddyToolSpecs: () => [],
 		runBuddyTool: async () => ({ text: '', isError: false }),
 		...overrides,
@@ -316,6 +322,33 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		});
 	});
 
+	suite('normalizeBuddyToolRounds()', () => {
+		test('passes a valid in-range value through', () => {
+			assert.strictEqual(normalizeBuddyToolRounds(20), 20);
+			assert.strictEqual(normalizeBuddyToolRounds(1), 1);
+			assert.strictEqual(normalizeBuddyToolRounds(100), 100);
+		});
+
+		test('clamps out-of-range values to the 1–100 manifest range', () => {
+			assert.strictEqual(normalizeBuddyToolRounds(500), 100, 'above the max clamps down');
+			assert.strictEqual(normalizeBuddyToolRounds(0), 1, 'zero clamps up to the min');
+			assert.strictEqual(normalizeBuddyToolRounds(-5), 1, 'negative clamps up to the min');
+		});
+
+		test('floors fractional values', () => {
+			assert.strictEqual(normalizeBuddyToolRounds(2.9), 2);
+			assert.strictEqual(normalizeBuddyToolRounds(0.4), 1, 'floors then clamps to the min');
+		});
+
+		test('falls back to the default for non-numeric or non-finite input', () => {
+			assert.strictEqual(normalizeBuddyToolRounds(undefined), MAX_BUDDY_TOOL_ROUNDS);
+			assert.strictEqual(normalizeBuddyToolRounds(NaN), MAX_BUDDY_TOOL_ROUNDS);
+			assert.strictEqual(normalizeBuddyToolRounds(Infinity), MAX_BUDDY_TOOL_ROUNDS);
+			assert.strictEqual(normalizeBuddyToolRounds('8'), MAX_BUDDY_TOOL_ROUNDS);
+			assert.strictEqual(normalizeBuddyToolRounds(null), MAX_BUDDY_TOOL_ROUNDS);
+		});
+	});
+
 	test('renders distinct cards for repeated buddy calls with different args', async () => {
 		const reply =
 			'Two.\n```vscode-tool\n{"tool":"buddy_workflow_get","args":{"workflowId":"a"}}\n```\n' +
@@ -348,6 +381,56 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 
 		assert.strictEqual(calls, MAX_BUDDY_TOOL_ROUNDS, 'runs exactly the cap — the capped round never executes');
 		assert.ok(visibleText(harness.parts).includes('Stopped'), 'shows the stop note instead of running again');
+	});
+
+	test('uses the configured in-process buddy round cap', async () => {
+		const buddyReply = '```vscode-tool\n{"tool":"buddy_workflow_get","args":{}}\n```';
+		let calls = 0;
+		const harness = makeHarness([completeTurn(buddyReply, 'conv-1')], {
+			aiConfig: () => ({
+				customInstructions: '',
+				conversationType: 'HELP_DOCS',
+				showActivity: true,
+				maxBuddyToolRounds: 2,
+			}),
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async () => {
+				calls += 1;
+				return { text: 'x', isError: false };
+			},
+		});
+
+		await harness.run([message(User, [text('loop')])]);
+
+		assert.strictEqual(calls, 2, 'uses the configured cap instead of the default');
+		assert.match(
+			visibleText(harness.parts),
+			/Stopped after 2 Rewst tool calls/,
+			'stop note reflects the configured cap, not a hardcoded "several"',
+		);
+	});
+
+	test('the stop note is singular when the cap is 1', async () => {
+		const buddyReply = '```vscode-tool\n{"tool":"buddy_workflow_get","args":{}}\n```';
+		let calls = 0;
+		const harness = makeHarness([completeTurn(buddyReply, 'conv-1')], {
+			aiConfig: () => ({
+				customInstructions: '',
+				conversationType: 'HELP_DOCS',
+				showActivity: true,
+				maxBuddyToolRounds: 1,
+			}),
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async () => {
+				calls += 1;
+				return { text: 'x', isError: false };
+			},
+		});
+
+		await harness.run([message(User, [text('loop')])]);
+
+		assert.strictEqual(calls, 1, 'runs exactly the cap of 1');
+		assert.match(visibleText(harness.parts), /Stopped after 1 Rewst tool call\b/, 'singular "call" at a cap of 1');
 	});
 
 	test('a built-in tool still round-trips through VS Code when buddy tools are advertised', async () => {
@@ -437,7 +520,12 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 				completeTurn('Done.', 'conv-1'),
 			],
 			{
-				aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: false }),
+				aiConfig: () => ({
+					customInstructions: '',
+					conversationType: 'HELP_DOCS',
+					showActivity: false,
+					maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
+				}),
 				buddyToolSpecs: () => [{ name: 'buddy_workflow_run', description: 'Run a workflow', args: '{}' }],
 				runBuddyTool: async (name, args, orgId) => {
 					buddyCalls.push({ name, args, orgId });
@@ -707,6 +795,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 				customInstructions: 'answer in haiku',
 				conversationType: 'HELP_DOCS',
 				showActivity: true,
+				maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
 			}),
 		});
 		await harness.run([message(User, [text('hi')])]);
@@ -754,7 +843,12 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 
 	test('suppresses activity lines when showActivity is off', async () => {
 		const harness = makeHarness([activityTurn], {
-			aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: false }),
+			aiConfig: () => ({
+				customInstructions: '',
+				conversationType: 'HELP_DOCS',
+				showActivity: false,
+				maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
+			}),
 		});
 		await harness.run([message(User, [text('hi')])]);
 		const out = textOf(harness.parts);
@@ -793,7 +887,12 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		const subscription = onDidChangeContextUsage(usage => captured.push(usage));
 		try {
 			const harness = makeHarness([usageTurn], {
-				aiConfig: () => ({ customInstructions: '', conversationType: 'HELP_DOCS', showActivity: false }),
+				aiConfig: () => ({
+					customInstructions: '',
+					conversationType: 'HELP_DOCS',
+					showActivity: false,
+					maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
+				}),
 			});
 			await harness.run([message(User, [text('hi')])]);
 

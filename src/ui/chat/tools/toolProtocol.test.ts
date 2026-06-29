@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { initTestEnvironment } from '@test';
 import {
+	asBooleanArg,
 	buildToolInstructions,
 	describeRequest,
 	describeRequestBrief,
@@ -241,6 +242,26 @@ suite('Unit: toolProtocol', () => {
 			assert.strictEqual(describeRequestBrief({ tool: 'read_file', args: { path: 'a' } }, 0), '');
 			assert.strictEqual(describeRequestBrief({ tool: 'read_file', args: { path: 'a' } }, -5), '');
 			assert.strictEqual(describeRequestBrief({ tool: 'read_file', args: { path: 'a' } }, 1), '…');
+		});
+	});
+
+	suite('asBooleanArg()', () => {
+		test('returns real booleans unchanged', () => {
+			assert.strictEqual(asBooleanArg({ rootOnly: true }, 'rootOnly'), true);
+			assert.strictEqual(asBooleanArg({ rootOnly: false }, 'rootOnly'), false);
+		});
+
+		test('coerces the string forms "true"/"false" case-insensitively', () => {
+			assert.strictEqual(asBooleanArg({ rootOnly: 'false' }, 'rootOnly'), false);
+			assert.strictEqual(asBooleanArg({ rootOnly: 'TRUE' }, 'rootOnly'), true);
+			assert.strictEqual(asBooleanArg({ rootOnly: ' False ' }, 'rootOnly'), false);
+		});
+
+		test('returns undefined for absent or unrecognized values so callers default', () => {
+			assert.strictEqual(asBooleanArg({}, 'rootOnly'), undefined);
+			assert.strictEqual(asBooleanArg({ rootOnly: 'nope' }, 'rootOnly'), undefined);
+			assert.strictEqual(asBooleanArg({ rootOnly: 1 }, 'rootOnly'), undefined);
+			assert.strictEqual(asBooleanArg({ rootOnly: null }, 'rootOnly'), undefined);
 		});
 	});
 });

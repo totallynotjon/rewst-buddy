@@ -782,6 +782,7 @@ suite('Unit: workflowTools', () => {
 				pollError: string;
 				renderResult: unknown;
 				taskLogs: unknown[];
+				executions: unknown[];
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
 			}> = {},
 		) {
@@ -825,7 +826,7 @@ suite('Unit: workflowTools', () => {
 					}
 					return {
 						data: {
-							workflowExecutions: [
+							workflowExecutions: over.executions ?? [
 								{ id: 'ex-2', status: 'failed', createdAt: '2000', numSuccessfulTasks: 1 },
 								{ id: 'ex-1', status: 'failed', createdAt: '1000', numSuccessfulTasks: 2 },
 							],
@@ -1126,8 +1127,85 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /ex-1/);
 			assert.match(output, /failed/);
 			const call = calls.find(c => c.query.includes('RewstBuddyExecutions'))!;
-			assert.deepStrictEqual((call.variables!.where as { status?: string }).status, 'failed');
+			assert.deepStrictEqual(
+				call.variables!.where,
+				{ workflowId: 'wf-1', orgId: 'org-1', status: 'failed' },
+				'default (root-only) keeps the org filter so only top-level runs return',
+			);
 			assert.deepStrictEqual(call.variables!.order, [['createdAt', 'desc']], 'requests newest-first');
+		});
+
+		test('buddy_workflow_executions rootOnly:false searches by workflow id without the org root filter', async () => {
+			const { deps, calls } = makeDeps({
+				executions: [
+					{
+						id: 'sub-ex-1',
+						status: 'succeeded',
+						createdAt: '3000',
+						numSuccessfulTasks: 5,
+						orgId: 'org-2',
+						parentExecutionId: 'parent-ex-1',
+						originatingExecutionId: 'root-ex-1',
+					},
+				],
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_executions',
+					args: { workflowId: 'wf-sub', orgId: 'org-1', rootOnly: false },
+				},
+				deps,
+			);
+
+			assert.match(output, /sub-ex-1/);
+			assert.match(output, /org org-2/, 'renders the execution org so cross-org sub-runs are visible');
+			assert.match(output, /parent parent-ex-1/);
+			assert.match(output, /root root-ex-1/, 'renders the originating (root) execution link');
+			const call = calls.find(c => c.query.includes('RewstBuddyExecutions'))!;
+			assert.deepStrictEqual(call.variables!.where, { workflowId: 'wf-sub' });
+		});
+
+		test('buddy_workflow_executions coerces the string "false" rootOnly to the sub-workflow search', async () => {
+			const { deps, calls } = makeDeps({
+				executions: [{ id: 'sub-ex-1', status: 'succeeded', createdAt: '3000', parentExecutionId: 'p-1' }],
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_executions',
+					args: { workflowId: 'wf-sub', orgId: 'org-1', rootOnly: 'false' },
+				},
+				deps,
+			);
+
+			assert.match(output, /sub-ex-1/);
+			const call = calls.find(c => c.query.includes('RewstBuddyExecutions'))!;
+			assert.deepStrictEqual(
+				call.variables!.where,
+				{ workflowId: 'wf-sub' },
+				'the string "false" must not slip through as the default root-only filter',
+			);
+		});
+
+		test('buddy_workflow_executions empty root-only results mention sub-workflow search', async () => {
+			const { deps } = makeDeps({ executions: [] });
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_workflow_executions', args: { workflowId: 'wf-sub', orgId: 'org-1' } },
+				deps,
+			);
+
+			assert.match(output, /No recent root-level executions/);
+			assert.match(output, /rootOnly:false/);
+		});
+
+		test('buddy_workflow_executions empty rootOnly:false results give the plain message, not the sub-workflow hint', async () => {
+			const { deps } = makeDeps({ executions: [] });
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_workflow_executions', args: { workflowId: 'wf-sub', orgId: 'org-1', rootOnly: false } },
+				deps,
+			);
+
+			assert.match(output, /No recent executions for workflow wf-sub/);
+			assert.doesNotMatch(output, /rootOnly:false/, 'no point suggesting the search the caller already ran');
 		});
 
 		test('buddy_workflow_run with wait:false returns the execution id without polling', async () => {

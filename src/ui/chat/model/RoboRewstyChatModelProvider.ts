@@ -52,11 +52,22 @@ export interface ProviderDeps {
 	sessions(): Session[];
 	sessionForOrg(orgId: string): Session;
 	workspaceRoot(): string | undefined;
-	aiConfig(): { customInstructions: string; conversationType: string; showActivity: boolean };
+	aiConfig(): {
+		customInstructions: string;
+		conversationType: string;
+		showActivity: boolean;
+		maxBuddyToolRounds: number;
+	};
 	/** Rewst (buddy) tools to advertise this turn; empty unless the MCP server is on. */
 	buddyToolSpecs(): ToolSpec[];
 	/** Runs one buddy tool in-process through the MCP capability surface. */
 	runBuddyTool(name: string, args: Record<string, unknown>, orgId: string): Promise<BuddyToolResult>;
+}
+
+/** Clamps the configured round cap to the manifest's 1–100 range; falls back to the default for non-numeric/invalid input. */
+export function normalizeBuddyToolRounds(value: unknown): number {
+	if (typeof value !== 'number' || !Number.isFinite(value)) return MAX_BUDDY_TOOL_ROUNDS;
+	return Math.max(1, Math.min(100, Math.floor(value)));
 }
 
 /** Caps a buddy tool's args line in the activity card so a big arg blob can't flood the chat. */
@@ -113,6 +124,7 @@ export const defaultProviderDeps: ProviderDeps = {
 			customInstructions: config.get<string>('customInstructions', ''),
 			conversationType: config.get<string>('conversationType', 'HELP_DOCS'),
 			showActivity: config.get<boolean>('showActivity', true),
+			maxBuddyToolRounds: normalizeBuddyToolRounds(config.get<number>('maxBuddyToolRounds')),
 		};
 	},
 	buddyToolSpecs: buddyChatToolSpecs,
@@ -243,7 +255,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		const buddyNames = new Set(buddySpecs.map(spec => spec.name));
 		const permittedNames = new Set<string>([...vscodeNames, ...buddyNames]);
 		const advertisedSpecs = [...chatToolSpecs(tools), ...buddySpecs];
-		const { customInstructions, conversationType, showActivity } = this.deps.aiConfig();
+		const { customInstructions, conversationType, showActivity, maxBuddyToolRounds } = this.deps.aiConfig();
 
 		const trailingResults = extractTrailingToolResults(messages);
 		const toolCalls = trailingResults ? collectToolCalls(messages) : undefined;
@@ -435,10 +447,10 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 					emitText(remainder);
 					// Cap BEFORE running: a capped round must not execute, or a write
 					// would take effect with no result fed back and no final answer.
-					if (buddyRounds >= MAX_BUDDY_TOOL_ROUNDS) {
+					if (buddyRounds >= maxBuddyToolRounds) {
 						needsSeparator = true;
 						emitText(
-							'*Stopped after several Rewst tool calls without a final answer. Ask again to continue.*\n',
+							`*Stopped after ${maxBuddyToolRounds} Rewst tool call${maxBuddyToolRounds === 1 ? '' : 's'} without a final answer. Ask again to continue.*\n`,
 						);
 						storeContinuity([]);
 						emitBreadcrumb();

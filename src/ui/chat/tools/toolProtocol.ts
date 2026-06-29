@@ -204,3 +204,21 @@ export function asStringArg(args: Record<string, unknown>, key: string): string 
 	const value = args[key];
 	return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
+
+/**
+ * Reads a boolean tool argument, coercing the string forms "true"/"false"
+ * (case-insensitive). MCP passes raw arguments through without schema
+ * validation, so a flag like the string "false" must not slip through as a
+ * truthy object; returns undefined when absent or unrecognized so callers apply
+ * their own default.
+ */
+export function asBooleanArg(args: Record<string, unknown>, key: string): boolean | undefined {
+	const value = args[key];
+	if (typeof value === 'boolean') return value;
+	if (typeof value === 'string') {
+		const normalized = value.trim().toLowerCase();
+		if (normalized === 'true') return true;
+		if (normalized === 'false') return false;
+	}
+	return undefined;
+}

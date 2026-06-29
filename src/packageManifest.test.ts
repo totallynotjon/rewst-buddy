@@ -78,6 +78,16 @@ suite('Unit: package manifest', () => {
 		);
 	});
 
+	test('AI settings expose the configurable buddy tool round cap', () => {
+		const properties = manifest.contributes.configuration?.properties ?? {};
+		const setting = properties['rewst-buddy.ai.maxBuddyToolRounds'];
+		assert.strictEqual(setting?.type, 'number');
+		assert.strictEqual(setting?.default, 8);
+		assert.strictEqual((setting as { minimum?: number }).minimum, 1);
+		assert.strictEqual((setting as { maximum?: number }).maximum, 100);
+		assert.match(setting?.description ?? '', /tool calls/i);
+	});
+
 	test('resume and apply commands are contributed for the palette', () => {
 		const ids = manifest.contributes.commands.map(entry => entry.command);
 		assert.ok(ids.includes('rewst-buddy.prefix.ResumeRewstAiConversation'));

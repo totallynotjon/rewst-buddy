@@ -136,6 +136,13 @@
 					"default": true,
 					"description": "Show Cage-Free Rewsty's live activity (documentation searches and tool calls) as it works, instead of only a spinner until the answer arrives."
 				},
+				"rewst-buddy.ai.maxBuddyToolRounds": {
+					"type": "number",
+					"default": 8,
+					"minimum": 1,
+					"maximum": 100,
+					"description": "Maximum in-process Buddy tool calls Cage-Free Rewsty may run within one chat response before stopping and asking you to continue."
+				},
 				"rewst-buddy.mcp.enable": {
 					"type": "boolean",
 					"default": false,
