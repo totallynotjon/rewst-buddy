@@ -9,6 +9,7 @@ import {
 	getWorkingScopeCapability,
 	setWorkingScopeApprover,
 	setWorkingScopeCapability,
+	workingScopeApprovalText,
 } from './workingScopeCapability';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -126,5 +127,44 @@ suite('Unit: workingScopeCapability', () => {
 		await setWorkingScopeCapability.run({ workflows: ['wf-1'], replace: true }, ctx);
 
 		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-1']);
+	});
+
+	test('working scope approval text surfaces requested org names and workflow ids in the visible message', () => {
+		const text = workingScopeApprovalText(
+			{
+				orgs: [{ id: 'org-1', name: 'Acme' }],
+				workflows: ['wf-1'],
+				replace: false,
+			},
+			'chat',
+		);
+
+		assert.match(text.message, /Cage-Free Rewsty/);
+		assert.match(text.message, /Acme \(org-1\)/);
+		assert.match(text.message, /wf-1/);
+		assert.match(text.detail, /Orgs: Acme \(org-1\)/);
+		assert.match(text.detail, /Workflows: wf-1/);
+	});
+
+	test('working scope approval text uses the MCP requester wording and "set" verb for replace requests', () => {
+		const text = workingScopeApprovalText(
+			{
+				orgs: [{ id: 'org-1', name: 'Acme' }],
+				workflows: ['wf-1'],
+				replace: true,
+			},
+			'mcp',
+		);
+
+		assert.match(text.message, /An external MCP client/);
+		assert.match(text.message, /wants to set the working scope/);
+		assert.match(text.message, /Acme \(org-1\)/);
+	});
+
+	test('working scope approval text falls back to a generic target summary when nothing is requested', () => {
+		const text = workingScopeApprovalText({ orgs: [], workflows: [], replace: false }, 'chat');
+
+		assert.match(text.message, /add to the working scope for the requested targets/);
+		assert.strictEqual(text.detail, '');
 	});
 });

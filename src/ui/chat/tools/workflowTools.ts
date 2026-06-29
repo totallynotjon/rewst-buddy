@@ -32,6 +32,14 @@ export const WORKFLOW_RUN_TOOL_NAME = 'buddy_workflow_run';
 export const WORKFLOW_EXECUTION_LOGS_TOOL_NAME = 'buddy_execution_logs';
 export const WORKFLOW_SEARCH_TOOL_NAME = 'buddy_workflow_search';
 
+/**
+ * Running a workflow actually executes its automation, so it requires a fresh
+ * approval every time and is never remembered per-session — unlike edit/autolayout.
+ */
+export function workflowToolAlwaysPrompts(name: string): boolean {
+	return name === WORKFLOW_RUN_TOOL_NAME;
+}
+
 /** Identifying fields a workflow-mutation request must carry (org + workflow). */
 const MUTATION_SCOPE_KEYS = ['workflowId', 'workflowName', 'orgId', 'orgName'] as const;
 
@@ -142,7 +150,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_RUN_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "input"?: object, "wait"?: boolean}',
 		description:
-			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from buddy_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate buddy_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to buddy_execution_logs or buddy_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval, remembered per workflow for the session.",
+			"Trigger a run of a Rewst workflow (via testWorkflow) — to test a workflow end to end or kick it off for another purpose. Pass input as the workflow's run inputs (the parameters from buddy_workflow_get's workflow.inputs). By default the tool WAITS for the run to finish and reports the final status; if it failed it automatically includes the failing task's log (status, message, input, result) so you see the cause in one call without a separate buddy_execution_logs round-trip. Pass wait:false to return immediately with just the execution id. The execution id is included either way; feed it to buddy_execution_logs or buddy_render_jinja to dig further. This actually executes the workflow's automation, so it requires user approval every time.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -1106,6 +1114,7 @@ export function applyOperations(
 		}
 	}
 	ensureTerminalTransitions(next);
+	removeRedundantTerminalSuccessTransitions(next);
 	orderTransitionsByCondition(next);
 	ensureTaskDefaults(next);
 	layoutNewTasks(next);
@@ -1140,6 +1149,20 @@ function ensureTerminalTransitions(tasks: RawTask[]): void {
 		if ((task.next ?? []).length === 0) {
 			task.next = [{ when: '{{ SUCCEEDED }}', label: '', do: [], publish: [] }];
 		}
+	}
+}
+
+function removeRedundantTerminalSuccessTransitions(tasks: RawTask[]): void {
+	for (const task of tasks) {
+		const transitions = task.next;
+		if (!transitions || transitions.length < 2) continue;
+		const hasTargetedSuccess = transitions.some(t => isSuccessCondition(t.when) && (t.do ?? []).length > 0);
+		if (!hasTargetedSuccess) continue;
+		// Only a truly empty fallback is redundant — a targetless success edge that
+		// still publishes context is real work and must survive.
+		task.next = transitions.filter(
+			t => !(isSuccessCondition(t.when) && (t.do ?? []).length === 0 && (t.publish ?? []).length === 0),
+		);
 	}
 }
 
@@ -2021,9 +2044,14 @@ function describeOperation(operation: WorkflowOperation): string {
  */
 export function workflowEditConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
 	const scope = workflowEditScope(name, input);
-	if (!scope || isMutationScopeApproved(scope)) return undefined;
+	if (!scope) return undefined;
+	const alwaysPrompt = workflowToolAlwaysPrompts(name);
+	if (!alwaysPrompt && isMutationScopeApproved(scope)) return undefined;
 	const args = asObject(input);
-	const lead = `workflow **${scope.scopeName}** (\`${scope.scopeId}\`) in org **${scope.orgName}** (\`${scope.orgId}\`)? Approving also lets further actions on this same workflow run for the rest of this session without asking again.`;
+	const approvalMemory = alwaysPrompt
+		? ''
+		: ' Approving also lets further actions on this same workflow run for the rest of this session without asking again.';
+	const lead = `workflow **${scope.scopeName}** (\`${scope.scopeId}\`) in org **${scope.orgName}** (\`${scope.orgId}\`)?${approvalMemory}`;
 	let lines: string[];
 	let title = 'Cage-Free Rewsty wants to edit a Rewst workflow';
 	if (name === WORKFLOW_AUTOLAYOUT_TOOL_NAME) {

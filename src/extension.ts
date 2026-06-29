@@ -1,5 +1,5 @@
 import { CommandInitiater } from '@commands';
-import { setMcpMutationApprover, setWorkingScopeApprover } from '@capabilities';
+import { setMcpMutationApprover, setWorkingScopeApprover, workingScopeApprovalText } from '@capabilities';
 import { extPrefix, context as globalVSContext } from '@global';
 import { McpDefinitionProvider, McpServerController } from '@mcp';
 import {
@@ -44,15 +44,10 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 
 	setWorkingScopeApprover(async (request, origin) => {
-		const requester = origin === 'chat' ? 'Cage-Free Rewsty' : 'An external MCP client';
-		const verb = request.replace ? 'set' : 'add to';
-		const orgList = request.orgs.map(org => `${org.name} (${org.id})`).join(', ');
-		const detailParts: string[] = [];
-		if (request.orgs.length > 0) detailParts.push(`Orgs: ${orgList}`);
-		if (request.workflows.length > 0) detailParts.push(`Workflows: ${request.workflows.join(', ')}`);
+		const approvalText = workingScopeApprovalText(request, origin);
 		const choice = await vscode.window.showWarningMessage(
-			`${requester} wants to ${verb} the working scope. Tools will then be allowed to operate within it.`,
-			{ modal: true, detail: detailParts.join('\n') },
+			approvalText.message,
+			{ modal: true, detail: approvalText.detail },
 			'Approve',
 		);
 		return choice === 'Approve';

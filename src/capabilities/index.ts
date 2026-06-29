@@ -16,6 +16,8 @@ export {
 export {
 	_resetWorkingScopeApproverForTesting,
 	setWorkingScopeApprover,
+	workingScopeApprovalText,
+	type WorkingScopeApprovalText,
 	type WorkingScopeApprover,
 	type WorkingScopeChangeRequest,
 } from './workingScopeCapability';

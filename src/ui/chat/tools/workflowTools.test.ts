@@ -243,10 +243,9 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(end.next![0].do, [notify.id]);
 		});
 
-		test('connect inserts a success edge before a pre-existing targetless terminal', () => {
+		test('connect replaces a pre-existing targetless terminal with the real success edge', () => {
 			// A task saved once carries a terminal {{ SUCCEEDED }} with do:[]. Connecting
-			// from it must place the new success edge first, or FOLLOW_FIRST lets the
-			// empty terminal shadow it.
+			// from it must not leave that empty fallback behind once a real success edge exists.
 			const tasksIn = sampleTasks();
 			tasksIn[1].next = [{ when: '{{ SUCCEEDED }}', label: '', do: [], publish: [] }];
 			const ops: WorkflowOperation[] = [
@@ -256,8 +255,8 @@ suite('Unit: workflowTools', () => {
 			const { tasks } = applyOperations(tasksIn as never, ops, NOOP_REF);
 			const end = tasks.find(t => t.name === 'end')!;
 			const after = tasks.find(t => t.name === 'after')!;
-			assert.deepStrictEqual(end.next![0].do, [after.id], 'new connection evaluated first');
-			assert.deepStrictEqual(end.next![1].do, [], 'empty terminal pushed after');
+			assert.strictEqual(end.next!.length, 1);
+			assert.deepStrictEqual(end.next![0].do, [after.id], 'real success edge is the only success fallback');
 		});
 
 		test('add_task with subWorkflowId calls another workflow (its id is the action id)', () => {
@@ -491,6 +490,44 @@ suite('Unit: workflowTools', () => {
 			const start = tasks.find(t => t.name === 'start')!;
 			assert.strictEqual(start.next!.length, 1);
 			assert.deepStrictEqual(start.next![0].do, []);
+		});
+
+		test('connect replaces a targetless success fallback with the real success edge', () => {
+			const tasksIn = sampleTasks();
+			tasksIn[0].next = [{ when: '{{ SUCCEEDED }}', label: '', do: [], publish: [] }];
+
+			const { tasks } = applyOperations(
+				tasksIn as never,
+				[{ op: 'connect', from: 'start', to: 'end' }],
+				NO_ACTIONS,
+			);
+
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next!.length, 1, 'the redundant terminal fallback is removed');
+			assert.strictEqual(start.next![0].when, '{{ SUCCEEDED }}');
+			assert.deepStrictEqual(start.next![0].do, ['bb02']);
+		});
+
+		test('keeps a targetless success transition that still publishes context', () => {
+			// A terminal {{ SUCCEEDED }} edge with do:[] but a real publish list is not
+			// a redundant fallback — pruning it would silently drop the published vars.
+			const tasksIn = sampleTasks();
+			tasksIn[0].next = [
+				{ when: '{{ SUCCEEDED }}', label: '', do: ['bb02'], publish: [] },
+				{ when: '{{ SUCCEEDED }}', label: '', do: [], publish: [{ key: 'out', value: '{{ 1 }}' }] },
+			] as never;
+
+			const { tasks } = applyOperations(
+				tasksIn as never,
+				[{ op: 'reposition', task: 'end', x: 5, y: 5 }],
+				NO_ACTIONS,
+			);
+
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next!.length, 2, 'the publishing terminal edge is preserved');
+			const publishing = start.next!.find(t => (t.do ?? []).length === 0);
+			assert.ok(publishing, 'publish-only terminal edge survives');
+			assert.strictEqual((publishing!.publish ?? []).length, 1);
 		});
 
 		test('set_transition edits the single transition', () => {
@@ -1499,6 +1536,16 @@ suite('Unit: workflowTools', () => {
 			assert.ok(confirmation);
 			assert.match(confirmation!.message, /Run workflow/);
 			assert.match(confirmation!.message, /executes the workflow/i);
+		});
+
+		test('buddy_workflow_run still prompts after the workflow scope was approved', () => {
+			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme', input: { a: 1 } };
+			approveMutationScope({ scopeId: 'wf-1', scopeName: 'WF', orgId: 'org-1', orgName: 'Acme' });
+
+			const confirmation = workflowEditConfirmation(WORKFLOW_RUN_TOOL_NAME, args);
+
+			assert.ok(confirmation, 'running/testing a workflow requires approval every time');
+			assert.match(confirmation!.message, /Run workflow/);
 		});
 
 		test('buddy_workflow_edit refuses when scope fields are missing', async () => {

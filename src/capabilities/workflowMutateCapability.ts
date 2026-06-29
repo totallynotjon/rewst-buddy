@@ -10,6 +10,7 @@ import {
 	WORKFLOW_RUN_TOOL_NAME,
 	runWorkflowTool,
 	workflowEditScope,
+	workflowToolAlwaysPrompts,
 } from '../ui/chat/tools/workflowTools';
 import type { CapabilityContext } from './Capability';
 import { requestMcpMutationApproval } from './graphqlMutateCapability';
@@ -48,11 +49,12 @@ export async function runWorkflowMutationWithApproval(
 	const scope = workflowEditScope(spec.name, input);
 	if (!scope) return missingScopeResult(spec.name);
 
-	if (!isMutationScopeApproved(scope)) {
+	const alwaysPrompt = workflowToolAlwaysPrompts(spec.name);
+	if (alwaysPrompt || !isMutationScopeApproved(scope)) {
 		if (!(await requestMcpMutationApproval(scope, operationSummary(spec.name, scope)))) {
 			return approvalRequiredResult();
 		}
-		approveMutationScope(scope);
+		if (!alwaysPrompt) approveMutationScope(scope);
 	}
 
 	return runWorkflowTool({ tool: spec.name, args: input }, createGraphqlDeps(ctx.session));
