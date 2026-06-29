@@ -32,6 +32,14 @@ export const WORKFLOW_RUN_TOOL_NAME = 'buddy_workflow_run';
 export const WORKFLOW_EXECUTION_LOGS_TOOL_NAME = 'buddy_execution_logs';
 export const WORKFLOW_SEARCH_TOOL_NAME = 'buddy_workflow_search';
 
+/**
+ * Running a workflow actually executes its automation, so it requires a fresh
+ * approval every time and is never remembered per-session — unlike edit/autolayout.
+ */
+export function workflowToolAlwaysPrompts(name: string): boolean {
+	return name === WORKFLOW_RUN_TOOL_NAME;
+}
+
 /** Identifying fields a workflow-mutation request must carry (org + workflow). */
 const MUTATION_SCOPE_KEYS = ['workflowId', 'workflowName', 'orgId', 'orgName'] as const;
 
@@ -1150,7 +1158,11 @@ function removeRedundantTerminalSuccessTransitions(tasks: RawTask[]): void {
 		if (!transitions || transitions.length < 2) continue;
 		const hasTargetedSuccess = transitions.some(t => isSuccessCondition(t.when) && (t.do ?? []).length > 0);
 		if (!hasTargetedSuccess) continue;
-		task.next = transitions.filter(t => !(isSuccessCondition(t.when) && (t.do ?? []).length === 0));
+		// Only a truly empty fallback is redundant — a targetless success edge that
+		// still publishes context is real work and must survive.
+		task.next = transitions.filter(
+			t => !(isSuccessCondition(t.when) && (t.do ?? []).length === 0 && (t.publish ?? []).length === 0),
+		);
 	}
 }
 
@@ -2033,7 +2045,7 @@ function describeOperation(operation: WorkflowOperation): string {
 export function workflowEditConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
 	const scope = workflowEditScope(name, input);
 	if (!scope) return undefined;
-	const alwaysPrompt = name === WORKFLOW_RUN_TOOL_NAME;
+	const alwaysPrompt = workflowToolAlwaysPrompts(name);
 	if (!alwaysPrompt && isMutationScopeApproved(scope)) return undefined;
 	const args = asObject(input);
 	const approvalMemory = alwaysPrompt

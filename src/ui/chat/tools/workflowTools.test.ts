@@ -508,6 +508,28 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(start.next![0].do, ['bb02']);
 		});
 
+		test('keeps a targetless success transition that still publishes context', () => {
+			// A terminal {{ SUCCEEDED }} edge with do:[] but a real publish list is not
+			// a redundant fallback — pruning it would silently drop the published vars.
+			const tasksIn = sampleTasks();
+			tasksIn[0].next = [
+				{ when: '{{ SUCCEEDED }}', label: '', do: ['bb02'], publish: [] },
+				{ when: '{{ SUCCEEDED }}', label: '', do: [], publish: [{ key: 'out', value: '{{ 1 }}' }] },
+			] as never;
+
+			const { tasks } = applyOperations(
+				tasksIn as never,
+				[{ op: 'reposition', task: 'end', x: 5, y: 5 }],
+				NO_ACTIONS,
+			);
+
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.next!.length, 2, 'the publishing terminal edge is preserved');
+			const publishing = start.next!.find(t => (t.do ?? []).length === 0);
+			assert.ok(publishing, 'publish-only terminal edge survives');
+			assert.strictEqual((publishing!.publish ?? []).length, 1);
+		});
+
 		test('set_transition edits the single transition', () => {
 			const ops: WorkflowOperation[] = [{ op: 'set_transition', from: 'start', set: { label: 'go' } }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
