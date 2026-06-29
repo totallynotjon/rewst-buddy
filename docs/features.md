@@ -104,7 +104,7 @@ Cage-Free Rewsty is still told your VS Code working directory when one is open, 
 
 Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of the chat LM tool surface. MCP exposure uses three switches:
 
-- `rewst-buddy.mcp.enable` exposes all read capabilities: `list_orgs`, `list_templates`, `get_template`, `list_workflows`, `get_workflow`, `rewst_graphql_query`, `buddy_graphql_schema`, `search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_render_jinja`, `buddy_action_search`, and `result_read`.
+- `rewst-buddy.mcp.enable` exposes all read capabilities: `list_orgs`, `list_templates`, `get_template`, `list_workflows`, `get_workflow`, `rewst_graphql_query`, `buddy_graphql_schema`, `search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_render_jinja`, `buddy_action_search`, `list_jinja_filters`, `get_jinja_filter_docs`, and `result_read`.
 - `rewst-buddy.mcp.enableWriteTools` adds the workflow write helpers `buddy_workflow_edit`, `buddy_workflow_autolayout`, and `buddy_workflow_run`.
 - `rewst-buddy.mcp.enableDangerousGraphqlMutation` unlocks only `rewst_graphql_mutate`, the raw GraphQL mutation tool.
 
