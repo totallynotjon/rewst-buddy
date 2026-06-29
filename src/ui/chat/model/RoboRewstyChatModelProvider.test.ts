@@ -8,6 +8,7 @@ import { conversationMap } from './conversationMap';
 import { parseLatestBreadcrumb } from './breadcrumb';
 import {
 	MAX_BUDDY_TOOL_ROUNDS,
+	normalizeBuddyToolRounds,
 	RoboRewstyChatModelProvider,
 	truncateArgsLabel,
 	type ProviderDeps,
@@ -318,6 +319,33 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			const out = truncateArgsLabel('x'.repeat(20), 10);
 			assert.strictEqual(out, 'xxxxxxxxx…');
 			assert.strictEqual([...out].length, 10, 'capped to maxLength characters including the ellipsis');
+		});
+	});
+
+	suite('normalizeBuddyToolRounds()', () => {
+		test('passes a valid in-range value through', () => {
+			assert.strictEqual(normalizeBuddyToolRounds(20), 20);
+			assert.strictEqual(normalizeBuddyToolRounds(1), 1);
+			assert.strictEqual(normalizeBuddyToolRounds(100), 100);
+		});
+
+		test('clamps out-of-range values to the 1–100 manifest range', () => {
+			assert.strictEqual(normalizeBuddyToolRounds(500), 100, 'above the max clamps down');
+			assert.strictEqual(normalizeBuddyToolRounds(0), 1, 'zero clamps up to the min');
+			assert.strictEqual(normalizeBuddyToolRounds(-5), 1, 'negative clamps up to the min');
+		});
+
+		test('floors fractional values', () => {
+			assert.strictEqual(normalizeBuddyToolRounds(2.9), 2);
+			assert.strictEqual(normalizeBuddyToolRounds(0.4), 1, 'floors then clamps to the min');
+		});
+
+		test('falls back to the default for non-numeric or non-finite input', () => {
+			assert.strictEqual(normalizeBuddyToolRounds(undefined), MAX_BUDDY_TOOL_ROUNDS);
+			assert.strictEqual(normalizeBuddyToolRounds(NaN), MAX_BUDDY_TOOL_ROUNDS);
+			assert.strictEqual(normalizeBuddyToolRounds(Infinity), MAX_BUDDY_TOOL_ROUNDS);
+			assert.strictEqual(normalizeBuddyToolRounds('8'), MAX_BUDDY_TOOL_ROUNDS);
+			assert.strictEqual(normalizeBuddyToolRounds(null), MAX_BUDDY_TOOL_ROUNDS);
 		});
 	});
 

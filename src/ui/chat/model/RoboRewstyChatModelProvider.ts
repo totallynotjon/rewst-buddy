@@ -64,7 +64,8 @@ export interface ProviderDeps {
 	runBuddyTool(name: string, args: Record<string, unknown>, orgId: string): Promise<BuddyToolResult>;
 }
 
-function normalizeBuddyToolRounds(value: unknown): number {
+/** Clamps the configured round cap to the manifest's 1–100 range; falls back to the default for non-numeric/invalid input. */
+export function normalizeBuddyToolRounds(value: unknown): number {
 	if (typeof value !== 'number' || !Number.isFinite(value)) return MAX_BUDDY_TOOL_ROUNDS;
 	return Math.max(1, Math.min(100, Math.floor(value)));
 }
