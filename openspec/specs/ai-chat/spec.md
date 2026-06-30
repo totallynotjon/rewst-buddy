@@ -28,6 +28,33 @@ active organization's session.
 - **THEN** the message is sent to Rewst's AI backend and the streamed response is
   shown in the chat view
 
+### Requirement: Preserve conversation continuity safely
+
+The system SHALL reuse a warm backend conversation for follow-up turns in the
+same visible chat when the replayed VS Code history is still at the backend
+conversation tip. It SHALL fork a fresh backend conversation when the visible
+history has been rewound, and SHALL forget/delete the stale backend conversation
+so rolled-back turns are not reattached later.
+
+#### Scenario: Follow-up turn
+
+- **GIVEN** a user has sent a first message and the backend returned a
+  conversation id
+- **WHEN** the user sends the next message in the same visible chat
+- **THEN** the extension sends only the incremental user turn to the existing
+  backend conversation
+- **AND** it does not re-send the full visible transcript or the transport
+  directive
+
+#### Scenario: Restored checkpoint
+
+- **GIVEN** a visible chat has been restored to an earlier checkpoint
+- **WHEN** the user asks a different follow-up
+- **THEN** the extension starts a fresh backend conversation with a stateless
+  visible transcript
+- **AND** the old backend conversation is forgotten so hidden rolled-back turns
+  cannot leak into the new branch
+
 ### Requirement: Honor conversation type and custom instructions
 
 The system SHALL send the configured conversation type
@@ -79,6 +106,79 @@ response at `rewst-buddy.ai.maxBuddyToolRounds` (1–100, default 8).
 - **GIVEN** an assistant response that keeps requesting tools
 - **WHEN** the number of Buddy tool rounds reaches the configured cap
 - **THEN** further tool rounds are stopped for that response
+
+### Requirement: Parse the local tool protocol defensively
+
+The system SHALL only treat line-start fenced `vscode-tool` JSON blocks as local
+tool requests. It SHALL accept a single request object, an array of request
+objects, and the shorthand shape where tool arguments live at the top level. It
+SHALL ignore malformed blocks, non-line-start fences, and prose wrappers, and
+SHALL cap the number of parsed requests from one assistant reply.
+
+#### Scenario: Multiple local tool requests
+
+- **GIVEN** an assistant reply with a `vscode-tool` block containing an array of
+  valid requests
+- **WHEN** the reply is parsed
+- **THEN** each request is routed in order up to the per-reply request cap
+
+#### Scenario: Invalid protocol text
+
+- **GIVEN** an assistant reply with malformed JSON or an inline non-line-start
+  `vscode-tool` fence
+- **WHEN** the reply is parsed
+- **THEN** no local tool request is emitted from that text
+
+#### Scenario: Mixed Buddy and VS Code tools
+
+- **GIVEN** a parsed reply requests both in-process Buddy tools and VS Code native
+  editor tools
+- **WHEN** Buddy tools are available
+- **THEN** Buddy requests run through the in-process path first
+- **AND** native VS Code tool calls are deferred or surfaced only when they are
+  the remaining available route
+
+### Requirement: Redirect backend-native Rewst tool attempts
+
+When local Buddy tools are available, the system SHALL prevent backend-native
+Rewst tool activity from being rendered as the final path. It SHALL interrupt the
+native attempt, send a neutral correction that names the local `vscode-tool`
+transport, carry through any resolved native tool arguments, and suppress
+abandoned native output.
+
+#### Scenario: Backend tries a native Rewst tool
+
+- **GIVEN** Buddy tools are advertised locally
+- **WHEN** the backend emits activity for a native Rewst tool
+- **THEN** the extension sends a correction turn in the same backend conversation
+  explaining the local fenced protocol
+- **AND** the abandoned native tool card and output are not shown to the user
+
+#### Scenario: Buddy tools disabled
+
+- **GIVEN** no Buddy tools are available locally
+- **WHEN** the backend emits native Rewst tool activity
+- **THEN** that native activity is allowed to stream normally
+
+### Requirement: Surface sources and context usage
+
+The system SHALL append backend-provided sources to final answers and SHALL track
+backend context-window usage so the status bar can show the current org's usage
+percentage and token counts.
+
+#### Scenario: Sources returned
+
+- **GIVEN** the backend completes an answer with source references
+- **WHEN** the answer is rendered
+- **THEN** the visible response includes the source list after the answer
+
+#### Scenario: Context usage returned
+
+- **GIVEN** the backend reports context usage for an org
+- **WHEN** the event is processed
+- **THEN** the current context usage state is updated
+- **AND** the context usage status bar shows the rounded percentage and token
+  breakdown
 
 ### Requirement: Open the assistant quickly
 

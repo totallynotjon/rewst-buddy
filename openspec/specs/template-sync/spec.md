@@ -61,6 +61,9 @@ and choose exactly one action: **update-metadata**, **download-remote**,
 The system SHALL push a linked file on save when sync-on-save is in effect for
 that file, governed by the `rewst-buddy.syncOnSaveByDefault` setting and per-file
 toggles. Files for which sync-on-save is not in effect SHALL NOT sync on save.
+Per-file sync-on-save state SHALL be persisted in inclusion and exclusion lists
+so toggles survive reloads and can invert cleanly when the default setting
+changes.
 
 #### Scenario: Sync-on-save enabled for a file
 
@@ -74,11 +77,28 @@ toggles. Files for which sync-on-save is not in effect SHALL NOT sync on save.
 - **WHEN** the user saves it
 - **THEN** no automatic sync occurs
 
+#### Scenario: Per-file toggle persists
+
+- **GIVEN** `syncOnSaveByDefault` is disabled
+- **WHEN** a linked file is explicitly enabled for sync-on-save
+- **THEN** the file URI is stored in the sync inclusion list
+- **AND** future saves of that linked file sync until the toggle is disabled
+
+#### Scenario: Default enabled with one exclusion
+
+- **GIVEN** `syncOnSaveByDefault` is enabled
+- **WHEN** a linked file is explicitly disabled for sync-on-save
+- **THEN** the file URI is stored in the sync exclusion list
+- **AND** future saves of that linked file do not sync while other linked files do
+
 ### Requirement: Auto-fetch on open without clobbering local edits
 
 When `rewst-buddy.autoFetchOnOpen` is enabled, the system SHALL silently download
 a newer remote version on open **only** when the local file has no unsaved
 divergence, i.e. the local body still hashes to the link's stored `bodyHash`.
+Auto-fetch SHALL be independent of sync-on-save state, SHALL skip equal or older
+remote timestamps, and SHALL fail closed without overwriting local content when
+the remote fetch fails.
 
 #### Scenario: Remote is newer and local is untouched
 
@@ -92,6 +112,34 @@ divergence, i.e. the local body still hashes to the link's stored `bodyHash`.
 - **GIVEN** a linked file whose local body no longer matches its stored hash
 - **WHEN** the file is opened with a newer remote available
 - **THEN** auto-fetch does not overwrite the local file
+
+#### Scenario: Remote fetch fails
+
+- **GIVEN** a linked file with auto-fetch enabled
+- **WHEN** the remote template cannot be fetched
+- **THEN** the local file is left unchanged
+- **AND** no sync upload is attempted as part of the open event
+
+### Requirement: Normalize organizations during sync updates
+
+The system SHALL record the template's owning organization from the remote
+template metadata when refreshing, downloading, or uploading a link. It SHALL NOT
+trust stale legacy link org metadata when the template metadata identifies a
+different owning org.
+
+#### Scenario: Stale link org is corrected
+
+- **GIVEN** a link whose stored org is a parent or stale org
+- **AND** the remote template metadata identifies a sub-org
+- **WHEN** a sync refreshes metadata
+- **THEN** the link records the remote template's org id and name
+
+#### Scenario: Remote template belongs elsewhere
+
+- **GIVEN** a sync request for org A
+- **AND** the remote template metadata says the template belongs to org B
+- **WHEN** the sync would upload or download content
+- **THEN** the sync is rejected before changing either side
 
 ### Requirement: Resolve conflicts with explicit user choice
 
@@ -116,6 +164,42 @@ and SHALL abort the sync if the user dismisses the prompt.
 - **GIVEN** a conflict prompt
 - **WHEN** the user cancels
 - **THEN** no change is made and the sync is aborted
+
+### Requirement: Expose explicit sync tools
+
+The system SHALL expose MCP sync helpers that report link state and run syncs by
+explicit local path. `buddy_template_sync_status` SHALL be a read operation that
+maps the sync decision into user-facing states. `buddy_template_sync` SHALL allow
+automatic direction selection or explicit `upload` / `download` directions, with
+approval required before uploads to Rewst.
+
+#### Scenario: Sync status
+
+- **GIVEN** a linked file
+- **WHEN** `buddy_template_sync_status` is called for that file
+- **THEN** the result includes whether the file is linked, the template/org ids,
+  sync-on-save state, whether bodies match, and a recommended direction
+
+#### Scenario: Approved upload
+
+- **GIVEN** a linked file with local changes and unchanged remote metadata
+- **WHEN** `buddy_template_sync` selects or is given the `upload` direction
+- **THEN** the local file is saved if dirty
+- **AND** the upload occurs only after approval
+
+#### Scenario: Explicit empty upload
+
+- **GIVEN** a linked file whose local body is empty
+- **WHEN** `buddy_template_sync` is explicitly called with direction `upload`
+- **THEN** the approval prompt and result state that the remote template body will
+  be cleared
+
+#### Scenario: Download direction
+
+- **GIVEN** a linked file with remote content to take
+- **WHEN** `buddy_template_sync` is explicitly called with direction `download`
+- **THEN** the remote body replaces the local file without requiring a Rewst
+  mutation approval
 
 ### Requirement: Avoid false conflicts after upload
 

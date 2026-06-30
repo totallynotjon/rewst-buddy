@@ -57,7 +57,9 @@ id, so the user never has to pick a region manually.
 
 The system SHALL store the raw session cookie only in VS Code `secrets`, keyed by
 organization id, and SHALL store non-secret session metadata (region, org,
-managed orgs, label, user) in `globalState` under `RewstSessionProfiles`. The
+managed orgs, label, user) in `globalState` under `SessionProfiles`. The system
+SHALL also maintain a non-secret `RewstAllKnownProfiles` cache for profiles that
+have been seen before, including profiles that are not currently active. The
 cookie SHALL NOT be written to `globalState`.
 
 #### Scenario: Credential placement after login
@@ -66,7 +68,15 @@ cookie SHALL NOT be written to `globalState`.
 - **WHEN** persistence runs
 - **THEN** the cookie value is stored via `secrets` under key `org-123`
 - **AND** the session profile (without the cookie) is stored under
-  `RewstSessionProfiles`
+  `SessionProfiles`
+- **AND** the profile is included in `RewstAllKnownProfiles`
+
+#### Scenario: Known profile lookup
+
+- **GIVEN** a previously saved profile for org `org-123`
+- **WHEN** a feature needs non-secret org metadata without an active session
+- **THEN** the profile can be resolved from the known-profile cache by any
+  managed org id it contains
 
 ### Requirement: Restore sessions on activation
 
@@ -106,6 +116,29 @@ given organization id.
 - **WHEN** an operation references a sub-org id
 - **THEN** the extension selects the session that manages that sub-org
 
+#### Scenario: Re-auth drops an old managed org
+
+- **GIVEN** a saved session for user `u1` that managed orgs A and B
+- **WHEN** the same user authenticates again and the new profile only manages A
+- **THEN** org A resolves to the new session
+- **AND** org B no longer resolves through the active-session index
+
+### Requirement: Run authenticated raw GraphQL requests
+
+The system SHALL support raw GraphQL requests through an active session by
+reading the session cookie from `secrets`, sending it to the session's regional
+GraphQL endpoint, and returning the raw GraphQL `{ data, errors }` shape to the
+caller.
+
+#### Scenario: Raw GraphQL query
+
+- **GIVEN** an active session with a cookie stored in `secrets`
+- **WHEN** a raw GraphQL request is made through that session
+- **THEN** the request carries the stored cookie to the session's regional
+  GraphQL endpoint
+- **AND** the response returns the backend `data` and `errors` values without
+  transforming them into SDK-specific types
+
 ### Requirement: Cache validation
 
 The system SHALL cache a successful session validation for 24 hours to avoid
@@ -121,12 +154,14 @@ expires.
 
 ### Requirement: Clear sessions
 
-The system SHALL provide a way to remove all sessions, deleting their profiles
-from `globalState`, their cookies from `secrets`, and their in-memory state.
+The system SHALL provide a way to remove all active sessions, clearing the active
+profile list from `globalState`, clearing the in-memory session and org indexes,
+and updating extension context so no session is considered active.
 
 #### Scenario: User clears sessions
 
 - **GIVEN** one or more active sessions
 - **WHEN** the user runs `Rewst Buddy: Clear Sessions`
-- **THEN** all stored profiles and secrets are removed and the Sessions tree is
-  emptied
+- **THEN** active profiles are removed from `SessionProfiles`
+- **AND** no org id resolves to an active session
+- **AND** the Sessions tree is emptied

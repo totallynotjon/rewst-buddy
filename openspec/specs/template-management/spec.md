@@ -113,6 +113,25 @@ URL from the organization's region base URL plus the org and template ids.
 - **THEN** the browser opens the template's page in the correct regional Rewst
   instance
 
+#### Scenario: Region from active session
+
+- **GIVEN** the linked template belongs to an org managed by an active session
+- **WHEN** the user opens it in Rewst
+- **THEN** the URL uses that active session's region base URL
+
+#### Scenario: Region from known profile
+
+- **GIVEN** no active session manages the linked template's org
+- **AND** a known profile contains the org as a primary or managed org
+- **WHEN** the user opens it in Rewst
+- **THEN** the URL uses the known profile's region base URL
+
+#### Scenario: Fallback region
+
+- **GIVEN** no active session or known profile identifies the org's region
+- **WHEN** the user opens the linked template in Rewst
+- **THEN** the URL falls back to the default configured region
+
 ### Requirement: Bundle related templates
 
 The system SHALL group linked templates into bundles based on their reference
@@ -132,3 +151,65 @@ and SHALL present those bundles in a tree view, refreshing as links change.
 - **GIVEN** two bundles whose root templates share a display name
 - **WHEN** the tree is rendered
 - **THEN** the names are disambiguated by appending part of the template id
+
+#### Scenario: Shared referenced template
+
+- **GIVEN** two root templates both reference the same linked child template
+- **WHEN** bundles are built
+- **THEN** the shared child appears under each root bundle that reaches it
+
+#### Scenario: Cyclic references
+
+- **GIVEN** linked templates that reference each other in a cycle
+- **WHEN** bundles are built
+- **THEN** traversal terminates without duplicating nodes indefinitely
+- **AND** the cycle is represented once along the reachable path
+
+#### Scenario: Unknown references
+
+- **GIVEN** a linked template references an id that is not linked locally and not
+  present in cached metadata
+- **WHEN** bundles are built
+- **THEN** the unknown reference is ignored for bundle-tree structure
+
+#### Scenario: Legacy links missing reference metadata
+
+- **GIVEN** an older link whose referenced-template ids were not persisted
+- **WHEN** bundles are built
+- **THEN** references are re-derived from the local template body when possible
+
+### Requirement: Clone a template bundle through MCP
+
+The system SHALL provide an MCP-only write tool that clones a root template and
+its same-org referenced template graph into a target organization. The clone
+operation SHALL prompt once per target org/root template scope, rewrite
+references to newly created clone ids, deduplicate repeated dependencies, bound
+the traversal by depth and template count, and roll back created clones if a
+create or update step fails.
+
+#### Scenario: Clone a dependency chain
+
+- **GIVEN** a root template references another template in the same source org
+- **WHEN** the bundle clone tool is approved
+- **THEN** both templates are created in the target org
+- **AND** the root clone's body references the cloned dependency id
+
+#### Scenario: Shared dependency cloned once
+
+- **GIVEN** two templates in the bundle reference the same dependency
+- **WHEN** the bundle is cloned
+- **THEN** that dependency is created once
+- **AND** all cloned references point to the single new dependency id
+
+#### Scenario: Foreign-org reference
+
+- **GIVEN** the source template references a template owned by another org
+- **WHEN** the bundle is cloned
+- **THEN** the foreign template is not cloned
+- **AND** the result reports that the reference was skipped
+
+#### Scenario: Clone rollback
+
+- **GIVEN** some clone templates have already been created
+- **WHEN** a later create or update step fails
+- **THEN** the tool deletes the templates it created before returning the failure

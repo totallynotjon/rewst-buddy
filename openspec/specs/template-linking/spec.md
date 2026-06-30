@@ -30,9 +30,37 @@ body, and the ids of any templates the body references.
 #### Scenario: Re-linking a file already linked
 
 - **GIVEN** a file already linked to template A
-- **WHEN** the user links the same file to template B
+- **WHEN** a lower-level linking path explicitly replaces the link with template B
 - **THEN** the old association and its reverse-lookup entries are removed before
   the new link is recorded, leaving no orphaned index entries
+
+#### Scenario: User command refuses an already linked file
+
+- **GIVEN** a file already linked to a template
+- **WHEN** the user runs an interactive link command for that file
+- **THEN** the command refuses before template selection instead of silently
+  replacing the link
+
+### Requirement: Link files from path-like tool inputs
+
+The system SHALL let MCP callers link and unlink local files by path or `file://`
+URI, resolving relative paths against the workspace when possible. The tool path
+SHALL report clear status values for invalid paths, missing files, already linked
+files, missing templates, and org mismatches.
+
+#### Scenario: Relative path link
+
+- **GIVEN** a workspace folder and an existing unlinked file
+- **WHEN** `buddy_template_link` receives a relative path and template id
+- **THEN** the path resolves inside the workspace
+- **AND** the file is linked to the remote template
+
+#### Scenario: Overwrite requested
+
+- **GIVEN** a file already linked to template A
+- **WHEN** `buddy_template_link` is called for template B with overwrite enabled
+- **THEN** the link moves to template B
+- **AND** reverse lookups for template A no longer include the file
 
 ### Requirement: Never persist template bodies
 
@@ -137,6 +165,27 @@ folder.
 - **WHEN** the user runs `Link Folder to Organization` and then `Fetch Folder`
 - **THEN** the folder is associated with the chosen org and the org's templates
   are materialized as local files linked to their templates
+
+#### Scenario: Folder fetch skips existing templates
+
+- **GIVEN** a folder linked to an org
+- **AND** one remote template is already linked locally
+- **WHEN** the folder is fetched
+- **THEN** only missing templates are materialized as new local files
+
+#### Scenario: Folder fetch handles partial failures
+
+- **GIVEN** a folder fetch over several remote templates
+- **WHEN** one template cannot be fetched or written
+- **THEN** the fetch continues for the remaining templates
+- **AND** the user-facing result reports the successful and failed counts
+
+#### Scenario: Local filenames are safe and unique
+
+- **GIVEN** remote template names that contain path-unsafe characters or collide
+  with existing files
+- **WHEN** the folder fetch creates local files
+- **THEN** filenames are sanitized and made unique before links are recorded
 
 ### Requirement: Emit change events with batching
 

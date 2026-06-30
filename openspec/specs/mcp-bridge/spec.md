@@ -3,10 +3,10 @@
 ## Purpose
 
 The extension can expose its authenticated Rewst sessions to external MCP clients
-(and to its own in-process chat) as a set of tools, without handing those clients
-a Rewst credential. This capability covers enabling the bridge, the localhost
-token, which tools are exposed, and the working-scope rules that bound what a tool
-may touch.
+(and to its own in-process chat) as a set of tools and lightweight resources,
+without handing those clients a Rewst credential. This capability covers enabling
+the bridge, the localhost token, which tools and resources are exposed, and the
+working-scope rules that bound what a tool may touch.
 
 Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`,
 `McpDefinitionProvider.ts`, `runtime.ts`, `settings.ts`, `throttle.ts`),
@@ -64,6 +64,62 @@ way to register the bridge natively in VS Code with live token injection.
 - **THEN** the bridge is enabled if needed, the native provider is refreshed, and
   VS Code injects the live token without an env-var step
 
+#### Scenario: Tool-set changes force reconnect
+
+- **GIVEN** the bridge is registered with VS Code's native MCP surface
+- **WHEN** the host, port, write-tool toggle, or dangerous-GraphQL toggle changes
+- **THEN** the advertised MCP definition version changes so VS Code can reconnect
+  to the current tool set
+- **AND** the token itself is not included in that version string
+
+### Requirement: Expose the registry-backed tool catalog
+
+The system SHALL expose every capability that opts into MCP from the central
+capability registry, subject to the bridge enablement, write-tool, dangerous
+GraphQL, working-scope, and per-capability access gates. The catalog includes
+Rewst read tools, GraphQL query/schema tools, workflow helpers, workspace
+template-link helpers, template link/sync/mutation/clone tools, workflow CRUD,
+trigger, form, tag, org variable, org/user, pack/integration, page/site/Jinja,
+working-scope, and cached-result tools.
+
+#### Scenario: Read catalog is listed
+
+- **GIVEN** the bridge is enabled and write toggles are off
+- **WHEN** an MCP client lists tools
+- **THEN** read capabilities such as org/template/workflow listing, GraphQL
+  query/schema, workspace template-link search, working-scope reads, and
+  cached-result reads are listed
+- **AND** raw chat-only or write-only tools are not listed
+
+#### Scenario: Capability opts out of MCP
+
+- **GIVEN** a capability that is chat-only
+- **WHEN** an MCP client lists or calls tools
+- **THEN** that capability is unavailable on the MCP surface
+
+### Requirement: Expose bounded MCP resources
+
+The system SHALL expose MCP resources as thin collection views backed by the same
+read capabilities and gates as tools. Resource URIs SHALL use the
+`rewst://{orgId}/templates`, `rewst://{orgId}/templates/{templateId}`,
+`rewst://{orgId}/workflows`, and `rewst://{orgId}/workflows/{workflowId}` forms.
+
+#### Scenario: List resources
+
+- **GIVEN** active sessions and exposed backing list tools
+- **WHEN** an MCP client lists resources
+- **THEN** the bridge advertises template and workflow collection resources for
+  active primary organizations
+
+#### Scenario: Read a collection resource
+
+- **GIVEN** a `rewst://org-1/templates` resource URI
+- **WHEN** an MCP client reads that resource
+- **THEN** the bridge runs the same gated capability used by
+  `buddy_list_templates`
+- **AND** the read is subject to the same scope and rate-limit rules as a tool
+  call
+
 ### Requirement: Gate write tools behind explicit settings
 
 The system SHALL expose write tools (those with `access: 'write'`) only when
@@ -76,6 +132,16 @@ Read tools are available without these switches.
 - **GIVEN** `enableWriteTools` is false
 - **WHEN** a client lists tools
 - **THEN** workflow/template/trigger/variable mutation tools are not callable
+
+#### Scenario: Local workspace state tools
+
+- **GIVEN** the bridge is enabled
+- **WHEN** a client lists tools
+- **THEN** local workspace operations such as `buddy_template_link`,
+  `buddy_template_unlink`, and `buddy_template_sync_on_save` may be exposed as
+  read-access tools because they do not mutate Rewst data
+- **AND** tools that push changes to Rewst, such as `buddy_template_sync` upload
+  paths, remain write-gated
 
 ### Requirement: Bound writes to the effective allowed organizations
 
@@ -134,6 +200,19 @@ discovery tools (those not requiring an org, e.g. `buddy_list_orgs`,
 - **WHEN** `buddy_list_orgs` is called
 - **THEN** it runs without a scope check
 
+#### Scenario: Sole pinned org fills a missing org id
+
+- **GIVEN** exactly one working org is pinned
+- **AND** a tool requires an organization but the caller omits `orgId`
+- **WHEN** the tool runs
+- **THEN** the bridge uses the pinned org as the target org
+
+#### Scenario: Missing org cannot be inferred
+
+- **GIVEN** no working org is pinned, or more than one working org is pinned
+- **WHEN** an org-scoped tool is called without `orgId`
+- **THEN** the bridge rejects the call with `org_required`
+
 ### Requirement: A model may only request a scope change
 
 The system SHALL treat the working scope as the user's deliberate selection. A
@@ -169,3 +248,53 @@ duration), and tag the approval origin so that approval prompts name the caller.
 - **GIVEN** an MCP client issuing many calls in a short window
 - **WHEN** the rate limit is exceeded
 - **THEN** further calls are throttled
+
+#### Scenario: Audit log cannot be forged
+
+- **GIVEN** a caller supplies a tool name or input containing line separators or
+  secret-looking values
+- **WHEN** the bridge writes the audit record
+- **THEN** the audit line contains the tool, resolved org, outcome, and duration
+- **AND** the log does not include tool arguments or embedded line separators
+
+### Requirement: Page oversized tool results
+
+The system SHALL keep MCP tool responses below the transport-friendly output
+limit by returning a preview for oversized text results and caching the full
+result in memory for `buddy_result_read`. Cached result reads SHALL support
+offset/limit paging and line search, and SHALL fail clearly when an id has been
+evicted or was never cached.
+
+#### Scenario: Oversized output
+
+- **GIVEN** a tool produces text longer than the MCP output preview limit
+- **WHEN** the bridge formats the result
+- **THEN** the returned text contains a preview, a cache id, a continuation call
+  for `buddy_result_read`, and a search example
+
+#### Scenario: Read cached output
+
+- **GIVEN** an oversized result was cached
+- **WHEN** `buddy_result_read` is called with that id and an offset
+- **THEN** the bridge returns the requested character slice without re-running the
+  original Rewst API call
+
+### Requirement: Reuse approvals only for reusable mutation scopes
+
+The system SHALL remember approval for mutation scopes that are safe to reuse
+within the current extension session, such as repeated writes to the same
+approved GraphQL or workflow-edit scope. It SHALL still require fresh approval
+for operations whose execution itself is the risky action, such as running a
+workflow.
+
+#### Scenario: Reused raw GraphQL mutation approval
+
+- **GIVEN** a raw GraphQL mutation scope was approved for an org and resource
+- **WHEN** the same mutation scope is requested again in the same session
+- **THEN** the mutation can run without prompting again
+
+#### Scenario: Workflow run approval is always fresh
+
+- **GIVEN** a workflow run was approved previously
+- **WHEN** the same workflow is run again
+- **THEN** the user is prompted again before the run starts
