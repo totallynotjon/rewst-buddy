@@ -33,7 +33,7 @@ Status legend for the catalog coverage table: `pending` → not probed yet, `don
 
 _Distilled rules that apply across many fields. These feed steering + tool descriptions._
 
-- `rewst_graphql_query` is read-only — mutations/subscriptions are rejected at the MCP boundary.
+- `buddy_graphql_query` is read-only — mutations/subscriptions are rejected at the MCP boundary.
 - The MCP tool injects the caller's `orgId` into variables; a conflicting `variables.orgId` is rejected. It only provides a **top-level** `$orgId` variable — fields that scope org **inside `where`** (e.g. `template`, `templates`) still need `where.orgId` written explicitly (reference `$orgId`).
 - **`where` vs `search` are different filter surfaces that compose.** `where` = exact field equality (`{ orgId, id }`). `search` = comparison-operator expressions (`{ name: { _ilike: "%x%" } }`, also `_eq`, `_in`). Many list fields take both.
 - **`order` is `[[String!]!]`** — a list of `[fieldName, direction]` pairs, e.g. `[["updatedAt", "desc"]]`.
@@ -56,7 +56,7 @@ _Distilled rules that apply across many fields. These feed steering + tool descr
 - **Secret hygiene:** `orgVariable(s)` return **plaintext secrets** unless you pass `maskSecrets: true` — always set it in tools. `visibleOrgVariables` always masks and includes cascaded/inherited vars (the row's `orgId` identifies the source org).
 - **Some "my/me" fields ignore the request org** and resolve against the _token's_ home org: `me`, `userOrganization`, `user`/`users` only see users _directly_ in the named org (no parent inheritance).
 - **Broken / unusable resolvers found so far (avoid; use the noted replacement):**
-    - `visibleWorkflows` — crashes both with and without `orgId` (SQL join bug: `missing FROM-clause entry for table "visibleForOrganizations"`). ⚠ **CONFIRMED LIVE: our shipped `list_workflows` MCP tool is 100% broken** because it wraps this. Replacement (verified): `workflows(where: { orgId }, order: [["updatedAt","DESC"]])`, mapping the name filter to `search: { name: { _ilike: "%<term>%" } }`.
+    - `visibleWorkflows` — crashes both with and without `orgId` (SQL join bug: `missing FROM-clause entry for table "visibleForOrganizations"`). ⚠ **CONFIRMED LIVE: our shipped `buddy_list_workflows` MCP tool is 100% broken** because it wraps this. Replacement (verified): `workflows(where: { orgId }, order: [["updatedAt","DESC"]])`, mapping the name filter to `search: { name: { _ilike: "%<term>%" } }`.
     - `jinjaTemplate` — crashes for any input. `jinjaFilterDocumentation` (singular) — always all-null; use plural `jinjaFiltersDocumentation`.
     - `myAccessibleOrganizations` — server crash (`findAll` of undefined).
     - `visibleOrgVariablesCount` — returns null for a non-null `Int!` field.
@@ -85,7 +85,7 @@ Rewst's native behaviour by paginating ourselves and ranking locally._
 
 ### P0 — ✅ FIXED (branch `feat/mcp-graphql-query-audit`)
 
-- **`list_workflows` was broken in production.** Now swapped from `visibleWorkflows` to `workflows(where:{orgId}, order:[["updatedAt","DESC"]])` with the name filter mapped to `search:{ name:{ _ilike:"%term%" } }`. Source: `src/capabilities/rewstReadCapabilities.ts` (`WORKFLOWS_QUERY` / `runListWorkflows`); colocated unit test `rewstReadCapabilities.test.ts` (passing in the VS Code host); changelog note added. _(Known minor limitation: `%`/`_` in search terms are not escaped — matches prior behaviour.)\_
+- **`buddy_list_workflows` was broken in production.** Now swapped from `visibleWorkflows` to `workflows(where:{orgId}, order:[["updatedAt","DESC"]])` with the name filter mapped to `search:{ name:{ _ilike:"%term%" } }`. Source: `src/capabilities/rewstReadCapabilities.ts` (`WORKFLOWS_QUERY` / `runListWorkflows`); colocated unit test `rewstReadCapabilities.test.ts` (passing in the VS Code host); changelog note added. _(Known minor limitation: `%`/`_` in search terms are not escaped — matches prior behaviour.)\_
 
 ### ✅ Built this session — 26 new read tools + 1 fix (all type-check + unit-test green)
 
@@ -93,22 +93,22 @@ Status: implemented, type-checked, unit-tested (full unit suite green), and live
 
 **`src/capabilities/rewstReadCapabilities.ts`** (+ `inputHelpers.ts`):
 
-- `list_workflows` (FIX — `workflows(where:{orgId})`, name filter → `_ilike`)
-- `resolve_reference` — universal name→id over `localReferenceOptions` (13 model types)
-- `list_org_variables` — `orgVariables` with `maskSecrets:true`
-- `find_action` — `searchInstalledPackActions`, flatten + cap client-side
-- `list_workflow_executions`, `latest_workflow_execution`, `get_workflow_execution_stats`
-- `list_workflow_tasks`, `list_workflow_patches`, `get_workflow_patch`
-- `find_executions_by_variable` — find a workflow's executions by an input/output/context variable name (+ optional value); input/output inline via `conductor`, context via the N+1 `workflowExecutionContexts` fetch
+- `buddy_list_workflows` (FIX — `workflows(where:{orgId})`, name filter → `_ilike`)
+- `buddy_resolve_reference` — universal name→id over `localReferenceOptions` (13 model types)
+- `buddy_list_org_variables` — `orgVariables` with `maskSecrets:true`
+- `buddy_find_action` — `searchInstalledPackActions`, flatten + cap client-side
+- `buddy_list_workflow_executions`, `buddy_latest_workflow_execution`, `buddy_get_workflow_execution_stats`
+- `buddy_list_workflow_tasks`, `buddy_list_workflow_patches`, `buddy_get_workflow_patch`
+- `buddy_find_executions_by_variable` — find a workflow's executions by an input/output/context variable name (+ optional value); input/output inline via `conductor`, context via the N+1 `workflowExecutionContexts` fetch
 
-**`triggerFormCapabilities.ts`**: `list_triggers`, `list_forms`, `list_tags`, `list_org_trigger_instances`, `get_trigger_error_status`
-**`packIntegrationCapabilities.ts`**: `list_installed_packs`, `get_pack_auth_status`, `list_pack_configs`, `list_integrations`
-**`orgUserCapabilities.ts`**: `search_organizations`, `list_users`, `list_roles`
-**`pageTemplateCapabilities.ts`**: `search_templates`, `list_pages`, `list_sites`, `list_jinja_filters`
+**`triggerFormCapabilities.ts`**: `buddy_list_triggers`, `buddy_list_forms`, `buddy_list_tags`, `buddy_list_org_trigger_instances`, `buddy_get_trigger_error_status`
+**`packIntegrationCapabilities.ts`**: `buddy_list_installed_packs`, `buddy_get_pack_auth_status`, `buddy_list_pack_configs`, `buddy_list_integrations`
+**`orgUserCapabilities.ts`**: `buddy_search_organizations`, `buddy_list_users`, `buddy_list_roles`
+**`pageTemplateCapabilities.ts`**: `buddy_search_templates`, `buddy_list_pages`, `buddy_list_sites`, `buddy_list_jinja_filters`
 
 ### Not built (deferred — lower value / informed by Haiku findings)
 
-- Richer org search beyond `search_organizations` (`organizations(where:{managingOrgId},search)` for very large MSPs).
+- Richer org search beyond `buddy_search_organizations` (`organizations(where:{managingOrgId},search)` for very large MSPs).
 - Form-for-trigger (`evaluatedForm`), pre-upgrade impact (`workflowsAffectedByBreakingChanges`), workflow-completion listeners.
 - Execution-context debug (`workflowExecutionContexts`), task-count/time-saved dashboards (mind the timeout roster).
 - Crate browse (`crates`/`publicCrates`), App-Platform page nodes (`pageElements`/`pageNode`), RoboRewsty config (`roboRewstyConfigOptions`).
@@ -125,14 +125,14 @@ Status: implemented, type-checked, unit-tested (full unit suite green), and live
 
 A Haiku (weak) model ran 9 realistic tasks against the live tools using **descriptions only** (no field guide). 6 solved cleanly, 2 partial, all completed. Tool-description/narrowing fixes it surfaced:
 
-1. **`find_action` — filter scope unspecified.** Description doesn't say what the `filter` matches (name? ref? description?). It matches the **display name** only (case-insensitive substring) — `filter:"send email"` finds nothing though "Send Mail…" actions exist. → State the scope explicitly.
-2. **`find_action` — return format ambiguous.** `"ref-or-name (id) — pack: description"` doesn't say which token is the ref vs the name, or when `ref` is null (workflow-as-action rows show the name). → Spell out the line format + that `id` is the action id, `ref` the callable reference (null ⇒ name shown).
-3. **`search_organizations` — `orgId` semantics unclear.** It reads as a scope filter but is only session routing; results span **all** managed orgs filtered by name, not sub-orgs of `orgId`. → Say "orgId only selects the session; results span all managed orgs."
-4. **Action `ref` vs `id` usage not documented** — model couldn't tell which to use downstream. → One line in `find_action`.
-5. **`search_organizations` vs `list_orgs` overlap** — two ways to find orgs. → Cross-reference: `search_organizations` is preferred for name lookup; `list_orgs` is the full enumeration.
-6. **`find_action` vs existing `buddy_action_search` overlap** — two action finders. → Cross-reference (find_action = org-scoped installed-pack actions).
+1. **`buddy_find_action` — filter scope unspecified.** Description doesn't say what the `filter` matches (name? ref? description?). It matches the **display name** only (case-insensitive substring) — `filter:"send email"` finds nothing though "Send Mail…" actions exist. → State the scope explicitly.
+2. **`buddy_find_action` — return format ambiguous.** `"ref-or-name (id) — pack: description"` doesn't say which token is the ref vs the name, or when `ref` is null (workflow-as-action rows show the name). → Spell out the line format + that `id` is the action id, `ref` the callable reference (null ⇒ name shown).
+3. **`buddy_search_organizations` — `orgId` semantics unclear.** It reads as a scope filter but is only session routing; results span **all** managed orgs filtered by name, not sub-orgs of `orgId`. → Say "orgId only selects the session; results span all managed orgs."
+4. **Action `ref` vs `id` usage not documented** — model couldn't tell which to use downstream. → One line in `buddy_find_action`.
+5. **`buddy_search_organizations` vs `buddy_list_orgs` overlap** — two ways to find orgs. → Cross-reference: `buddy_search_organizations` is preferred for name lookup; `buddy_list_orgs` is the full enumeration.
+6. **`buddy_find_action` vs existing `buddy_action_search` overlap** — two action finders. → Cross-reference (buddy_find_action = org-scoped installed-pack actions).
 
-Also observed: for "find a workflow by name," Haiku reached for `buddy_workflow_search` over `resolve_reference(Workflow)` — the generic resolver competes with type-specific tools (acceptable; both work). **No tool removals indicated** — all fixes are description tightenings.
+Also observed: for "find a workflow by name," Haiku reached for `buddy_workflow_search` over `buddy_resolve_reference(Workflow)` — the generic resolver competes with type-specific tools (acceptable; both work). **No tool removals indicated** — all fixes are description tightenings.
 
 ## Catalog — coverage tracker (113 root Query fields)
 
@@ -200,7 +200,7 @@ Grouped by domain. `wave` = which explorer batch owns it; `status` updated as fi
 | `templates`                   | WORKS      | `where` (exact) + `search:{ name:{_ilike} }` compose; `order:[["updatedAt","desc"]]`; `offset` paginates; **no default limit**.      |
 | `jinjaTemplate`               | ERROR      | Crashes `Cannot read properties of null (reading 'override')` for any input — dead resolver.                                         |
 | `cratesForTemplate`           | EMPTY      | `templateId` top-level (no org arg); `[]` unless template came from a crate.                                                         |
-| `jinjaFiltersDocumentation`   | WORKS      | No args/global. ~100+ filters, large → page with `result_read`. param names Title-Cased.                                             |
+| `jinjaFiltersDocumentation`   | WORKS      | No args/global. ~100+ filters, large → page with `buddy_result_read`. param names Title-Cased.                                       |
 | `jinjaFilterDocumentation`    | ERROR      | Singular always returns all-null for any `filterName` — broken; use the plural + filter client-side.                                 |
 | `extractJinjaValues`          | EMPTY      | `fields: JSON!` must be a variable; `orgId` top-level (auto-injected). Returns null in sandbox — likely needs live workflow context. |
 | `jinjaRenderSession`          | NEEDS-ARGS | `id` is a conversation/render-session UUID from a prior render; non-existent id crashes.                                             |
@@ -209,19 +209,19 @@ Grouped by domain. `wave` = which explorer batch owns it; `status` updated as fi
 | `orgInterpreterSetting`       | EMPTY      | **Must** pass both `orgId` AND `language` — `language`-less call crashes; by-`id` crashes on not-found.                              |
 | `orgInterpreterSettings`      | EMPTY      | `orgId: ID!` top-level. Safe plural — `[]` not crash.                                                                                |
 
-**Tool candidates:** enhance existing `list_templates` with `search`+`order`+pagination (currently it just enumerates); a Jinja-filter-docs search wrapper (large payload → searchable, return signature-only); `cratesForTemplate` clean single-arg lookup.
+**Tool candidates:** enhance existing `buddy_list_templates` with `search`+`order`+pagination (currently it just enumerates); a Jinja-filter-docs search wrapper (large payload → searchable, return signature-only); `cratesForTemplate` clean single-arg lookup.
 
 ### Workflows (core) — _wave 1 · done_
 
 **Batch gotchas:** `workflows(where:{orgId})` is the workhorse list (where+search compose, all boolean flags work except `hasTokens`). `visibleWorkflows` is BROKEN — do not use. `order` is `[[String!]!]` except `workflowPatches` (`orderBy: createdAt_DESC` enum). Timestamps are epoch-ms strings.
 
-**Variable fields (input / output / context) — filter CLIENT-SIDE only.** A `Workflow` exposes all three variable kinds inline in the bulk `workflows(...)` list query (no per-workflow round-trip): `input: [String!]!` (declared input var names), `output: [JSON]!` (array of single-key `{varName: "<jinja>"}` objects — names are the keys), and `varsSchema: JSON` (declares the workflow's **variables** — inputs whose values are set statically in each trigger's settings via `Trigger.vars`, constant per trigger fire, as opposed to run/call inputs the caller supplies per execution; keyed by name). **No server-side filter works for any of them:** `where.input` is exact full-array equality only; `search:{input|output:{_ilike}}` crashes at Postgres (`operator does not exist: jsonb ~~* unknown` — the schema mistypes these jsonb columns as `string_comparison_exp`); `varsSchema` has no filter surface at all (`not defined by type "WorkflowSearch"`/`WorkflowWhereInput`). So variable-name filtering = bulk fetch + in-memory match. ⚠ `varsSchema` holds only the **declared** trigger variables; runtime-only `CTX.x` set by tasks (e.g. `set_context`) is not captured — scanning that needs task bodies (`tasks`/`tasksObject`). _(Reference only — no workflow-definition variable-filter tool ships; the real need was filtering **executions** by variable, see the executions section's `find_executions_by_variable`.)_
+**Variable fields (input / output / context) — filter CLIENT-SIDE only.** A `Workflow` exposes all three variable kinds inline in the bulk `workflows(...)` list query (no per-workflow round-trip): `input: [String!]!` (declared input var names), `output: [JSON]!` (array of single-key `{varName: "<jinja>"}` objects — names are the keys), and `varsSchema: JSON` (declares the workflow's **variables** — inputs whose values are set statically in each trigger's settings via `Trigger.vars`, constant per trigger fire, as opposed to run/call inputs the caller supplies per execution; keyed by name). **No server-side filter works for any of them:** `where.input` is exact full-array equality only; `search:{input|output:{_ilike}}` crashes at Postgres (`operator does not exist: jsonb ~~* unknown` — the schema mistypes these jsonb columns as `string_comparison_exp`); `varsSchema` has no filter surface at all (`not defined by type "WorkflowSearch"`/`WorkflowWhereInput`). So variable-name filtering = bulk fetch + in-memory match. ⚠ `varsSchema` holds only the **declared** trigger variables; runtime-only `CTX.x` set by tasks (e.g. `set_context`) is not captured — scanning that needs task bodies (`tasks`/`tasksObject`). _(Reference only — no workflow-definition variable-filter tool ships; the real need was filtering **executions** by variable, see the executions section's `buddy_find_executions_by_variable`.)_
 
 | field                         | status     | notes                                                                                                                                                  |
 | ----------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `workflow`                    | WORKS      | `where:{id}`. Ignores org for auth (bare-id crosses orgs). Wrapped by existing `get_workflow`.                                                         |
+| `workflow`                    | WORKS      | `where:{id}`. Ignores org for auth (bare-id crosses orgs). Wrapped by existing `buddy_get_workflow`.                                                   |
 | `workflows`                   | WORKS      | ⭐ primary list/search. `where`(exact)+`search`(`_ilike`); flags work **except `hasTokens:true` crashes**; `order:[[String!]!]`; **no default limit**. |
-| `visibleWorkflows`            | ERROR      | ⚠ BROKEN both forms (SQL join). **`list_workflows` MCP tool uses this — verify.** Use `workflows(where:{orgId})`.                                      |
+| `visibleWorkflows`            | ERROR      | ⚠ BROKEN both forms (SQL join). **`buddy_list_workflows` MCP tool uses this — verify.** Use `workflows(where:{orgId})`.                                |
 | `workflowNote`                | NEEDS-ARGS | only by valid `id`; other filters → `AUTH_ERR`.                                                                                                        |
 | `workflowNotes`               | EMPTY      | `where:{workflowId}` required else `AUTH_ERR`.                                                                                                         |
 | `workflowTask`                | WORKS      | task id = **dash-less hex**; `where:{id}` or `{workflowId,name}`.                                                                                      |
@@ -231,7 +231,7 @@ Grouped by domain. `wave` = which explorer batch owns it; `status` updated as fi
 | `workflowIOConfigurations`    | WORKS      | `ids:[ID!]!` batch; IO contract fields (input/output/schemas).                                                                                         |
 | `workflowCompletionListeners` | WORKS      | `where:{orgId\|workflowId}`; **no `limit`/`offset`/`order`** args; name null.                                                                          |
 
-**Tool candidates:** `workflows` list/search (replace the broken `visibleWorkflows` under `list_workflows`); `workflowTasks` (task inspection); `workflowPatches`+`workflowPatch` (revision history/diff); `workflowIOConfigurations` (batch IO contracts for sub-workflow analysis); `workflowCompletionListeners` (who-listens-to-this-workflow).
+**Tool candidates:** `workflows` list/search (replace the broken `visibleWorkflows` under `buddy_list_workflows`); `workflowTasks` (task inspection); `workflowPatches`+`workflowPatch` (revision history/diff); `workflowIOConfigurations` (batch IO contracts for sub-workflow analysis); `workflowCompletionListeners` (who-listens-to-this-workflow).
 
 ### Actions & Packs — _wave 1 · done_
 
@@ -328,7 +328,7 @@ Grouped by domain. `wave` = which explorer batch owns it; `status` updated as fi
 
 **Batch gotchas:** date args = ISO 8601, output ts = epoch-ms. Several aggregates time out (see roster). `pendingTasksAggregate` needs `status`. Org-scoped `taskLogs` → use `search`, not `where`. Stats fields take `orgId` as a named arg (`$orgId`), not auto-filter.
 
-**Execution variable fields (input / output / context) — filter CLIENT-SIDE only, scoped to ONE workflow.** Run input/output live on the nested `WorkflowExecution.conductor` object: `conductor.input` (JSON `{varName: value}`, the values a run started with) and `conductor.output` (JSON, same; `null` until the run completes) — both selectable **inline** in the bulk `workflowExecutions(...)` list, so one round-trip. The run's CTX is NOT on `WorkflowExecution`; it is the separate root field `workflowExecutionContexts(workflowExecutionId)` (JSON array of frames, each a flat `{key: value}`), so context = **one extra call per execution** (N+1, ~1–3 KB each; `conductor.state.contexts` is always `[]` — not the CTX source). **No server-side variable filter exists at all** — `WorkflowExecutionWhereInput`/`WorkflowExecutionSearchInput` expose no input/output/context/conductor field (attempts fail at GraphQL validation, stricter than the `Workflow`-def case). Filterable fields are only `id, orgId, status, originatingExecutionId, numAwaitingResponseTasks, workflowId, createdAt, processedCompletionAt`. ⚠ `workflowExecutions` with no `where` leaks other orgs' runs — always pass `where:{orgId, workflowId}`. Org-wide var search is infeasible (100+ runs/workflow), so the tool requires `workflowId`. Built as `find_executions_by_variable` (`kind: input|output|context`, optional `value`).
+**Execution variable fields (input / output / context) — filter CLIENT-SIDE only, scoped to ONE workflow.** Run input/output live on the nested `WorkflowExecution.conductor` object: `conductor.input` (JSON `{varName: value}`, the values a run started with) and `conductor.output` (JSON, same; `null` until the run completes) — both selectable **inline** in the bulk `workflowExecutions(...)` list, so one round-trip. The run's CTX is NOT on `WorkflowExecution`; it is the separate root field `workflowExecutionContexts(workflowExecutionId)` (JSON array of frames, each a flat `{key: value}`), so context = **one extra call per execution** (N+1, ~1–3 KB each; `conductor.state.contexts` is always `[]` — not the CTX source). **No server-side variable filter exists at all** — `WorkflowExecutionWhereInput`/`WorkflowExecutionSearchInput` expose no input/output/context/conductor field (attempts fail at GraphQL validation, stricter than the `Workflow`-def case). Filterable fields are only `id, orgId, status, originatingExecutionId, numAwaitingResponseTasks, workflowId, createdAt, processedCompletionAt`. ⚠ `workflowExecutions` with no `where` leaks other orgs' runs — always pass `where:{orgId, workflowId}`. Org-wide var search is infeasible (100+ runs/workflow), so the tool requires `workflowId`. Built as `buddy_find_executions_by_variable` (`kind: input|output|context`, optional `value`).
 
 | field                        | status  | notes                                                                                                             |
 | ---------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
@@ -383,7 +383,7 @@ Grouped by domain. `wave` = which explorer batch owns it; `status` updated as fi
 | `crateUseCase` / `crateUseCases` | EMPTY  | no records in sandbox; callable, no error.                                                                 |
 | `crateTokenTypes`                | WORKS  | no-arg static `[String!]` enum list.                                                                       |
 | `crateCategories`                | WORKS  | `selectedOrgId: ID!` **required**; JSON `[{label,description}]` (6 cats).                                  |
-| `crateExportInfo`                | WORKS  | `workflowId`=crate's primary wf; ⚠ **13 MB** JSON → always `result_read`.                                  |
+| `crateExportInfo`                | WORKS  | `workflowId`=crate's primary wf; ⚠ **13 MB** JSON → always `buddy_result_read`.                            |
 | `crateUnpackingArgumentSet`      | WORKS  | by `id` (or `orgId`); null by `crateId` alone; saved install args.                                         |
 | `publicCrates`                   | WORKS  | no auth/org; trimmed `PublicCrate` type; `limit`/`offset` only.                                            |
 | `cratesForForm`                  | EMPTY  | `formId` req; `[]` everywhere tested.                                                                      |

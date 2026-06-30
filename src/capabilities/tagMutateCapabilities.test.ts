@@ -66,9 +66,9 @@ suite('Unit: tagMutateCapabilities', () => {
 		_resetMcpMutationApproverForTesting();
 	});
 
-	suite('create_tag', () => {
+	suite('buddy_create_tag', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
-			const c = cap('create_tag');
+			const c = cap('buddy_create_tag');
 			assert.strictEqual(c.access, 'write');
 			assert.strictEqual(c.mcp, true);
 			assert.strictEqual(c.chat, false);
@@ -79,7 +79,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ create: { data: { createTag: { id: 'g1', name: 'prod' } } } });
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('create_tag').run({ orgId: 'org-sandbox', name: 'prod' }, ctx);
+			const output = await cap('buddy_create_tag').run({ orgId: 'org-sandbox', name: 'prod' }, ctx);
 
 			assert.deepStrictEqual(callsFor(calls, 'create')[0].variables, {
 				tag: { orgId: 'org-sandbox', name: 'prod' },
@@ -93,7 +93,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ create: { data: { createTag: { id: 'g2', name: 'env' } } } });
 			setMcpMutationApprover(async () => true);
 
-			await cap('create_tag').run(
+			await cap('buddy_create_tag').run(
 				{ orgId: 'org-sandbox', name: 'env', color: '#4287f5', description: 'environment tag' },
 				ctx,
 			);
@@ -107,7 +107,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx } = makeCtx({});
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('create_tag').run({ orgId: 'org-sandbox' }, ctx),
+				() => cap('buddy_create_tag').run({ orgId: 'org-sandbox' }, ctx),
 				/Missing required string argument "name"/,
 			);
 		});
@@ -116,14 +116,14 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({});
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('create_tag').run({ orgId: 'org-sandbox', name: 'prod' }, ctx);
+			const output = await cap('buddy_create_tag').run({ orgId: 'org-sandbox', name: 'prod' }, ctx);
 
 			assert.strictEqual(callsFor(calls, 'create').length, 0);
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
 		});
 	});
 
-	suite('update_tag', () => {
+	suite('buddy_update_tag', () => {
 		const inOrgRow = {
 			data: { tags: [{ id: 'g1', name: 'old', color: '#111111', description: 'd', orgId: 'org-sandbox' }] },
 		};
@@ -135,7 +135,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			});
 			setMcpMutationApprover(async () => true);
 
-			await cap('update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', color: '#222222' }, ctx);
+			await cap('buddy_update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', color: '#222222' }, ctx);
 
 			assert.deepStrictEqual(callsFor(calls, 'update')[0].variables, {
 				tag: { id: 'g1', orgId: 'org-sandbox', name: 'old', color: '#222222', description: 'd' },
@@ -149,7 +149,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			});
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'new' }, ctx);
+			const output = await cap('buddy_update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'new' }, ctx);
 
 			const tag = (callsFor(calls, 'update')[0].variables as { tag: Record<string, unknown> }).tag;
 			assert.strictEqual(tag.name, 'new');
@@ -165,7 +165,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'x' }, ctx),
+				() => cap('buddy_update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'x' }, ctx),
 				/Tag g1 is not in org org-sandbox/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -176,21 +176,21 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ byId: inOrgRow });
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'x' }, ctx);
+			const output = await cap('buddy_update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'x' }, ctx);
 
 			assert.strictEqual(callsFor(calls, 'update').length, 0);
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
 		});
 	});
 
-	suite('delete_tag', () => {
+	suite('buddy_delete_tag', () => {
 		const inOrgRow = { data: { tags: [{ id: 'g1', name: 'old', orgId: 'org-sandbox' }] } };
 
 		test('deletes when in-org and approved', async () => {
 			const { ctx, calls } = makeCtx({ byId: inOrgRow, delete: { data: { deleteTag: 'g1' } } });
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('delete_tag').run({ orgId: 'org-sandbox', tagId: 'g1' }, ctx);
+			const output = await cap('buddy_delete_tag').run({ orgId: 'org-sandbox', tagId: 'g1' }, ctx);
 
 			assert.deepStrictEqual(callsFor(calls, 'delete')[0].variables, { id: 'g1' });
 			assert.strictEqual(JSON.parse(output).status, 'deleted');
@@ -205,7 +205,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('delete_tag').run({ orgId: 'org-sandbox', tagId: 'g1' }, ctx),
+				() => cap('buddy_delete_tag').run({ orgId: 'org-sandbox', tagId: 'g1' }, ctx),
 				/Tag g1 is not in org org-sandbox/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -216,7 +216,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ byId: inOrgRow });
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('delete_tag').run({ orgId: 'org-sandbox', tagId: 'g1' }, ctx);
+			const output = await cap('buddy_delete_tag').run({ orgId: 'org-sandbox', tagId: 'g1' }, ctx);
 
 			assert.strictEqual(callsFor(calls, 'delete').length, 0);
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
@@ -232,7 +232,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx } = makeCtx({ create: { errors: [{ message: 'boom' }] } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('create_tag').run({ orgId: 'org-sandbox', name: 'x' }, ctx),
+				() => cap('buddy_create_tag').run({ orgId: 'org-sandbox', name: 'x' }, ctx),
 				/GraphQL error/,
 			);
 		});
@@ -241,7 +241,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx } = makeCtx({ create: { data: { createTag: {} } } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('create_tag').run({ orgId: 'org-sandbox', name: 'x' }, ctx),
+				() => cap('buddy_create_tag').run({ orgId: 'org-sandbox', name: 'x' }, ctx),
 				/returned no tag/,
 			);
 		});
@@ -250,7 +250,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx } = makeCtx({ byId: { errors: [{ message: 'boom' }] } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'x' }, ctx),
+				() => cap('buddy_update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'x' }, ctx),
 				/GraphQL error/,
 			);
 		});
@@ -259,7 +259,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx } = makeCtx({ byId: inOrgRow, update: { data: { updateTag: {} } } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'x' }, ctx),
+				() => cap('buddy_update_tag').run({ orgId: 'org-sandbox', tagId: 'g1', name: 'x' }, ctx),
 				/returned no tag/,
 			);
 		});
@@ -268,7 +268,7 @@ suite('Unit: tagMutateCapabilities', () => {
 			const { ctx } = makeCtx({ byId: inOrgRow, delete: { data: { deleteTag: null } } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('delete_tag').run({ orgId: 'org-sandbox', tagId: 'g1' }, ctx),
+				() => cap('buddy_delete_tag').run({ orgId: 'org-sandbox', tagId: 'g1' }, ctx),
 				/returned no id/,
 			);
 		});

@@ -9,7 +9,7 @@ const { fakeCtx, cap } = createCapabilityTestHarness(PACK_INTEGRATION_CAPABILITI
 suite('Unit: packIntegrationCapabilities', () => {
 	setup(() => initTestEnvironment());
 
-	test('list_installed_packs formats rows', async () => {
+	test('buddy_list_installed_packs formats rows', async () => {
 		const { ctx } = fakeCtx({
 			data: {
 				packsAndBundlesByInstalledState: {
@@ -26,37 +26,43 @@ suite('Unit: packIntegrationCapabilities', () => {
 				},
 			},
 		});
-		const result = await cap('list_installed_packs').run({ orgId: 'org-1' }, ctx);
+		const result = await cap('buddy_list_installed_packs').run({ orgId: 'org-1' }, ctx);
 		assert.ok(typeof result === 'string' && result.includes('microsoft_graph'));
 	});
 
-	test('get_pack_auth_status returns configured when url is null', async () => {
+	test('buddy_get_pack_auth_status returns configured when url is null', async () => {
 		const { ctx } = fakeCtx({ data: { packAuthUrl: null } });
-		const result = await cap('get_pack_auth_status').run({ orgId: 'org-1', packName: 'microsoft_graph' }, ctx);
+		const result = await cap('buddy_get_pack_auth_status').run(
+			{ orgId: 'org-1', packName: 'microsoft_graph' },
+			ctx,
+		);
 		assert.ok(typeof result === 'string' && result.includes('configured'));
 	});
 
-	test('get_pack_auth_status returns setup url when present', async () => {
+	test('buddy_get_pack_auth_status returns setup url when present', async () => {
 		const { ctx } = fakeCtx({ data: { packAuthUrl: 'https://example.com/auth' } });
-		const result = await cap('get_pack_auth_status').run({ orgId: 'org-1', packName: 'microsoft_graph' }, ctx);
+		const result = await cap('buddy_get_pack_auth_status').run(
+			{ orgId: 'org-1', packName: 'microsoft_graph' },
+			ctx,
+		);
 		assert.ok(typeof result === 'string' && result.includes('needs setup'));
 	});
 
-	test('list_pack_configs query has no limit arg', async () => {
+	test('buddy_list_pack_configs query has no limit arg', async () => {
 		const { ctx, calls } = fakeCtx({ data: { packConfigs: [] } });
-		await cap('list_pack_configs').run({ orgId: 'org-1' }, ctx);
+		await cap('buddy_list_pack_configs').run({ orgId: 'org-1' }, ctx);
 		const capturedQuery = calls[0].query;
 		assert.ok(capturedQuery.includes('packConfigs('));
 		assert.ok(!capturedQuery.includes('limit'));
 	});
 
-	test('list_integrations formats rows', async () => {
+	test('buddy_list_integrations formats rows', async () => {
 		const { ctx } = fakeCtx({
 			data: {
 				integrations: [{ name: 'Slack', description: 'Slack integration', numInstalled: 5, isPublic: true }],
 			},
 		});
-		const result = await cap('list_integrations').run({ orgId: 'org-1' }, ctx);
+		const result = await cap('buddy_list_integrations').run({ orgId: 'org-1' }, ctx);
 		assert.ok(typeof result === 'string' && !result.includes('integrations('));
 		assert.ok(typeof result === 'string' && result.includes('Slack'));
 	});

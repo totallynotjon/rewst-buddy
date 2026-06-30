@@ -64,13 +64,13 @@ suite('Unit: triggerMutateCapabilities', () => {
 		_resetMcpMutationApproverForTesting();
 	});
 
-	suite('set_trigger_enabled', () => {
+	suite('buddy_set_trigger_enabled', () => {
 		const inOrgDisabled = {
 			data: { triggers: [{ id: 't1', name: 'Nightly', enabled: false, orgId: 'org-sandbox' }] },
 		};
 
 		test('is a write capability gated by approval, mcp-only', () => {
-			const c = cap('set_trigger_enabled');
+			const c = cap('buddy_set_trigger_enabled');
 			assert.strictEqual(c.access, 'write');
 			assert.strictEqual(c.mcp, true);
 			assert.strictEqual(c.chat, false);
@@ -84,7 +84,7 @@ suite('Unit: triggerMutateCapabilities', () => {
 			});
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('set_trigger_enabled').run(
+			const output = await cap('buddy_set_trigger_enabled').run(
 				{ orgId: 'org-sandbox', triggerId: 't1', enabled: true },
 				ctx,
 			);
@@ -100,7 +100,7 @@ suite('Unit: triggerMutateCapabilities', () => {
 			});
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('set_trigger_enabled').run(
+			const output = await cap('buddy_set_trigger_enabled').run(
 				{ orgId: 'org-sandbox', triggerId: 't1', enabled: false },
 				ctx,
 			);
@@ -121,7 +121,8 @@ suite('Unit: triggerMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
+				() =>
+					cap('buddy_set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
 				/Trigger t1 is not in org org-sandbox/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -137,7 +138,7 @@ suite('Unit: triggerMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1' }, ctx),
+				() => cap('buddy_set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1' }, ctx),
 				/Missing required boolean argument "enabled"/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -148,7 +149,7 @@ suite('Unit: triggerMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ byId: inOrgDisabled });
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('set_trigger_enabled').run(
+			const output = await cap('buddy_set_trigger_enabled').run(
 				{ orgId: 'org-sandbox', triggerId: 't1', enabled: true },
 				ctx,
 			);
@@ -167,7 +168,8 @@ suite('Unit: triggerMutateCapabilities', () => {
 			const { ctx } = makeCtx({ byId: { errors: [{ message: 'boom' }] } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
+				() =>
+					cap('buddy_set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
 				/GraphQL error/,
 			);
 		});
@@ -176,7 +178,8 @@ suite('Unit: triggerMutateCapabilities', () => {
 			const { ctx } = makeCtx({ byId: inOrgDisabled, update: { errors: [{ message: 'boom' }] } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
+				() =>
+					cap('buddy_set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
 				/GraphQL error/,
 			);
 		});
@@ -185,7 +188,8 @@ suite('Unit: triggerMutateCapabilities', () => {
 			const { ctx } = makeCtx({ byId: inOrgDisabled, update: { data: { updateTrigger: {} } } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
+				() =>
+					cap('buddy_set_trigger_enabled').run({ orgId: 'org-sandbox', triggerId: 't1', enabled: true }, ctx),
 				/returned no trigger/,
 			);
 		});

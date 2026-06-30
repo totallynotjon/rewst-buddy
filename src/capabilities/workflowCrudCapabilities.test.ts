@@ -65,9 +65,9 @@ suite('Unit: workflowCrudCapabilities', () => {
 		_resetMcpMutationApproverForTesting();
 	});
 
-	suite('create_workflow', () => {
+	suite('buddy_create_workflow', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
-			const c = cap('create_workflow');
+			const c = cap('buddy_create_workflow');
 			assert.strictEqual(c.access, 'write');
 			assert.strictEqual(c.mcp, true);
 			assert.strictEqual(c.chat, false);
@@ -78,7 +78,7 @@ suite('Unit: workflowCrudCapabilities', () => {
 			const { ctx, calls } = makeCtx({ create: { data: { createWorkflow: { id: 'w1', name: 'Onboard' } } } });
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('create_workflow').run({ orgId: 'org-sandbox', name: 'Onboard' }, ctx);
+			const output = await cap('buddy_create_workflow').run({ orgId: 'org-sandbox', name: 'Onboard' }, ctx);
 
 			assert.deepStrictEqual(callsFor(calls, 'create')[0].variables, {
 				workflow: { orgId: 'org-sandbox', name: 'Onboard' },
@@ -92,7 +92,10 @@ suite('Unit: workflowCrudCapabilities', () => {
 			const { ctx, calls } = makeCtx({ create: { data: { createWorkflow: { id: 'w2', name: 'Wf' } } } });
 			setMcpMutationApprover(async () => true);
 
-			await cap('create_workflow').run({ orgId: 'org-sandbox', name: 'Wf', description: 'does things' }, ctx);
+			await cap('buddy_create_workflow').run(
+				{ orgId: 'org-sandbox', name: 'Wf', description: 'does things' },
+				ctx,
+			);
 
 			const wf = (callsFor(calls, 'create')[0].variables as { workflow: Record<string, unknown> }).workflow;
 			assert.strictEqual(wf.description, 'does things');
@@ -102,7 +105,7 @@ suite('Unit: workflowCrudCapabilities', () => {
 			const { ctx } = makeCtx({});
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('create_workflow').run({ orgId: 'org-sandbox' }, ctx),
+				() => cap('buddy_create_workflow').run({ orgId: 'org-sandbox' }, ctx),
 				/Missing required string argument "name"/,
 			);
 		});
@@ -111,21 +114,21 @@ suite('Unit: workflowCrudCapabilities', () => {
 			const { ctx, calls } = makeCtx({});
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('create_workflow').run({ orgId: 'org-sandbox', name: 'Onboard' }, ctx);
+			const output = await cap('buddy_create_workflow').run({ orgId: 'org-sandbox', name: 'Onboard' }, ctx);
 
 			assert.strictEqual(callsFor(calls, 'create').length, 0);
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
 		});
 	});
 
-	suite('delete_workflow', () => {
+	suite('buddy_delete_workflow', () => {
 		const inOrg = { data: { workflow: { id: 'w1', name: 'Onboard', orgId: 'org-sandbox' } } };
 
 		test('deletes when in-org and approved', async () => {
 			const { ctx, calls } = makeCtx({ owner: inOrg, delete: { data: { deleteWorkflow: 'w1' } } });
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx);
+			const output = await cap('buddy_delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx);
 
 			assert.deepStrictEqual(callsFor(calls, 'delete')[0].variables, { id: 'w1' });
 			const parsed = JSON.parse(output);
@@ -144,7 +147,7 @@ suite('Unit: workflowCrudCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx),
+				() => cap('buddy_delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx),
 				/Workflow w1 is not in org org-sandbox/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -156,7 +159,7 @@ suite('Unit: workflowCrudCapabilities', () => {
 			setMcpMutationApprover(async () => true);
 
 			await assert.rejects(
-				() => cap('delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx),
+				() => cap('buddy_delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx),
 				/Workflow w1 is not in org org-sandbox/,
 			);
 			assert.strictEqual(callsFor(calls, 'delete').length, 0);
@@ -166,7 +169,7 @@ suite('Unit: workflowCrudCapabilities', () => {
 			const { ctx, calls } = makeCtx({ owner: inOrg });
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx);
+			const output = await cap('buddy_delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx);
 
 			assert.strictEqual(callsFor(calls, 'delete').length, 0);
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
@@ -180,7 +183,7 @@ suite('Unit: workflowCrudCapabilities', () => {
 			const { ctx } = makeCtx({ create: { errors: [{ message: 'boom' }] } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('create_workflow').run({ orgId: 'org-sandbox', name: 'X' }, ctx),
+				() => cap('buddy_create_workflow').run({ orgId: 'org-sandbox', name: 'X' }, ctx),
 				/GraphQL error/,
 			);
 		});
@@ -189,7 +192,7 @@ suite('Unit: workflowCrudCapabilities', () => {
 			const { ctx } = makeCtx({ create: { data: { createWorkflow: {} } } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('create_workflow').run({ orgId: 'org-sandbox', name: 'X' }, ctx),
+				() => cap('buddy_create_workflow').run({ orgId: 'org-sandbox', name: 'X' }, ctx),
 				/returned no workflow/,
 			);
 		});
@@ -198,7 +201,7 @@ suite('Unit: workflowCrudCapabilities', () => {
 			const { ctx } = makeCtx({ owner: { errors: [{ message: 'boom' }] } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx),
+				() => cap('buddy_delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx),
 				/GraphQL error/,
 			);
 		});
@@ -207,7 +210,7 @@ suite('Unit: workflowCrudCapabilities', () => {
 			const { ctx } = makeCtx({ owner: inOrg, delete: { data: { deleteWorkflow: null } } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx),
+				() => cap('buddy_delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx),
 				/returned no id/,
 			);
 		});

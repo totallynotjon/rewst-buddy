@@ -5,9 +5,9 @@ import { ORG_ID_PROP, asString, requireString } from './inputHelpers';
 import { orgDisplayName, throwOnGraphqlErrors, withMutationApproval } from './mutationApproval';
 
 /**
- * Workflow create/delete capabilities. create_workflow makes an empty workflow
+ * Workflow create/delete capabilities. buddy_create_workflow makes an empty workflow
  * (edit it afterwards with buddy_workflow_edit) and carries orgId in its input.
- * delete_workflow acts by id, and one session can manage many orgs, so it first
+ * buddy_delete_workflow acts by id, and one session can manage many orgs, so it first
  * re-verifies the workflow belongs to the requested org (requireWorkflowInOrg)
  * before deleting. Both are approval-gated and hidden unless
  * rewst-buddy.mcp.enableWriteTools. Deleting a workflow also removes its triggers,
@@ -47,7 +47,7 @@ async function requireWorkflowInOrg(ctx: CapabilityContext, workflowId: string, 
 }
 
 const createWorkflowSpec: ToolSpec = {
-	name: 'create_workflow',
+	name: 'buddy_create_workflow',
 	args: '{"orgId": string, "name": string, "description"?: string}',
 	description:
 		'Create a new, empty Rewst workflow in one organization, returning its id and name. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code.',
@@ -81,7 +81,7 @@ async function runCreateWorkflow(input: Record<string, unknown>, ctx: Capability
 }
 
 const deleteWorkflowSpec: ToolSpec = {
-	name: 'delete_workflow',
+	name: 'buddy_delete_workflow',
 	args: '{"orgId": string, "workflowId": string}',
 	description:
 		'Permanently delete one Rewst workflow, identified by org and workflow id. The workflow must belong to the given org. This also removes its triggers, tasks, and execution history and cannot be undone. Requires write tools to be enabled and per-call approval in VS Code.',

@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability } from './Capability';
 
-export const RESULT_READ_TOOL_NAME = 'result_read';
+export const RESULT_READ_TOOL_NAME = 'buddy_result_read';
 export const MCP_MAX_OUTPUT_CHARS = 24_000;
 
 const MCP_RESULT_CACHE_LIMIT_BYTES = 64 * 1024 * 1024;
@@ -88,20 +88,20 @@ export function formatMcpOutput(toolName: string, text: string, cache: McpResult
 	return [
 		preview,
 		`...(output exceeded ${MCP_MAX_OUTPUT_CHARS} characters; the full result is cached in memory as id "${stored.id}" and is ${formatBytes(bytes)} (${bytes} bytes).)`,
-		`Continue with the ${RESULT_READ_TOOL_NAME} MCP tool: {"id":"${stored.id}","offset":${preview.length}}`,
-		`Search cached result with the ${RESULT_READ_TOOL_NAME} MCP tool: {"id":"${stored.id}","search":"<text>"}`,
+		`Continue with the ${RESULT_READ_TOOL_NAME} Buddy tool: {"id":"${stored.id}","offset":${preview.length}}`,
+		`Search cached result with the ${RESULT_READ_TOOL_NAME} Buddy tool: {"id":"${stored.id}","search":"<text>"}`,
 	].join('\n');
 }
 
 const resultReadSpec: ToolSpec = {
 	name: RESULT_READ_TOOL_NAME,
 	description:
-		'Pages or searches an oversized cached Rewst Buddy MCP result by id. The cache is in-memory only; an id can be evicted under memory pressure, so rerun the original tool if it is gone.',
+		'Pages or searches an oversized cached Rewst Buddy result by id. The cache is in-memory only; an id can be evicted under memory pressure, so rerun the original tool if it is gone.',
 	args: '{"id": string, "offset"?: number, "limit"?: number, "search"?: string}',
 	inputSchema: {
 		type: 'object',
 		properties: {
-			id: { type: 'string', description: 'Cached result id returned by an oversized MCP tool result.' },
+			id: { type: 'string', description: 'Cached result id returned by an oversized Rewst Buddy tool result.' },
 			offset: { type: 'number', description: 'Character offset to start reading from (default 0).' },
 			limit: {
 				type: 'number',
@@ -125,11 +125,11 @@ export const resultReadCapability: Capability = {
 	requiresOrg: false,
 	async run(input: Record<string, unknown>, _ctx): Promise<string> {
 		const id = asString(input, 'id');
-		if (!id) throw new Error('result_read requires an "id" from a previous oversized MCP result.');
+		if (!id) throw new Error('buddy_result_read requires an "id" from a previous oversized Rewst Buddy result.');
 		const entry = mcpResultCache.get(id);
 		if (!entry) {
 			throw new Error(
-				`No cached MCP result for id "${id}". The in-memory cache may have evicted it or it may be absent; rerun the original tool to regenerate it.`,
+				`No cached Rewst Buddy result for id "${id}". The in-memory cache may have evicted it or it may be absent; rerun the original tool to regenerate it.`,
 			);
 		}
 		const search = asString(input, 'search');

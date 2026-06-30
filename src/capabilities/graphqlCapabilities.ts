@@ -4,7 +4,7 @@ import type { Capability } from './Capability';
 
 /**
  * Exposes the schema helper over MCP. The combined buddy_graphql chat tool is
- * retired: MCP uses the dedicated rewst_graphql_query and rewst_graphql_mutate
+ * retired: MCP uses the dedicated buddy_graphql_query and buddy_graphql_mutate
  * primitives instead.
  */
 

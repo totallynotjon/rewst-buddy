@@ -65,12 +65,12 @@ function asPositiveInt(input: Record<string, unknown>, key: string): number | un
 }
 
 const ORG_ID_PROP = {
-	orgId: { type: 'string', description: 'Rewst organization id the operation runs against (from list_orgs).' },
+	orgId: { type: 'string', description: 'Rewst organization id the operation runs against (from buddy_list_orgs).' },
 } as const;
 
 /** Lists every org reachable through the active sessions; needs no org id. */
 const listOrgsSpec: ToolSpec = {
-	name: 'list_orgs',
+	name: 'buddy_list_orgs',
 	args: '{}',
 	description:
 		'List the Rewst organizations reachable through the signed-in VS Code sessions, with their ids and names. Call this first to learn which orgId to pass to the other tools.',
@@ -78,14 +78,14 @@ const listOrgsSpec: ToolSpec = {
 };
 
 const listTemplatesSpec: ToolSpec = {
-	name: 'list_templates',
+	name: 'buddy_list_templates',
 	args: '{"orgId": string}',
-	description: 'List the templates in one Rewst organization (id and name). Use get_template for a full body.',
+	description: 'List the templates in one Rewst organization (id and name). Use buddy_get_template for a full body.',
 	inputSchema: { type: 'object', properties: { ...ORG_ID_PROP }, required: ['orgId'] },
 };
 
 const getTemplateSpec: ToolSpec = {
-	name: 'get_template',
+	name: 'buddy_get_template',
 	args: '{"orgId": string, "templateId": string}',
 	description: 'Get one Rewst template, including its body, by org and template id.',
 	inputSchema: {
@@ -99,7 +99,7 @@ const getTemplateSpec: ToolSpec = {
 };
 
 const listWorkflowsSpec: ToolSpec = {
-	name: 'list_workflows',
+	name: 'buddy_list_workflows',
 	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
 		'List workflows in one Rewst organization (id, name, description). Optionally filter by a name search and cap the count.',
@@ -115,7 +115,7 @@ const listWorkflowsSpec: ToolSpec = {
 };
 
 const listOrgVariablesSpec: ToolSpec = {
-	name: 'list_org_variables',
+	name: 'buddy_list_org_variables',
 	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
 		'List configuration variables for one Rewst organization (name, value, category, cascade). Secret-category values are returned masked. Optionally filter by a case-insensitive name substring.',
@@ -134,7 +134,7 @@ const listOrgVariablesSpec: ToolSpec = {
 };
 
 const listWorkflowExecutionsSpec: ToolSpec = {
-	name: 'list_workflow_executions',
+	name: 'buddy_list_workflow_executions',
 	args: '{"orgId": string, "status"?: string, "limit"?: number}',
 	description:
 		'List recent workflow executions for one Rewst organization (id, status, workflowId, createdAt, numSuccessfulTasks), newest first. Optionally filter by an exact status (e.g. succeeded, failed, running). createdAt is an epoch-millisecond string.',
@@ -153,7 +153,7 @@ const listWorkflowExecutionsSpec: ToolSpec = {
 };
 
 const findExecutionsByVariableSpec: ToolSpec = {
-	name: 'find_executions_by_variable',
+	name: 'buddy_find_executions_by_variable',
 	args: '{"orgId": string, "workflowId": string, "name": string, "kind"?: "input"|"output"|"context", "value"?: string, "limit"?: number}',
 	description:
 		"Find executions of ONE Rewst workflow whose input, output, or context variable matches a name (and optionally a value). Scans the most-recently-created executions of the given workflow and filters client-side. kind selects which variable surface to search: input (the values the run was started with), output (the values it produced — absent until a run completes), or context (the run's CTX). name is matched case-insensitively as a substring against variable names; pass value to also require the variable's value to contain that text. Returns one line per matching execution with its id, status, created time, and the matched variable(s). Both orgId and workflowId are required — there is no way to search executions across a whole org by variable, and kind=context issues one extra request per scanned execution.",
@@ -182,7 +182,7 @@ const findExecutionsByVariableSpec: ToolSpec = {
 };
 
 const listWorkflowTasksSpec: ToolSpec = {
-	name: 'list_workflow_tasks',
+	name: 'buddy_list_workflow_tasks',
 	args: '{"orgId": string, "workflowId": string, "limit"?: number}',
 	description:
 		'List the tasks (steps) in one Rewst workflow (id, name, actionId, isMocked, timeout, description). Task ids are dash-less hex strings.',
@@ -201,10 +201,10 @@ const listWorkflowTasksSpec: ToolSpec = {
 };
 
 const listWorkflowPatchesSpec: ToolSpec = {
-	name: 'list_workflow_patches',
+	name: 'buddy_list_workflow_patches',
 	args: '{"orgId": string, "workflowId": string, "limit"?: number}',
 	description:
-		'List the revision history (patch metadata) for one Rewst workflow, newest first (id, patchType, comment, createdAt). Use get_workflow_patch with a patch id to see the actual change. createdAt is an epoch-millisecond string.',
+		'List the revision history (patch metadata) for one Rewst workflow, newest first (id, patchType, comment, createdAt). Use buddy_get_workflow_patch with a patch id to see the actual change. createdAt is an epoch-millisecond string.',
 	inputSchema: {
 		type: 'object',
 		properties: {
@@ -220,10 +220,10 @@ const listWorkflowPatchesSpec: ToolSpec = {
 };
 
 const getWorkflowPatchSpec: ToolSpec = {
-	name: 'get_workflow_patch',
+	name: 'buddy_get_workflow_patch',
 	args: '{"orgId": string, "patchId": string}',
 	description:
-		'Get one Rewst workflow patch by id, including `patch` — the actual change as an RFC-6902 JSON Patch array. Pair with list_workflow_patches to find a patch id.',
+		'Get one Rewst workflow patch by id, including `patch` — the actual change as an RFC-6902 JSON Patch array. Pair with buddy_list_workflow_patches to find a patch id.',
 	inputSchema: {
 		type: 'object',
 		properties: {
@@ -235,7 +235,7 @@ const getWorkflowPatchSpec: ToolSpec = {
 };
 
 const latestWorkflowExecutionSpec: ToolSpec = {
-	name: 'latest_workflow_execution',
+	name: 'buddy_latest_workflow_execution',
 	args: '{"orgId": string, "workflowId": string, "status"?: string}',
 	description:
 		'Get the most recent execution of one workflow in a Rewst organization (id, status, createdAt, task counts). Optionally constrain to a specific status.',
@@ -251,7 +251,7 @@ const latestWorkflowExecutionSpec: ToolSpec = {
 };
 
 const getWorkflowExecutionStatsSpec: ToolSpec = {
-	name: 'get_workflow_execution_stats',
+	name: 'buddy_get_workflow_execution_stats',
 	args: '{"orgId": string, "createdSince": string}',
 	description:
 		'Get aggregate workflow-execution status counts for one Rewst organization since a date (succeeded, failed, running, pending, paused, delayed, humanSecondsSaved). createdSince must be an ISO-8601 date string (e.g. 2025-01-01 or 2025-01-01T00:00:00Z) — epoch milliseconds are rejected.',
@@ -269,7 +269,7 @@ const getWorkflowExecutionStatsSpec: ToolSpec = {
 };
 
 const findActionSpec: ToolSpec = {
-	name: 'find_action',
+	name: 'buddy_find_action',
 	args: '{"orgId": string, "filter"?: string, "limit"?: number}',
 	description:
 		"Search the actions available in one Rewst organization's installed packs. The filter is matched case-insensitively against each action's display name. Returns one line per match — `<ref> (<id>) — <pack>: <description>` — where `<id>` is the action id and `<ref>` is its callable reference; rows with no ref (workflow-as-action entries) show the action name in place of the ref. Capped to `limit`; omitting the filter returns many results, so prefer a filter. For the platform-wide action catalog rather than this org's installed packs, use buddy_action_search.",
@@ -291,7 +291,7 @@ const findActionSpec: ToolSpec = {
 };
 
 const resolveReferenceSpec: ToolSpec = {
-	name: 'resolve_reference',
+	name: 'buddy_resolve_reference',
 	args: '{"orgId": string, "modelType": string, "search"?: string, "limit"?: number}',
 	description:
 		'Resolve Rewst object names to ids for one organization and a model type (Workflow, Template, Trigger, Form, Organization, User, Role, PackConfig, Site, Page, Crate, CustomDatabase, TemplateExport). Optionally filter by a case-insensitive name substring. Returns matching options as name (id). Use this when you have a name and need the id.',
@@ -315,7 +315,7 @@ const resolveReferenceSpec: ToolSpec = {
 };
 
 const getWorkflowSpec: ToolSpec = {
-	name: 'get_workflow',
+	name: 'buddy_get_workflow',
 	args: '{"orgId": string, "workflowId": string}',
 	description: 'Get one Rewst workflow (metadata and triggers) by org and workflow id.',
 	inputSchema: {
@@ -329,7 +329,7 @@ const getWorkflowSpec: ToolSpec = {
 };
 
 const graphqlQuerySpec: ToolSpec = {
-	name: 'rewst_graphql_query',
+	name: 'buddy_graphql_query',
 	args: '{"orgId": string, "query": string, "variables"?: object}',
 	description:
 		"Run a read-only GraphQL query against one Rewst organization with the user's session. Only query operations are allowed; mutations and subscriptions are rejected. Use this for data the dedicated read tools do not cover (executions, integrations, variables, and so on).",
@@ -509,7 +509,7 @@ async function runListTemplates(input: Record<string, unknown>, ctx: CapabilityC
 	const capped = templates.slice(0, DEFAULT_TEMPLATE_LIMIT);
 	const lines = capped.map(template => `${template?.name ?? '(unnamed)'} (${template?.id})`);
 	if (templates.length > capped.length) {
-		lines.push(`…(${templates.length - capped.length} more not shown; refine in Rewst or use rewst_graphql_query)`);
+		lines.push(`…(${templates.length - capped.length} more not shown; refine in Rewst or use buddy_graphql_query)`);
 	}
 	return lines.join('\n');
 }

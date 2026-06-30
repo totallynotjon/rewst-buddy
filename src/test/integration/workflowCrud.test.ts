@@ -14,7 +14,7 @@ import { WORKFLOW_CRUD_CAPABILITIES } from '../../capabilities/workflowCrudCapab
 const { suite, test, suiteSetup, suiteTeardown, setup } = Mocha;
 
 /**
- * Live verification for create_workflow / delete_workflow, opt-in behind
+ * Live verification for buddy_create_workflow / buddy_delete_workflow, opt-in behind
  * REWST_TEST_WRITE=1 and scoped to the token's own primary org. Creates an empty
  * workflow and deletes it; cleans up in teardown.
  */
@@ -79,7 +79,7 @@ suite('Integration: workflow CRUD tools', function () {
 		};
 
 		try {
-			const created = JSON.parse(await cap('create_workflow').run({ orgId: targetOrgId, name }, ctx));
+			const created = JSON.parse(await cap('buddy_create_workflow').run({ orgId: targetOrgId, name }, ctx));
 			assert.strictEqual(created.status, 'created');
 			id = created.id;
 			console.log('[itest] created workflow', id);
@@ -91,14 +91,16 @@ suite('Integration: workflow CRUD tools', function () {
 			if (otherOrgId) {
 				const guardCtx: CapabilityContext = { session, orgId: otherOrgId, sessions: [session] };
 				await assert.rejects(
-					() => cap('delete_workflow').run({ orgId: otherOrgId, workflowId: id }, guardCtx),
+					() => cap('buddy_delete_workflow').run({ orgId: otherOrgId, workflowId: id }, guardCtx),
 					/is not in org/,
 				);
 				assert.ok(await byId(id!), 'workflow still present after refused cross-org delete');
 				console.log('[itest] org guard refused a cross-org delete to', otherOrgId);
 			}
 
-			const deleted = JSON.parse(await cap('delete_workflow').run({ orgId: targetOrgId, workflowId: id }, ctx));
+			const deleted = JSON.parse(
+				await cap('buddy_delete_workflow').run({ orgId: targetOrgId, workflowId: id }, ctx),
+			);
 			assert.strictEqual(deleted.status, 'deleted');
 			id = undefined;
 

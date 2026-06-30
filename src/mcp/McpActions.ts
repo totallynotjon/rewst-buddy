@@ -77,7 +77,7 @@ function effectiveAllowedOrgs(settings: McpSettings): Set<string> {
  *   working org is pinned; with nothing pinned, reads stay cross-org so the user
  *   can still browse and choose what to pin.
  *
- * Org-agnostic discovery tools (requiresOrg:false, e.g. list_orgs, the working-
+ * Org-agnostic discovery tools (requiresOrg:false, e.g. buddy_list_orgs, the working-
  * scope tools) are never gated, so the user can always find an org and pin it.
  */
 function assertScopeAllowed(
@@ -96,7 +96,7 @@ function assertScopeAllowed(
 		}
 		const workflows = WorkingScopeManager.getWorkflows();
 		if (workflows.length > 0) {
-			// rewst_graphql_mutate names its workflow target via scopeId/scopeName, so
+			// buddy_graphql_mutate names its workflow target via scopeId/scopeName, so
 			// resolve from both — otherwise a mutation against another workflow in an
 			// allowed org would slip past this gate.
 			const scopeName = asString(args, 'scopeName');
@@ -235,7 +235,7 @@ function resolveContext(
 	const soleWorkingOrg = workingOrgs.length === 1 ? workingOrgs[0] : undefined;
 	const orgId = asString(args, 'orgId') ?? requestOrgId ?? soleWorkingOrg;
 	if (!orgId) {
-		throw new McpError('org_required', 'This tool requires an "orgId" argument. Call list_orgs to find one.');
+		throw new McpError('org_required', 'This tool requires an "orgId" argument. Call buddy_list_orgs to find one.');
 	}
 	// Surface the resolved org back into the arguments so capabilities that read
 	// `orgId` from their input (the common case) see the injected working org.
@@ -244,7 +244,10 @@ function resolveContext(
 	try {
 		session = SessionManager.getSessionForOrg(orgId);
 	} catch {
-		throw new McpError('org_not_found', `No active session manages org "${orgId}". Call list_orgs for valid ids.`);
+		throw new McpError(
+			'org_not_found',
+			`No active session manages org "${orgId}". Call buddy_list_orgs for valid ids.`,
+		);
 	}
 	return { session, orgId, sessions };
 }
@@ -331,8 +334,8 @@ export async function callTool(
 export function listResources(settings: McpSettings = readMcpSettings()): McpResourceDescriptor[] {
 	// Only advertise a collection when its backing list capability is exposed, so
 	// resources honour the same allowlist/exposure gates as tools.
-	const templatesExposed = isCapabilityExposed('list_templates', settings);
-	const workflowsExposed = isCapabilityExposed('list_workflows', settings);
+	const templatesExposed = isCapabilityExposed('buddy_list_templates', settings);
+	const workflowsExposed = isCapabilityExposed('buddy_list_workflows', settings);
 	if (!templatesExposed && !workflowsExposed) return [];
 	const resources: McpResourceDescriptor[] = [];
 	for (const session of SessionManager.getActiveSessions()) {
@@ -368,11 +371,11 @@ export async function readResource(uri: string, settings: McpSettings = readMcpS
 	const toolName =
 		parsed.collection === 'templates'
 			? parsed.id
-				? 'get_template'
-				: 'list_templates'
+				? 'buddy_get_template'
+				: 'buddy_list_templates'
 			: parsed.id
-				? 'get_workflow'
-				: 'list_workflows';
+				? 'buddy_get_workflow'
+				: 'buddy_list_workflows';
 	const capability = getCapability(toolName);
 	if (!capability) throw new McpError('internal', `Missing capability for resource ${uri}`);
 	// Resources run capabilities directly, so enforce the same exposure/allowlist

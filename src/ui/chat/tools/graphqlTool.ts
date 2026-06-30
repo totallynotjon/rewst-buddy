@@ -5,7 +5,7 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
  * Rewst GraphQL helpers run against the user's own Rewst instance,
  * authenticated with their session cookie. The combined buddy_graphql tool is
  * retired from the VS Code chat LM surface; MCP exposes dedicated
- * rewst_graphql_query and rewst_graphql_mutate primitives, while
+ * buddy_graphql_query and buddy_graphql_mutate primitives, while
  * buddy_graphql_schema remains available for schema inspection.
  *
  *   - The MCP boundary decides whether these tools are exposed.

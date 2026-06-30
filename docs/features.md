@@ -104,11 +104,13 @@ Cage-Free Rewsty is still told your VS Code working directory when one is open, 
 
 Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of the chat LM tool surface. MCP exposure uses three switches:
 
-- `rewst-buddy.mcp.enable` exposes all read capabilities: `list_orgs`, `list_templates`, `get_template`, `list_workflows`, `get_workflow`, `rewst_graphql_query`, `buddy_graphql_schema`, `search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_render_jinja`, `buddy_action_search`, `list_jinja_filters`, `get_jinja_filter_docs`, and `result_read`.
+- `rewst-buddy.mcp.enable` exposes all read capabilities: `buddy_list_orgs`, `buddy_list_templates`, `buddy_get_template`, `buddy_list_workflows`, `buddy_get_workflow`, `buddy_graphql_query`, `buddy_graphql_schema`, `buddy_search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_render_jinja`, `buddy_action_search`, `buddy_list_jinja_filters`, `buddy_get_jinja_filter_docs`, and `buddy_result_read`.
 - `rewst-buddy.mcp.enableWriteTools` adds the workflow write helpers `buddy_workflow_edit`, `buddy_workflow_autolayout`, and `buddy_workflow_run`.
-- `rewst-buddy.mcp.enableDangerousGraphqlMutation` unlocks only `rewst_graphql_mutate`, the raw GraphQL mutation tool.
+- `rewst-buddy.mcp.enableDangerousGraphqlMutation` unlocks only `buddy_graphql_mutate`, the raw GraphQL mutation tool.
 
-The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement is the query/mutate pair. Workflow edits, auto-layout, runs, and raw GraphQL mutations still require approval inside VS Code before anything is sent to Rewst. `rewst_graphql_mutate` is intentionally separate from `enableWriteTools` because it can run arbitrary mutations against the live org.
+The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement is the query/mutate pair. Workflow edits, auto-layout, runs, and raw GraphQL mutations still require approval inside VS Code before anything is sent to Rewst. `buddy_graphql_mutate` is intentionally separate from `enableWriteTools` because it can run arbitrary mutations against the live org.
+
+`buddy_workflow_edit` does not expose workflow task parallelism or task sensitivity criteria. Edits save workflow tasks with sequential graph defaults; `with.items` remains available only as per-action loop concurrency inside a single task.
 
 When the server is registered with VS Code's own MCP client (the `Add MCP Server to VS Code` command), flipping any of these exposure switches re-advertises the server with a new version, so VS Code reconnects and refreshes the tool set in chat — no window reload needed.
 
@@ -122,7 +124,7 @@ When the server is registered with VS Code's own MCP client (the `Add MCP Server
 
 The per-call write approval modal names the requester — **Cage-Free Rewsty** for an in-process chat call, or **an external MCP client** for the HTTP/MCP surface — so you can see who is asking before you approve.
 
-Oversized MCP results are cached in memory and returned with a preview plus a short id; page or search the cached result with the MCP-only `result_read` tool. The retired chat-only `buddy_result_read` cache is no longer part of the chat tool protocol.
+Oversized Rewst Buddy results are cached in memory and returned with a preview plus a short id; page or search the cached result with `buddy_result_read`. It is part of the MCP capability surface and is also advertised to Cage-Free Rewsty's in-process Buddy tool path when the MCP switch is on; it is not exposed as a separate VS Code chat LM tool.
 
 The local MCP endpoint is guarded by a persistent localhost token. If it is ever exposed, run `Rewst Buddy: Rotate MCP Token` to replace it after a modal confirmation — existing MCP clients holding the old token lose access until you re-copy the config with `Copy MCP Config to Clipboard`.
 
@@ -138,10 +140,10 @@ How the scope is enforced:
 
 - **Writes** must target an org in the effective allowed set — the working orgs plus `rewst-buddy.mcp.alwaysAllowedOrgs`. With nothing pinned and none always-allowed, writes are blocked. When a working **workflow** is pinned, a write that edits a workflow must target one in scope.
 - **Reads** are limited to the effective set only under strict scope (`rewst-buddy.mcp.workingOrgScope` = `strict`, the default) and only once a working org is pinned. With nothing pinned, reads span all orgs so you can browse and choose; set the mode to `writes` to keep reads cross-org even when a working org is pinned.
-- **Org discovery** (`list_orgs`, `get_working_scope`) is never scoped, so you can always find an org and pin it.
+- **Org discovery** (`buddy_list_orgs`, `buddy_get_working_scope`) is never scoped, so you can always find an org and pin it.
 - **`alwaysAllowedOrgs`** is a persistent standing allowance — orgs that are always in scope without re-pinning (e.g. a sandbox). It replaces the former `writeOrgAllowlist`; old values are still read.
 
-An AI assistant can read the scope with `get_working_scope` and _request_ a change with `set_working_scope`, but the change only applies after you confirm a VS Code modal — to work on a different org or workflow, the model asks, and you approve, rather than the model widening its own reach.
+An AI assistant can read the scope with `buddy_get_working_scope` and _request_ a change with `buddy_set_working_scope`, but the change only applies after you confirm a VS Code modal — to work on a different org or workflow, the model asks, and you approve, rather than the model widening its own reach.
 
 ### Context and answers
 

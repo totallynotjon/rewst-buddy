@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import {
 	type GraphqlMutationConfirmation,
 	type GraphqlToolDeps,
@@ -68,7 +68,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_SEARCH_TOOL_NAME,
 		args: '{"query"?: string, "orgId"?: string, "refresh"?: boolean, "limit"?: number}',
 		description:
-			'Find Rewst workflows by name (or id) across every org you can access — the reliable way to resolve a workflow instead of guessing its id or paging through GraphQL. On first use it builds and CACHES an index of all workflows (id, name, org id, org name) reachable from your session — managed orgs and sub-orgs alike — then answers this and later searches from the cache with no re-listing. Pass query to match by name or id — matching ignores case, punctuation, and word order and requires every word, so "jon sandbox" finds "Jon\'s Sandbox" and "lock workflow" finds "[RAVEN] Workflow Lock". Workflows that match only because their ORG name matched are summarized separately (with the org id), so an org-name query never floods the list. orgId scopes to one org; limit caps results (default 25); refresh:true rebuilds the cache after workflows are created or renamed. Each result shows the workflow name, its id, and the ORG NAME (with org id) — feed those straight into buddy_workflow_get / buddy_workflow_edit / buddy_workflow_run.',
+			'Find Rewst workflows by name (or id) across every org you can access — the reliable way to resolve a workflow instead of guessing its id or paging through GraphQL. On first use for an exact search request it builds and CACHES an index of all workflows (id, name, org id, org name) reachable from your session — managed orgs and sub-orgs alike — then reuses that cached index only when the same request is repeated. Pass query to match by name or id — matching ignores case, punctuation, and word order and requires every word, so "jon sandbox" finds "Jon\'s Sandbox" and "lock workflow" finds "[RAVEN] Workflow Lock". Workflows that match only because their ORG name matched are summarized separately (with the org id), so an org-name query never floods the list. orgId scopes to one org; limit caps results (default 25); refresh:true rebuilds the cache after workflows are created or renamed. Each result shows the workflow name, its id, and the ORG NAME (with org id) — feed those straight into buddy_workflow_get / buddy_workflow_edit / buddy_workflow_run.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -108,7 +108,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, transitionMode?, join?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the "{{ SUCCEEDED }}" success catch-all (with FOLLOW_FIRST a success transition placed first would shadow every custom condition after it, so the custom Jinja would never evaluate). The tool also writes a safe default transitionMode (FOLLOW_FIRST) and join (1) on any task missing them, so you only set transitionMode/join when you want a non-default (transitionMode "FOLLOW_ALL" for a parallel fan-out, or join for a real join/merge). A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. It does not expose parallel task controls: saved workflow tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -450,9 +450,9 @@ function taskToInput(t: RawTask): Record<string, unknown> {
 	if (t.packOverrides != null) input.packOverrides = t.packOverrides.map(packOverrideToInput);
 	if (t.actionId) input.actionId = t.actionId;
 	if (t.description != null) input.description = t.description;
-	if (t.transitionMode != null) input.transitionMode = t.transitionMode;
+	input.transitionMode = 'FOLLOW_FIRST';
 	if (t.publishResultAs != null) input.publishResultAs = t.publishResultAs;
-	if (t.join != null) input.join = t.join;
+	input.join = 1;
 	if (t.timeout != null) input.timeout = t.timeout;
 	if (t.humanSecondsSaved != null) input.humanSecondsSaved = t.humanSecondsSaved;
 	if (t.isMocked != null) input.isMocked = t.isMocked;
@@ -846,10 +846,10 @@ function coerceTaskInput(value: unknown): Record<string, unknown> {
 }
 
 /**
- * Numeric task settings (`join`, `timeout`) are typed Int on the wire, so a
- * float fails at the mutation boundary just as a blind-cast string would. Coerce
- * a numeric string to a number and accept only integers, rejecting anything else
- * with a clear error. `label` names the field in the error message.
+ * Numeric task settings are typed Int on the wire, so a float fails at the
+ * mutation boundary just as a blind-cast string would. Coerce a numeric string
+ * to a number and accept only integers, rejecting anything else with a clear
+ * error. `label` names the field in the error message.
  */
 function coerceTaskNumber(value: unknown, label: string): number {
 	if (typeof value === 'number' && Number.isInteger(value)) return value;
@@ -919,11 +919,8 @@ export function applyOperations(
 					actionId: subWorkflowId ?? resolveActionId(action!),
 					input: coerceTaskInput(operation.input),
 					metadata: {},
-					// FOLLOW_FIRST is the sane default (take the first transition whose
-					// condition is met). join defaults to 1 (proceed on one inbound path);
-					// set join: 0 explicitly for an actual join/merge task.
-					transitionMode: str(operation.transitionMode) ?? 'FOLLOW_FIRST',
-					join: operation.join == null ? 1 : coerceTaskNumber(operation.join, 'join'),
+					transitionMode: 'FOLLOW_FIRST',
+					join: 1,
 					next: [],
 				};
 				if (str(operation.publishResultAs) != null) task.publishResultAs = str(operation.publishResultAs);
@@ -950,8 +947,6 @@ export function applyOperations(
 				if (str(set.subWorkflowId)) task.actionId = str(set.subWorkflowId)!;
 				else if (str(set.action)) task.actionId = resolveActionId(str(set.action)!);
 				if ('publishResultAs' in set) task.publishResultAs = set.publishResultAs as string;
-				if ('transitionMode' in set) task.transitionMode = set.transitionMode as string;
-				if ('join' in set) task.join = coerceTaskNumber(set.join, 'join');
 				if ('timeout' in set) task.timeout = coerceTaskNumber(set.timeout, 'timeout');
 				if ('description' in set) task.description = set.description as string;
 				if ('with' in set) task.with = coerceObjectField(set.with, 'task "with"') as RawTask['with'];
@@ -1122,19 +1117,14 @@ export function applyOperations(
 }
 
 /**
- * Rewst's runtime default for an UNSET transitionMode is FOLLOW_ALL (run every
- * matching transition in parallel) and an unset join is treated as no-join —
- * defaults the assistant repeatedly misreads as FOLLOW_FIRST, then branches on a
- * task whose every condition fires at once. To kill that footgun, every saved
- * task carries an EXPLICIT transitionMode and join: we fill the safe defaults
- * (FOLLOW_FIRST, join 1) only where they are unset, so an intentional FOLLOW_ALL
- * fan-out or a join's explicit join value is never clobbered. Because edits
- * resend the whole workflow, this makes every task's mode explicit over time.
+ * Rewst's runtime default for an unset task mode can fan out across every
+ * matching transition. To remove that footgun from the edit tooling, every saved
+ * task is forced to sequential defaults on each edit.
  */
 function ensureTaskDefaults(tasks: RawTask[]): void {
 	for (const task of tasks) {
-		if (!task.transitionMode) task.transitionMode = 'FOLLOW_FIRST';
-		if (task.join == null) task.join = 1;
+		task.transitionMode = 'FOLLOW_FIRST';
+		task.join = 1;
 	}
 }
 
@@ -1355,11 +1345,6 @@ function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary
 			node.packOverrides = t.packOverrides.map(packOverrideToInput);
 		}
 		if (t.publishResultAs) node.publishResultAs = t.publishResultAs;
-		// The tool normalizes every saved task to FOLLOW_FIRST + join 1, so only
-		// surface a deliberately non-default mode/join (a FOLLOW_ALL fan-out or a
-		// join's value). An unset task is omitted — it becomes FOLLOW_FIRST on save.
-		if (t.transitionMode === 'FOLLOW_ALL') node.transitionMode = 'FOLLOW_ALL';
-		if (t.join != null && t.join !== 1) node.join = t.join;
 		if (t.with && (t.with.items || t.with.concurrency)) node.with = t.with;
 		if (full) {
 			const position = positionOf(t);
@@ -1814,15 +1799,14 @@ interface WorkflowIndex {
 	orgCount: number;
 	builtAt: number;
 	truncated: boolean;
-	/** The deps.cacheScope (session/org) the index was built for; a mismatch forces a rebuild. */
-	scope?: string;
 }
 
-let workflowIndexCache: WorkflowIndex | undefined;
+const WORKFLOW_INDEX_CACHE_LIMIT = 8;
+const workflowIndexCache = new Map<string, WorkflowIndex>();
 
 /** Test seam: drop the cached index so a build runs fresh. */
 export function _resetWorkflowIndexForTesting(): void {
-	workflowIndexCache = undefined;
+	workflowIndexCache.clear();
 }
 
 const WORKFLOW_INDEX_PAGE_SIZE = 2000;
@@ -1893,15 +1877,49 @@ interface NameHit {
 	rank: number;
 }
 
+function workflowSearchCacheKey(request: ToolRequest, deps: GraphqlToolDeps): string {
+	const { refresh: _refresh, ...queryArgs } = request.args;
+	const payload = stableJson({ args: queryArgs, scope: deps.cacheScope ?? null, tool: request.tool });
+	return createHash('sha256').update(payload).digest('hex');
+}
+
+function stableJson(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+	if (value && typeof value === 'object') {
+		const entries = Object.entries(value as Record<string, unknown>)
+			.filter(([, v]) => v !== undefined)
+			.sort(([a], [b]) => a.localeCompare(b));
+		return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`).join(',')}}`;
+	}
+	return JSON.stringify(value);
+}
+
+function getCachedWorkflowIndex(cacheKey: string): WorkflowIndex | undefined {
+	const index = workflowIndexCache.get(cacheKey);
+	if (!index) return undefined;
+	workflowIndexCache.delete(cacheKey);
+	workflowIndexCache.set(cacheKey, index);
+	return index;
+}
+
+function setCachedWorkflowIndex(cacheKey: string, index: WorkflowIndex): void {
+	workflowIndexCache.delete(cacheKey);
+	workflowIndexCache.set(cacheKey, index);
+	while (workflowIndexCache.size > WORKFLOW_INDEX_CACHE_LIMIT) {
+		const oldest = workflowIndexCache.keys().next().value;
+		if (oldest === undefined) break;
+		workflowIndexCache.delete(oldest);
+	}
+}
+
 async function runWorkflowSearch(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const refresh = request.args.refresh === true;
-	// Rebuild when forced, when empty, or when the session/org behind deps changed
-	// (the cache is module-global, so without this a session switch would show the
-	// previous session's workflows).
-	if (refresh || !workflowIndexCache || workflowIndexCache.scope !== deps.cacheScope) {
-		workflowIndexCache = { ...(await buildWorkflowIndex(deps)), scope: deps.cacheScope };
+	const cacheKey = workflowSearchCacheKey(request, deps);
+	let index = getCachedWorkflowIndex(cacheKey);
+	if (refresh || !index) {
+		index = await buildWorkflowIndex(deps);
+		setCachedWorkflowIndex(cacheKey, index);
 	}
-	const index = workflowIndexCache;
 
 	const rawQuery = (asStringArg(request.args, 'query') ?? '').trim();
 	const qLower = rawQuery.toLowerCase();

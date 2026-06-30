@@ -42,47 +42,50 @@ suite('Unit: workspaceTools', () => {
 	});
 
 	suite('runToolRequests()', () => {
-		test('search_template_links describes each matching link', async () => {
+		test('buddy_search_template_links describes each matching link', async () => {
 			const d = deps({ templateLinks: () => [templateLink('/ws/a.jinja', 'My Template')] });
-			const [result] = await runToolRequests([{ tool: 'search_template_links', args: {} }], d);
+			const [result] = await runToolRequests([{ tool: 'buddy_search_template_links', args: {} }], d);
 			assert.strictEqual(result.output, 'a.jinja ← "My Template" (template tpl-1, org Test Org)');
 		});
 
-		test('search_template_links reports when nothing is linked', async () => {
-			const [result] = await runToolRequests([{ tool: 'search_template_links', args: {} }], deps());
+		test('buddy_search_template_links reports when nothing is linked', async () => {
+			const [result] = await runToolRequests([{ tool: 'buddy_search_template_links', args: {} }], deps());
 			assert.strictEqual(result.ok, true);
 			assert.strictEqual(result.output, 'No files are linked to Rewst templates.');
 		});
 
-		test('search_template_links filters by query across path, name, id, and org', async () => {
+		test('buddy_search_template_links filters by query across path, name, id, and org', async () => {
 			const d = deps({
 				templateLinks: () => [
 					templateLink('/ws/alpha.jinja', 'Alpha', 'tpl-a', 'Acme'),
 					templateLink('/ws/beta.jinja', 'Beta', 'tpl-b', 'Globex'),
 				],
 			});
-			const byName = await runToolRequests([{ tool: 'search_template_links', args: { query: 'beta' } }], d);
+			const byName = await runToolRequests([{ tool: 'buddy_search_template_links', args: { query: 'beta' } }], d);
 			assert.strictEqual(byName[0].output, 'beta.jinja ← "Beta" (template tpl-b, org Globex)');
 
-			const byOrg = await runToolRequests([{ tool: 'search_template_links', args: { query: 'acme' } }], d);
+			const byOrg = await runToolRequests([{ tool: 'buddy_search_template_links', args: { query: 'acme' } }], d);
 			assert.strictEqual(byOrg[0].output, 'alpha.jinja ← "Alpha" (template tpl-a, org Acme)');
 
-			const byId = await runToolRequests([{ tool: 'search_template_links', args: { query: 'tpl-b' } }], d);
+			const byId = await runToolRequests([{ tool: 'buddy_search_template_links', args: { query: 'tpl-b' } }], d);
 			assert.match(byId[0].output, /beta\.jinja/);
 			assert.doesNotMatch(byId[0].output, /alpha\.jinja/);
 		});
 
-		test('search_template_links reports a query that matches nothing distinctly from nothing linked', async () => {
+		test('buddy_search_template_links reports a query that matches nothing distinctly from nothing linked', async () => {
 			const d = deps({ templateLinks: () => [templateLink('/ws/a.jinja', 'Alpha')] });
-			const [result] = await runToolRequests([{ tool: 'search_template_links', args: { query: 'zzz' } }], d);
+			const [result] = await runToolRequests(
+				[{ tool: 'buddy_search_template_links', args: { query: 'zzz' } }],
+				d,
+			);
 			assert.strictEqual(result.ok, true);
 			assert.strictEqual(result.output, 'No linked files match "zzz".');
 		});
 
-		test('search_template_links caps results at the limit and notes the remainder', async () => {
+		test('buddy_search_template_links caps results at the limit and notes the remainder', async () => {
 			const links = ['c', 'a', 'b'].map(p => templateLink(`/ws/${p}.jinja`, p.toUpperCase(), `tpl-${p}`));
 			const [result] = await runToolRequests(
-				[{ tool: 'search_template_links', args: { limit: 2 } }],
+				[{ tool: 'buddy_search_template_links', args: { limit: 2 } }],
 				deps({ templateLinks: () => links }),
 			);
 			const lines = result.output.split('\n');
@@ -97,7 +100,7 @@ suite('Unit: workspaceTools', () => {
 			const [result] = await runToolRequests([{ tool: 'delete_everything', args: {} }], deps());
 			assert.strictEqual(result.ok, false);
 			assert.match(result.output, /Unknown tool "delete_everything"/);
-			assert.match(result.output, /search_template_links/);
+			assert.match(result.output, /buddy_search_template_links/);
 			assert.match(result.output, /buddy_graphql/);
 		});
 
@@ -150,8 +153,10 @@ suite('Unit: workspaceTools', () => {
 
 		test('reports progress per request', async () => {
 			const labels: string[] = [];
-			await runToolRequests([{ tool: 'search_template_links', args: {} }], deps(), label => labels.push(label));
-			assert.deepStrictEqual(labels, ['Running search_template_links…']);
+			await runToolRequests([{ tool: 'buddy_search_template_links', args: {} }], deps(), label =>
+				labels.push(label),
+			);
+			assert.deepStrictEqual(labels, ['Running buddy_search_template_links…']);
 		});
 	});
 

@@ -122,7 +122,7 @@ export function formatJinjaFilters(filters: JinjaFilterDoc[], input: FormatInput
 		const lower = name.toLowerCase();
 		const match = filters.find(f => f.name.toLowerCase() === lower);
 		if (!match) {
-			return `Jinja filter "${name}" not found. Call get_jinja_filter_docs with no arguments to see all filter names, or with "search" to match by keyword.`;
+			return `Jinja filter "${name}" not found. Call buddy_get_jinja_filter_docs with no arguments to see all filter names, or with "search" to match by keyword.`;
 		}
 		return renderFull(match);
 	}
@@ -134,7 +134,7 @@ export function formatJinjaFilters(filters: JinjaFilterDoc[], input: FormatInput
 			f => f.name.toLowerCase().includes(lower) || f.documentation.toLowerCase().includes(lower),
 		);
 		if (matches.length === 0) {
-			return `No Jinja filters match "${search}". Call get_jinja_filter_docs with no arguments to see all filter names.`;
+			return `No Jinja filters match "${search}". Call buddy_get_jinja_filter_docs with no arguments to see all filter names.`;
 		}
 		const shown = matches.slice(0, MAX_SEARCH_RESULTS);
 		const header =
@@ -187,10 +187,10 @@ async function getFilters(ctx: CapabilityContext): Promise<JinjaFilterDoc[]> {
 }
 
 const getJinjaFilterDocsSpec: ToolSpec = {
-	name: 'get_jinja_filter_docs',
+	name: 'buddy_get_jinja_filter_docs',
 	args: '{"name"?: string, "search"?: string}',
 	description:
-		'Read the documentation for Rewst\'s built-in Jinja filters (the same catalog Rewst\'s in-app editor uses, including the prose docs that list_jinja_filters omits). Pass "name" for one filter\'s full documentation, or "search" to match filters by name or documentation keyword. With no arguments, lists every filter name and signature so you can pick one. Read-only and not org-specific.',
+		'Read the documentation for Rewst\'s built-in Jinja filters (the same catalog Rewst\'s in-app editor uses, including the prose docs that buddy_list_jinja_filters omits). Pass "name" for one filter\'s full documentation, or "search" to match filters by name or documentation keyword. With no arguments, lists every filter name and signature so you can pick one. Read-only and not org-specific.',
 	inputSchema: {
 		type: 'object',
 		properties: {

@@ -73,7 +73,7 @@ function safeFsPath(uriString: string): string {
  * link's canonical uriString, or undefined if nothing matches. Pure so it can be
  * unit-tested: callers pass the link's uriString and its resolved fsPath. The
  * order matters — an exact link URI or filesystem path wins before the
- * relative-suffix match used for the workspace-relative paths search_template_links
+ * relative-suffix match used for the workspace-relative paths buddy_search_template_links
  * lists.
  */
 export function matchLinkByPath(
@@ -210,7 +210,7 @@ export async function runSyncStatus(
 				linked: false,
 				uri,
 				message:
-					'No Rewst template is linked to this file. Use buddy_template_link_status to check one file, or search_template_links to find linked files.',
+					'No Rewst template is linked to this file. Use buddy_template_link_status to check one file, or buddy_search_template_links to find linked files.',
 			},
 			null,
 			2,
@@ -254,7 +254,7 @@ export async function runSync(
 		return JSON.stringify(
 			{
 				status: 'not_linked',
-				message: `No Rewst template is linked to "${uri}". Link it in VS Code first, or check search_template_links.`,
+				message: `No Rewst template is linked to "${uri}". Link it in VS Code first, or check buddy_search_template_links.`,
 			},
 			null,
 			2,
@@ -357,13 +357,13 @@ const syncStatusSpec: ToolSpec = {
 	name: 'buddy_template_sync_status',
 	args: '{"uri": string}',
 	description:
-		'Report whether a local file is linked to a Rewst template and how it compares to the remote template, without changing anything. Identify the file by the path shown in search_template_links (workspace-relative or absolute) or its file URI. Returns linked:false when no template is linked. When linked, returns the org id and template id to pass to buddy_template_sync, whether sync-on-save is on, and a status of "in-sync", "remote-only" (the local file is empty), "local-ahead" (safe to upload), or "conflict" (both changed since the last sync), plus a recommended direction.',
+		'Report whether a local file is linked to a Rewst template and how it compares to the remote template, without changing anything. Identify the file by the path shown in buddy_search_template_links (workspace-relative or absolute) or its file URI. Returns linked:false when no template is linked. When linked, returns the org id and template id to pass to buddy_template_sync, whether sync-on-save is on, and a status of "in-sync", "remote-only" (the local file is empty), "local-ahead" (safe to upload), or "conflict" (both changed since the last sync), plus a recommended direction.',
 	inputSchema: {
 		type: 'object',
 		properties: {
 			uri: {
 				type: 'string',
-				description: 'Path or file URI of the local file, as shown by search_template_links.',
+				description: 'Path or file URI of the local file, as shown by buddy_search_template_links.',
 			},
 		},
 		required: ['uri'],
@@ -374,14 +374,14 @@ const syncSpec: ToolSpec = {
 	name: 'buddy_template_sync',
 	args: '{"orgId": string, "uri": string, "direction"?: "auto" | "upload" | "download"}',
 	description:
-		'Synchronize one linked local file with its Rewst template. Identify the file by the path from search_template_links or its file URI; orgId must be the org the file is linked to (buddy_template_sync_status returns it). direction defaults to "auto": it uploads when only the local file changed, downloads when the local file is empty, refreshes metadata when the bodies already match, and on a conflict (both changed since the last sync) it changes nothing and asks you to choose. Pass direction:"upload" to overwrite the Rewst template with the local file, or direction:"download" to overwrite the local file with the Rewst template. This is a write tool: every direction (including download) requires write tools to be enabled in VS Code and the org to be on the write allowlist. Only uploading additionally needs per-call approval and changes Rewst; downloading and metadata refreshes rewrite local state only.',
+		'Synchronize one linked local file with its Rewst template. Identify the file by the path from buddy_search_template_links or its file URI; orgId must be the org the file is linked to (buddy_template_sync_status returns it). direction defaults to "auto": it uploads when only the local file changed, downloads when the local file is empty, refreshes metadata when the bodies already match, and on a conflict (both changed since the last sync) it changes nothing and asks you to choose. Pass direction:"upload" to overwrite the Rewst template with the local file, or direction:"download" to overwrite the local file with the Rewst template. This is a write tool: every direction (including download) requires write tools to be enabled in VS Code and the org to be on the write allowlist. Only uploading additionally needs per-call approval and changes Rewst; downloading and metadata refreshes rewrite local state only.',
 	inputSchema: {
 		type: 'object',
 		properties: {
 			...ORG_ID_PROP,
 			uri: {
 				type: 'string',
-				description: 'Path or file URI of the linked local file, as shown by search_template_links.',
+				description: 'Path or file URI of the linked local file, as shown by buddy_search_template_links.',
 			},
 			direction: {
 				type: 'string',

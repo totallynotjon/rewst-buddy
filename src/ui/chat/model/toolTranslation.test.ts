@@ -30,7 +30,7 @@ suite('Unit: toolTranslation', () => {
 			const instructions = buildInstructionsForChatTools([chatTool('read_file', 'read a file')]);
 			assert.ok(instructions.includes('read_file'));
 			assert.ok(instructions.includes('read a file'));
-			assert.ok(!instructions.includes('search_template_links'));
+			assert.ok(!instructions.includes('buddy_search_template_links'));
 			assert.ok(!instructions.includes('buddy_graphql'));
 		});
 

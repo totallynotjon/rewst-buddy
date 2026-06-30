@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
+import { RESULT_READ_TOOL_NAME } from '@capabilities';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import { _resetMcpThrottleForTesting, type McpToolDescriptor } from '@mcp';
 import { SessionManager } from '@sessions';
@@ -47,7 +48,8 @@ suite('Unit: buddyChatTools', () => {
 			try {
 				const names = buddyChatToolSpecs().map(spec => spec.name);
 				assert.ok(names.length > 0, 'enabling the server advertises the exposed tools');
-				assert.ok(names.includes('list_orgs'), 'a known read tool is advertised');
+				assert.ok(names.includes('buddy_list_orgs'), 'a known read tool is advertised');
+				assert.ok(names.includes(RESULT_READ_TOOL_NAME), 'result paging is advertised to Cage-Free Rewsty');
 			} finally {
 				await config.update('enable', undefined, vscode.ConfigurationTarget.Global);
 			}
@@ -64,13 +66,13 @@ suite('Unit: buddyChatTools', () => {
 		});
 
 		test('returns a successful result from a tool that runs in-process', async () => {
-			// list_orgs reads from the session profile (no API), so it succeeds purely
+			// buddy_list_orgs reads from the session profile (no API), so it succeeds purely
 			// in-process and exercises the normal { text, isError: false } return path.
 			const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
 			const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 			SessionManager._setSessionsForTesting([session]);
 
-			const result = await runBuddyChatTool('list_orgs', {}, 'org-1');
+			const result = await runBuddyChatTool('buddy_list_orgs', {}, 'org-1');
 
 			assert.strictEqual(result.isError, false);
 			assert.ok(result.text.includes('Test Org'), 'the tool output is returned as text');

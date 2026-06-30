@@ -7,8 +7,8 @@ import type { Capability, CapabilityContext } from './Capability';
 
 /**
  * Read and request changes to the user's working scope (see WorkingScopeManager).
- * `get_working_scope` lets a model or external client see what it is allowed to
- * operate on; `set_working_scope` lets it *request* a change, which only takes
+ * `buddy_get_working_scope` lets a model or external client see what it is allowed to
+ * operate on; `buddy_set_working_scope` lets it *request* a change, which only takes
  * effect after the user confirms a VS Code modal. Setting the scope is not itself
  * a Rewst write, so it stays available regardless of the write-tool toggles —
  * otherwise you could not narrow scope before enabling writes.
@@ -105,7 +105,7 @@ export function workingScopeApprovalText(
 }
 
 const getWorkingScopeSpec: ToolSpec = {
-	name: 'get_working_scope',
+	name: 'buddy_get_working_scope',
 	args: '{}',
 	description:
 		'Report the current working scope: the orgs and workflows that Rewst tools are allowed to operate on right now, the read scope mode, and the always-allowed orgs. Tool calls outside this scope are rejected by the VS Code extension.',
@@ -113,17 +113,17 @@ const getWorkingScopeSpec: ToolSpec = {
 };
 
 const setWorkingScopeSpec: ToolSpec = {
-	name: 'set_working_scope',
+	name: 'buddy_set_working_scope',
 	args: '{"orgs"?: string[], "workflows"?: string[], "replace"?: boolean}',
 	description:
-		'Request a change to the working scope (the orgs/workflows tools may operate on). The change only applies after the user confirms a VS Code modal; until then nothing changes. Provide org ids (from list_orgs) and/or workflow ids. By default the ids are added to the current scope; set replace:true to replace the listed dimension. To work on a different org or workflow, request it here rather than passing a different orgId to other tools.',
+		'Request a change to the working scope (the orgs/workflows tools may operate on). The change only applies after the user confirms a VS Code modal; until then nothing changes. Provide org ids (from buddy_list_orgs) and/or workflow ids. By default the ids are added to the current scope; set replace:true to replace the listed dimension. To work on a different org or workflow, request it here rather than passing a different orgId to other tools.',
 	inputSchema: {
 		type: 'object',
 		properties: {
 			orgs: {
 				type: 'array',
 				items: { type: 'string' },
-				description: 'Org ids to put in scope (from list_orgs).',
+				description: 'Org ids to put in scope (from buddy_list_orgs).',
 			},
 			workflows: { type: 'array', items: { type: 'string' }, description: 'Workflow ids to put in scope.' },
 			replace: {
@@ -162,7 +162,9 @@ async function runSetWorkingScope(input: Record<string, unknown>, ctx: Capabilit
 	const managed = managedOrgs(ctx.sessions);
 	const unknown = orgIds.filter(id => !managed.has(id));
 	if (unknown.length > 0) {
-		throw new Error(`No active session manages these orgs: ${unknown.join(', ')}. Call list_orgs for valid ids.`);
+		throw new Error(
+			`No active session manages these orgs: ${unknown.join(', ')}. Call buddy_list_orgs for valid ids.`,
+		);
 	}
 
 	const request: WorkingScopeChangeRequest = {

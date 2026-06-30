@@ -50,7 +50,7 @@ async function requireTagInOrg(ctx: CapabilityContext, tagId: string, orgId: str
 }
 
 const createTagSpec: ToolSpec = {
-	name: 'create_tag',
+	name: 'buddy_create_tag',
 	args: '{"orgId": string, "name": string, "color"?: string, "description"?: string}',
 	description:
 		'Create a tag in one Rewst organization. color is an optional hex string (e.g. #4287f5). Requires write tools to be enabled and per-call approval in VS Code.',
@@ -87,7 +87,7 @@ async function runCreateTag(input: Record<string, unknown>, ctx: CapabilityConte
 }
 
 const updateTagSpec: ToolSpec = {
-	name: 'update_tag',
+	name: 'buddy_update_tag',
 	args: '{"orgId": string, "tagId": string, "name"?: string, "color"?: string, "description"?: string}',
 	description:
 		'Update one existing tag (name, color, and/or description), identified by org and tag id. The tag must belong to the given org. Fields not supplied keep their current value. Requires write tools to be enabled and per-call approval in VS Code.',
@@ -131,7 +131,7 @@ async function runUpdateTag(input: Record<string, unknown>, ctx: CapabilityConte
 }
 
 const deleteTagSpec: ToolSpec = {
-	name: 'delete_tag',
+	name: 'buddy_delete_tag',
 	args: '{"orgId": string, "tagId": string}',
 	description:
 		'Permanently delete one tag, identified by org and tag id. The tag must belong to the given org. This cannot be undone. Requires write tools to be enabled and per-call approval in VS Code.',

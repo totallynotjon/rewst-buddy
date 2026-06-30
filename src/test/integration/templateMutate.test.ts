@@ -78,7 +78,10 @@ suite('Integration: template write tools', function () {
 
 		try {
 			const created = JSON.parse(
-				await cap('create_template').run({ orgId: targetOrgId, name: initialName, body: '{{ 1 + 1 }}' }, ctx),
+				await cap('buddy_create_template').run(
+					{ orgId: targetOrgId, name: initialName, body: '{{ 1 + 1 }}' },
+					ctx,
+				),
 			);
 			assert.strictEqual(created.status, 'created');
 			assert.ok(created.id, 'create returned an id');
@@ -91,7 +94,10 @@ suite('Integration: template write tools', function () {
 			assert.strictEqual(fetched.body, '{{ 1 + 1 }}');
 
 			const updated = JSON.parse(
-				await cap('update_template_body').run({ orgId: targetOrgId, templateId, body: '{{ 2 + 2 }}' }, ctx),
+				await cap('buddy_update_template_body').run(
+					{ orgId: targetOrgId, templateId, body: '{{ 2 + 2 }}' },
+					ctx,
+				),
 			);
 			assert.strictEqual(updated.status, 'updated');
 			assert.strictEqual((await session.getTemplate(templateId!)).body, '{{ 2 + 2 }}');
@@ -103,7 +109,7 @@ suite('Integration: template write tools', function () {
 				const guardCtx: CapabilityContext = { session, orgId: otherOrgId, sessions: [session] };
 				await assert.rejects(
 					() =>
-						cap('update_template_body').run(
+						cap('buddy_update_template_body').run(
 							{ orgId: otherOrgId, templateId, body: 'SHOULD NOT APPLY' },
 							guardCtx,
 						),
@@ -115,7 +121,7 @@ suite('Integration: template write tools', function () {
 			}
 
 			const renamed = JSON.parse(
-				await cap('rename_template').run(
+				await cap('buddy_rename_template').run(
 					{ orgId: targetOrgId, templateId, name: `${initialName}-renamed` },
 					ctx,
 				),
@@ -123,7 +129,7 @@ suite('Integration: template write tools', function () {
 			assert.strictEqual(renamed.status, 'renamed');
 			assert.strictEqual((await session.getTemplate(templateId!)).name, `${initialName}-renamed`);
 
-			const deleted = JSON.parse(await cap('delete_template').run({ orgId: targetOrgId, templateId }, ctx));
+			const deleted = JSON.parse(await cap('buddy_delete_template').run({ orgId: targetOrgId, templateId }, ctx));
 			assert.strictEqual(deleted.status, 'deleted');
 			assert.strictEqual(deleted.id, templateId);
 			templateId = undefined;
