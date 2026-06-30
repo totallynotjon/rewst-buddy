@@ -377,6 +377,94 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(out.includes('Deploy.'), 'final answer from the Buddy path streams');
 	});
 
+	test('carries the native tool args into the correction so the Buddy call reuses them', async () => {
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-1' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: getWorkflow…',
+				activity: true,
+				tool: { name: 'getWorkflow', args: '{"workflowId":"w1","orgId":"org-1"}' },
+			},
+			{ kind: 'chunk', text: 'native result that should not stream' },
+			{
+				kind: 'complete',
+				content: 'native result that should not stream',
+				sources: [],
+				conversationId: 'conv-1',
+			},
+		];
+		const buddyReply = '```vscode-tool\n{"tool": "buddy_workflow_get", "args": {"workflowId": "w1"}}\n```';
+		const harness = makeHarness(
+			[nativeAttempt, completeTurn(buddyReply, 'conv-1'), completeTurn('Deploy.', 'conv-1')],
+			{
+				buddyToolSpecs: () => [BUDDY_GET_SPEC],
+				runBuddyTool: async () => ({ text: 'name: Deploy', isError: false }),
+			},
+		);
+
+		await harness.run([message(User, [text('look up workflow w1')])]);
+
+		const correction = harness.captured[1].message;
+		assert.ok(
+			correction.includes('{"workflowId":"w1","orgId":"org-1"}'),
+			'correction carries the resolved native args',
+		);
+		assert.ok(!/<[^>\n]+>/.test(correction), 'carried args do not introduce XML-like tags');
+	});
+
+	test('redirects a server-side Rewst tool even when VS Code already supplied every Buddy tool natively', async () => {
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-1' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: listWorkflow…',
+				activity: true,
+				tool: { name: 'listWorkflow' },
+			},
+			{ kind: 'chunk', text: 'native result that should not stream' },
+			{
+				kind: 'complete',
+				content: 'native result that should not stream',
+				sources: [],
+				conversationId: 'conv-1',
+			},
+		];
+		// The corrected turn requests the natively-supplied Buddy tool via a fenced block.
+		const buddyReply = '```vscode-tool\n{"tool": "buddy_workflow_get", "args": {"workflowId": "w1"}}\n```';
+		const harness = makeHarness([nativeAttempt, completeTurn(buddyReply, 'conv-1')], {
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+		});
+		// VS Code passes buddy_workflow_get natively (under the 128-tool cap), so the
+		// in-process Buddy spec is filtered out — yet the local path still exists.
+		const buddyNativeTool: vscode.LanguageModelChatTool = {
+			name: 'buddy_workflow_get',
+			description: 'Fetch a workflow',
+			inputSchema: { type: 'object' },
+		};
+
+		await harness.run([message(User, [text('look up workflow w1')])], [buddyNativeTool]);
+
+		assert.strictEqual(
+			harness.captured.length,
+			2,
+			'a server-side Rewst tool is still redirected when the Buddy tool is native',
+		);
+		assert.ok(
+			harness.captured[1].message.includes('buddy_workflow_get'),
+			'correction names the natively-supplied Buddy tool',
+		);
+		const calls = callsOf(harness.parts);
+		assert.strictEqual(calls.length, 1, 'the redirected fenced request becomes a native VS Code tool call');
+		assert.strictEqual(calls[0].name, 'buddy_workflow_get');
+		const out = textOf(harness.parts);
+		assert.ok(!out.includes('🔧 **Rewst tool** · `listWorkflow`'), 'intercepted native tool card is not rendered');
+		assert.ok(
+			!out.includes('native result that should not stream'),
+			'abandoned native stream output is not rendered',
+		);
+	});
+
 	test('does not redirect native Rewst tool activity when Buddy tools are disabled', async () => {
 		const harness = makeHarness([
 			[

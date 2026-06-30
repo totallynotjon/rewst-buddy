@@ -113,14 +113,28 @@ function formatBuddyToolList(specs: readonly ToolSpec[], limit = 12): string {
 	return remaining > 0 ? `${shown.join(', ')}, and ${remaining} more` : shown.join(', ');
 }
 
+/** Inline, XML-tag-free rendering of the native tool's already-compact args for the correction prompt. */
+function sanitizeArgsForPrompt(args: string): string {
+	return args.replace(/[`<>]/g, '').replace(/\s+/g, ' ').trim();
+}
+
 function buildNativeToBuddyCorrection(tool: NativeRewstToolStatus['tool'], buddySpecs: readonly ToolSpec[]): string {
 	const names = formatBuddyToolList(buddySpecs);
-	return [
+	const sanitizedArgs = tool.args ? sanitizeArgsForPrompt(tool.args) : '';
+	const lines = [
 		`Transport note: the previous server-side Rewst tool status was for ${formatInlineName(tool.name)}.`,
+	];
+	if (sanitizedArgs) {
+		// Carry the arguments the backend already resolved so the redirected turn
+		// reuses those ids/filters in the Buddy call instead of rediscovering them.
+		lines.push(`Those arguments were: ${sanitizedArgs}`);
+	}
+	lines.push(
 		'Continue with the local tool protocol: request local Buddy tools by writing fenced `vscode-tool` JSON blocks so VS Code can route them through the extension and apply its normal approval and sandbox flow.',
 		`Available buddy_* tool names this turn: ${names}.`,
 		'If one of those tools is needed, reply with the `vscode-tool` block only; otherwise answer from the current conversation.',
-	].join('\n');
+	);
+	return lines.join('\n');
 }
 
 function rewstUserEmailMetadata(session: Session): string {
@@ -289,8 +303,15 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		// VS Code's 128-tool cap on options.tools. A name VS Code already passed this
 		// turn stays on the native path (keeping its built-in approval card) and is
 		// dropped here to avoid a duplicate advertisement.
-		const buddySpecs = this.deps.buddyToolSpecs().filter(spec => !vscodeNames.has(spec.name));
+		const allBuddySpecs = this.deps.buddyToolSpecs();
+		const buddySpecs = allBuddySpecs.filter(spec => !vscodeNames.has(spec.name));
 		const buddyNames = new Set(buddySpecs.map(spec => spec.name));
+		// Redirecting a server-side Rewst tool to the local path keys off ALL
+		// advertised Buddy tools, not just the in-process subset: when VS Code has
+		// already supplied every Buddy tool natively, buddySpecs is empty yet the
+		// local Buddy path still exists, so the native Rewst tool must still be
+		// redirected (its fenced request then routes back through VS Code natively).
+		const allBuddyNames = new Set(allBuddySpecs.map(spec => spec.name));
 		const permittedNames = new Set<string>([...vscodeNames, ...buddyNames]);
 		const advertisedSpecs = [...chatToolSpecs(tools), ...buddySpecs];
 		const { customInstructions, conversationType, showActivity, maxBuddyToolRounds } = this.deps.aiConfig();
@@ -410,7 +431,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 						case 'registered':
 							break;
 						case 'status':
-							if (shouldRedirectNativeRewstTool(event, buddyNames)) {
+							if (shouldRedirectNativeRewstTool(event, allBuddyNames)) {
 								if (redirectedNativeRewstTool) {
 									emitText(gate.push(''));
 									needsSeparator = true;
@@ -422,7 +443,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 									return;
 								}
 								redirectedNativeRewstTool = true;
-								message = buildNativeToBuddyCorrection(event.tool, buddySpecs);
+								message = buildNativeToBuddyCorrection(event.tool, allBuddySpecs);
 								needsSeparator = true;
 								continue turns;
 							}

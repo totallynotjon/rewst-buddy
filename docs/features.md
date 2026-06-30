@@ -105,12 +105,12 @@ Cage-Free Rewsty is still told your VS Code working directory when one is open, 
 Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of the chat LM tool surface. MCP exposure uses three switches:
 
 - `rewst-buddy.mcp.enable` exposes all read capabilities: `buddy_list_orgs`, `buddy_list_templates`, `buddy_get_template`, `buddy_list_workflows`, `buddy_get_workflow`, `buddy_graphql_query`, `buddy_graphql_schema`, `buddy_search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_render_jinja`, `buddy_action_search`, `buddy_list_jinja_filters`, `buddy_get_jinja_filter_docs`, and `buddy_result_read`.
-- `rewst-buddy.mcp.enableWriteTools` adds the workflow write helpers `buddy_workflow_edit`, `buddy_workflow_autolayout`, and `buddy_workflow_run`.
+- `rewst-buddy.mcp.enableWriteTools` adds the write tools that change Rewst data: workflow editing, auto-layout, and runs; workflow create/delete; template create, edit, rename, delete, and sync; and org-variable, tag, and trigger changes.
 - `rewst-buddy.mcp.enableDangerousGraphqlMutation` unlocks only `buddy_graphql_mutate`, the raw GraphQL mutation tool.
 
 The old combined chat tool `buddy_graphql` is not exposed; its MCP replacement is the query/mutate pair. Workflow edits, auto-layout, runs, and raw GraphQL mutations still require approval inside VS Code before anything is sent to Rewst. `buddy_graphql_mutate` is intentionally separate from `enableWriteTools` because it can run arbitrary mutations against the live org.
 
-`buddy_workflow_edit` does not expose workflow task parallelism or task sensitivity criteria. Edits save workflow tasks with sequential graph defaults; `with.items` remains available only as per-action loop concurrency inside a single task.
+`buddy_workflow_edit` does not expose workflow task parallelism or task sensitivity criteria. When those settings are left unspecified, edits use sequential graph defaults, but existing task mode/join values are preserved on save; `with.items` remains available only as per-action loop concurrency inside a single task.
 
 When the server is registered with VS Code's own MCP client (the `Add MCP Server to VS Code` command), flipping any of these exposure switches re-advertises the server with a new version, so VS Code reconnects and refreshes the tool set in chat — no window reload needed.
 

@@ -176,6 +176,16 @@ suite('Unit: capability registry', () => {
 			assert.strictEqual(schema.requiresOrg, false);
 		});
 
+		test('buddy_search_template_links does not require an org', () => {
+			const searchLinks = getCapability('buddy_search_template_links');
+			assert.ok(searchLinks, 'buddy_search_template_links is registered');
+			assert.strictEqual(
+				searchLinks.requiresOrg,
+				false,
+				'link discovery spans all orgs, so it stays org-agnostic',
+			);
+		});
+
 		test('MCP surface includes every mcp capability without intrinsic family filtering', () => {
 			const registryNames = CAPABILITY_REGISTRY.filter(capability => capability.mcp).map(
 				capability => capability.spec.name,

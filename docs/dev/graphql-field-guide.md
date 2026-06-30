@@ -221,7 +221,7 @@ Grouped by domain. `wave` = which explorer batch owns it; `status` updated as fi
 | ----------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `workflow`                    | WORKS      | `where:{id}`. Ignores org for auth (bare-id crosses orgs). Wrapped by existing `buddy_get_workflow`.                                                   |
 | `workflows`                   | WORKS      | ⭐ primary list/search. `where`(exact)+`search`(`_ilike`); flags work **except `hasTokens:true` crashes**; `order:[[String!]!]`; **no default limit**. |
-| `visibleWorkflows`            | ERROR      | ⚠ BROKEN both forms (SQL join). **`buddy_list_workflows` MCP tool uses this — verify.** Use `workflows(where:{orgId})`.                                |
+| `visibleWorkflows`            | ERROR      | ⚠ BROKEN both forms (SQL join). Use `workflows(where:{orgId})` instead — `buddy_list_workflows` now does (see **P0 ✅ FIXED** above).                  |
 | `workflowNote`                | NEEDS-ARGS | only by valid `id`; other filters → `AUTH_ERR`.                                                                                                        |
 | `workflowNotes`               | EMPTY      | `where:{workflowId}` required else `AUTH_ERR`.                                                                                                         |
 | `workflowTask`                | WORKS      | task id = **dash-less hex**; `where:{id}` or `{workflowId,name}`.                                                                                      |
