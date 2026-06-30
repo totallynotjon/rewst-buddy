@@ -48,6 +48,27 @@ suite('Unit: workspaceTools', () => {
 			assert.strictEqual(result.output, 'a.jinja ← "My Template" (template tpl-1, org Test Org)');
 		});
 
+		test('buddy_search_template_links reports the template org when persisted link org is stale', async () => {
+			const staleLink = {
+				uriString: vscode.Uri.file('/ws/sub.jinja').toString(),
+				org: { id: 'main-org', name: 'Main Org' },
+				type: 'Template',
+				template: {
+					id: 'tpl-sub',
+					name: 'Sub Template',
+					orgId: 'sub-org',
+					organization: { id: 'sub-org', name: 'Sub Org' },
+				} as TemplateLink['template'],
+				bodyHash: 'hash',
+			} satisfies TemplateLink;
+			const d = deps({ templateLinks: () => [staleLink] });
+
+			const [result] = await runToolRequests([{ tool: 'buddy_search_template_links', args: {} }], d);
+
+			assert.match(result.output, /org Sub Org/);
+			assert.doesNotMatch(result.output, /Main Org/);
+		});
+
 		test('buddy_search_template_links reports when nothing is linked', async () => {
 			const [result] = await runToolRequests([{ tool: 'buddy_search_template_links', args: {} }], deps());
 			assert.strictEqual(result.ok, true);

@@ -1,4 +1,4 @@
-import { LinkManager, type TemplateLink } from '@models';
+import { LinkManager, orgForTemplateLink, type TemplateLink } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
 import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
@@ -74,10 +74,16 @@ function searchTemplateLinks(deps: WorkspaceToolDeps, args: Record<string, unkno
 	const limit = coercePositiveLimit(args.limit, SEARCH_DEFAULT_LIMIT, SEARCH_MAX_LIMIT);
 
 	const rows = links
-		.map(link => ({ relative: deps.asRelativePath(vscode.Uri.parse(link.uriString)), link }))
-		.filter(({ relative, link }) => {
+		.map(link => ({
+			relative: deps.asRelativePath(vscode.Uri.parse(link.uriString)),
+			link,
+			org: orgForTemplateLink(link),
+		}))
+		.filter(({ relative, link, org }) => {
 			if (query === '') return true;
-			const haystack = [relative, link.template.name, link.template.id, link.org.name].join('\n').toLowerCase();
+			const haystack = [relative, link.template.name, link.template.id, org.id, org.name]
+				.join('\n')
+				.toLowerCase();
 			return haystack.includes(query);
 		})
 		.sort((a, b) => a.relative.localeCompare(b.relative));
@@ -87,8 +93,8 @@ function searchTemplateLinks(deps: WorkspaceToolDeps, args: Record<string, unkno
 	const lines = rows
 		.slice(0, limit)
 		.map(
-			({ relative, link }) =>
-				`${relative} ← "${link.template.name}" (template ${link.template.id}, org ${link.org.name})`,
+			({ relative, link, org }) =>
+				`${relative} ← "${link.template.name}" (template ${link.template.id}, org ${org.name})`,
 		);
 	if (rows.length > lines.length) {
 		lines.push(
