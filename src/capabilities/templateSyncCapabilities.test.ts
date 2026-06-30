@@ -21,6 +21,8 @@ const { suite, test, setup, teardown } = Mocha;
 interface TargetOpts {
 	action: SyncDecision['action'];
 	orgId?: string;
+	/** Stale org stored on the link itself; defaults to the template's org. */
+	linkOrgId?: string;
 	remoteOrgId?: string;
 	templateId?: string;
 	templateName?: string;
@@ -38,7 +40,7 @@ function makeTarget(opts: TargetOpts): TemplateSyncTarget {
 	const link = {
 		type: 'Template',
 		uriString: 'file:///ws/greeting.j2',
-		org: { id: orgId, name: 'Sandbox' },
+		org: { id: opts.linkOrgId ?? orgId, name: 'Sandbox' },
 		bodyHash: 'h',
 		template: { id: templateId, name: templateName, updatedAt: opts.localUpdatedAt ?? '1', orgId },
 	} as unknown as TemplateLink;
@@ -168,10 +170,7 @@ suite('Unit: templateSyncCapabilities', () => {
 
 		test('rejects a missing uri', async () => {
 			const { deps } = makeDeps(makeTarget({ action: 'update-metadata' }));
-			await assert.rejects(
-				() => runSyncStatus({}, makeCtx(), deps),
-				/Missing required string argument "uri"/,
-			);
+			await assert.rejects(() => runSyncStatus({}, makeCtx(), deps), /Missing required string argument "uri"/);
 		});
 	});
 
@@ -356,6 +355,32 @@ suite('Unit: templateSyncCapabilities', () => {
 
 		test('refuses when the linked org differs from the requested org', async () => {
 			const { deps, calls } = makeDeps(makeTarget({ action: 'upload-local', orgId: 'org-OTHER' }));
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => runSync({ orgId: 'org-sandbox', uri: 'greeting.j2' }, makeCtx(), deps),
+				/linked to org org-OTHER, not org-sandbox/,
+			);
+			assert.strictEqual(calls.upload, 0);
+		});
+
+		test('uploads when link.org is stale but the template org matches the requested org', async () => {
+			// orgForTemplateLink must derive the real org from template.orgId; trusting
+			// the stale link.org ('org-STALE') would wrongly reject this upload.
+			const { deps, calls } = makeDeps(
+				makeTarget({ action: 'upload-local', orgId: 'org-sandbox', linkOrgId: 'org-STALE' }),
+			);
+			setMcpMutationApprover(async () => true);
+			const out = JSON.parse(await runSync({ orgId: 'org-sandbox', uri: 'greeting.j2' }, makeCtx(), deps));
+			assert.strictEqual(out.status, 'uploaded');
+			assert.strictEqual(calls.upload, 1);
+		});
+
+		test('refuses when link.org matches the request but the template org does not', async () => {
+			// The guard must follow the template's org, not the stale link.org: here the
+			// link claims the requested org yet the template belongs elsewhere.
+			const { deps, calls } = makeDeps(
+				makeTarget({ action: 'upload-local', orgId: 'org-OTHER', linkOrgId: 'org-sandbox' }),
+			);
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
 				() => runSync({ orgId: 'org-sandbox', uri: 'greeting.j2' }, makeCtx(), deps),
