@@ -78,21 +78,33 @@ prompt.
 ### Requirement: Control activity visibility
 
 The system SHALL show the assistant's live activity (searches, tool calls) when
-`rewst-buddy.ai.showActivity` is on, and otherwise wait silently until the answer
-is ready.
+`rewst-buddy.ai.showActivity` is on, and otherwise suppress those intermediate
+activity lines. This setting SHALL NOT disable answer streaming itself; answer
+text may still appear incrementally as the backend produces it.
 
 #### Scenario: Activity hidden
 
 - **GIVEN** `ai.showActivity` is false
 - **WHEN** the assistant runs tools mid-response
-- **THEN** intermediate activity is not surfaced; only the final answer appears
+- **THEN** intermediate activity is not surfaced
+- **AND** answer text may still stream normally
 
 ### Requirement: Run in-process Buddy tools with a per-response cap
 
 The system SHALL let the assistant request local "Buddy" tools via fenced
 `vscode-tool` JSON blocks that the extension intercepts and routes through the
-MCP capability surface, and SHALL cap the number of Buddy tool rounds per
+capability registry, and SHALL cap the number of Buddy tool rounds per
 response at `rewst-buddy.ai.maxBuddyToolRounds` (1–100, default 8).
+Cage-Free Rewsty SHALL have its contributed Buddy tools available in-process
+whenever the model is used, regardless of `rewst-buddy.mcp.enable`; that setting
+controls the external `/mcp` bridge, not the chat model's local tool
+contribution. The in-process path SHALL still honor the capability registry's
+write-tool, dangerous-GraphQL, working-scope, approval, throttle, and
+per-capability gates. Each in-process Buddy tool call SHALL request fresh
+confirmation through VS Code's native tool-confirmation UI; the extension does
+not implement its own approval-reuse cache for this path the way mcp-bridge's
+session-scoped reuse applies to the external MCP transport — any once-vs-session
+memory here comes from VS Code's own auto-approve setting, not the extension.
 
 #### Scenario: Assistant requests a tool
 
@@ -100,6 +112,16 @@ response at `rewst-buddy.ai.maxBuddyToolRounds` (1–100, default 8).
 - **WHEN** the assistant emits a `vscode-tool` block
 - **THEN** the extension parses it, runs the named Buddy tool in-process, and
   feeds the result back as the next turn
+
+#### Scenario: External MCP disabled
+
+- **GIVEN** `rewst-buddy.mcp.enable` is false
+- **AND** the user is chatting with the Cage-Free Rewsty model
+- **WHEN** the model is prepared for a turn
+- **THEN** read-tier Buddy tools are still advertised through the local
+  `vscode-tool` protocol
+- **AND** write-tier and dangerous tools follow their own explicit toggles rather
+  than the external MCP bridge toggle
 
 #### Scenario: Round cap reached
 
@@ -140,11 +162,11 @@ SHALL cap the number of parsed requests from one assistant reply.
 
 ### Requirement: Redirect backend-native Rewst tool attempts
 
-When local Buddy tools are available, the system SHALL prevent backend-native
-Rewst tool activity from being rendered as the final path. It SHALL interrupt the
-native attempt, send a neutral correction that names the local `vscode-tool`
-transport, carry through any resolved native tool arguments, and suppress
-abandoned native output.
+When local Buddy tools are available, including when the external MCP bridge is
+disabled, the system SHALL prevent backend-native Rewst tool activity from being
+rendered as the final path. It SHALL interrupt the native attempt, send a neutral
+correction that names the local `vscode-tool` transport, carry through any
+resolved native tool arguments, and suppress abandoned native output.
 
 #### Scenario: Backend tries a native Rewst tool
 
@@ -153,6 +175,14 @@ abandoned native output.
 - **THEN** the extension sends a correction turn in the same backend conversation
   explaining the local fenced protocol
 - **AND** the abandoned native tool card and output are not shown to the user
+
+#### Scenario: External MCP disabled but Buddy tools available
+
+- **GIVEN** `rewst-buddy.mcp.enable` is false
+- **AND** Cage-Free Rewsty has local Buddy tools available
+- **WHEN** the backend emits native Rewst tool activity
+- **THEN** the extension redirects that native attempt to the local `vscode-tool`
+  transport
 
 #### Scenario: Buddy tools disabled
 

@@ -6,9 +6,10 @@ Beyond linking and syncing existing templates, the extension lets users create,
 delete, open, locate, and group Rewst templates from inside VS Code. This
 capability covers those lifecycle and navigation operations.
 
-Source: `src/commands/template/` (and subdirectories),
-`src/utils/openTemplateById.ts`, `src/utils/createAndLinkNewTemplate.ts`,
-`src/models/TemplateBundleManager.ts`, `src/utils/findAllTemplateReferences.ts`.
+Source: `src/commands/template/`, `src/utils/openTemplateById.ts`,
+`src/utils/createAndLinkNewTemplate.ts`,
+`src/providers/templatePatternUtils.ts`, `src/models/TemplateBundleManager.ts`,
+`src/capabilities/templateCloneCapabilities.ts`.
 
 ## Requirements
 
@@ -74,8 +75,17 @@ template and create a new local file.
 ### Requirement: Open or link a template from its Rewst URL
 
 The system SHALL accept a Rewst template URL, parse the organization, template,
-and base URL from it, and either open the template (reusing a link when present)
-or link an existing local file to it.
+and base URL from it, resolve a session whose region matches that base URL and
+whose primary or managed organizations include the parsed organization, and
+either open the template (reusing a link when present) or link an existing local
+file to it.
+
+**Implementation status:** resolving a parsed organization that is a managed
+sub-organization (rather than a session's primary organization) depends on
+session-auth's managed-org resolution, which is not yet implemented (see
+session-auth's `Manage multiple organizations per session` requirement); today
+this resolution succeeds reliably only when the parsed organization is a
+session's primary organization.
 
 #### Scenario: Open from URL
 
@@ -83,6 +93,8 @@ or link an existing local file to it.
 - **WHEN** the user runs `Open Template from URL`
 - **THEN** the org/template/base are parsed and the template is opened with the
   same reuse behavior as interactive open
+- **AND** if the parsed org is a managed sub-organization, the session is
+  resolved by both matching region/base URL and managed-org membership
 
 #### Scenario: Link a local file from URL
 
@@ -185,7 +197,23 @@ its same-org referenced template graph into a target organization. The clone
 operation SHALL prompt once per target org/root template scope, rewrite
 references to newly created clone ids, deduplicate repeated dependencies, bound
 the traversal by depth and template count, and roll back created clones if a
-create or update step fails.
+create or update step fails. The target organization is the write destination and
+SHALL pass external MCP write-tool enablement, working-scope or allowlist gates,
+and per-call approval before any clone template is created. The source root
+SHALL be read from an active session that can reach it, and an optional
+`sourceOrgId` SHALL be verified against the root template's owning organization.
+The operation creates remote Rewst templates only; it SHALL NOT create local
+files or local template links.
+
+The dependency graph SHALL be derived from detected template body references
+only, using supported `template('<id>')`-style references. The clone SHALL copy
+body, content type, language, context, clone overrides, and description when
+available, but SHALL NOT copy tags unless that behavior is specified by a future
+capability. References embedded only in context or clone overrides SHALL NOT be
+followed or rewritten. Detected foreign-org, missing, depth-limited, or
+count-limited body references SHALL be left unchanged and reported as skipped;
+unsupported or dynamic references that the parser cannot detect are outside the
+clone graph and are not guaranteed to be reported.
 
 #### Scenario: Clone a dependency chain
 
@@ -207,6 +235,30 @@ create or update step fails.
 - **WHEN** the bundle is cloned
 - **THEN** the foreign template is not cloned
 - **AND** the result reports that the reference was skipped
+
+#### Scenario: Clone metadata caveats
+
+- **GIVEN** a root template has tags and clone overrides
+- **AND** a dependency id appears only inside clone overrides
+- **WHEN** the bundle is cloned
+- **THEN** body, content type, language, context, clone overrides, and
+  description are copied when available
+- **AND** tags are not copied
+- **AND** the dependency id inside clone overrides is not followed or rewritten
+- **AND** only detected body references are included in skipped-reference
+  reporting
+
+#### Scenario: Clone verifies source org
+
+- **GIVEN** the caller passes a `sourceOrgId`
+- **WHEN** the root template is fetched from a different owning org
+- **THEN** the clone is rejected before creating any target templates
+
+#### Scenario: Clone creates no local link
+
+- **GIVEN** a bundle clone completes successfully
+- **WHEN** the new templates are created in the target org
+- **THEN** no local file or link is created automatically
 
 #### Scenario: Clone rollback
 

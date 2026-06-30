@@ -9,7 +9,8 @@ decision logic, sync-on-save, auto-fetch-on-open, conflict handling, and
 background folder fetching.
 
 Source: `src/models/SyncManager.ts`, `src/models/syncDecision.ts`,
-`src/models/SyncOnSaveManager.ts`, `src/utils/getHash.ts`.
+`src/models/SyncOnSaveManager.ts`, `src/models/types.ts`,
+`src/capabilities/templateSyncCapabilities.ts`, `src/utils/getHash.ts`.
 
 ## Requirements
 
@@ -98,7 +99,16 @@ a newer remote version on open **only** when the local file has no unsaved
 divergence, i.e. the local body still hashes to the link's stored `bodyHash`.
 Auto-fetch SHALL be independent of sync-on-save state, SHALL skip equal or older
 remote timestamps, and SHALL fail closed without overwriting local content when
-the remote fetch fails.
+the remote fetch fails. "Newer" SHALL mean the remote `updatedAt` parses to an
+instant later than the link's last-known `updatedAt`; if either timestamp is
+missing, unparsable, or cannot prove the remote is newer, auto-fetch SHALL leave
+the local file unchanged.
+
+**Implementation status:** today the comparison is a strict string inequality
+between `remote.updatedAt` and the link's stored timestamp, not a parsed-instant
+comparison — any differing timestamp is treated as newer, and there is no
+missing/unparsable fallback. Adding real timestamp parsing as described above is
+tracked as follow-up work.
 
 #### Scenario: Remote is newer and local is untouched
 
@@ -120,17 +130,47 @@ the remote fetch fails.
 - **THEN** the local file is left unchanged
 - **AND** no sync upload is attempted as part of the open event
 
+#### Scenario: Remote is not provably newer
+
+- **GIVEN** a linked file whose local body still matches its stored hash
+- **AND** the remote timestamp is equal, older, missing, or unparsable relative
+  to the link's last-known timestamp
+- **WHEN** the file is opened
+- **THEN** auto-fetch does not replace the local file
+
 ### Requirement: Normalize organizations during sync updates
 
-The system SHALL record the template's owning organization from the remote
-template metadata when refreshing, downloading, or uploading a link. It SHALL NOT
-trust stale legacy link org metadata when the template metadata identifies a
-different owning org.
+The system SHALL record the template's owning organization from trusted remote
+template metadata when refreshing, downloading, or uploading a link. For every
+path that can change local or remote content or link metadata, including
+sync-on-save, auto-fetch-on-open, interactive sync, MCP sync, and metadata
+refresh, the system SHALL verify that the fetched remote template belongs to the
+expected organization before changing either side. The expected organization is
+the link's trusted template-owner metadata (`template.orgId` or
+`template.organization.id`) when present, otherwise the stored link organization.
+A legacy link that lacks trusted template-owner metadata MAY be corrected from a
+remote fetch only when the fetched template id matches the link, the resolving
+session manages the remote owner, and the caller did not supply a conflicting
+org id. MCP and URL-driven calls SHALL require any requested organization to
+match the trusted expected organization before content changes. If the remote
+organization is missing or mismatched, the sync SHALL fail closed before local
+or remote mutation. The system SHALL NOT trust stale legacy link org metadata
+when trusted template metadata identifies a different owning org and the remote
+fetch confirms that owner.
+
+**Implementation status:** today this guard is fully enforced only on the MCP
+sync path (`runSync`); sync-on-save, auto-fetch-on-open, interactive sync, and
+metadata refresh do not yet perform the verification step before changing local
+or remote content. Extending the guard to those paths is tracked as follow-up
+work.
 
 #### Scenario: Stale link org is corrected
 
 - **GIVEN** a link whose stored org is a parent or stale org
+- **AND** the link lacks trusted template-owner metadata
 - **AND** the remote template metadata identifies a sub-org
+- **AND** the resolving session manages that sub-org
+- **AND** the caller did not provide a conflicting org id
 - **WHEN** a sync refreshes metadata
 - **THEN** the link records the remote template's org id and name
 
@@ -138,7 +178,22 @@ different owning org.
 
 - **GIVEN** a sync request for org A
 - **AND** the remote template metadata says the template belongs to org B
-- **WHEN** the sync would upload or download content
+- **WHEN** the sync would upload, download, auto-fetch, or refresh metadata
+- **THEN** the sync is rejected before changing either side
+
+#### Scenario: Explicit org conflicts with legacy correction
+
+- **GIVEN** a legacy link has stored org A but no trusted template-owner metadata
+- **AND** the fetched remote template belongs to org B
+- **AND** the caller explicitly requested org A
+- **WHEN** the sync would change local content, remote content, or link metadata
+- **THEN** the sync is rejected rather than silently correcting the link to org B
+
+#### Scenario: Remote template organization is unknown
+
+- **GIVEN** a linked template with an expected organization
+- **AND** the fetched remote template omits owning organization metadata
+- **WHEN** the sync would change local content, remote content, or link metadata
 - **THEN** the sync is rejected before changing either side
 
 ### Requirement: Resolve conflicts with explicit user choice
@@ -171,7 +226,13 @@ The system SHALL expose MCP sync helpers that report link state and run syncs by
 explicit local path. `buddy_template_sync_status` SHALL be a read operation that
 maps the sync decision into user-facing states. `buddy_template_sync` SHALL allow
 automatic direction selection or explicit `upload` / `download` directions, with
-approval required before uploads to Rewst.
+approval required before uploads to Rewst. The `buddy_template_sync` tool SHALL
+be classified as write-tier for external MCP exposure in every direction
+because automatic sync can upload to Rewst and explicit download can overwrite a
+workspace file; every call SHALL require write tools to be enabled and the
+target org to pass the effective write allowlist. Download-only and
+metadata-only calls do not require Rewst mutation approval, but they remain
+subject to workspace target validation and sync organization guards.
 
 #### Scenario: Sync status
 
@@ -200,6 +261,15 @@ approval required before uploads to Rewst.
 - **WHEN** `buddy_template_sync` is explicitly called with direction `download`
 - **THEN** the remote body replaces the local file without requiring a Rewst
   mutation approval
+
+#### Scenario: MCP conflict returns data instead of a modal
+
+- **GIVEN** a linked file where local and remote both changed
+- **WHEN** `buddy_template_sync` is called with direction `auto`
+- **THEN** no modal is shown to the external MCP caller
+- **AND** no local or remote change is made
+- **AND** the result reports the conflict and asks the caller to choose
+  `upload` or `download`
 
 ### Requirement: Avoid false conflicts after upload
 

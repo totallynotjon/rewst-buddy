@@ -56,11 +56,20 @@ id, so the user never has to pick a region manually.
 ### Requirement: Store credentials securely
 
 The system SHALL store the raw session cookie only in VS Code `secrets`, keyed by
-organization id, and SHALL store non-secret session metadata (region, org,
-managed orgs, label, user) in `globalState` under `SessionProfiles`. The system
-SHALL also maintain a non-secret `RewstAllKnownProfiles` cache for profiles that
-have been seen before, including profiles that are not currently active. The
-cookie SHALL NOT be written to `globalState`.
+the session profile's primary organization id. Non-secret session metadata
+(region, org, managed orgs, label, user) SHALL be stored in `globalState` under
+`SessionProfiles`. The system SHALL also maintain a non-secret
+`RewstAllKnownProfiles` cache for profiles that have been seen before, including
+profiles that are not currently active. Managed organization ids MAY resolve to
+the profile through non-secret indexes, but their ids SHALL NOT be relied on as
+the primary secret key for restoration. The cookie SHALL NOT be written to
+`globalState`.
+
+**Implementation status:** today known-profile lookup resolves by org id without
+distinguishing region, and does not report ambiguity when two known profiles
+share an org id in different regions; the region-aware and ambiguity-reporting
+behavior described in the scenario below is the target lookup contract.
+Region-aware known-profile resolution is tracked as follow-up work.
 
 #### Scenario: Credential placement after login
 
@@ -77,6 +86,16 @@ cookie SHALL NOT be written to `globalState`.
 - **WHEN** a feature needs non-secret org metadata without an active session
 - **THEN** the profile can be resolved from the known-profile cache by any
   managed org id it contains
+
+#### Scenario: Known profile lookup is region-aware
+
+- **GIVEN** two known profiles contain the same managed org id in different
+  regions
+- **WHEN** a feature resolves known metadata with both an org id and Rewst base
+  URL
+- **THEN** the profile whose region matches the base URL is selected
+- **AND** if no region is supplied and the org id is ambiguous, the lookup
+  reports ambiguity rather than silently picking a default profile
 
 ### Requirement: Restore sessions on activation
 
@@ -108,13 +127,42 @@ stored cookie with the refreshed one.
 
 The system SHALL treat one login as managing a primary organization plus all of
 its managed sub-organizations, and SHALL resolve the correct session for any
-given organization id.
+given organization id by checking both the primary org and all managed orgs. When
+a base URL or region is available, session resolution SHALL first narrow to
+active sessions in that region and then match the requested org against primary
+and managed org ids. When no region is available and more than one active session
+can manage the org id, resolution SHALL fail as ambiguous rather than silently
+choosing one.
+
+**Implementation status:** today active-session resolution (`getOrgSession`)
+matches only a session's primary organization id; resolving an operation against
+a _managed_ sub-organization id, and failing closed when two active sessions
+ambiguously report the same org id, are not yet implemented — these are the
+target multi-org resolution contract described above. Implementing managed-org
+matching and ambiguous-duplicate detection is tracked as follow-up work.
 
 #### Scenario: Operation targets a managed sub-org
 
 - **GIVEN** a session whose login manages a parent org and several sub-orgs
 - **WHEN** an operation references a sub-org id
 - **THEN** the extension selects the session that manages that sub-org
+
+#### Scenario: Duplicate org id requires region
+
+- **GIVEN** two active sessions in different regions both report access to the
+  same managed org id
+- **WHEN** an operation references that org id without a base URL or region
+- **THEN** session resolution fails as ambiguous and asks the caller to supply
+  region context
+
+#### Scenario: URL targets a managed sub-org in the session region
+
+- **GIVEN** a Rewst URL whose base URL identifies the European region
+- **AND** the parsed organization id is a managed sub-org of an active European
+  session
+- **WHEN** the extension resolves a session for that URL
+- **THEN** it selects the European session that manages the sub-org
+- **AND** it does not fall back to a different region or default organization
 
 #### Scenario: Re-auth drops an old managed org
 
@@ -154,14 +202,37 @@ expires.
 
 ### Requirement: Clear sessions
 
-The system SHALL provide a way to remove all active sessions, clearing the active
-profile list from `globalState`, clearing the in-memory session and org indexes,
-and updating extension context so no session is considered active.
+The system SHALL provide a way to remove all saved Rewst sessions, not merely
+disconnect active in-memory sessions. Clearing sessions SHALL delete raw cookies
+from VS Code `secrets` for every active or known session profile, including
+primary organization keys and any legacy managed-organization secret keys if
+present. It SHALL remove `SessionProfiles` and `RewstAllKnownProfiles` from
+`globalState`, clear in-memory sessions, org indexes, validation caches, and
+known-profile caches, and update extension context so no session is considered
+active.
+
+**Implementation status:** today `Clear Sessions` removes `SessionProfiles` and
+`RewstAllKnownProfiles` from `globalState` and clears in-memory state, but does
+not call `secrets.delete()` — stored cookies are not removed, so a cleared
+session's credential remains in VS Code `secrets`. Wiring secret deletion into
+Clear Sessions is tracked as a security-relevant follow-up.
 
 #### Scenario: User clears sessions
 
 - **GIVEN** one or more active sessions
 - **WHEN** the user runs `Rewst Buddy: Clear Sessions`
 - **THEN** active profiles are removed from `SessionProfiles`
+- **AND** all known profiles are removed from `RewstAllKnownProfiles`
+- **AND** raw cookies for active, known, and legacy managed-org profile keys are
+  deleted from VS Code `secrets`
 - **AND** no org id resolves to an active session
 - **AND** the Sessions tree is emptied
+
+#### Scenario: User clears known-only sessions
+
+- **GIVEN** no session is active
+- **AND** `RewstAllKnownProfiles` contains previously saved profiles
+- **WHEN** the user runs `Rewst Buddy: Clear Sessions`
+- **THEN** known profiles and their primary-org and legacy managed-org secrets
+  are removed
+- **AND** future startup does not restore those sessions without a new cookie

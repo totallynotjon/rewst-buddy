@@ -34,3 +34,8 @@ baseline of the extension as it exists today.
 - **Scenario:** a concrete behavior under that requirement, in `GIVEN/WHEN/THEN`.
 - Settings, command titles, and storage keys quoted here mirror
   `package.json` `contributes.*` and the extension's persistence keys.
+- **Implementation status:** when a requirement states the intended/correct
+  contract but the current code does not yet fully implement it, a short
+  _Implementation status_ note follows the requirement saying so. The
+  requirement stays the target contract; the note tracks the gap rather than
+  letting the requirement quietly describe a bug as if it were the design.

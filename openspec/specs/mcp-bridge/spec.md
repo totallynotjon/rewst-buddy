@@ -3,9 +3,11 @@
 ## Purpose
 
 The extension can expose its authenticated Rewst sessions to external MCP clients
-(and to its own in-process chat) as a set of tools and lightweight resources,
-without handing those clients a Rewst credential. This capability covers enabling
-the bridge, the localhost token, which tools and resources are exposed, and the
+as a set of tools and lightweight resources, without handing those clients a
+Rewst credential. The same central capability registry can also contribute tools
+to in-process chat models, but chat tool availability is not controlled by the
+external bridge enablement setting. This capability covers enabling the external
+bridge, the localhost token, which tools and resources are exposed, and the
 working-scope rules that bound what a tool may touch.
 
 Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`,
@@ -15,17 +17,30 @@ Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`,
 
 ## Requirements
 
-### Requirement: Enable the bridge and run a localhost server
+### Requirement: Enable the external bridge and run a localhost server
 
-The system SHALL run the MCP bridge as a localhost HTTP server only when
-`rewst-buddy.mcp.enable` is on (or the credential server is independently
-enabled), and SHALL reject all MCP requests when the bridge is disabled.
+The system SHALL expose the external MCP bridge at `/mcp` only when
+`rewst-buddy.mcp.enable` is on, while allowing the underlying localhost
+credential server to run independently when `rewst-buddy.server.enabled` is on.
+The system SHALL reject all external MCP requests when the bridge is disabled.
+This setting SHALL NOT disable in-process Buddy tools contributed to Cage-Free
+Rewsty chat.
 
 #### Scenario: Bridge disabled
 
 - **GIVEN** `rewst-buddy.mcp.enable` is false
 - **WHEN** an MCP client calls a tool
 - **THEN** the request is rejected because the bridge is not enabled
+
+#### Scenario: Cage-Free Rewsty tools are unaffected
+
+- **GIVEN** the user selects the Cage-Free Rewsty chat model
+- **AND** `rewst-buddy.mcp.enable` is false
+- **WHEN** the chat model lists available in-process Buddy tools
+- **THEN** registry-backed Buddy tools are still contributed to chat subject to
+  their local-tool eligibility, write-tool, dangerous-GraphQL, approval,
+  throttle, and scope gates
+- **AND** only the external `/mcp` transport is unavailable
 
 ### Requirement: Guard with a stable, rotatable token
 
@@ -75,12 +90,15 @@ way to register the bridge natively in VS Code with live token injection.
 ### Requirement: Expose the registry-backed tool catalog
 
 The system SHALL expose every capability that opts into MCP from the central
-capability registry, subject to the bridge enablement, write-tool, dangerous
-GraphQL, working-scope, and per-capability access gates. The catalog includes
-Rewst read tools, GraphQL query/schema tools, workflow helpers, workspace
-template-link helpers, template link/sync/mutation/clone tools, workflow CRUD,
-trigger, form, tag, org variable, org/user, pack/integration, page/site/Jinja,
-working-scope, and cached-result tools.
+capability registry on the external bridge, subject to the bridge enablement,
+write-tool, dangerous GraphQL, working-scope, and per-capability access gates.
+The in-process Cage-Free Rewsty chat catalog SHALL use the same `mcp: true`
+capability descriptors and gates, except that it is not gated by external bridge
+enablement. The catalog includes Rewst read tools, GraphQL query/schema tools,
+workflow helpers, workspace template-link helpers, template
+link/sync/mutation/clone tools, workflow CRUD, trigger, form, tag, org variable,
+org/user, pack/integration, page/site/Jinja, working-scope, and cached-result
+tools.
 
 #### Scenario: Read catalog is listed
 
@@ -122,16 +140,22 @@ read capabilities and gates as tools. Resource URIs SHALL use the
 
 ### Requirement: Gate write tools behind explicit settings
 
-The system SHALL expose write tools (those with `access: 'write'`) only when
-`rewst-buddy.mcp.enableWriteTools` is on, and SHALL expose the raw GraphQL
-mutation tool only when `rewst-buddy.mcp.enableDangerousGraphqlMutation` is on.
-Read tools are available without these switches.
+The system SHALL expose external MCP tools classified with `access: 'write'`
+only when `rewst-buddy.mcp.enableWriteTools` is on, and SHALL expose the raw
+GraphQL mutation tool only when
+`rewst-buddy.mcp.enableDangerousGraphqlMutation` is on. Read-tier tools are
+available without these switches, but a read-tier tool MAY still mutate local
+workspace metadata when it does not mutate Rewst data; such behavior SHALL be
+explicit in the tool description and result.
 
 #### Scenario: Write tools disabled
 
 - **GIVEN** `enableWriteTools` is false
 - **WHEN** a client lists tools
-- **THEN** workflow/template/trigger/variable mutation tools are not callable
+- **THEN** workflow, template, trigger, tag, form, org-variable, and other Rewst
+  mutation tools are not callable
+- **AND** the raw GraphQL mutation tool is also unavailable unless its separate
+  dangerous-GraphQL setting is enabled
 
 #### Scenario: Local workspace state tools
 
@@ -139,9 +163,27 @@ Read tools are available without these switches.
 - **WHEN** a client lists tools
 - **THEN** local workspace operations such as `buddy_template_link`,
   `buddy_template_unlink`, and `buddy_template_sync_on_save` may be exposed as
-  read-access tools because they do not mutate Rewst data
-- **AND** tools that push changes to Rewst, such as `buddy_template_sync` upload
-  paths, remain write-gated
+  read-tier tools because they do not mutate Rewst data
+- **AND** their descriptions and results state that they may change local link
+  metadata, sync-on-save state, or workspace files
+- **AND** they canonicalize and validate file paths or URIs, reject malformed or
+  ambiguous targets, and report whether a target is workspace-relative,
+  absolute, or already linked before changing local state
+- **AND** `buddy_template_sync` is write-gated in every direction — including
+  download and metadata-only calls — because it can both push to Rewst and
+  overwrite a workspace file; see template-sync's `Expose explicit sync tools`
+  requirement for the full classification
+
+#### Scenario: Read-tier label does not hide local mutation
+
+- **GIVEN** a read-tier tool mutates local template link state
+- **WHEN** the tool is advertised to chat or external MCP clients
+- **THEN** the tool remains classified by Rewst write risk rather than by local
+  filesystem mutation alone
+- **AND** the advertised description and runtime result disclose the local state
+  mutation clearly enough for an agent to choose it intentionally
+- **AND** any tool that can overwrite local file contents is either classified as
+  write-tier or has an explicit local-file overwrite contract and target guard
 
 ### Requirement: Bound writes to the effective allowed organizations
 

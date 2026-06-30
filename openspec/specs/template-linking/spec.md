@@ -8,8 +8,7 @@ template (or organization): creating, removing, moving, and pruning those links,
 and persisting them efficiently without ever storing template bodies.
 
 Source: `src/models/LinkManager.ts`, `src/models/types.ts`,
-`src/utils/getHash.ts`; commands under `src/commands/template/link/` and
-`src/commands/folders/`.
+`src/utils/getHash.ts`, `src/commands/template/link/`, `src/commands/folders/`.
 
 ## Requirements
 
@@ -127,7 +126,10 @@ so a deleted-while-closed file does not leave a dangling association.
 
 The system SHALL prefer the template's own (sub-)organization over the
 organization stored on a legacy link, so links created before sub-org tracking
-still resolve to the correct org.
+still resolve to the correct org. For MCP- and URL-driven calls, template-sync's
+organization-normalization guard (see template-sync's
+`Normalize organizations during sync updates` requirement) layers additional
+verification before this resolution is allowed to change a link's stored org.
 
 #### Scenario: Legacy link stored under a parent org
 
