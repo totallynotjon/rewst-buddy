@@ -43,10 +43,11 @@ export interface Capability {
 	/**
 	 * Exposed through the legacy VS Code language-model chat tool contribution.
 	 * Cage-Free Rewsty's current Buddy path mirrors MCP descriptors in-process,
-	 * so mcp:true capabilities can still be available there when MCP is enabled.
+	 * so mcp:true capabilities can still be available there without exposing the
+	 * external MCP server endpoint.
 	 */
 	chat: boolean;
-	/** Exposed over the MCP server surface and mirrored by Cage-Free Rewsty's Buddy path. */
+	/** Exposed over the MCP server surface and mirrored by Cage-Free Rewsty's in-process Buddy path. */
 	mcp: boolean;
 	/**
 	 * Whether the capability operates on a specific org. When false (e.g.

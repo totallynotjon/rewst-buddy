@@ -58,7 +58,7 @@ export interface ProviderDeps {
 		showActivity: boolean;
 		maxBuddyToolRounds: number;
 	};
-	/** Rewst (buddy) tools to advertise this turn; empty unless the MCP server is on. */
+	/** Rewst (buddy) tools to advertise this turn through the in-process Buddy path. */
 	buddyToolSpecs(): ToolSpec[];
 	/** Runs one buddy tool in-process through the MCP capability surface. */
 	runBuddyTool(name: string, args: Record<string, unknown>, orgId: string): Promise<BuddyToolResult>;

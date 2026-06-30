@@ -698,4 +698,41 @@ suite('Unit: LinkManager', () => {
 			assert.strictEqual(LinkManager.getOrgLinks(org2).length, 0);
 		});
 	});
+
+	suite('Template org normalization', () => {
+		// A stale parent org stored on the link; the template fragment carries the
+		// real sub-org. orgForTemplateLink prefers the template org, and both addLink
+		// and loadLinks must index under the derived org, not the stored one.
+		const staleOrg = { id: 'org-stale', name: 'Stale Parent' };
+		const realOrg = { id: 'org-real', name: 'Real Sub Org' };
+
+		const staleLink = (path: string, id: string): TemplateLink => ({
+			uriString: vscode.Uri.file(path).toString(),
+			org: staleOrg,
+			type: 'Template',
+			template: { id, name: 'T', updatedAt: '', orgId: realOrg.id, organization: realOrg } as any,
+			bodyHash: 'h',
+		});
+
+		test('addLink indexes under the template-derived org, not the stale link.org', () => {
+			const uri = vscode.Uri.file('/test/stale-org.j2');
+			LinkManager.addLink(staleLink('/test/stale-org.j2', 't-add'));
+
+			assert.strictEqual(LinkManager.getOrgLinks(staleOrg).length, 0, 'not indexed under the stale org');
+			assert.strictEqual(LinkManager.getOrgTemplateLinks(realOrg).length, 1, 'indexed under the derived org');
+			assert.strictEqual(LinkManager.getTemplateLink(uri).org.id, realOrg.id, 'stored org normalized');
+		});
+
+		test('loadLinks normalizes a persisted stale link.org', () => {
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const { context } = require('@global');
+			// Use a real file so pruneStaleLinks (fire-and-forget after load) keeps it.
+			context.globalState.update(LinkManager.stateKey, [staleLink(__filename, 't-load')]);
+
+			LinkManager.loadLinks();
+
+			assert.strictEqual(LinkManager.getOrgLinks(staleOrg).length, 0, 'stale org not indexed');
+			assert.strictEqual(LinkManager.getOrgTemplateLinks(realOrg).length, 1, 'derived org indexed');
+		});
+	});
 });

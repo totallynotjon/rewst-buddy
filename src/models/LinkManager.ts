@@ -3,7 +3,7 @@ import { context, extPrefix } from '@global';
 import { getHash, isDescendant, log } from '@utils';
 import vscode, { Uri } from 'vscode';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
-import { FolderLink, Link, LinkType, Org, TemplateLink } from './types';
+import { FolderLink, Link, LinkType, Org, TemplateLink, orgForTemplateLink } from './types';
 
 const PERSIST_DEBOUNCE_MS = 300;
 const PRUNE_STAT_CHUNK_SIZE = 50;
@@ -200,6 +200,9 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 
 	addLink(link: Link): _ {
 		log.trace('LinkManager.addLink:', link);
+		if (link.type === 'Template') {
+			link = { ...(link as TemplateLink), org: orgForTemplateLink(link as TemplateLink) };
+		}
 		// Re-linking the same uri to a different template/org must drop the previous
 		// link's secondary-index entries first; otherwise a stale templateIdIndex /
 		// orgIdIndex entry survives and reverse lookups return the old file (#90).

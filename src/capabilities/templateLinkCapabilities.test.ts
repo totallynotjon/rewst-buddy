@@ -80,6 +80,30 @@ function addLink(fsPath: string, templateId = 't1', orgId = 'org-1'): vscode.Uri
 	return uri;
 }
 
+/**
+ * Adds a link whose stored org is the stale session/parent org while the template
+ * fragment carries the real sub-org. orgForTemplateLink must prefer the template's
+ * org, so the link/status/unlink surfaces should report 'org-real', not 'org-stale'.
+ */
+function addStaleOrgLink(fsPath: string): vscode.Uri {
+	const uri = vscode.Uri.file(fsPath);
+	const link: TemplateLink = {
+		uriString: uri.toString(),
+		org: { id: 'org-stale', name: 'Stale Parent' },
+		type: 'Template',
+		template: {
+			id: 't1',
+			name: 'Greeting',
+			updatedAt: '1',
+			orgId: 'org-real',
+			organization: { id: 'org-real', name: 'Real Sub Org' },
+		} as unknown as TemplateLink['template'],
+		bodyHash: 'h',
+	};
+	LinkManager.addLink(link);
+	return uri;
+}
+
 suite('Unit: templateLinkCapabilities', () => {
 	setup(() => {
 		initTestEnvironment();
@@ -270,6 +294,13 @@ suite('Unit: templateLinkCapabilities', () => {
 			assert.ok(!LinkManager.isLinked(uri), 'link removed');
 		});
 
+		test('reports the template-derived org id, not the stale link.org', async () => {
+			addStaleOrgLink('/ws/greeting.j2');
+			const out = JSON.parse(await runUnlink({ uri: 'greeting.j2' }, makeCtx()));
+			assert.strictEqual(out.status, 'unlinked');
+			assert.strictEqual(out.orgId, 'org-real');
+		});
+
 		test('returns not_linked when the file is not linked', async () => {
 			const out = JSON.parse(await runUnlink({ uri: 'nope.j2' }, makeCtx()));
 			assert.strictEqual(out.status, 'not_linked');
@@ -332,6 +363,14 @@ suite('Unit: templateLinkCapabilities', () => {
 			assert.strictEqual(out.orgId, 'org-1');
 			assert.strictEqual(out.syncOnSave, true);
 			assert.strictEqual(out.path, uri.fsPath);
+		});
+
+		test('reports the template-derived org id and name, not the stale link.org', () => {
+			addStaleOrgLink('/ws/greeting.j2');
+			const out = JSON.parse(runLinkStatus({ uri: 'greeting.j2' }));
+			assert.strictEqual(out.linked, true);
+			assert.strictEqual(out.orgId, 'org-real');
+			assert.strictEqual(out.orgName, 'Real Sub Org');
 		});
 
 		test('reports linked:false when no template is linked', () => {

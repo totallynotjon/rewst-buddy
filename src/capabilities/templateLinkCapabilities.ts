@@ -1,4 +1,4 @@
-import { LinkManager, SyncOnSaveManager, type TemplateLink } from '@models';
+import { LinkManager, SyncOnSaveManager, orgForTemplateLink, type TemplateLink } from '@models';
 import type { FullTemplateFragment, Session } from '@sessions';
 import { findAllTemplateReferences, getHash, uriExists } from '@utils';
 import vscode from 'vscode';
@@ -168,7 +168,7 @@ export async function runUnlink(input: Record<string, unknown>, _ctx: Capability
 	}
 	const { uri, link } = resolved;
 	const { id, name } = link.template;
-	const orgId = link.org.id;
+	const org = orgForTemplateLink(link);
 	// removeLink takes the uriString (not a Uri) and clears the secondary
 	// indexes; the fired onLinksSaved prunes any sync-on-save entry for this uri.
 	LinkManager.removeLink(link.uriString);
@@ -178,7 +178,7 @@ export async function runUnlink(input: Record<string, unknown>, _ctx: Capability
 		path: uri.fsPath,
 		templateId: id,
 		templateName: name,
-		orgId,
+		orgId: org.id,
 		message: 'Link removed. The local file and the remote template are untouched.',
 	});
 }
@@ -202,14 +202,15 @@ export function runLinkStatus(input: Record<string, unknown>): string {
 		});
 	}
 	const { uri, link } = resolved;
+	const org = orgForTemplateLink(link);
 	return json({
 		linked: true,
 		path: uri.fsPath,
 		uri: uri.toString(),
 		templateId: link.template.id,
 		templateName: link.template.name,
-		orgId: link.org.id,
-		orgName: link.org.name,
+		orgId: org.id,
+		orgName: org.name,
 		syncOnSave: SyncOnSaveManager.isUriSynced(uri),
 		message:
 			'Linked. This reflects local link state only (no remote comparison). Use buddy_template_sync_status to compare with the Rewst template, or buddy_search_template_links to list linked files.',

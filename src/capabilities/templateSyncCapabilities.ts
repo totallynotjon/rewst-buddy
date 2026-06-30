@@ -2,6 +2,7 @@ import {
 	LinkManager,
 	SyncManager,
 	SyncOnSaveManager,
+	orgForTemplateLink,
 	type SyncDecision,
 	type SyncDecisionContext,
 	type TemplateLink,
@@ -218,12 +219,13 @@ export async function runSyncStatus(
 	}
 	const { target } = prepared;
 	const { link, remoteTemplate, localBody, decision } = target.context;
+	const org = orgForTemplateLink(link);
 	return JSON.stringify(
 		{
 			linked: true,
 			path: target.uri.fsPath,
-			orgId: link.org.id,
-			orgName: link.org.name,
+			orgId: org.id,
+			orgName: org.name,
 			templateId: link.template.id,
 			templateName: link.template.name,
 			syncOnSave: deps.isSyncOnSaveEnabled(target),
@@ -262,12 +264,13 @@ export async function runSync(
 	}
 	const { target } = prepared;
 	const { link, remoteTemplate, decision } = target.context;
+	const linkedOrg = orgForTemplateLink(link);
 
 	// A session can manage several orgs, so confirm the linked file AND the remote
 	// template belong to the requested org before any upload — otherwise a file
 	// linked to a sibling org could be reached by path.
-	if (link.org.id !== orgId) {
-		throw new Error(`"${uri}" is linked to org ${link.org.id}, not ${orgId}.`);
+	if (linkedOrg.id !== orgId) {
+		throw new Error(`"${uri}" is linked to org ${linkedOrg.id}, not ${orgId}.`);
 	}
 	// Fail closed: a write tool must re-verify the resource's org, so reject an
 	// absent/non-string remote orgId as well as a mismatch.

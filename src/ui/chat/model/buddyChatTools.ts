@@ -1,4 +1,4 @@
-import { callTool, listTools, McpError, readMcpSettings, type McpToolDescriptor } from '@mcp';
+import { callTool, listTools, McpError, type McpToolDescriptor } from '@mcp';
 import type { ToolSpec } from '../tools/toolProtocol';
 
 /**
@@ -10,10 +10,11 @@ import type { ToolSpec } from '../tools/toolProtocol';
  * the local vscode-tool protocol. Advertising them here, sourced from the same
  * MCP surface, keeps them available regardless of the cap.
  *
- * The list mirrors the MCP exposure exactly: it is empty unless the MCP server
- * is switched on (rewst-buddy.mcp.enable), and write tools appear only when
- * their MCP toggles are on. Execution reuses {@link callTool}, so the write
- * allowlist, throttle, approval, and audit gates are identical to the MCP path.
+ * The list mirrors MCP capability exposure except for the external-server master
+ * switch: rewst-buddy.mcp.enable controls only the /mcp endpoint, not Cage-Free
+ * Rewsty's in-process Buddy path. Write tools still appear only when their MCP
+ * toggles are on. Execution reuses {@link callTool}, so the working-scope,
+ * throttle, approval, and audit gates are identical to the MCP path.
  */
 
 /** Converts MCP tool descriptors into the chat text protocol's tool specs. */
@@ -27,11 +28,11 @@ export function toolSpecsFromDescriptors(descriptors: readonly McpToolDescriptor
 }
 
 /**
- * The buddy tools currently exposed over MCP, as chat tool specs. Empty when the
- * MCP server is disabled — the user opted out, so nothing is advertised.
+ * The Buddy tools exposed to Cage-Free Rewsty, as chat tool specs. This uses the
+ * MCP capability gates for writes/dangerous tools, but intentionally ignores the
+ * external MCP server enable switch.
  */
 export function buddyChatToolSpecs(): ToolSpec[] {
-	if (!readMcpSettings().enable) return [];
 	return toolSpecsFromDescriptors(listTools());
 }
 
