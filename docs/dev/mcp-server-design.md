@@ -104,8 +104,8 @@ external clients, `CopyMcpConfig` copies a credential-free client config JSON: t
 `/mcp` URL plus the `REWST_BUDDY_MCP_TOKEN` Bearer placeholder. No `node`, no
 spawned process, no discovery file.
 
-Initial read tools: `list_orgs`, `list_templates`, `get_template`,
-`list_workflows`, `get_workflow`, `rewst_graphql_query` (read-only), `get_bundle`.
+Initial read tools: `buddy_list_orgs`, `buddy_list_templates`, `buddy_get_template`,
+`buddy_list_workflows`, `buddy_get_workflow`, `buddy_graphql_query` (read-only), `buddy_get_bundle`.
 Resources: `rewst://{org}/templates`, `…/templates/{id}`, `…/workflows`.
 
 ### Phase 2 — converge chat onto the registry
@@ -115,7 +115,7 @@ definition feeds both chat and MCP.
 
 ### Phase 3 — write capabilities, opt-in + approved
 
-`update_template_body`, `create_template`, `export_workflow`, `import_bundle`.
+`buddy_update_template_body`, `buddy_create_template`, `buddy_export_workflow`, `buddy_import_bundle`.
 Reuse the existing mutation-approval machinery; unapproved writes return a
 structured "approval required" result; **approval happens in VS Code**, not the
 external client. Setting `rewst-buddy.mcp.enableWriteTools` (default false).
@@ -131,7 +131,7 @@ Otherwise VS Code's native MCP client covers user-wired external servers.
 | ------------------------------------ | ------- | ----------------------------------------------- |
 | `mcp.enable`                         | `false` | Master switch; gates MCP actions; exposes reads |
 | `mcp.enableWriteTools`               | `false` | Allows `access:'write'` (non-dangerous) tools   |
-| `mcp.enableDangerousGraphqlMutation` | `false` | Allows the raw `rewst_graphql_mutate` tool      |
+| `mcp.enableDangerousGraphqlMutation` | `false` | Allows the raw `buddy_graphql_mutate` tool      |
 
 ## File layout
 

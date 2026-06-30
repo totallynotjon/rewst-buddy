@@ -65,9 +65,9 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 		_resetMcpMutationApproverForTesting();
 	});
 
-	suite('create_org_variable', () => {
+	suite('buddy_create_org_variable', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
-			const c = cap('create_org_variable');
+			const c = cap('buddy_create_org_variable');
 			assert.strictEqual(c.access, 'write');
 			assert.strictEqual(c.mcp, true);
 			assert.strictEqual(c.chat, false);
@@ -78,7 +78,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ create: { data: { createOrgVariable: { id: 'v1', name: 'API_KEY' } } } });
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('create_org_variable').run(
+			const output = await cap('buddy_create_org_variable').run(
 				{ orgId: 'org-sandbox', name: 'API_KEY', value: 'abc' },
 				ctx,
 			);
@@ -103,7 +103,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ create: { data: { createOrgVariable: { id: 'v2', name: 'TOKEN' } } } });
 			setMcpMutationApprover(async () => true);
 
-			await cap('create_org_variable').run(
+			await cap('buddy_create_org_variable').run(
 				{ orgId: 'org-sandbox', name: 'TOKEN', value: 's3cret', category: 'secret', cascade: true },
 				ctx,
 			);
@@ -117,10 +117,10 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx } = makeCtx({ create: { data: { createOrgVariable: { id: 'v3', name: 'EMPTY' } } } });
 			setMcpMutationApprover(async () => true);
 
-			await cap('create_org_variable').run({ orgId: 'org-sandbox', name: 'EMPTY', value: '' }, ctx);
+			await cap('buddy_create_org_variable').run({ orgId: 'org-sandbox', name: 'EMPTY', value: '' }, ctx);
 
 			await assert.rejects(
-				() => cap('create_org_variable').run({ orgId: 'org-sandbox', name: 'NOVAL' }, ctx),
+				() => cap('buddy_create_org_variable').run({ orgId: 'org-sandbox', name: 'NOVAL' }, ctx),
 				/Missing required string argument "value"/,
 			);
 		});
@@ -135,7 +135,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 
 			await assert.rejects(
 				() =>
-					cap('create_org_variable').run(
+					cap('buddy_create_org_variable').run(
 						{ orgId: 'org-sandbox', name: 'X', value: 'y', category: 'system' },
 						ctx,
 					),
@@ -149,7 +149,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({});
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('create_org_variable').run(
+			const output = await cap('buddy_create_org_variable').run(
 				{ orgId: 'org-sandbox', name: 'API_KEY', value: 'abc' },
 				ctx,
 			);
@@ -159,7 +159,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 		});
 	});
 
-	suite('update_org_variable', () => {
+	suite('buddy_update_org_variable', () => {
 		const inOrgRow = {
 			data: {
 				orgVariables: [
@@ -175,7 +175,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			});
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('update_org_variable').run(
+			const output = await cap('buddy_update_org_variable').run(
 				{ orgId: 'org-sandbox', variableId: 'v1', value: 'new-value' },
 				ctx,
 			);
@@ -204,7 +204,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			});
 			setMcpMutationApprover(async () => true);
 
-			await cap('update_org_variable').run(
+			await cap('buddy_update_org_variable').run(
 				{ orgId: 'org-sandbox', variableId: 'v1', value: 'x', category: 'secret', cascade: true },
 				ctx,
 			);
@@ -224,7 +224,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1', value: 'x' }, ctx),
+				() => cap('buddy_update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1', value: 'x' }, ctx),
 				/Org variable v1 is not in org org-sandbox/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -235,7 +235,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ byId: inOrgRow });
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('update_org_variable').run(
+			const output = await cap('buddy_update_org_variable').run(
 				{ orgId: 'org-sandbox', variableId: 'v1', value: 'x' },
 				ctx,
 			);
@@ -249,13 +249,13 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			setMcpMutationApprover(async () => true);
 
 			await assert.rejects(
-				() => cap('update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx),
+				() => cap('buddy_update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx),
 				/Missing required string argument "value"/,
 			);
 		});
 	});
 
-	suite('delete_org_variable', () => {
+	suite('buddy_delete_org_variable', () => {
 		const inOrgRow = {
 			data: {
 				orgVariables: [
@@ -268,7 +268,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ byId: inOrgRow, delete: { data: { deleteOrgVariable: 'v1' } } });
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx);
+			const output = await cap('buddy_delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx);
 
 			assert.strictEqual(callsFor(calls, 'delete').length, 1);
 			assert.deepStrictEqual(callsFor(calls, 'delete')[0].variables, { id: 'v1' });
@@ -286,7 +286,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx),
+				() => cap('buddy_delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx),
 				/Org variable v1 is not in org org-sandbox/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -297,7 +297,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ byId: inOrgRow });
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx);
+			const output = await cap('buddy_delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx);
 
 			assert.strictEqual(callsFor(calls, 'delete').length, 0);
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
@@ -317,7 +317,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx, calls } = makeCtx({ create: { errors: [{ message: 'boom' }] } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('create_org_variable').run({ orgId: 'org-sandbox', name: 'X', value: 'y' }, ctx),
+				() => cap('buddy_create_org_variable').run({ orgId: 'org-sandbox', name: 'X', value: 'y' }, ctx),
 				/GraphQL error/,
 			);
 			assert.strictEqual(callsFor(calls, 'create').length, 1);
@@ -327,7 +327,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx } = makeCtx({ create: { data: { createOrgVariable: {} } } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('create_org_variable').run({ orgId: 'org-sandbox', name: 'X', value: 'y' }, ctx),
+				() => cap('buddy_create_org_variable').run({ orgId: 'org-sandbox', name: 'X', value: 'y' }, ctx),
 				/returned no variable/,
 			);
 		});
@@ -336,7 +336,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx } = makeCtx({ byId: { errors: [{ message: 'boom' }] } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1', value: 'y' }, ctx),
+				() => cap('buddy_update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1', value: 'y' }, ctx),
 				/GraphQL error/,
 			);
 		});
@@ -345,7 +345,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx } = makeCtx({ byId: inOrgRow, update: { data: { updateOrgVariables: [] } } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1', value: 'y' }, ctx),
+				() => cap('buddy_update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1', value: 'y' }, ctx),
 				/returned no variable/,
 			);
 		});
@@ -354,7 +354,7 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			const { ctx } = makeCtx({ byId: inOrgRow, delete: { data: { deleteOrgVariable: null } } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx),
+				() => cap('buddy_delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx),
 				/returned no id/,
 			);
 		});

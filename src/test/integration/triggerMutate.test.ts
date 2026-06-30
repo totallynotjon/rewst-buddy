@@ -14,7 +14,7 @@ import { TRIGGER_MUTATE_CAPABILITIES } from '../../capabilities/triggerMutateCap
 const { suite, test, suiteSetup, suiteTeardown, setup } = Mocha;
 
 /**
- * Live verification for set_trigger_enabled, opt-in behind REWST_TEST_WRITE=1 and
+ * Live verification for buddy_set_trigger_enabled, opt-in behind REWST_TEST_WRITE=1 and
  * scoped to the token's own primary org. Toggles an existing sandbox trigger to
  * the opposite state and restores it (net-zero); skips if the org has no trigger.
  */
@@ -89,21 +89,24 @@ suite('Integration: trigger write tools', function () {
 				const guardCtx: CapabilityContext = { session, orgId: otherOrgId, sessions: [session] };
 				await assert.rejects(
 					() =>
-						cap('set_trigger_enabled').run({ orgId: otherOrgId, triggerId, enabled: !original }, guardCtx),
+						cap('buddy_set_trigger_enabled').run(
+							{ orgId: otherOrgId, triggerId, enabled: !original },
+							guardCtx,
+						),
 					/is not in org/,
 				);
 				console.log('[itest] org guard refused a cross-org toggle to', otherOrgId);
 			}
 
 			const toggled = JSON.parse(
-				await cap('set_trigger_enabled').run({ orgId: targetOrgId, triggerId, enabled: !original }, ctx),
+				await cap('buddy_set_trigger_enabled').run({ orgId: targetOrgId, triggerId, enabled: !original }, ctx),
 			);
 			changed = true;
 			assert.strictEqual(toggled.status, !original ? 'enabled' : 'disabled');
 			console.log('[itest] toggled trigger', triggerId, '->', toggled.status);
 
 			const restored = JSON.parse(
-				await cap('set_trigger_enabled').run({ orgId: targetOrgId, triggerId, enabled: original }, ctx),
+				await cap('buddy_set_trigger_enabled').run({ orgId: targetOrgId, triggerId, enabled: original }, ctx),
 			);
 			changed = false;
 			assert.strictEqual(restored.status, original ? 'enabled' : 'disabled');

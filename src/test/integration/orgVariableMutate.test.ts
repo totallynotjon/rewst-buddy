@@ -88,7 +88,7 @@ suite('Integration: org variable write tools', function () {
 
 		try {
 			const created = JSON.parse(
-				await cap('create_org_variable').run({ orgId: targetOrgId, name, value: 'created-value' }, ctx),
+				await cap('buddy_create_org_variable').run({ orgId: targetOrgId, name, value: 'created-value' }, ctx),
 			);
 			assert.strictEqual(created.status, 'created');
 			id = created.id;
@@ -105,14 +105,17 @@ suite('Integration: org variable write tools', function () {
 				const guardCtx: CapabilityContext = { session, orgId: otherOrgId, sessions: [session] };
 				await assert.rejects(
 					() =>
-						cap('update_org_variable').run({ orgId: otherOrgId, variableId: id, value: 'NOPE' }, guardCtx),
+						cap('buddy_update_org_variable').run(
+							{ orgId: otherOrgId, variableId: id, value: 'NOPE' },
+							guardCtx,
+						),
 					/is not in org/,
 				);
 				console.log('[itest] org guard refused a cross-org update to', otherOrgId);
 			}
 
 			const updated = JSON.parse(
-				await cap('update_org_variable').run(
+				await cap('buddy_update_org_variable').run(
 					{ orgId: targetOrgId, variableId: id, value: 'updated-value' },
 					ctx,
 				),
@@ -125,7 +128,7 @@ suite('Integration: org variable write tools', function () {
 			assert.strictEqual(rows[0].value, 'updated-value');
 
 			const deleted = JSON.parse(
-				await cap('delete_org_variable').run({ orgId: targetOrgId, variableId: id }, ctx),
+				await cap('buddy_delete_org_variable').run({ orgId: targetOrgId, variableId: id }, ctx),
 			);
 			assert.strictEqual(deleted.status, 'deleted');
 			id = undefined;

@@ -34,7 +34,7 @@ suite('Unit: workingScopeCapability', () => {
 		_resetWorkingScopeApproverForTesting();
 	});
 
-	test('get_working_scope reports the current scope', async () => {
+	test('buddy_get_working_scope reports the current scope', async () => {
 		const ctx = ctxFor();
 		WorkingScopeManager.setOrgs(['org-1']);
 		WorkingScopeManager.setWorkflows(['wf-1']);
@@ -50,19 +50,19 @@ suite('Unit: workingScopeCapability', () => {
 		assert.strictEqual(parsed.scopeMode, 'strict');
 	});
 
-	test('set_working_scope requires at least one org or workflow', async () => {
+	test('buddy_set_working_scope requires at least one org or workflow', async () => {
 		const ctx = ctxFor();
 		await assert.rejects(setWorkingScopeCapability.run({}, ctx), /at least one/i);
 	});
 
-	test('set_working_scope rejects an org no session manages', async () => {
+	test('buddy_set_working_scope rejects an org no session manages', async () => {
 		const ctx = ctxFor('org-1');
 		setWorkingScopeApprover(async () => true);
 		await assert.rejects(setWorkingScopeCapability.run({ orgs: ['org-999'] }, ctx), /org-999/);
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), []);
 	});
 
-	test('set_working_scope does not change the scope when the user declines', async () => {
+	test('buddy_set_working_scope does not change the scope when the user declines', async () => {
 		const ctx = ctxFor('org-1');
 		setWorkingScopeApprover(async () => false);
 
@@ -74,7 +74,7 @@ suite('Unit: workingScopeCapability', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), []);
 	});
 
-	test('set_working_scope adds to the scope after approval', async () => {
+	test('buddy_set_working_scope adds to the scope after approval', async () => {
 		const ctx = ctxFor('org-1');
 		WorkingScopeManager.setOrgs(['org-existing']);
 		setWorkingScopeApprover(async () => true);
@@ -91,7 +91,7 @@ suite('Unit: workingScopeCapability', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-1']);
 	});
 
-	test('set_working_scope replaces the named dimension when replace is true', async () => {
+	test('buddy_set_working_scope replaces the named dimension when replace is true', async () => {
 		const ctx = ctxFor('org-1');
 		WorkingScopeManager.setOrgs(['org-existing']);
 		WorkingScopeManager.setWorkflows(['wf-keep']);
@@ -104,7 +104,7 @@ suite('Unit: workingScopeCapability', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-keep']);
 	});
 
-	test('set_working_scope adds a workflow-only change after approval', async () => {
+	test('buddy_set_working_scope adds a workflow-only change after approval', async () => {
 		const ctx = ctxFor('org-1');
 		WorkingScopeManager.setWorkflows(['wf-existing']);
 		setWorkingScopeApprover(async () => true);
@@ -119,7 +119,7 @@ suite('Unit: workingScopeCapability', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), [], 'org scope is untouched by a workflow-only call');
 	});
 
-	test('set_working_scope replaces workflows-only when replace is true', async () => {
+	test('buddy_set_working_scope replaces workflows-only when replace is true', async () => {
 		const ctx = ctxFor('org-1');
 		WorkingScopeManager.setWorkflows(['wf-existing']);
 		setWorkingScopeApprover(async () => true);

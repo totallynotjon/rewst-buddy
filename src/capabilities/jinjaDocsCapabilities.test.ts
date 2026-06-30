@@ -136,9 +136,9 @@ suite('Unit: jinjaDocsCapabilities', () => {
 		});
 	});
 
-	suite('get_jinja_filter_docs capability', () => {
+	suite('buddy_get_jinja_filter_docs capability', () => {
 		test('is a read-only, MCP-exposed, org-agnostic capability', () => {
-			const capability = cap('get_jinja_filter_docs');
+			const capability = cap('buddy_get_jinja_filter_docs');
 			assert.strictEqual(capability.access, 'read');
 			assert.strictEqual(capability.mcp, true);
 			assert.strictEqual(capability.requiresOrg, false);
@@ -147,7 +147,7 @@ suite('Unit: jinjaDocsCapabilities', () => {
 		test('fetches filters and formats them', async () => {
 			_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
 			const { ctx } = fakeCtx({});
-			const output = await cap('get_jinja_filter_docs').run({ name: 'abs' }, ctx);
+			const output = await cap('buddy_get_jinja_filter_docs').run({ name: 'abs' }, ctx);
 			assert.ok(output.includes('Return the absolute value of the argument.'));
 		});
 
@@ -158,8 +158,8 @@ suite('Unit: jinjaDocsCapabilities', () => {
 				return parseJinjaFilters(SAMPLE_PAYLOAD);
 			});
 			const { ctx } = fakeCtx({});
-			await cap('get_jinja_filter_docs').run({}, ctx);
-			await cap('get_jinja_filter_docs').run({ name: 'center' }, ctx);
+			await cap('buddy_get_jinja_filter_docs').run({}, ctx);
+			await cap('buddy_get_jinja_filter_docs').run({ name: 'center' }, ctx);
 			assert.strictEqual(fetchCount, 1);
 		});
 
@@ -169,7 +169,7 @@ suite('Unit: jinjaDocsCapabilities', () => {
 				seenBase = base;
 				return parseJinjaFilters(SAMPLE_PAYLOAD);
 			});
-			await cap('get_jinja_filter_docs').run({}, ctxWithRegion('https://api.rewst.io/graphql'));
+			await cap('buddy_get_jinja_filter_docs').run({}, ctxWithRegion('https://api.rewst.io/graphql'));
 			assert.strictEqual(seenBase, 'https://engine.rewst.io');
 		});
 
@@ -180,7 +180,7 @@ suite('Unit: jinjaDocsCapabilities', () => {
 				return parseJinjaFilters(SAMPLE_PAYLOAD);
 			});
 			const { ctx } = fakeCtx({});
-			await cap('get_jinja_filter_docs').run({}, ctx);
+			await cap('buddy_get_jinja_filter_docs').run({}, ctx);
 			assert.strictEqual(seenBase, 'https://engine.rewst.io');
 		});
 
@@ -192,12 +192,12 @@ suite('Unit: jinjaDocsCapabilities', () => {
 			const { ctx } = fakeCtx({});
 
 			// Both fields wrong-typed → treated as no arguments → the index listing.
-			const index = await cap('get_jinja_filter_docs').run({ name: 123, search: [] }, ctx);
+			const index = await cap('buddy_get_jinja_filter_docs').run({ name: 123, search: [] }, ctx);
 			assert.ok(index.includes('3 Jinja filters'));
 			assert.ok(!index.includes('absolute value'));
 
 			// Wrong-typed name is ignored, but a valid search still applies.
-			const searched = await cap('get_jinja_filter_docs').run({ name: 123, search: 'uppercase' }, ctx);
+			const searched = await cap('buddy_get_jinja_filter_docs').run({ name: 123, search: 'uppercase' }, ctx);
 			assert.ok(searched.includes('Convert a value to uppercase.'));
 		});
 
@@ -210,8 +210,8 @@ suite('Unit: jinjaDocsCapabilities', () => {
 			});
 			const { ctx } = fakeCtx({});
 
-			await assert.rejects(() => cap('get_jinja_filter_docs').run({}, ctx), /engine unavailable/);
-			const output = await cap('get_jinja_filter_docs').run({ name: 'abs' }, ctx);
+			await assert.rejects(() => cap('buddy_get_jinja_filter_docs').run({}, ctx), /engine unavailable/);
+			const output = await cap('buddy_get_jinja_filter_docs').run({ name: 'abs' }, ctx);
 			assert.ok(output.includes('Return the absolute value of the argument.'));
 			assert.strictEqual(calls, 2, 'a failed fetch is retried, not served from cache');
 		});
@@ -227,7 +227,10 @@ suite('Unit: jinjaDocsCapabilities', () => {
 			})) as unknown as typeof fetch;
 			try {
 				const { ctx } = fakeCtx({});
-				await assert.rejects(() => cap('get_jinja_filter_docs').run({}, ctx), /HTTP 503 Service Unavailable/);
+				await assert.rejects(
+					() => cap('buddy_get_jinja_filter_docs').run({}, ctx),
+					/HTTP 503 Service Unavailable/,
+				);
 			} finally {
 				globalThis.fetch = originalFetch;
 			}

@@ -44,6 +44,12 @@ suite('Unit: capability registry', () => {
 		assert.strictEqual(new Set(names).size, names.length, 'no duplicate capability names');
 	});
 
+	test('every Rewst Buddy capability uses the buddy_ tool-name prefix', () => {
+		for (const capability of CAPABILITY_REGISTRY) {
+			assert.ok(capability.spec.name.startsWith('buddy_'), `${capability.spec.name} starts with buddy_`);
+		}
+	});
+
 	test('every capability declares an access level and an inputSchema', () => {
 		for (const capability of CAPABILITY_REGISTRY) {
 			assert.ok(['read', 'write'].includes(capability.access), `${capability.spec.name} access is read|write`);
@@ -93,22 +99,22 @@ suite('Unit: capability registry', () => {
 		test('read tools and the dedicated mutation tool are exposed to MCP', () => {
 			const names = mcpCapabilities().map(capability => capability.spec.name);
 			for (const expected of [
-				'list_orgs',
-				'list_templates',
-				'get_template',
-				'list_workflows',
-				'get_workflow',
-				'rewst_graphql_query',
-				'search_template_links',
+				'buddy_list_orgs',
+				'buddy_list_templates',
+				'buddy_get_template',
+				'buddy_list_workflows',
+				'buddy_get_workflow',
+				'buddy_graphql_query',
+				'buddy_search_template_links',
 				'buddy_template_link_status',
 				'buddy_graphql_schema',
-				'rewst_graphql_mutate',
+				'buddy_graphql_mutate',
 				RESULT_READ_TOOL_NAME,
 			]) {
 				assert.ok(names.includes(expected), `${expected} exposed to MCP`);
 			}
-			assert.strictEqual(getCapability('rewst_graphql_mutate')?.access, 'write');
-			assert.strictEqual(getCapability('rewst_graphql_mutate')?.dangerous, true);
+			assert.strictEqual(getCapability('buddy_graphql_mutate')?.access, 'write');
+			assert.strictEqual(getCapability('buddy_graphql_mutate')?.dangerous, true);
 			assert.ok(!names.includes('buddy_graphql'), 'combined chat write tool stays off MCP');
 		});
 
@@ -150,16 +156,16 @@ suite('Unit: capability registry', () => {
 			}
 		});
 
-		test('workspace helpers are exposed to MCP and chat-only result reader is gone', () => {
+		test('workspace helpers and the Buddy result reader are exposed to MCP', () => {
 			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
 			for (const name of WORKSPACE_MCP_CAPABILITIES) {
 				assert.ok(names.has(name), `${name} exposed to MCP`);
 			}
-			assert.ok(!names.has('buddy_result_read'), 'result reader stays off MCP');
+			assert.ok(names.has(RESULT_READ_TOOL_NAME), 'MCP result reader is Buddy-prefixed and exposed');
 		});
 
-		test('list_orgs does not require an org', () => {
-			const listOrgs = getCapability('list_orgs');
+		test('buddy_list_orgs does not require an org', () => {
+			const listOrgs = getCapability('buddy_list_orgs');
 			assert.ok(listOrgs);
 			assert.strictEqual(listOrgs.requiresOrg, false);
 		});
@@ -168,6 +174,16 @@ suite('Unit: capability registry', () => {
 			const schema = getCapability('buddy_graphql_schema');
 			assert.ok(schema);
 			assert.strictEqual(schema.requiresOrg, false);
+		});
+
+		test('buddy_search_template_links does not require an org', () => {
+			const searchLinks = getCapability('buddy_search_template_links');
+			assert.ok(searchLinks, 'buddy_search_template_links is registered');
+			assert.strictEqual(
+				searchLinks.requiresOrg,
+				false,
+				'link discovery spans all orgs, so it stays org-agnostic',
+			);
 		});
 
 		test('MCP surface includes every mcp capability without intrinsic family filtering', () => {

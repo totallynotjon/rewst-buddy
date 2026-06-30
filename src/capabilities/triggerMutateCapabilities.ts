@@ -5,7 +5,7 @@ import { ORG_ID_PROP, requireString } from './inputHelpers';
 import { orgDisplayName, throwOnGraphqlErrors, withMutationApproval } from './mutationApproval';
 
 /**
- * Trigger write capabilities. set_trigger_enabled toggles a workflow trigger on
+ * Trigger write capabilities. buddy_set_trigger_enabled toggles a workflow trigger on
  * or off via updateTrigger. It acts on a trigger by id, and one session can
  * manage many orgs, so it first re-verifies the trigger belongs to the requested
  * org (requireTriggerInOrg) before mutating. Approval-gated and hidden unless
@@ -48,7 +48,7 @@ async function requireTriggerInOrg(ctx: CapabilityContext, triggerId: string, or
 }
 
 const setTriggerEnabledSpec: ToolSpec = {
-	name: 'set_trigger_enabled',
+	name: 'buddy_set_trigger_enabled',
 	args: '{"orgId": string, "triggerId": string, "enabled": boolean}',
 	description:
 		'Enable or disable one Rewst workflow trigger, identified by org and trigger id. The trigger must belong to the given org. Pass enabled=true to turn it on, false to turn it off. Requires write tools to be enabled and per-call approval in VS Code.',

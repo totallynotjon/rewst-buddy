@@ -9,7 +9,7 @@ function optionalString(value: unknown): string | undefined {
 }
 
 const listInstalledPacksSpec: ToolSpec = {
-	name: 'list_installed_packs',
+	name: 'buddy_list_installed_packs',
 	args: '{"orgId": string}',
 	description:
 		'List the integration packs and bundles installed in one Rewst organization (id, name, ref, isBundle, status, packType).',
@@ -17,7 +17,7 @@ const listInstalledPacksSpec: ToolSpec = {
 };
 
 const getPackAuthStatusSpec: ToolSpec = {
-	name: 'get_pack_auth_status',
+	name: 'buddy_get_pack_auth_status',
 	args: '{"orgId": string, "packName": string}',
 	description:
 		"Check whether a pack needs OAuth setup in one Rewst organization. packName is a pack ref (e.g. microsoft_graph). Returns 'configured' when already authenticated, or the setup URL when authorization is needed.",
@@ -32,7 +32,7 @@ const getPackAuthStatusSpec: ToolSpec = {
 };
 
 const listPackConfigsSpec: ToolSpec = {
-	name: 'list_pack_configs',
+	name: 'buddy_list_pack_configs',
 	args: '{"orgId": string}',
 	description:
 		'List the pack (integration) configurations for one Rewst organization (id, name, packId, default). Returns all configs (this field has no pagination).',
@@ -40,7 +40,7 @@ const listPackConfigsSpec: ToolSpec = {
 };
 
 const listIntegrationsSpec: ToolSpec = {
-	name: 'list_integrations',
+	name: 'buddy_list_integrations',
 	args: '{"orgId": string, "limit"?: number}',
 	description:
 		'List integrations available on the Rewst platform (name, description, numInstalled). Global catalog; the orgId only selects which signed-in session to use.',

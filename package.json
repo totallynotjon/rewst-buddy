@@ -151,12 +151,12 @@
 				"rewst-buddy.mcp.enableWriteTools": {
 					"type": "boolean",
 					"default": false,
-					"description": "Allow workflow MCP tools that change Rewst data (buddy_workflow_edit, buddy_workflow_autolayout, and buddy_workflow_run). Even when enabled, each change still requires your approval inside VS Code. Does not expose raw GraphQL mutation."
+					"description": "Allow workflow MCP tools that change Rewst data (buddy_workflow_edit, buddy_workflow_autolayout, and buddy_workflow_run). Even when enabled, each change still requires your approval inside VS Code. Workflow edits do not expose task parallelism controls (new tasks use sequential graph defaults). Does not expose raw GraphQL mutation."
 				},
 				"rewst-buddy.mcp.enableDangerousGraphqlMutation": {
 					"type": "boolean",
 					"default": false,
-					"description": "Allow the raw rewst_graphql_mutate MCP tool to run arbitrary GraphQL mutations against the live Rewst organization. This is separate from write tools because it can change anything your Rewst session can change; each mutation still requires per-resource approval inside VS Code."
+					"description": "Allow the raw buddy_graphql_mutate MCP tool to run arbitrary GraphQL mutations against the live Rewst organization. This is separate from write tools because it can change anything your Rewst session can change; each mutation still requires per-resource approval inside VS Code."
 				},
 				"rewst-buddy.mcp.alwaysAllowedOrgs": {
 					"type": "array",
@@ -164,7 +164,7 @@
 						"type": "string"
 					},
 					"default": [],
-					"description": "Organization ids that are always in the working scope, regardless of what you pin with Set Working Scope. Tools may always operate on these orgs (e.g. a sandbox you never want to re-pin). The working scope and this list together form the effective allowed set: a write must target an org in that set, so with nothing pinned and this list empty, writes are blocked. Find org ids with the list_orgs tool. (Replaces the former writeOrgAllowlist; old values are still read.)"
+					"description": "Organization ids that are always in the working scope, regardless of what you pin with Set Working Scope. Tools may always operate on these orgs (e.g. a sandbox you never want to re-pin). The working scope and this list together form the effective allowed set: a write must target an org in that set, so with nothing pinned and this list empty, writes are blocked. Find org ids with the buddy_list_orgs tool. (Replaces the former writeOrgAllowlist; old values are still read.)"
 				},
 				"rewst-buddy.mcp.workingOrgScope": {
 					"type": "string",

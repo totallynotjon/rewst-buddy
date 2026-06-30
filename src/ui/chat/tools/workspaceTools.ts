@@ -33,7 +33,7 @@ const SEARCH_MAX_LIMIT = 50;
 
 export const WORKSPACE_TOOL_SPECS: ToolSpec[] = [
 	{
-		name: 'search_template_links',
+		name: 'buddy_search_template_links',
 		args: '{"query"?: string, "limit"?: number}',
 		description:
 			'Search the local files linked to Rewst templates, returning a bounded list of matches (path, template name, template id, org). Pass query to filter by a case-insensitive substring of the file path, template name, template id, or org name; omit it to list the linked files (still bounded). Results are capped at limit (default 20, max 50) with a note when more match. To check whether one specific file is linked, prefer buddy_template_link_status.',
@@ -127,7 +127,7 @@ async function runTool(
 	graphqlDeps?: GraphqlToolDeps,
 ): Promise<ToolOutcome> {
 	switch (request.tool) {
-		case 'search_template_links':
+		case 'buddy_search_template_links':
 			return { output: searchTemplateLinks(deps, request.args) };
 		default: {
 			if (isWorkflowTool(request.tool)) {
@@ -168,7 +168,7 @@ export async function buildWorkspaceOverview(deps: WorkspaceToolDeps = defaultDe
 
 	const linkCount = deps.templateLinks().length;
 	if (linkCount > 0) {
-		sections.push(`${linkCount} file(s) are linked to Rewst templates (search_template_links lists them).`);
+		sections.push(`${linkCount} file(s) are linked to Rewst templates (buddy_search_template_links lists them).`);
 	}
 	return sections.join('\n');
 }

@@ -84,7 +84,7 @@ async function requireOrgVariableInOrg(
 }
 
 const createOrgVariableSpec: ToolSpec = {
-	name: 'create_org_variable',
+	name: 'buddy_create_org_variable',
 	args: '{"orgId": string, "name": string, "value": string, "category"?: "general"|"contact"|"secret", "cascade"?: boolean}',
 	description:
 		'Create a configuration variable in one Rewst organization. category defaults to general (use secret for sensitive values); cascade (default false) makes the variable visible to descendant orgs. Requires write tools to be enabled and per-call approval in VS Code.',
@@ -126,7 +126,7 @@ async function runCreateOrgVariable(input: Record<string, unknown>, ctx: Capabil
 }
 
 const updateOrgVariableSpec: ToolSpec = {
-	name: 'update_org_variable',
+	name: 'buddy_update_org_variable',
 	args: '{"orgId": string, "variableId": string, "value": string, "category"?: "general"|"contact"|"secret", "cascade"?: boolean}',
 	description:
 		'Replace the value of one existing org variable, identified by org and variable id. The variable must belong to the given org. Optionally also change its category or cascade; the name is preserved. Requires write tools to be enabled and per-call approval in VS Code.',
@@ -175,7 +175,7 @@ async function runUpdateOrgVariable(input: Record<string, unknown>, ctx: Capabil
 }
 
 const deleteOrgVariableSpec: ToolSpec = {
-	name: 'delete_org_variable',
+	name: 'buddy_delete_org_variable',
 	args: '{"orgId": string, "variableId": string}',
 	description:
 		'Permanently delete one org variable, identified by org and variable id. The variable must belong to the given org. This cannot be undone. Requires write tools to be enabled and per-call approval in VS Code.',

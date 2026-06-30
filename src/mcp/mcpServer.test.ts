@@ -54,7 +54,7 @@ suite('Unit: mcpServer', () => {
 	});
 
 	suite('MCP SDK server (in-memory transport)', () => {
-		test('lists read tools and runs list_orgs end to end', async () => {
+		test('lists read tools and runs buddy_list_orgs end to end', async () => {
 			useSession('org-1', 'Acme');
 			const server = buildMcpServer();
 			const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -64,10 +64,10 @@ suite('Unit: mcpServer', () => {
 
 			try {
 				const tools = await client.listTools();
-				assert.ok(tools.tools.some(tool => tool.name === 'list_orgs'));
+				assert.ok(tools.tools.some(tool => tool.name === 'buddy_list_orgs'));
 				assert.ok(!tools.tools.some(tool => tool.name === 'buddy_graphql'), 'chat write tool not exposed');
 
-				const result = await client.callTool({ name: 'list_orgs', arguments: {} });
+				const result = await client.callTool({ name: 'buddy_list_orgs', arguments: {} });
 				const text = (result.content as { type: string; text: string }[]).map(part => part.text).join('');
 				assert.ok(text.includes('Acme (org-1)'));
 				assert.notStrictEqual(result.isError, true);
@@ -86,7 +86,7 @@ suite('Unit: mcpServer', () => {
 			await client.connect(clientTransport);
 
 			try {
-				const result = await client.callTool({ name: 'list_templates', arguments: {} });
+				const result = await client.callTool({ name: 'buddy_list_templates', arguments: {} });
 				assert.strictEqual(result.isError, true);
 				const text = (result.content as { type: string; text: string }[]).map(part => part.text).join('');
 				assert.ok(/orgId/i.test(text), 'explains the missing orgId');

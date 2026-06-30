@@ -13,7 +13,7 @@ import { resolveLinkedUri } from './templateSyncCapabilities';
  * only the extension's own link state and never call a Rewst write API, so —
  * per the project's decision that local-only mutations are read-tier — they are
  * exposed as access:'read' (ungated). They reach the LinkManager /
- * SyncOnSaveManager singletons directly, like search_template_links. They derive
+ * SyncOnSaveManager singletons directly, like buddy_search_template_links. They derive
  * the org from the link/template, not from ctx.orgId (requiresOrg is false).
  *
  * MCP arguments are not validated against inputSchema, so every input is coerced
@@ -163,7 +163,7 @@ export async function runUnlink(input: Record<string, unknown>, _ctx: Capability
 			status: 'not_linked',
 			uri: rawUri,
 			message:
-				'No template is linked to this file (or the path matches more than one link). Check search_template_links and pass a fuller path.',
+				'No template is linked to this file (or the path matches more than one link). Check buddy_search_template_links and pass a fuller path.',
 		});
 	}
 	const { uri, link } = resolved;
@@ -212,7 +212,7 @@ export function runLinkStatus(input: Record<string, unknown>): string {
 		orgName: link.org.name,
 		syncOnSave: SyncOnSaveManager.isUriSynced(uri),
 		message:
-			'Linked. This reflects local link state only (no remote comparison). Use buddy_template_sync_status to compare with the Rewst template, or search_template_links to list linked files.',
+			'Linked. This reflects local link state only (no remote comparison). Use buddy_template_sync_status to compare with the Rewst template, or buddy_search_template_links to list linked files.',
 	});
 }
 
@@ -262,7 +262,7 @@ const linkSpec: ToolSpec = {
 		properties: {
 			templateId: {
 				type: 'string',
-				description: 'Id of the existing Rewst template to link the file to (from list_templates).',
+				description: 'Id of the existing Rewst template to link the file to (from buddy_list_templates).',
 			},
 			uri: {
 				type: 'string',
@@ -287,13 +287,13 @@ const unlinkSpec: ToolSpec = {
 	name: 'buddy_template_unlink',
 	args: '{"uri": string}',
 	description:
-		'Remove the link between a local file and its Rewst template. The local file and the remote template are left untouched; only the local association (and its sync-on-save setting) is removed. Identify the file by the path shown in search_template_links or its file URI. Returns not_linked if no template is linked to it.',
+		'Remove the link between a local file and its Rewst template. The local file and the remote template are left untouched; only the local association (and its sync-on-save setting) is removed. Identify the file by the path shown in buddy_search_template_links or its file URI. Returns not_linked if no template is linked to it.',
 	inputSchema: {
 		type: 'object',
 		properties: {
 			uri: {
 				type: 'string',
-				description: 'Path or file URI of the linked file, as shown by search_template_links.',
+				description: 'Path or file URI of the linked file, as shown by buddy_search_template_links.',
 			},
 		},
 		required: ['uri'],
@@ -322,7 +322,7 @@ const linkStatusSpec: ToolSpec = {
 	name: 'buddy_template_link_status',
 	args: '{"uri": string}',
 	description:
-		'Report whether one local file is linked to a Rewst template, reading only local link state (no network or remote comparison). Identify the file by an absolute path, a workspace-relative path, or a file:// URI. Returns linked:false when nothing is linked; otherwise the template id and name, org id and name, and whether sync-on-save is on. For an up-to-date comparison with the Rewst template use buddy_template_sync_status; to list linked files use search_template_links.',
+		'Report whether one local file is linked to a Rewst template, reading only local link state (no network or remote comparison). Identify the file by an absolute path, a workspace-relative path, or a file:// URI. Returns linked:false when nothing is linked; otherwise the template id and name, org id and name, and whether sync-on-save is on. For an up-to-date comparison with the Rewst template use buddy_template_sync_status; to list linked files use buddy_search_template_links.',
 	inputSchema: {
 		type: 'object',
 		properties: {

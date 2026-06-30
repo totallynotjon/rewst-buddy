@@ -9,10 +9,10 @@ const LIST_USERS_QUERY =
 const LIST_ROLES_QUERY = 'query($orgId: ID!){ roles(where:{ orgId:$orgId }){ id name description } }';
 
 const searchOrganizationsSpec: ToolSpec = {
-	name: 'search_organizations',
+	name: 'buddy_search_organizations',
 	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
-		'Find organizations by a case-insensitive name substring. orgId only selects which signed-in session to use — results are not limited to that org; they span all organizations the session manages. Returns id, name, isEnabled. Preferred over list_orgs for finding an org by name (list_orgs enumerates every managed org).',
+		'Find organizations by a case-insensitive name substring. orgId only selects which signed-in session to use — results are not limited to that org; they span all organizations the session manages. Returns id, name, isEnabled. Preferred over buddy_list_orgs for finding an org by name (buddy_list_orgs enumerates every managed org).',
 	inputSchema: {
 		type: 'object',
 		properties: {
@@ -25,7 +25,7 @@ const searchOrganizationsSpec: ToolSpec = {
 };
 
 const listUsersSpec: ToolSpec = {
-	name: 'list_users',
+	name: 'buddy_list_users',
 	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
 		'List the users directly in one Rewst organization (id, username, isApiUser, roleIds). Only users in the named org are returned; parent-org users are not inherited.',
@@ -41,7 +41,7 @@ const listUsersSpec: ToolSpec = {
 };
 
 const listRolesSpec: ToolSpec = {
-	name: 'list_roles',
+	name: 'buddy_list_roles',
 	args: '{"orgId": string}',
 	description: 'List the roles defined in one Rewst organization (id, name, description).',
 	inputSchema: { type: 'object', properties: { ...ORG_ID_PROP }, required: ['orgId'] },

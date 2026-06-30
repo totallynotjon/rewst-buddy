@@ -81,7 +81,7 @@ async function withTemplateApproval(
 }
 
 const createTemplateSpec: ToolSpec = {
-	name: 'create_template',
+	name: 'buddy_create_template',
 	args: '{"orgId": string, "name": string, "body": string}',
 	description:
 		'Create a new Rewst template in one organization from a name and body, returning the new template id and name. Requires write tools to be enabled and per-call approval in VS Code. Pass an empty string for body to start a blank template.',
@@ -119,7 +119,7 @@ async function runCreateTemplate(input: Record<string, unknown>, ctx: Capability
 }
 
 const updateTemplateBodySpec: ToolSpec = {
-	name: 'update_template_body',
+	name: 'buddy_update_template_body',
 	args: '{"orgId": string, "templateId": string, "body": string}',
 	description:
 		'Replace the body of one existing Rewst template, identified by org and template id. The template must belong to the given org. Requires write tools to be enabled and per-call approval in VS Code. Pass an empty string to clear the body.',
@@ -155,7 +155,7 @@ async function runUpdateTemplateBody(input: Record<string, unknown>, ctx: Capabi
 }
 
 const renameTemplateSpec: ToolSpec = {
-	name: 'rename_template',
+	name: 'buddy_rename_template',
 	args: '{"orgId": string, "templateId": string, "name": string}',
 	description:
 		'Rename one existing Rewst template, identified by org and template id. The template must belong to the given org. Requires write tools to be enabled and per-call approval in VS Code.',
@@ -189,7 +189,7 @@ async function runRenameTemplate(input: Record<string, unknown>, ctx: Capability
 }
 
 const deleteTemplateSpec: ToolSpec = {
-	name: 'delete_template',
+	name: 'buddy_delete_template',
 	args: '{"orgId": string, "templateId": string}',
 	description:
 		'Permanently delete one Rewst template, identified by org and template id. The template must belong to the given org. This cannot be undone. Requires write tools to be enabled and per-call approval in VS Code.',

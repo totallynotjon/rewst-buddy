@@ -34,14 +34,14 @@ suite('Unit: resultReadCapability', () => {
 			const cache = new McpResultCache();
 			const text = 'x'.repeat(MCP_MAX_OUTPUT_CHARS);
 
-			assert.strictEqual(formatMcpOutput('list_templates', text, cache), text);
+			assert.strictEqual(formatMcpOutput('buddy_list_templates', text, cache), text);
 			assert.strictEqual(cache.size, 0);
 		});
 
 		test('caches oversized output and returns preview with paging instructions', () => {
 			const cache = new McpResultCache();
 			const text = `${'x'.repeat(MCP_MAX_OUTPUT_CHARS)}tail`;
-			const formatted = formatMcpOutput('list_templates', text, cache);
+			const formatted = formatMcpOutput('buddy_list_templates', text, cache);
 
 			assert.ok(formatted.startsWith(text.slice(0, MCP_MAX_OUTPUT_CHARS)));
 			assert.match(formatted, /cached in memory as id "[0-9a-f]{8}"/);
@@ -49,10 +49,11 @@ suite('Unit: resultReadCapability', () => {
 			assert.ok(formatted.includes(RESULT_READ_TOOL_NAME));
 			assert.ok(formatted.includes(`{"id":"`));
 			assert.ok(formatted.includes(`"search":"<text>"`));
+			assert.doesNotMatch(formatted, /\bMCP tool\b|\bMCP-only\b/);
 			assert.strictEqual(cache.size, 1);
 		});
 
-		test('passes result_read output through without re-caching it', () => {
+		test('passes buddy_result_read output through without re-caching it', () => {
 			const cache = new McpResultCache();
 			const text = 'x'.repeat(MCP_MAX_OUTPUT_CHARS + 1);
 
@@ -63,7 +64,7 @@ suite('Unit: resultReadCapability', () => {
 		test('returns a preview with a cache-budget note when the result is too large to store', () => {
 			const cache = new McpResultCache(8);
 			const text = 'x'.repeat(MCP_MAX_OUTPUT_CHARS + 1);
-			const formatted = formatMcpOutput('list_templates', text, cache);
+			const formatted = formatMcpOutput('buddy_list_templates', text, cache);
 
 			assert.ok(formatted.startsWith(text.slice(0, MCP_MAX_OUTPUT_CHARS)));
 			assert.ok(formatted.includes('exceeds the in-memory cache budget'));
@@ -71,19 +72,19 @@ suite('Unit: resultReadCapability', () => {
 		});
 	});
 
-	suite('result_read run', () => {
+	suite('buddy_result_read run', () => {
 		test('returns a requested slice with a continuation footer', async () => {
-			const id = cacheId(mcpResultCache.store('list_templates', '0123456789abcdef'));
+			const id = cacheId(mcpResultCache.store('buddy_list_templates', '0123456789abcdef'));
 
 			const output = await resultReadCapability.run({ id, offset: '4', limit: '6' }, ignoredContext());
 
-			assert.ok(output.startsWith(`Cached result "${id}" (list_templates), characters 4-10 of 16.`));
+			assert.ok(output.startsWith(`Cached result "${id}" (buddy_list_templates), characters 4-10 of 16.`));
 			assert.ok(output.includes('\n\n456789\n'));
 			assert.ok(output.includes(`{"id":"${id}","offset":10}`));
 		});
 
 		test('marks the final slice as the end of the result', async () => {
-			const id = cacheId(mcpResultCache.store('list_templates', '0123456789abcdef'));
+			const id = cacheId(mcpResultCache.store('buddy_list_templates', '0123456789abcdef'));
 
 			const output = await resultReadCapability.run({ id, offset: 10, limit: 100 }, ignoredContext());
 
@@ -93,7 +94,7 @@ suite('Unit: resultReadCapability', () => {
 
 		test('searches matching lines with line numbers and caps hits', async () => {
 			const lines = Array.from({ length: 60 }, (_, i) => `row ${i + 1} target value`);
-			const id = cacheId(mcpResultCache.store('rewst_graphql_query', lines.join('\n')));
+			const id = cacheId(mcpResultCache.store('buddy_graphql_query', lines.join('\n')));
 
 			const output = await resultReadCapability.run({ id, search: 'target' }, ignoredContext());
 			const hitLines = output.split('\n').filter(line => /^\d+:/.test(line));
@@ -105,7 +106,7 @@ suite('Unit: resultReadCapability', () => {
 		});
 
 		test('search clamps long matching lines', async () => {
-			const id = cacheId(mcpResultCache.store('rewst_graphql_query', `${'x'.repeat(600)} target`));
+			const id = cacheId(mcpResultCache.store('buddy_graphql_query', `${'x'.repeat(600)} target`));
 
 			const output = await resultReadCapability.run({ id, search: 'target' }, ignoredContext());
 			const hit = output.split('\n').find(line => line.startsWith('1: '));
@@ -127,7 +128,7 @@ suite('Unit: resultReadCapability', () => {
 				resultReadCapability.run({ id: 'missing1' }, ignoredContext()),
 				(error: unknown) =>
 					error instanceof Error &&
-					error.message.includes('No cached MCP result for id "missing1"') &&
+					error.message.includes('No cached Rewst Buddy result for id "missing1"') &&
 					error.message.includes('rerun the original tool'),
 			);
 		});

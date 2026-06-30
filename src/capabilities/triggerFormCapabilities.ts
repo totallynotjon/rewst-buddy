@@ -18,7 +18,7 @@ const LIST_ORG_TRIGGER_INSTANCES_QUERY = `query($orgId: ID!, $limit: Int){ orgTr
 const GET_TRIGGER_ERROR_STATUS_QUERY = `query($triggerIds: [ID!]){ getTriggerErrorStatus(triggerIds:$triggerIds) }`;
 
 const listTriggersSpec: ToolSpec = {
-	name: 'list_triggers',
+	name: 'buddy_list_triggers',
 	args: '{"orgId": string, "limit"?: number}',
 	description:
 		'List the triggers in one Rewst organization (id, name, enabled, triggerTypeId, workflowId). Triggers are how workflows are invoked.',
@@ -36,7 +36,7 @@ const listTriggersSpec: ToolSpec = {
 };
 
 const listFormsSpec: ToolSpec = {
-	name: 'list_forms',
+	name: 'buddy_list_forms',
 	args: '{"orgId": string, "limit"?: number}',
 	description: 'List the forms in one Rewst organization (id, name, updatedAt).',
 	inputSchema: {
@@ -53,7 +53,7 @@ const listFormsSpec: ToolSpec = {
 };
 
 const listTagsSpec: ToolSpec = {
-	name: 'list_tags',
+	name: 'buddy_list_tags',
 	args: '{"orgId": string, "limit"?: number}',
 	description:
 		'List the tags in one Rewst organization (id, name, color). Use the ids for tag filters on other tools.',
@@ -71,7 +71,7 @@ const listTagsSpec: ToolSpec = {
 };
 
 const listOrgTriggerInstancesSpec: ToolSpec = {
-	name: 'list_org_trigger_instances',
+	name: 'buddy_list_org_trigger_instances',
 	args: '{"orgId": string, "limit"?: number}',
 	description:
 		'List trigger activation instances for one Rewst organization (id, triggerId, nextFireTime, isManualActivation). nextFireTime is an epoch-millisecond string.',
@@ -89,7 +89,7 @@ const listOrgTriggerInstancesSpec: ToolSpec = {
 };
 
 const getTriggerErrorStatusSpec: ToolSpec = {
-	name: 'get_trigger_error_status',
+	name: 'buddy_get_trigger_error_status',
 	args: '{"orgId": string, "triggerIds": string[]}',
 	description:
 		'Batch health check for triggers: given trigger ids, returns whether each currently has errors (true = has errors).',

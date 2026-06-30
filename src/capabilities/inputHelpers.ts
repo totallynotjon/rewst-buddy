@@ -81,5 +81,5 @@ export async function mapWithConcurrency<T, R>(
 
 /** Standard orgId property block for capability inputSchemas. */
 export const ORG_ID_PROP = {
-	orgId: { type: 'string', description: 'Rewst organization id the operation runs against (from list_orgs).' },
+	orgId: { type: 'string', description: 'Rewst organization id the operation runs against (from buddy_list_orgs).' },
 } as const;

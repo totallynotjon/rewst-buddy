@@ -153,41 +153,40 @@ suite('Unit: McpActions', () => {
 	suite('listTools()', () => {
 		test('exposes the read tools and hides the GraphQL chat/write tools', () => {
 			const names = listTools(settings()).map(tool => tool.name);
-			assert.ok(names.includes('list_orgs'));
-			assert.ok(names.includes('list_templates'));
-			assert.ok(names.includes('get_template'));
-			assert.ok(names.includes('list_workflows'));
-			assert.ok(names.includes('get_workflow'));
-			assert.ok(names.includes('rewst_graphql_query'), 'read-only GraphQL query is available on MCP');
-			assert.ok(names.includes('search_template_links'), 'workspace helper is available on MCP');
+			assert.ok(names.includes('buddy_list_orgs'));
+			assert.ok(names.includes('buddy_list_templates'));
+			assert.ok(names.includes('buddy_get_template'));
+			assert.ok(names.includes('buddy_list_workflows'));
+			assert.ok(names.includes('buddy_get_workflow'));
+			assert.ok(names.includes('buddy_graphql_query'), 'read-only GraphQL query is available on MCP');
+			assert.ok(names.includes('buddy_search_template_links'), 'workspace helper is available on MCP');
 			assert.ok(names.includes('buddy_template_link_status'), 'per-file link status is available on MCP');
 			assert.ok(names.includes(RESULT_READ_TOOL_NAME), 'cached-result reader is available on MCP');
 			assert.ok(!names.includes('buddy_graphql'), 'chat write tool is not on MCP');
 			assert.ok(names.includes('buddy_graphql_schema'), 'schema introspection is available on MCP');
-			assert.ok(!names.includes('rewst_graphql_mutate'), 'raw GraphQL mutation needs its own dangerous toggle');
-			assert.ok(!names.includes('buddy_result_read'), 'chat result-cache reader is not on MCP');
+			assert.ok(!names.includes('buddy_graphql_mutate'), 'raw GraphQL mutation needs its own dangerous toggle');
 		});
 	});
 
 	suite('callTool()', () => {
-		test('list_orgs enumerates orgs across active sessions without an orgId', async () => {
+		test('buddy_list_orgs enumerates orgs across active sessions without an orgId', async () => {
 			useSession('org-1', 'Acme');
-			const result = await callTool({ name: 'list_orgs' }, settings());
+			const result = await callTool({ name: 'buddy_list_orgs' }, settings());
 			assert.ok(result.text.includes('Acme (org-1)'));
 			assert.ok(!result.isError);
 		});
 
-		test('list_templates returns template names for the org', async () => {
+		test('buddy_list_templates returns template names for the org', async () => {
 			const { wrapper } = useSession('org-1');
 			wrapper.when('listTemplates', {
 				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
 			});
-			const result = await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
+			const result = await callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings());
 			assert.ok(result.text.includes('Welcome (t-1)'));
 			assert.strictEqual(wrapper.getCallsFor('listTemplates').length, 1);
 		});
 
-		test('oversized tool output returns a cached preview that result_read can page', async () => {
+		test('oversized tool output returns a cached preview that buddy_result_read can page', async () => {
 			const { wrapper } = useSession('org-1');
 			const templates = Array.from({ length: 200 }, (_, i) =>
 				Fixtures.template({
@@ -197,7 +196,7 @@ suite('Unit: McpActions', () => {
 			);
 			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
 
-			const first = await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
+			const first = await callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings());
 			const id = /"id":"([^"]+)"/.exec(first.text)?.[1];
 
 			assert.ok(id, 'oversized output includes a cached result id');
@@ -209,7 +208,11 @@ suite('Unit: McpActions', () => {
 			);
 			const listCalls = wrapper.getCallsFor('listTemplates');
 			assert.strictEqual(listCalls.length, 1, 'the org templates are fetched once for the oversized call');
-			assert.strictEqual(listCalls[0].variables.orgId, 'org-1', 'list_templates is scoped to the requested org');
+			assert.strictEqual(
+				listCalls[0].variables.orgId,
+				'org-1',
+				'buddy_list_templates is scoped to the requested org',
+			);
 
 			const second = await callTool(
 				{ name: RESULT_READ_TOOL_NAME, arguments: { id, offset: MCP_MAX_OUTPUT_CHARS } },
@@ -217,7 +220,7 @@ suite('Unit: McpActions', () => {
 			);
 
 			assert.ok(!second.isError);
-			assert.ok(second.text.startsWith(`Cached result "${id}" (list_templates)`));
+			assert.ok(second.text.startsWith(`Cached result "${id}" (buddy_list_templates)`));
 			assert.ok(second.text.includes(`characters ${MCP_MAX_OUTPUT_CHARS}-`));
 			assert.ok(second.text.includes('Template'));
 			assert.strictEqual(
@@ -227,9 +230,9 @@ suite('Unit: McpActions', () => {
 			);
 		});
 
-		test('search_template_links is callable over MCP without an orgId', async () => {
+		test('buddy_search_template_links is callable over MCP without an orgId', async () => {
 			useSession('org-1');
-			const result = await callTool({ name: 'search_template_links', arguments: {} }, settings());
+			const result = await callTool({ name: 'buddy_search_template_links', arguments: {} }, settings());
 			assert.ok(!result.isError);
 			assert.match(result.text, /No files are linked to Rewst templates/);
 		});
@@ -439,7 +442,7 @@ suite('Unit: McpActions', () => {
 			WorkingScopeManager.setOrgs(['org-other']);
 
 			await assert.rejects(
-				callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings()),
+				callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
 			);
 		});
@@ -448,7 +451,7 @@ suite('Unit: McpActions', () => {
 			const { wrapper } = useSession('org-1');
 			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery([]) });
 
-			const result = await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
+			const result = await callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings());
 
 			assert.ok(!result.isError);
 		});
@@ -459,7 +462,7 @@ suite('Unit: McpActions', () => {
 			WorkingScopeManager.setOrgs(['org-other']);
 
 			const result = await callTool(
-				{ name: 'list_templates', arguments: { orgId: 'org-1' } },
+				{ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } },
 				settings({ workingOrgScope: 'writes' }),
 			);
 
@@ -473,7 +476,7 @@ suite('Unit: McpActions', () => {
 			});
 			WorkingScopeManager.setOrgs(['org-1']);
 
-			const result = await callTool({ name: 'list_templates' }, settings());
+			const result = await callTool({ name: 'buddy_list_templates' }, settings());
 
 			assert.ok(result.text.includes('Welcome (t-1)'));
 			assert.strictEqual(wrapper.getCallsFor('listTemplates')[0].variables.orgId, 'org-1');
@@ -483,7 +486,7 @@ suite('Unit: McpActions', () => {
 			useSession('org-1', 'Acme');
 			WorkingScopeManager.setOrgs(['org-other']);
 
-			const result = await callTool({ name: 'list_orgs' }, settings());
+			const result = await callTool({ name: 'buddy_list_orgs' }, settings());
 
 			assert.ok(result.text.includes('Acme (org-1)'));
 			assert.ok(!result.isError);
@@ -499,13 +502,13 @@ suite('Unit: McpActions', () => {
 			};
 
 			await assert.rejects(
-				callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings()),
+				callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
 			);
 			assert.strictEqual(validated, 0, 'no authenticated session I/O happens for an out-of-scope request');
 		});
 
-		test('rewst_graphql_mutate against an out-of-scope workflow is rejected via scopeId', async () => {
+		test('buddy_graphql_mutate against an out-of-scope workflow is rejected via scopeId', async () => {
 			useSession('org-1');
 			WorkingScopeManager.setOrgs(['org-1']);
 			WorkingScopeManager.setWorkflows(['wf-allowed']);
@@ -513,7 +516,7 @@ suite('Unit: McpActions', () => {
 			await assert.rejects(
 				callTool(
 					{
-						name: 'rewst_graphql_mutate',
+						name: 'buddy_graphql_mutate',
 						arguments: {
 							orgId: 'org-1',
 							query: 'mutation M { updateWorkflow { id } }',
@@ -527,13 +530,13 @@ suite('Unit: McpActions', () => {
 			);
 		});
 
-		test('rewst_graphql_mutate is blocked when the org is out of scope', async () => {
+		test('buddy_graphql_mutate is blocked when the org is out of scope', async () => {
 			useSession('org-1');
 
 			await assert.rejects(
 				callTool(
 					{
-						name: 'rewst_graphql_mutate',
+						name: 'buddy_graphql_mutate',
 						arguments: {
 							orgId: 'org-1',
 							query: 'mutation M { updateThing { id } }',
@@ -547,14 +550,14 @@ suite('Unit: McpActions', () => {
 			);
 		});
 
-		test('rewst_graphql_mutate passes the guard when the org is in scope', async () => {
+		test('buddy_graphql_mutate passes the guard when the org is in scope', async () => {
 			const { session, wrapper } = useSession('org-1', 'Acme');
 			useRawGraphqlWrapper(session, wrapper);
 			setMcpMutationApprover(async () => false);
 
 			const result = await callTool(
 				{
-					name: 'rewst_graphql_mutate',
+					name: 'buddy_graphql_mutate',
 					arguments: {
 						orgId: 'org-1',
 						query: 'mutation M { updateThing { id } }',
@@ -665,7 +668,7 @@ suite('Unit: McpActions', () => {
 		test('an org-scoped tool without orgId throws org_required', async () => {
 			useSession('org-1');
 			await assert.rejects(
-				callTool({ name: 'list_templates' }, settings()),
+				callTool({ name: 'buddy_list_templates' }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'org_required',
 			);
 		});
@@ -673,14 +676,14 @@ suite('Unit: McpActions', () => {
 		test('an unmanaged org throws org_not_found', async () => {
 			useSession('org-1');
 			await assert.rejects(
-				callTool({ name: 'list_templates', arguments: { orgId: 'org-999' } }, settings()),
+				callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-999' } }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'org_not_found',
 			);
 		});
 
 		test('no active sessions throws no_session', async () => {
 			await assert.rejects(
-				callTool({ name: 'list_orgs' }, settings()),
+				callTool({ name: 'buddy_list_orgs' }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'no_session',
 			);
 		});
@@ -689,18 +692,18 @@ suite('Unit: McpActions', () => {
 			const { wrapper } = useSession('org-1');
 			wrapper.when('getTemplate', { error: Fixtures.notFoundError('Template') });
 			const result = await callTool(
-				{ name: 'get_template', arguments: { orgId: 'org-1', templateId: 'missing' } },
+				{ name: 'buddy_get_template', arguments: { orgId: 'org-1', templateId: 'missing' } },
 				settings(),
 			);
 			assert.strictEqual(result.isError, true);
 		});
 
-		test('rewst_graphql_mutate is rejected while the dangerous mutation toggle is disabled', async () => {
+		test('buddy_graphql_mutate is rejected while the dangerous mutation toggle is disabled', async () => {
 			useSession('org-1');
 			await assert.rejects(
 				callTool(
 					{
-						name: 'rewst_graphql_mutate',
+						name: 'buddy_graphql_mutate',
 						arguments: {
 							orgId: 'org-1',
 							query: 'mutation UpdateThing { updateThing { id } }',
@@ -717,15 +720,15 @@ suite('Unit: McpActions', () => {
 			);
 		});
 
-		test('rewst_graphql_mutate is not exposed by enableWriteTools alone', async () => {
+		test('buddy_graphql_mutate is not exposed by enableWriteTools alone', async () => {
 			useSession('org-1');
 
 			const names = listTools(settings({ enableWriteTools: true })).map(tool => tool.name);
-			assert.ok(!names.includes('rewst_graphql_mutate'));
+			assert.ok(!names.includes('buddy_graphql_mutate'));
 			await assert.rejects(
 				callTool(
 					{
-						name: 'rewst_graphql_mutate',
+						name: 'buddy_graphql_mutate',
 						arguments: {
 							orgId: 'org-1',
 							query: 'mutation UpdateThing { updateThing { id } }',
@@ -742,21 +745,21 @@ suite('Unit: McpActions', () => {
 			);
 		});
 
-		test('rewst_graphql_mutate is exposed by the dangerous toggle without enableWriteTools', () => {
+		test('buddy_graphql_mutate is exposed by the dangerous toggle without enableWriteTools', () => {
 			const names = listTools(
 				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			).map(tool => tool.name);
-			assert.ok(names.includes('rewst_graphql_mutate'));
+			assert.ok(names.includes('buddy_graphql_mutate'));
 			assert.ok(!names.includes(WORKFLOW_EDIT_TOOL_NAME));
 			assert.ok(!names.includes(WORKFLOW_AUTOLAYOUT_TOOL_NAME));
 			assert.ok(!names.includes(WORKFLOW_RUN_TOOL_NAME));
 		});
 
-		test('rewst_graphql_mutate returns an error result for query documents', async () => {
+		test('buddy_graphql_mutate returns an error result for query documents', async () => {
 			useSession('org-1');
 			const result = await callTool(
 				{
-					name: 'rewst_graphql_mutate',
+					name: 'buddy_graphql_mutate',
 					arguments: {
 						orgId: 'org-1',
 						query: 'query ReadThing { thing { id } }',
@@ -767,14 +770,14 @@ suite('Unit: McpActions', () => {
 				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 			assert.strictEqual(result.isError, true);
-			assert.ok(result.text.includes('use rewst_graphql_query'));
+			assert.ok(result.text.includes('use buddy_graphql_query'));
 		});
 
-		test('rewst_graphql_mutate returns an error result for subscriptions', async () => {
+		test('buddy_graphql_mutate returns an error result for subscriptions', async () => {
 			useSession('org-1');
 			const result = await callTool(
 				{
-					name: 'rewst_graphql_mutate',
+					name: 'buddy_graphql_mutate',
 					arguments: {
 						orgId: 'org-1',
 						query: 'subscription WatchThing { thingChanged { id } }',
@@ -788,14 +791,14 @@ suite('Unit: McpActions', () => {
 			assert.ok(result.text.includes('Subscriptions are not supported'));
 		});
 
-		test('rewst_graphql_mutate returns approval_required without executing when the user declines', async () => {
+		test('buddy_graphql_mutate returns approval_required without executing when the user declines', async () => {
 			const { session, wrapper } = useSession('org-1');
 			useRawGraphqlWrapper(session, wrapper);
 			setMcpMutationApprover(async () => false);
 
 			const result = await callTool(
 				{
-					name: 'rewst_graphql_mutate',
+					name: 'buddy_graphql_mutate',
 					arguments: {
 						orgId: 'org-1',
 						query: 'mutation UpdateThing { updateThing { id } }',
@@ -811,7 +814,7 @@ suite('Unit: McpActions', () => {
 			assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 0);
 		});
 
-		test('rewst_graphql_mutate executes after approval and remembers the same scope', async () => {
+		test('buddy_graphql_mutate executes after approval and remembers the same scope', async () => {
 			const { session, wrapper } = useSession('org-1', 'Acme Org');
 			useRawGraphqlWrapper(session, wrapper);
 			wrapper.when('rawGraphql', { data: { data: { updateThing: { id: 'wf-1' } } } });
@@ -829,11 +832,11 @@ suite('Unit: McpActions', () => {
 			};
 
 			const first = await callTool(
-				{ name: 'rewst_graphql_mutate', arguments: args },
+				{ name: 'buddy_graphql_mutate', arguments: args },
 				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 			const second = await callTool(
-				{ name: 'rewst_graphql_mutate', arguments: args },
+				{ name: 'buddy_graphql_mutate', arguments: args },
 				settings({ enableDangerousGraphqlMutation: true, alwaysAllowedOrgs: ['org-1'] }),
 			);
 
@@ -851,7 +854,7 @@ suite('Unit: McpActions', () => {
 			let limited = false;
 			for (let i = 0; i < 40 && !limited; i++) {
 				try {
-					await callTool({ name: 'list_orgs' }, settings());
+					await callTool({ name: 'buddy_list_orgs' }, settings());
 				} catch (error) {
 					if (error instanceof McpError && error.code === 'rate_limited') limited = true;
 					else throw error;
@@ -918,14 +921,14 @@ suite('Unit: MCP audit logging', () => {
 		});
 		const capture = captureInfoLogs();
 		try {
-			await callTool({ name: 'list_templates', arguments: { orgId: 'org-1' } }, settings());
+			await callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings());
 		} finally {
 			capture.restore();
 		}
 
 		const lines = auditLines(capture.messages);
 		assert.strictEqual(lines.length, 1);
-		assert.ok(lines[0].includes('tool=list_templates'));
+		assert.ok(lines[0].includes('tool=buddy_list_templates'));
 		assert.ok(lines[0].includes('orgId=org-1'));
 		assert.ok(lines[0].includes('outcome=ok'));
 		assert.match(lines[0], /durationMs=\d+/);
@@ -936,7 +939,7 @@ suite('Unit: MCP audit logging', () => {
 		const capture = captureInfoLogs();
 		try {
 			await assert.rejects(
-				callTool({ name: 'list_templates' }, settings()),
+				callTool({ name: 'buddy_list_templates' }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'org_required',
 			);
 		} finally {
@@ -945,7 +948,7 @@ suite('Unit: MCP audit logging', () => {
 
 		const lines = auditLines(capture.messages);
 		assert.strictEqual(lines.length, 1);
-		assert.ok(lines[0].includes('tool=list_templates'));
+		assert.ok(lines[0].includes('tool=buddy_list_templates'));
 		assert.ok(lines[0].includes('orgId=—'));
 		assert.ok(lines[0].includes('outcome=error:org_required'));
 		assert.match(lines[0], /durationMs=\d+/);
@@ -998,7 +1001,7 @@ suite('Unit: MCP audit logging', () => {
 		try {
 			await callTool(
 				{
-					name: 'list_templates',
+					name: 'buddy_list_templates',
 					arguments: {
 						orgId: 'org-1',
 						apiToken: 'audit-secret-token',
@@ -1029,7 +1032,7 @@ suite('Unit: MCP audit logging', () => {
 		try {
 			await callTool(
 				{
-					name: 'rewst_graphql_mutate',
+					name: 'buddy_graphql_mutate',
 					arguments: {
 						orgId: 'org-1',
 						query: 'mutation UpdateThing { updateThing { id } }',
@@ -1045,7 +1048,7 @@ suite('Unit: MCP audit logging', () => {
 
 		const lines = auditLines(capture.messages);
 		assert.strictEqual(lines.length, 1);
-		assert.ok(lines[0].includes('tool=rewst_graphql_mutate'));
+		assert.ok(lines[0].includes('tool=buddy_graphql_mutate'));
 		assert.ok(lines[0].includes('orgId=org-1'));
 		assert.ok(lines[0].includes('outcome=approval_required'));
 	});

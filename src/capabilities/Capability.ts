@@ -20,7 +20,7 @@ export type CapabilityGroup = 'workflow' | 'graphql' | 'workspace' | 'result';
  * The session + org a capability handler runs against. The surface resolves and
  * validates the session before calling run, so handlers can assume it is live.
  * `sessions` is every active session, for org-discovery capabilities that span
- * orgs (e.g. list_orgs) and so do not depend on `session`/`orgId`.
+ * orgs (e.g. buddy_list_orgs) and so do not depend on `session`/`orgId`.
  */
 export interface CapabilityContext {
 	session: Session;
@@ -40,13 +40,17 @@ export interface Capability {
 	access: CapabilityAccess;
 	/** High-risk write capability that has its own MCP exposure toggle. */
 	dangerous?: boolean;
-	/** Exposed as a Cage-Free Rewsty chat tool (vscode-tool protocol). */
+	/**
+	 * Exposed through the legacy VS Code language-model chat tool contribution.
+	 * Cage-Free Rewsty's current Buddy path mirrors MCP descriptors in-process,
+	 * so mcp:true capabilities can still be available there when MCP is enabled.
+	 */
 	chat: boolean;
-	/** Exposed over the MCP server surface. */
+	/** Exposed over the MCP server surface and mirrored by Cage-Free Rewsty's Buddy path. */
 	mcp: boolean;
 	/**
 	 * Whether the capability operates on a specific org. When false (e.g.
-	 * list_orgs), the MCP surface does not require an `orgId` argument and the
+	 * buddy_list_orgs), the MCP surface does not require an `orgId` argument and the
 	 * handler should use `ctx.sessions` rather than `ctx.session`. Defaults to
 	 * org-scoped (true) when omitted.
 	 */

@@ -101,6 +101,13 @@ suite('Unit: workflowTools', () => {
 		assert.match(detail.description, /full.*only when you need task ids, transition ids, or canvas positions/i);
 	});
 
+	test('buddy_workflow_edit spec does not expose task mode or join controls', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.doesNotMatch(spec.description, /\btransitionMode\b|\bjoin\b|FOLLOW_ALL|FOLLOW_FIRST/);
+		assert.match(spec.description, /does not expose parallel task controls/i);
+	});
+
 	suite('normalizePublish()', () => {
 		test('keeps {key,value} array form', () => {
 			assert.deepStrictEqual(normalizePublish([{ key: 'a', value: '1' }]), [{ key: 'a', value: '1' }]);
@@ -196,12 +203,10 @@ suite('Unit: workflowTools', () => {
 			};
 			const w = { ...sampleWorkflow(), tasks: [loaded] };
 			const out = (workflowToInput(w as never, [loaded] as never).tasks as Record<string, unknown>[])[0];
-			// Every advanced setting is present and unchanged on the write payload.
+			// Every advanced setting, including an existing task mode/join, is present and unchanged on the write payload.
 			for (const field of [
 				'description',
-				'transitionMode',
 				'publishResultAs',
-				'join',
 				'timeout',
 				'humanSecondsSaved',
 				'isMocked',
@@ -216,6 +221,8 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(out.input, loaded.input, 'input preserved');
 			assert.deepStrictEqual(out.metadata, loaded.metadata, 'metadata (incl. extra keys) preserved');
 			assert.deepStrictEqual(out.packOverrides, loaded.packOverrides, 'pack override preserved');
+			assert.strictEqual(out.transitionMode, 'FOLLOW_ALL', 'an existing fan-out mode survives the round-trip');
+			assert.strictEqual(out.join, 2, 'an existing join value survives the round-trip');
 		});
 	});
 
@@ -324,13 +331,55 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(leaf.next![0].do, []);
 		});
 
-		test('add_task honors an explicit join (e.g. 0 for a join task)', () => {
+		test('add_task ignores explicit task mode and join settings', () => {
 			const { tasks } = applyOperations(
 				sampleTasks() as never,
-				[{ op: 'add_task', name: 'merge', action: 'core.noop', join: 0 }],
+				[{ op: 'add_task', name: 'merge', action: 'core.noop', transitionMode: 'FOLLOW_ALL', join: 0 }],
 				NOOP_REF,
 			);
-			assert.strictEqual(tasks.find(t => t.name === 'merge')!.join, 0);
+			const merge = tasks.find(t => t.name === 'merge')!;
+			assert.strictEqual(merge.transitionMode, 'FOLLOW_FIRST');
+			assert.strictEqual(merge.join, 1);
+		});
+
+		test('add_task reports back when it drops task mode/join inputs instead of silently ignoring them', () => {
+			const { applied } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'add_task', name: 'merge', action: 'core.noop', transitionMode: 'FOLLOW_ALL', join: 0 }],
+				NOOP_REF,
+			);
+			const line = applied.find(entry => entry.startsWith('add_task merge'));
+			assert.ok(line, 'add_task is logged');
+			assert.match(
+				line!,
+				/ignored transitionMode\/join/,
+				'the dropped parallelism inputs are reported to the model',
+			);
+		});
+
+		test('update_task reports back when it drops task mode/join inputs', () => {
+			const { applied } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'update_task', name: 'start', set: { transitionMode: 'FOLLOW_ALL', join: 2 } }],
+				NO_ACTIONS,
+			);
+			const line = applied.find(entry => entry.startsWith('update_task'));
+			assert.ok(line, 'update_task is logged');
+			assert.match(
+				line!,
+				/ignored transitionMode\/join/,
+				'the dropped parallelism inputs are reported to the model',
+			);
+		});
+
+		test('a clean add_task carries no ignored-input note', () => {
+			const { applied } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'add_task', name: 'leaf', action: 'core.noop' }],
+				NOOP_REF,
+			);
+			const line = applied.find(entry => entry.startsWith('add_task leaf'));
+			assert.ok(line && !/ignored/.test(line), 'no note when no parallelism inputs are passed');
 		});
 
 		test('every existing task is normalized to an explicit FOLLOW_FIRST + join 1 on save', () => {
@@ -354,6 +403,23 @@ suite('Unit: workflowTools', () => {
 			const { tasks } = applyOperations(tasksIn as never, [], NO_ACTIONS);
 			assert.strictEqual(tasks.find(t => t.name === 'start')!.transitionMode, 'FOLLOW_ALL', 'fan-out preserved');
 			assert.strictEqual(tasks.find(t => t.name === 'end')!.join, 0, 'explicit join preserved');
+		});
+
+		test("editing one task never clobbers a sibling task's FOLLOW_ALL fan-out", () => {
+			// The edit resends the whole workflow, so a forced default would silently
+			// rewrite a parallel fan-out the user never touched.
+			const tasksIn = sampleTasks();
+			(tasksIn[0] as { transitionMode?: string }).transitionMode = 'FOLLOW_ALL';
+			const { tasks } = applyOperations(
+				tasksIn as never,
+				[{ op: 'update_task', name: 'end', set: { description: 'touched' } }],
+				NO_ACTIONS,
+			);
+			assert.strictEqual(
+				tasks.find(t => t.name === 'start')!.transitionMode,
+				'FOLLOW_ALL',
+				'the untouched sibling keeps its fan-out',
+			);
 		});
 
 		test('update_task merges set fields', () => {
@@ -424,22 +490,26 @@ suite('Unit: workflowTools', () => {
 			});
 		});
 
-		test('update_task coerces a numeric-string join/timeout and rejects a non-integer', () => {
-			const ok: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { join: '2', timeout: '300' } }];
+		test('update_task ignores task mode and join settings while still coercing timeout', () => {
+			const ok: WorkflowOperation[] = [
+				{ op: 'update_task', name: 'start', set: { transitionMode: 'FOLLOW_ALL', join: '2', timeout: '300' } },
+			];
 			const { tasks } = applyOperations(sampleTasks() as never, ok, NO_ACTIONS);
 			const start = tasks.find(t => t.name === 'start')!;
-			assert.strictEqual(start.join, 2);
+			assert.strictEqual(start.transitionMode, 'FOLLOW_FIRST');
+			assert.strictEqual(start.join, 1);
 			assert.strictEqual(start.timeout, 300);
 			// A direct integer (non-string) is accepted as-is.
-			const ints: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { join: 3, timeout: 400 } }];
+			const ints: WorkflowOperation[] = [
+				{ op: 'update_task', name: 'start', set: { transitionMode: 'FOLLOW_ALL', join: 3, timeout: 400 } },
+			];
 			const direct = applyOperations(sampleTasks() as never, ints, NO_ACTIONS).tasks.find(
 				t => t.name === 'start',
 			)!;
-			assert.strictEqual(direct.join, 3);
+			assert.strictEqual(direct.transitionMode, 'FOLLOW_FIRST');
+			assert.strictEqual(direct.join, 1);
 			assert.strictEqual(direct.timeout, 400);
-			const bad: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { join: 'soon' } }];
-			assert.throws(() => applyOperations(sampleTasks() as never, bad, NO_ACTIONS), /join must be an integer/);
-			// join/timeout are GraphQL Int; a float — number or numeric string — is
+			// timeout is GraphQL Int; a float — number or numeric string — is
 			// rejected, not silently sent.
 			const float: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { timeout: 1.5 } }];
 			assert.throws(
@@ -453,13 +523,13 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('add_task coerces a numeric-string join and a JSON-string with', () => {
+		test('add_task ignores join and parses a JSON-string with', () => {
 			const ops: WorkflowOperation[] = [
 				{ op: 'add_task', name: 'notify', action: 'core.noop', join: '0', with: '{"items": "{{ CTX.x }}"}' },
 			];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
 			const notify = tasks.find(t => t.name === 'notify')!;
-			assert.strictEqual(notify.join, 0);
+			assert.strictEqual(notify.join, 1);
 			assert.deepStrictEqual(notify.with, { items: '{{ CTX.x }}' });
 		});
 
@@ -932,7 +1002,7 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(parsed.edges[0].to, ['end (bb02)'], 'targets carry the id in full view');
 		});
 
-		test('buddy_workflow_get surfaces a deliberate FOLLOW_ALL and non-default join, hides the safe default', async () => {
+		test('buddy_workflow_get hides task mode and join criteria', async () => {
 			const task = (over: Record<string, unknown>) => ({
 				id: String(over.name),
 				actionId: 'x',
@@ -971,10 +1041,10 @@ suite('Unit: workflowTools', () => {
 				),
 			);
 			const byName = (n: string) => parsed.nodes.find((x: { name: string }) => x.name === n);
-			assert.strictEqual(byName('fanout').transitionMode, 'FOLLOW_ALL', 'deliberate FOLLOW_ALL surfaced');
-			assert.strictEqual(byName('merge').join, 0, 'non-default join surfaced');
-			assert.ok(!('transitionMode' in byName('plain')), 'FOLLOW_FIRST default is not surfaced');
-			assert.ok(!('join' in byName('plain')), 'join 1 default is not surfaced');
+			for (const name of ['fanout', 'merge', 'plain']) {
+				assert.ok(!('transitionMode' in byName(name)), `${name} hides transitionMode`);
+				assert.ok(!('join' in byName(name)), `${name} hides join`);
+			}
 		});
 
 		test('buddy_action_search returns ranked matches', async () => {
@@ -1406,12 +1476,12 @@ suite('Unit: workflowTools', () => {
 			assert.ok(out.indexOf('wf-aaa') < out.indexOf('wf-ccc'), 'exact match ranked first');
 		});
 
-		test('buddy_workflow_search caches the index and reuses it on the next search', async () => {
+		test('buddy_workflow_search caches the index and reuses it for the same full query', async () => {
 			const { deps, calls } = makeDeps();
-			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, deps); // builds
-			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'off' } }, deps); // cached
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'off', orgId: 'org-1' } }, deps);
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'off', orgId: 'org-1' } }, deps);
 			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
-			assert.strictEqual(indexCalls, 1, 'the workflow list was fetched once, not per search');
+			assert.strictEqual(indexCalls, 1, 'the workflow list was fetched once for the identical search request');
 		});
 
 		test('buddy_workflow_search refresh rebuilds the index', async () => {
@@ -1431,6 +1501,47 @@ suite('Unit: workflowTools', () => {
 			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, depsB); // switch -> rebuild
 			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
 			assert.strictEqual(indexCalls, 2, 'reused within a session, rebuilt when the session changed');
+		});
+
+		test('buddy_workflow_search reuses the cached index across different full queries in the same session', async () => {
+			const { deps, calls } = makeDeps();
+			// The index spans every org; orgId/query only filter the cached entries, so a
+			// different filter must reuse the index, not re-list every workflow again.
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { orgId: 'org-1' } }, deps);
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { orgId: 'org-2' } }, deps);
+
+			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
+			assert.strictEqual(indexCalls, 1, 'a different filter reuses the all-orgs index');
+		});
+
+		test('buddy_workflow_search refresh rebuilds the shared index for later distinct queries too', async () => {
+			const { deps, calls } = makeDeps();
+			// refresh must invalidate the one shared index, not just the current query's
+			// entry — otherwise a later distinct query keeps returning the stale index
+			// that omits a newly created workflow.
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { orgId: 'org-1' } }, deps);
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { refresh: true } }, deps);
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { orgId: 'org-2' } }, deps);
+
+			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
+			assert.strictEqual(
+				indexCalls,
+				2,
+				'refresh rebuilt the shared index once; the later query reused the rebuild',
+			);
+		});
+
+		test('buddy_workflow_search builds the index once no matter how many distinct queries run', async () => {
+			const { deps, calls } = makeDeps();
+			// The cache is keyed by session scope, not by the query, so many distinct
+			// searches share one index build instead of re-listing every workflow each
+			// time (and never accumulate a per-query cache entry).
+			for (let i = 0; i < 10; i++) {
+				await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: `query-${i}` } }, deps);
+			}
+
+			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
+			assert.strictEqual(indexCalls, 1, 'ten distinct queries reused the one cached all-orgs index');
 		});
 
 		test('buddy_workflow_search scopes to a single org with orgId', async () => {

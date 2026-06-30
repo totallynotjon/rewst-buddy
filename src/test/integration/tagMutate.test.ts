@@ -87,7 +87,7 @@ suite('Integration: tag write tools', function () {
 
 		try {
 			const created = JSON.parse(
-				await cap('create_tag').run({ orgId: targetOrgId, name, color: '#4287f5' }, ctx),
+				await cap('buddy_create_tag').run({ orgId: targetOrgId, name, color: '#4287f5' }, ctx),
 			);
 			assert.strictEqual(created.status, 'created');
 			id = created.id;
@@ -101,14 +101,14 @@ suite('Integration: tag write tools', function () {
 			if (otherOrgId) {
 				const guardCtx: CapabilityContext = { session, orgId: otherOrgId, sessions: [session] };
 				await assert.rejects(
-					() => cap('update_tag').run({ orgId: otherOrgId, tagId: id, name: 'NOPE' }, guardCtx),
+					() => cap('buddy_update_tag').run({ orgId: otherOrgId, tagId: id, name: 'NOPE' }, guardCtx),
 					/is not in org/,
 				);
 				console.log('[itest] org guard refused a cross-org update to', otherOrgId);
 			}
 
 			const updated = JSON.parse(
-				await cap('update_tag').run({ orgId: targetOrgId, tagId: id, color: '#f54242' }, ctx),
+				await cap('buddy_update_tag').run({ orgId: targetOrgId, tagId: id, color: '#f54242' }, ctx),
 			);
 			assert.strictEqual(updated.status, 'updated');
 
@@ -116,7 +116,7 @@ suite('Integration: tag write tools', function () {
 			assert.strictEqual(rows[0].color, '#f54242');
 			assert.strictEqual(rows[0].name, name, 'name preserved when only color changes');
 
-			const deleted = JSON.parse(await cap('delete_tag').run({ orgId: targetOrgId, tagId: id }, ctx));
+			const deleted = JSON.parse(await cap('buddy_delete_tag').run({ orgId: targetOrgId, tagId: id }, ctx));
 			assert.strictEqual(deleted.status, 'deleted');
 			id = undefined;
 

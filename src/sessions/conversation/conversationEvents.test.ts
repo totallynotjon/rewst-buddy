@@ -210,17 +210,17 @@ suite('Unit: ConversationEventMapper', () => {
 			status: 'approval_required',
 			metadata: {
 				requestId: 'req-7',
-				toolCalls: [{ name: 'create_workflow', args: { name: 'Daily' }, id: 'tc-1' }],
+				toolCalls: [{ name: 'buddy_create_workflow', args: { name: 'Daily' }, id: 'tc-1' }],
 			},
 		});
 		assert.deepStrictEqual(events, [
 			{
 				kind: 'approval',
-				tools: [{ name: 'create_workflow', args: { name: 'Daily' }, id: 'tc-1' }],
+				tools: [{ name: 'buddy_create_workflow', args: { name: 'Daily' }, id: 'tc-1' }],
 				requestId: 'req-7',
 				raw: {
 					requestId: 'req-7',
-					toolCalls: [{ name: 'create_workflow', args: { name: 'Daily' }, id: 'tc-1' }],
+					toolCalls: [{ name: 'buddy_create_workflow', args: { name: 'Daily' }, id: 'tc-1' }],
 				},
 			},
 		]);

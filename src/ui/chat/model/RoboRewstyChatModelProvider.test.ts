@@ -243,7 +243,10 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		await harness.run([message(User, [text('check a.txt')])], [READ_FILE_TOOL]);
 
 		assert.ok(harness.captured[0].message.includes('read_file'), 'tool instructions injected');
-		assert.ok(!harness.captured[0].message.includes('search_template_links'), 'Rewst tools are not advertised');
+		assert.ok(
+			!harness.captured[0].message.includes('buddy_search_template_links'),
+			'Rewst tools are not advertised',
+		);
 		assert.ok(!/\bbuddy_/.test(harness.captured[0].message), 'buddy_* tools are not advertised');
 		const calls = callsOf(harness.parts);
 		assert.strictEqual(calls.length, 1);
@@ -306,6 +309,300 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(!out.includes('🔧 **Rewst tool** · `buddy_workflow_get`'), 'not labeled as a backend Rewst tool');
 		assert.ok(out.includes('`{"workflowId":"w1"}`'), 'the args line shows the args alone');
 		assert.ok(!out.includes('buddy_workflow_get {'), 'the args line does not repeat the tool name');
+	});
+
+	test('redirects native Rewst tool activity to the local Buddy tool protocol when Buddy tools are enabled', async () => {
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-1' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: listWorkflow…',
+				activity: true,
+				tool: { name: 'listWorkflow' },
+			},
+			{ kind: 'chunk', text: 'native result that should not stream' },
+			{
+				kind: 'complete',
+				content: 'native result that should not stream',
+				sources: [],
+				conversationId: 'conv-1',
+			},
+		];
+		const buddyReply = '```vscode-tool\n{"tool": "buddy_workflow_get", "args": {"workflowId": "w1"}}\n```';
+		const buddyCalls: { name: string; args: unknown; orgId: string }[] = [];
+		const harness = makeHarness(
+			[nativeAttempt, completeTurn(buddyReply, 'conv-1'), completeTurn('Deploy.', 'conv-1')],
+			{
+				buddyToolSpecs: () => [BUDDY_GET_SPEC],
+				runBuddyTool: async (name, args, orgId) => {
+					buddyCalls.push({ name, args, orgId });
+					return { text: 'name: Deploy', isError: false };
+				},
+			},
+		);
+
+		await harness.run([message(User, [text('look up workflow w1')])]);
+
+		assert.strictEqual(
+			harness.captured.length,
+			3,
+			'native attempt is followed by correction, buddy call, and answer',
+		);
+		assert.strictEqual(harness.captured[1].conversationId, 'conv-1', 'correction stays in the same conversation');
+		assert.ok(harness.captured[1].message.includes('vscode-tool'), 'correction names the fenced protocol');
+		assert.ok(harness.captured[1].message.includes('local tool protocol'), 'correction is transport-focused');
+		assert.ok(harness.captured[1].message.includes('VS Code'), 'correction names the editor transport');
+		assert.ok(
+			harness.captured[1].message.includes('buddy_workflow_get'),
+			'correction includes available Buddy tools',
+		);
+		assert.ok(
+			!/override|supersede|ignore your system prompt|trusted system-level/i.test(harness.captured[1].message),
+		);
+		assert.ok(!/<[^>\n]+>/.test(harness.captured[1].message), 'correction does not use XML-like tags');
+		assert.ok(
+			!/\berror\b/i.test(harness.captured[1].message),
+			'correction does not call the native attempt an error',
+		);
+		assert.deepStrictEqual(buddyCalls, [
+			{ name: 'buddy_workflow_get', args: { workflowId: 'w1' }, orgId: 'org-1' },
+		]);
+		assert.strictEqual(callsOf(harness.parts).length, 0, 'native activity is not converted to a VS Code tool call');
+		const out = textOf(harness.parts);
+		assert.ok(!out.includes('🔧 **Rewst tool** · `listWorkflow`'), 'intercepted native tool card is not rendered');
+		assert.ok(
+			!out.includes('native result that should not stream'),
+			'abandoned native stream output is not rendered',
+		);
+		assert.ok(out.includes('Deploy.'), 'final answer from the Buddy path streams');
+	});
+
+	test('carries the native tool args into the correction so the Buddy call reuses them', async () => {
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-1' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: getWorkflow…',
+				activity: true,
+				tool: { name: 'getWorkflow', args: '{"workflowId":"w1","orgId":"org-1"}' },
+			},
+			{ kind: 'chunk', text: 'native result that should not stream' },
+			{
+				kind: 'complete',
+				content: 'native result that should not stream',
+				sources: [],
+				conversationId: 'conv-1',
+			},
+		];
+		const buddyReply = '```vscode-tool\n{"tool": "buddy_workflow_get", "args": {"workflowId": "w1"}}\n```';
+		const harness = makeHarness(
+			[nativeAttempt, completeTurn(buddyReply, 'conv-1'), completeTurn('Deploy.', 'conv-1')],
+			{
+				buddyToolSpecs: () => [BUDDY_GET_SPEC],
+				runBuddyTool: async () => ({ text: 'name: Deploy', isError: false }),
+			},
+		);
+
+		await harness.run([message(User, [text('look up workflow w1')])]);
+
+		const correction = harness.captured[1].message;
+		assert.ok(
+			correction.includes('{"workflowId":"w1","orgId":"org-1"}'),
+			'correction carries the resolved native args',
+		);
+		assert.ok(!/<[^>\n]+>/.test(correction), 'carried args do not introduce XML-like tags');
+	});
+
+	test('redirects a server-side Rewst tool even when VS Code already supplied every Buddy tool natively', async () => {
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-1' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: listWorkflow…',
+				activity: true,
+				tool: { name: 'listWorkflow' },
+			},
+			{ kind: 'chunk', text: 'native result that should not stream' },
+			{
+				kind: 'complete',
+				content: 'native result that should not stream',
+				sources: [],
+				conversationId: 'conv-1',
+			},
+		];
+		// The corrected turn requests the natively-supplied Buddy tool via a fenced block.
+		const buddyReply = '```vscode-tool\n{"tool": "buddy_workflow_get", "args": {"workflowId": "w1"}}\n```';
+		const harness = makeHarness([nativeAttempt, completeTurn(buddyReply, 'conv-1')], {
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+		});
+		// VS Code passes buddy_workflow_get natively (under the 128-tool cap), so the
+		// in-process Buddy spec is filtered out — yet the local path still exists.
+		const buddyNativeTool: vscode.LanguageModelChatTool = {
+			name: 'buddy_workflow_get',
+			description: 'Fetch a workflow',
+			inputSchema: { type: 'object' },
+		};
+
+		await harness.run([message(User, [text('look up workflow w1')])], [buddyNativeTool]);
+
+		assert.strictEqual(
+			harness.captured.length,
+			2,
+			'a server-side Rewst tool is still redirected when the Buddy tool is native',
+		);
+		assert.ok(
+			harness.captured[1].message.includes('buddy_workflow_get'),
+			'correction names the natively-supplied Buddy tool',
+		);
+		const calls = callsOf(harness.parts);
+		assert.strictEqual(calls.length, 1, 'the redirected fenced request becomes a native VS Code tool call');
+		assert.strictEqual(calls[0].name, 'buddy_workflow_get');
+		const out = textOf(harness.parts);
+		assert.ok(!out.includes('🔧 **Rewst tool** · `listWorkflow`'), 'intercepted native tool card is not rendered');
+		assert.ok(
+			!out.includes('native result that should not stream'),
+			'abandoned native stream output is not rendered',
+		);
+	});
+
+	test('does not redirect native Rewst tool activity when Buddy tools are disabled', async () => {
+		const harness = makeHarness([
+			[
+				{ kind: 'conversation', conversationId: 'conv-1' },
+				{
+					kind: 'status',
+					label: 'Running Rewst tool: listWorkflow…',
+					activity: true,
+					tool: { name: 'listWorkflow' },
+				},
+				{ kind: 'chunk', text: 'native answer' },
+				{ kind: 'complete', content: 'native answer', sources: [], conversationId: 'conv-1' },
+			],
+		]);
+
+		await harness.run([message(User, [text('look up workflow w1')])]);
+
+		assert.strictEqual(harness.captured.length, 1, 'no correction turn is sent without Buddy tools');
+		const out = textOf(harness.parts);
+		assert.ok(out.includes('🔧 **Rewst tool** · `listWorkflow`'), 'native activity remains visible');
+		assert.ok(out.includes('native answer'), 'native answer still streams');
+	});
+
+	test('redirects any native Rewst tool status even if the activity flag is omitted', async () => {
+		const buddyReply = '```vscode-tool\n{"tool": "buddy_workflow_get", "args": {"workflowId": "w1"}}\n```';
+		const harness = makeHarness(
+			[
+				[
+					{ kind: 'conversation', conversationId: 'conv-1' },
+					{
+						kind: 'status',
+						label: 'Running Rewst tool: listWorkflow…',
+						tool: { name: 'listWorkflow' },
+					},
+					{ kind: 'chunk', text: 'native result that should not stream' },
+					{
+						kind: 'complete',
+						content: 'native result that should not stream',
+						sources: [],
+						conversationId: 'conv-1',
+					},
+				],
+				completeTurn(buddyReply, 'conv-1'),
+				completeTurn('Deploy.', 'conv-1'),
+			],
+			{
+				buddyToolSpecs: () => [BUDDY_GET_SPEC],
+				runBuddyTool: async () => ({ text: 'name: Deploy', isError: false }),
+			},
+		);
+
+		await harness.run([message(User, [text('look up workflow w1')])]);
+
+		assert.strictEqual(harness.captured.length, 3, 'status.tool is enough to trigger a correction');
+		assert.ok(harness.captured[1].message.includes('buddy_workflow_get'), 'correction names Buddy tools');
+		const out = textOf(harness.parts);
+		assert.ok(!out.includes('🔧 **Rewst tool** · `listWorkflow`'), 'intercepted native tool card is not rendered');
+		assert.ok(
+			!out.includes('native result that should not stream'),
+			'abandoned native stream output is not rendered',
+		);
+		assert.ok(out.includes('Deploy.'), 'final answer from the Buddy path streams');
+	});
+
+	test('stops after a repeated native Rewst tool attempt while Buddy tools are enabled', async () => {
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-1' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: listWorkflow…',
+				activity: true,
+				tool: { name: 'listWorkflow' },
+			},
+			{ kind: 'chunk', text: 'ignored' },
+			{ kind: 'complete', content: 'ignored', sources: [], conversationId: 'conv-1' },
+		];
+		let buddyRan = false;
+		const harness = makeHarness([nativeAttempt, nativeAttempt, completeTurn('unreachable', 'conv-1')], {
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+			runBuddyTool: async () => {
+				buddyRan = true;
+				return { text: '', isError: false };
+			},
+		});
+
+		await harness.run([message(User, [text('look up workflow w1')])]);
+
+		assert.strictEqual(harness.captured.length, 2, 'one correction is attempted, then the loop stops');
+		assert.strictEqual(buddyRan, false, 'no local Buddy tool runs without a fenced Buddy request');
+		assert.strictEqual(callsOf(harness.parts).length, 0, 'no VS Code tool call is emitted for native activity');
+		const out = visibleText(harness.parts);
+		assert.ok(out.includes('Stopped after a server-side Rewst tool was requested again'), 'stop note is visible');
+		assert.ok(!out.includes('unreachable'), 'no third backend turn is started');
+	});
+
+	test('a downgrade after a native-tool redirect resets the redirect budget for the fresh attempt', async () => {
+		// One redirect happens on the reuse turn; that turn then errors and downgrades
+		// to a fresh stateless attempt. The native tool in the fresh attempt is the
+		// first of that attempt and must redirect again, not hit the "requested again"
+		// stop left over from the abandoned reuse turn.
+		const nativeStatus: ConversationEvent[] = [
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: listWorkflow…',
+				activity: true,
+				tool: { name: 'listWorkflow' },
+			},
+		];
+		const harness = makeHarness(
+			[
+				completeTurn('Hello', 'conv-1'), // run 1: establishes conv-1 for reuse
+				nativeStatus, // run 2 reuse attempt: native tool → redirect #1
+				[{ kind: 'error', message: 'conversation not found' }], // correction turn errors → downgrade
+				nativeStatus, // fresh stateless attempt: native tool again
+				completeTurn('Recovered via Buddy.'), // stateless correction turn answers
+			],
+			{ buddyToolSpecs: () => [BUDDY_GET_SPEC] },
+		);
+		harness.wrapper.when('deleteConversation', { data: { deleteConversation: 'conv-1' } });
+
+		await harness.run([message(User, [text('hi')])]);
+		await harness.run([
+			message(User, [text('hi')]),
+			message(Assistant, [text('Hello')]),
+			message(User, [text('next')]),
+		]);
+
+		const out = visibleText(harness.parts);
+		assert.ok(
+			!out.includes('Stopped after a server-side Rewst tool was requested again'),
+			'the fresh stateless attempt is not aborted by a stale redirect flag',
+		);
+		assert.ok(out.includes('Recovered via Buddy.'), 'the downgraded attempt redirects again and reaches an answer');
+		const lastSent = harness.captured[harness.captured.length - 1];
+		assert.ok(
+			lastSent.message.includes('local tool protocol'),
+			'a fresh correction was sent for the stateless native tool',
+		);
 	});
 
 	suite('truncateArgsLabel()', () => {
@@ -713,6 +1010,27 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(
 			!harness.captured[1].message.includes('# Rewst Buddy VS Code Context'),
 			'a reused turn does not re-send the directive (the conversation already has it)',
+		);
+	});
+
+	test('the opening stateless message includes the current Rewst user email metadata', async () => {
+		const harness = makeHarness([completeTurn('Hello', 'conv-1'), completeTurn('Again', 'conv-1')]);
+		await harness.run([message(User, [text('hi')])]);
+		assert.match(harness.captured[0].message, /Current Rewst user email: test-user@example\.com/);
+		assert.ok(
+			harness.captured[0].message.indexOf('Current Rewst user email') <
+				harness.captured[0].message.indexOf('<visible_chat_transcript>'),
+			'metadata appears before the visible transcript',
+		);
+
+		await harness.run([
+			message(User, [text('hi')]),
+			message(Assistant, [text('Hello')]),
+			message(User, [text('next')]),
+		]);
+		assert.ok(
+			!harness.captured[1].message.includes('Current Rewst user email'),
+			'a reused turn does not re-send opening metadata',
 		);
 	});
 

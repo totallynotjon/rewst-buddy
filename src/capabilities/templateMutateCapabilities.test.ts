@@ -37,9 +37,9 @@ suite('Unit: templateMutateCapabilities', () => {
 		_resetMcpMutationApproverForTesting();
 	});
 
-	suite('create_template', () => {
+	suite('buddy_create_template', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
-			const c = cap('create_template');
+			const c = cap('buddy_create_template');
 			assert.strictEqual(c.access, 'write');
 			assert.strictEqual(c.mcp, true);
 			assert.strictEqual(c.chat, false);
@@ -53,7 +53,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('create_template').run(
+			const output = await cap('buddy_create_template').run(
 				{ orgId: 'org-sandbox', name: 'My Template', body: 'hello' },
 				ctx,
 			);
@@ -77,7 +77,7 @@ suite('Unit: templateMutateCapabilities', () => {
 				return true;
 			});
 
-			await cap('create_template').run({ orgId: 'org-sandbox', name: 'Greeting', body: '' }, ctx);
+			await cap('buddy_create_template').run({ orgId: 'org-sandbox', name: 'Greeting', body: '' }, ctx);
 
 			assert.strictEqual(seenScope?.orgId, 'org-sandbox');
 			assert.strictEqual(seenScope?.orgName, 'Sandbox');
@@ -89,7 +89,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			const { ctx, wrapper } = sandboxCtx();
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('create_template').run(
+			const output = await cap('buddy_create_template').run(
 				{ orgId: 'org-sandbox', name: 'My Template', body: 'hello' },
 				ctx,
 			);
@@ -103,11 +103,11 @@ suite('Unit: templateMutateCapabilities', () => {
 			wrapper.when('createTemplateMinimal', { data: Fixtures.createTemplateMinimalMutation({ id: 't-blank' }) });
 			setMcpMutationApprover(async () => true);
 
-			await cap('create_template').run({ orgId: 'org-sandbox', name: 'Blank', body: '' }, ctx);
+			await cap('buddy_create_template').run({ orgId: 'org-sandbox', name: 'Blank', body: '' }, ctx);
 			assert.strictEqual(wrapper.getCallsFor('createTemplateMinimal')[0].variables!.body, '');
 
 			await assert.rejects(
-				() => cap('create_template').run({ orgId: 'org-sandbox', name: 'No Body' }, ctx),
+				() => cap('buddy_create_template').run({ orgId: 'org-sandbox', name: 'No Body' }, ctx),
 				/Missing required string argument "body"/,
 			);
 		});
@@ -121,7 +121,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('create_template').run({ orgId: 'org-sandbox', name: '   ', body: 'x' }, ctx),
+				() => cap('buddy_create_template').run({ orgId: 'org-sandbox', name: '   ', body: 'x' }, ctx),
 				/Missing required string argument "name"/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -129,9 +129,9 @@ suite('Unit: templateMutateCapabilities', () => {
 		});
 	});
 
-	suite('update_template_body', () => {
+	suite('buddy_update_template_body', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
-			const c = cap('update_template_body');
+			const c = cap('buddy_update_template_body');
 			assert.strictEqual(c.access, 'write');
 			assert.strictEqual(c.mcp, true);
 			assert.strictEqual(c.chat, false);
@@ -149,7 +149,7 @@ suite('Unit: templateMutateCapabilities', () => {
 				});
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('update_template_body').run(
+			const output = await cap('buddy_update_template_body').run(
 				{ orgId: 'org-sandbox', templateId: 't-1', body: 'new body' },
 				ctx,
 			);
@@ -172,7 +172,8 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('update_template_body').run({ orgId: 'org-sandbox', templateId: 't-1', body: 'x' }, ctx),
+				() =>
+					cap('buddy_update_template_body').run({ orgId: 'org-sandbox', templateId: 't-1', body: 'x' }, ctx),
 				/Template t-1 is not in org org-sandbox/,
 			);
 			// The org check runs before any prompt or mutation: fail closed.
@@ -187,7 +188,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('update_template_body').run(
+			const output = await cap('buddy_update_template_body').run(
 				{ orgId: 'org-sandbox', templateId: 't-1', body: 'x' },
 				ctx,
 			);
@@ -207,11 +208,11 @@ suite('Unit: templateMutateCapabilities', () => {
 				});
 			setMcpMutationApprover(async () => true);
 
-			await cap('update_template_body').run({ orgId: 'org-sandbox', templateId: 't-1', body: '' }, ctx);
+			await cap('buddy_update_template_body').run({ orgId: 'org-sandbox', templateId: 't-1', body: '' }, ctx);
 			assert.strictEqual(wrapper.getCallsFor('updateTemplateBody')[0].variables!.body, '');
 
 			await assert.rejects(
-				() => cap('update_template_body').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx),
+				() => cap('buddy_update_template_body').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx),
 				/Missing required string argument "body"/,
 			);
 		});
@@ -225,7 +226,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('update_template_body').run({ orgId: 'org-sandbox', templateId: '  ', body: 'x' }, ctx),
+				() => cap('buddy_update_template_body').run({ orgId: 'org-sandbox', templateId: '  ', body: 'x' }, ctx),
 				/Missing required string argument "templateId"/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -234,9 +235,9 @@ suite('Unit: templateMutateCapabilities', () => {
 		});
 	});
 
-	suite('rename_template', () => {
+	suite('buddy_rename_template', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
-			const c = cap('rename_template');
+			const c = cap('buddy_rename_template');
 			assert.strictEqual(c.access, 'write');
 			assert.strictEqual(c.mcp, true);
 			assert.strictEqual(c.chat, false);
@@ -257,7 +258,7 @@ suite('Unit: templateMutateCapabilities', () => {
 				});
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('rename_template').run(
+			const output = await cap('buddy_rename_template').run(
 				{ orgId: 'org-sandbox', templateId: 't-1', name: 'New Name' },
 				ctx,
 			);
@@ -282,7 +283,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('rename_template').run({ orgId: 'org-sandbox', templateId: 't-1', name: 'X' }, ctx),
+				() => cap('buddy_rename_template').run({ orgId: 'org-sandbox', templateId: 't-1', name: 'X' }, ctx),
 				/Template t-1 is not in org org-sandbox/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -296,7 +297,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('rename_template').run(
+			const output = await cap('buddy_rename_template').run(
 				{ orgId: 'org-sandbox', templateId: 't-1', name: 'New Name' },
 				ctx,
 			);
@@ -314,7 +315,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('rename_template').run({ orgId: 'org-sandbox', templateId: 't-1', name: '  ' }, ctx),
+				() => cap('buddy_rename_template').run({ orgId: 'org-sandbox', templateId: 't-1', name: '  ' }, ctx),
 				/Missing required string argument "name"/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -323,9 +324,9 @@ suite('Unit: templateMutateCapabilities', () => {
 		});
 	});
 
-	suite('delete_template', () => {
+	suite('buddy_delete_template', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
-			const c = cap('delete_template');
+			const c = cap('buddy_delete_template');
 			assert.strictEqual(c.access, 'write');
 			assert.strictEqual(c.mcp, true);
 			assert.strictEqual(c.chat, false);
@@ -341,7 +342,7 @@ suite('Unit: templateMutateCapabilities', () => {
 				.when('deleteTemplate', { data: { __typename: 'Mutation', deleteTemplate: 't-1' } });
 			setMcpMutationApprover(async () => true);
 
-			const output = await cap('delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx);
+			const output = await cap('buddy_delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx);
 
 			assert.strictEqual(wrapper.getCallsFor('deleteTemplate').length, 1);
 			assert.deepStrictEqual(wrapper.getCallsFor('deleteTemplate')[0].variables, { id: 't-1' });
@@ -362,7 +363,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx),
+				() => cap('buddy_delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx),
 				/Template t-1 is not in org org-sandbox/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -376,7 +377,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 			setMcpMutationApprover(async () => false);
 
-			const output = await cap('delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx);
+			const output = await cap('buddy_delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx);
 
 			assert.strictEqual(wrapper.getCallsFor('deleteTemplate').length, 0);
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
@@ -391,7 +392,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			});
 
 			await assert.rejects(
-				() => cap('delete_template').run({ orgId: 'org-sandbox', templateId: '  ' }, ctx),
+				() => cap('buddy_delete_template').run({ orgId: 'org-sandbox', templateId: '  ' }, ctx),
 				/Missing required string argument "templateId"/,
 			);
 			assert.strictEqual(approverCalled, false);
@@ -408,7 +409,7 @@ suite('Unit: templateMutateCapabilities', () => {
 			wrapper.when('createTemplateMinimal', { error: new Error('boom') });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('create_template').run({ orgId: 'org-sandbox', name: 'X', body: '' }, ctx),
+				() => cap('buddy_create_template').run({ orgId: 'org-sandbox', name: 'X', body: '' }, ctx),
 				/boom/,
 			);
 		});
@@ -418,43 +419,44 @@ suite('Unit: templateMutateCapabilities', () => {
 			wrapper.when('createTemplateMinimal', { data: { __typename: 'Mutation', template: null } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('create_template').run({ orgId: 'org-sandbox', name: 'X', body: '' }, ctx),
+				() => cap('buddy_create_template').run({ orgId: 'org-sandbox', name: 'X', body: '' }, ctx),
 				/returned no template/,
 			);
 		});
 
-		test('update_template_body throws when no template is returned', async () => {
+		test('buddy_update_template_body throws when no template is returned', async () => {
 			const { ctx, wrapper } = sandboxCtx();
 			wrapper
 				.when('getTemplate', inOrg())
 				.when('updateTemplateBody', { data: { __typename: 'Mutation', template: null } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('update_template_body').run({ orgId: 'org-sandbox', templateId: 't-1', body: 'x' }, ctx),
+				() =>
+					cap('buddy_update_template_body').run({ orgId: 'org-sandbox', templateId: 't-1', body: 'x' }, ctx),
 				/returned no template/,
 			);
 		});
 
-		test('rename_template throws when no template is returned', async () => {
+		test('buddy_rename_template throws when no template is returned', async () => {
 			const { ctx, wrapper } = sandboxCtx();
 			wrapper
 				.when('getTemplate', inOrg())
 				.when('updateTemplateName', { data: { __typename: 'Mutation', template: null } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('rename_template').run({ orgId: 'org-sandbox', templateId: 't-1', name: 'New' }, ctx),
+				() => cap('buddy_rename_template').run({ orgId: 'org-sandbox', templateId: 't-1', name: 'New' }, ctx),
 				/returned no template/,
 			);
 		});
 
-		test('delete_template throws when no id is returned', async () => {
+		test('buddy_delete_template throws when no id is returned', async () => {
 			const { ctx, wrapper } = sandboxCtx();
 			wrapper
 				.when('getTemplate', inOrg())
 				.when('deleteTemplate', { data: { __typename: 'Mutation', deleteTemplate: null } });
 			setMcpMutationApprover(async () => true);
 			await assert.rejects(
-				() => cap('delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx),
+				() => cap('buddy_delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx),
 				/returned no id/,
 			);
 		});

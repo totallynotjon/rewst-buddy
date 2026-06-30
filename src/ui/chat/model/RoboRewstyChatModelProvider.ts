@@ -92,6 +92,58 @@ function withDeferredToolsNote(
 	return `${message}\n\nOther tool requests in that reply were not run here (${list}). Re-request any you still need in a separate reply.`;
 }
 
+type StatusEvent = Extract<ConversationEvent, { kind: 'status' }>;
+type NativeRewstToolStatus = StatusEvent & { tool: NonNullable<StatusEvent['tool']> };
+
+function shouldRedirectNativeRewstTool(
+	status: StatusEvent,
+	buddyNames: ReadonlySet<string>,
+): status is NativeRewstToolStatus {
+	return status.tool !== undefined && buddyNames.size > 0;
+}
+
+function formatInlineName(name: string): string {
+	const safe = name.replace(/[`\r\n<>]/g, '').trim();
+	return safe ? `\`${safe}\`` : '`unknown`';
+}
+
+function formatBuddyToolList(specs: readonly ToolSpec[], limit = 12): string {
+	const shown = specs.slice(0, limit).map(spec => formatInlineName(spec.name));
+	const remaining = specs.length - shown.length;
+	return remaining > 0 ? `${shown.join(', ')}, and ${remaining} more` : shown.join(', ');
+}
+
+/** Inline, XML-tag-free rendering of the native tool's already-compact args for the correction prompt. */
+function sanitizeArgsForPrompt(args: string): string {
+	return args.replace(/[`<>]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function buildNativeToBuddyCorrection(tool: NativeRewstToolStatus['tool'], buddySpecs: readonly ToolSpec[]): string {
+	const names = formatBuddyToolList(buddySpecs);
+	const sanitizedArgs = tool.args ? sanitizeArgsForPrompt(tool.args) : '';
+	const lines = [
+		`Transport note: the previous server-side Rewst tool status was for ${formatInlineName(tool.name)}.`,
+	];
+	if (sanitizedArgs) {
+		// Carry the arguments the backend already resolved so the redirected turn
+		// reuses those ids/filters in the Buddy call instead of rediscovering them.
+		lines.push(`Those arguments were: ${sanitizedArgs}`);
+	}
+	lines.push(
+		'Continue with the local tool protocol: request local Buddy tools by writing fenced `vscode-tool` JSON blocks so VS Code can route them through the extension and apply its normal approval and sandbox flow.',
+		`Available buddy_* tool names this turn: ${names}.`,
+		'If one of those tools is needed, reply with the `vscode-tool` block only; otherwise answer from the current conversation.',
+	);
+	return lines.join('\n');
+}
+
+function rewstUserEmailMetadata(session: Session): string {
+	const username = session.profile.user.username;
+	if (typeof username !== 'string') return '';
+	const email = username.replace(/[\r\n]+/g, ' ').trim();
+	return email ? `Rewst session metadata:\nCurrent Rewst user email: ${email}` : '';
+}
+
 /**
  * Native Rewst tools run server-side, so they can't be true VS Code tool cards
  * (no invocation round-trip). A tool status renders as a compact card-like
@@ -251,8 +303,15 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		// VS Code's 128-tool cap on options.tools. A name VS Code already passed this
 		// turn stays on the native path (keeping its built-in approval card) and is
 		// dropped here to avoid a duplicate advertisement.
-		const buddySpecs = this.deps.buddyToolSpecs().filter(spec => !vscodeNames.has(spec.name));
+		const allBuddySpecs = this.deps.buddyToolSpecs();
+		const buddySpecs = allBuddySpecs.filter(spec => !vscodeNames.has(spec.name));
 		const buddyNames = new Set(buddySpecs.map(spec => spec.name));
+		// Redirecting a server-side Rewst tool to the local path keys off ALL
+		// advertised Buddy tools, not just the in-process subset: when VS Code has
+		// already supplied every Buddy tool natively, buddySpecs is empty yet the
+		// local Buddy path still exists, so the native Rewst tool must still be
+		// redirected (its fenced request then routes back through VS Code natively).
+		const allBuddyNames = new Set(allBuddySpecs.map(spec => spec.name));
 		const permittedNames = new Set<string>([...vscodeNames, ...buddyNames]);
 		const advertisedSpecs = [...chatToolSpecs(tools), ...buddySpecs];
 		const { customInstructions, conversationType, showActivity, maxBuddyToolRounds } = this.deps.aiConfig();
@@ -327,6 +386,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				),
 			);
 		};
+		let redirectedNativeRewstTool = false;
 		// Outer loop: a reuse turn that the backend can't follow downgrades to
 		// a fresh, stateless turn ONCE. The first attempt reuses when recovery
 		// found a conversation; the retry always starts fresh.
@@ -334,6 +394,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			const reusing = conversationId !== undefined;
 			const reusedId = conversationId;
 			let message = await this.buildTurnMessage(
+				session,
 				!reusing,
 				messages,
 				trailingResults,
@@ -370,6 +431,22 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 						case 'registered':
 							break;
 						case 'status':
+							if (shouldRedirectNativeRewstTool(event, allBuddyNames)) {
+								if (redirectedNativeRewstTool) {
+									emitText(gate.push(''));
+									needsSeparator = true;
+									emitText(
+										'*Stopped after a server-side Rewst tool was requested again. Ask again to continue with the local Buddy tools.*\n',
+									);
+									storeContinuity([]);
+									emitBreadcrumb();
+									return;
+								}
+								redirectedNativeRewstTool = true;
+								message = buildNativeToBuddyCorrection(event.tool, allBuddySpecs);
+								needsSeparator = true;
+								continue turns;
+							}
 							// Only surface real steps; skip thinking/summarizing churn.
 							if (event.activity) emitStatus(event, gate);
 							break;
@@ -521,6 +598,9 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			emittedText = '';
 			needsSeparator = trailingResults !== undefined;
 			lastStatusLabel = undefined;
+			// The stateless retry is a fresh attempt, so its first native tool should
+			// get its own redirect rather than the abandoned reuse turn's stop.
+			redirectedNativeRewstTool = false;
 		}
 	}
 
@@ -562,6 +642,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 
 	/** Build this attempt's message: stateless full transcript, or a lean reuse turn. */
 	private async buildTurnMessage(
+		session: Session,
 		stateless: boolean,
 		messages: readonly vscode.LanguageModelChatRequestMessage[],
 		trailingResults: ReturnType<typeof extractTrailingToolResults>,
@@ -570,7 +651,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		permittedNames: ReadonlySet<string>,
 		specs: readonly ToolSpec[],
 	): Promise<string> {
-		if (stateless) return this.buildStatelessMessage(messages, customInstructions, permittedNames, specs);
+		if (stateless) return this.buildStatelessMessage(session, messages, customInstructions, permittedNames, specs);
 		if (trailingResults) return formatToolResultsMessage(trailingResults, toolCalls ?? new Map());
 		return this.buildReuseMessage(messages, customInstructions, permittedNames, specs);
 	}
@@ -607,12 +688,15 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 	}
 
 	private async buildStatelessMessage(
+		session: Session,
 		messages: readonly vscode.LanguageModelChatRequestMessage[],
 		customInstructions: string,
 		permittedNames: ReadonlySet<string>,
 		specs: readonly ToolSpec[],
 	): Promise<string> {
 		let message = prependInstructions(serializeVisibleChat(messages), customInstructions);
+		const metadata = rewstUserEmailMetadata(session);
+		if (metadata) message = `${metadata}\n\n${message}`;
 		const root = this.deps.workspaceRoot();
 		if (root) message += `\n\nThe user's VS Code working directory: ${root}`;
 		if (specs.length > 0) message += `\n\n${this.cachedToolInstructions(specs)}`;

@@ -26,7 +26,7 @@ export function requestMcpMutationApproval(scope: MutationScope, operation: stri
 }
 
 const graphqlMutateSpec: ToolSpec = {
-	name: 'rewst_graphql_mutate',
+	name: 'buddy_graphql_mutate',
 	args: '{"orgId": string, "query": string, "variables"?: object, "scopeId": string, "scopeName": string, "orgName"?: string}',
 	description:
 		"Run an arbitrary GraphQL mutation against one Rewst organization with the user's session. The dangerous GraphQL mutation setting must be enabled. The request includes the mutation document, optional variables, and the Rewst resource scope that VS Code uses for approval.",
@@ -88,7 +88,7 @@ async function runGraphqlMutate(input: Record<string, unknown>, ctx: CapabilityC
 		throw new Error('Subscriptions are not supported; this tool runs mutations only.');
 	}
 	if (kind === 'query') {
-		throw new Error('This tool runs mutations only; use rewst_graphql_query for read-only queries.');
+		throw new Error('This tool runs mutations only; use buddy_graphql_query for read-only queries.');
 	}
 
 	const scopeId = requireTrimmedString(input, 'scopeId');

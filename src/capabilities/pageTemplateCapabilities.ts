@@ -11,10 +11,10 @@ const LIST_SITES_QUERY = `query($orgId: ID!){ sites(where:{ orgId:$orgId }){ id 
 const LIST_JINJA_FILTERS_QUERY = `query{ jinjaFiltersDocumentation { name signature } }`;
 
 const searchTemplatesSpec: ToolSpec = {
-	name: 'search_templates',
+	name: 'buddy_search_templates',
 	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
-		'Search templates in one Rewst organization by name substring (case-insensitive), newest first (id, name, language, contentType, updatedAt). Use get_template for a full body.',
+		'Search templates in one Rewst organization by name substring (case-insensitive), newest first (id, name, language, contentType, updatedAt). Use buddy_get_template for a full body.',
 	inputSchema: {
 		type: 'object',
 		properties: {
@@ -27,7 +27,7 @@ const searchTemplatesSpec: ToolSpec = {
 };
 
 const listPagesSpec: ToolSpec = {
-	name: 'list_pages',
+	name: 'buddy_list_pages',
 	args: '{"orgId": string, "limit"?: number}',
 	description: 'List App Platform pages in one Rewst organization (id, name, path, siteId).',
 	inputSchema: {
@@ -41,7 +41,7 @@ const listPagesSpec: ToolSpec = {
 };
 
 const listSitesSpec: ToolSpec = {
-	name: 'list_sites',
+	name: 'buddy_list_sites',
 	args: '{"orgId": string}',
 	description:
 		'List App Platform sites in one Rewst organization (id, name, domain, isLive). Returns all sites (this field has no pagination).',
@@ -49,7 +49,7 @@ const listSitesSpec: ToolSpec = {
 };
 
 const listJinjaFiltersSpec: ToolSpec = {
-	name: 'list_jinja_filters',
+	name: 'buddy_list_jinja_filters',
 	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
 		'List Rewst available Jinja filters with their signatures (global catalog, ~100 entries). Optionally filter by a name substring. Use this instead of the broken singular jinjaFilterDocumentation.',

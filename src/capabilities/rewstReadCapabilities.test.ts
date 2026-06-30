@@ -27,7 +27,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		initTestEnvironment();
 	});
 
-	test('list_workflows uses workflows query, maps name search, and parses workflows results', async () => {
+	test('buddy_list_workflows uses workflows query, maps name search, and parses workflows results', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -43,8 +43,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const listWorkflows = getCapability('list_workflows');
-		assert.ok(listWorkflows, 'list_workflows is registered');
+		const listWorkflows = getCapability('buddy_list_workflows');
+		assert.ok(listWorkflows, 'buddy_list_workflows is registered');
 
 		const output = await listWorkflows.run({ orgId: 'org-1', search: 'foo', limit: 25 }, {
 			session,
@@ -60,7 +60,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.ok(output.includes('Foo workflow (wf-1) — Found by search'));
 	});
 
-	test('list_org_variables uses masked orgVariables query, maps name search, and formats variables', async () => {
+	test('buddy_list_org_variables uses masked orgVariables query, maps name search, and formats variables', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -77,8 +77,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const listOrgVariables = getCapability('list_org_variables');
-		assert.ok(listOrgVariables, 'list_org_variables is registered');
+		const listOrgVariables = getCapability('buddy_list_org_variables');
+		assert.ok(listOrgVariables, 'buddy_list_org_variables is registered');
 
 		const output = await listOrgVariables.run({ orgId: 'org-1', search: 'term', limit: 10 }, {
 			session,
@@ -94,7 +94,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.ok(output.includes('api_key = ********  [secret, cascade]'));
 	});
 
-	test('find_action flattens pack actions, caps output, falls back to name, and includes pack names', async () => {
+	test('buddy_find_action flattens pack actions, caps output, falls back to name, and includes pack names', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -137,8 +137,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const findAction = getCapability('find_action');
-		assert.ok(findAction, 'find_action is registered');
+		const findAction = getCapability('buddy_find_action');
+		assert.ok(findAction, 'buddy_find_action is registered');
 
 		const output = await findAction.run({ orgId: 'org-1', filter: 'ticket', limit: 2 }, {
 			session,
@@ -155,7 +155,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.ok(!output.includes('ticket_close (action-3)'), 'output is capped to the requested limit');
 	});
 
-	test('resolve_reference uses localReferenceOptions query, forwards model and search, and formats options', async () => {
+	test('buddy_resolve_reference uses localReferenceOptions query, forwards model and search, and formats options', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -170,8 +170,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const resolveReference = getCapability('resolve_reference');
-		assert.ok(resolveReference, 'resolve_reference is registered');
+		const resolveReference = getCapability('buddy_resolve_reference');
+		assert.ok(resolveReference, 'buddy_resolve_reference is registered');
 
 		const output = await resolveReference.run({ orgId: 'org-1', modelType: 'Workflow', search: 'foo', limit: 25 }, {
 			session,
@@ -187,11 +187,11 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.strictEqual(output, 'Foo workflow (wf-1)');
 	});
 
-	test('resolve_reference rejects invalid model types', async () => {
+	test('buddy_resolve_reference rejects invalid model types', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
-		const resolveReference = getCapability('resolve_reference');
-		assert.ok(resolveReference, 'resolve_reference is registered');
+		const resolveReference = getCapability('buddy_resolve_reference');
+		assert.ok(resolveReference, 'buddy_resolve_reference is registered');
 
 		await assert.rejects(
 			() =>
@@ -204,7 +204,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		);
 	});
 
-	test('list_workflow_executions uses workflowExecutions query, maps status search, and formats executions', async () => {
+	test('buddy_list_workflow_executions uses workflowExecutions query, maps status search, and formats executions', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -222,8 +222,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const listWorkflowExecutions = getCapability('list_workflow_executions');
-		assert.ok(listWorkflowExecutions, 'list_workflow_executions is registered');
+		const listWorkflowExecutions = getCapability('buddy_list_workflow_executions');
+		assert.ok(listWorkflowExecutions, 'buddy_list_workflow_executions is registered');
 
 		const output = await listWorkflowExecutions.run({ orgId: 'org-1', status: 'succeeded', limit: 10 }, {
 			session,
@@ -239,7 +239,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.ok(output.includes('succeeded — exec-1 (workflow wf-1, 4 ok, created 1735689600000)'));
 	});
 
-	test('find_executions_by_variable scans conductor input and matches name and value', async () => {
+	test('buddy_find_executions_by_variable scans conductor input and matches name and value', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -262,8 +262,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const findExec = getCapability('find_executions_by_variable');
-		assert.ok(findExec, 'find_executions_by_variable is registered');
+		const findExec = getCapability('buddy_find_executions_by_variable');
+		assert.ok(findExec, 'buddy_find_executions_by_variable is registered');
 
 		const ctx = { session, orgId: 'org-1', sessions: [session] } satisfies CapabilityContext;
 
@@ -287,7 +287,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.ok(noMatch.startsWith('No executions'), 'reports no match');
 	});
 
-	test('find_executions_by_variable scans execution contexts and reports skipped failed fetches', async () => {
+	test('buddy_find_executions_by_variable scans execution contexts and reports skipped failed fetches', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when(
@@ -336,8 +336,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				};
 			},
 		);
-		const findExec = getCapability('find_executions_by_variable');
-		assert.ok(findExec, 'find_executions_by_variable is registered');
+		const findExec = getCapability('buddy_find_executions_by_variable');
+		assert.ok(findExec, 'buddy_find_executions_by_variable is registered');
 		const ctx = { session, orgId: 'org-1', sessions: [session] } satisfies CapabilityContext;
 
 		const out = await findExec.run({ orgId: 'org-1', workflowId: 'wf-1', name: 'ticket', kind: 'context' }, ctx);
@@ -352,7 +352,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.strictEqual(contextCalls.length, 3, 'issues one context fetch per scanned execution');
 	});
 
-	test('latest_workflow_execution uses latestWorkflowExecution query, forwards workflowId, and handles missing execution', async () => {
+	test('buddy_latest_workflow_execution uses latestWorkflowExecution query, forwards workflowId, and handles missing execution', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -362,8 +362,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const latestWorkflowExecution = getCapability('latest_workflow_execution');
-		assert.ok(latestWorkflowExecution, 'latest_workflow_execution is registered');
+		const latestWorkflowExecution = getCapability('buddy_latest_workflow_execution');
+		assert.ok(latestWorkflowExecution, 'buddy_latest_workflow_execution is registered');
 
 		const output = await latestWorkflowExecution.run({ orgId: 'org-1', workflowId: 'wf-1' }, {
 			session,
@@ -378,7 +378,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.ok(output.includes('No execution found for workflow wf-1'));
 	});
 
-	test('get_workflow_execution_stats uses workflowExecutionStats query, forwards createdSince, and formats stats', async () => {
+	test('buddy_get_workflow_execution_stats uses workflowExecutionStats query, forwards createdSince, and formats stats', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -396,8 +396,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const getWorkflowExecutionStats = getCapability('get_workflow_execution_stats');
-		assert.ok(getWorkflowExecutionStats, 'get_workflow_execution_stats is registered');
+		const getWorkflowExecutionStats = getCapability('buddy_get_workflow_execution_stats');
+		assert.ok(getWorkflowExecutionStats, 'buddy_get_workflow_execution_stats is registered');
 
 		const output = await getWorkflowExecutionStats.run({ orgId: 'org-1', createdSince: '2025-01-01T00:00:00Z' }, {
 			session,
@@ -423,7 +423,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		);
 	});
 
-	test('list_workflow_tasks uses workflowTasks query, forwards workflowId, and formats tasks', async () => {
+	test('buddy_list_workflow_tasks uses workflowTasks query, forwards workflowId, and formats tasks', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -452,8 +452,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const listWorkflowTasks = getCapability('list_workflow_tasks');
-		assert.ok(listWorkflowTasks, 'list_workflow_tasks is registered');
+		const listWorkflowTasks = getCapability('buddy_list_workflow_tasks');
+		assert.ok(listWorkflowTasks, 'buddy_list_workflow_tasks is registered');
 
 		const output = await listWorkflowTasks.run({ orgId: 'org-1', workflowId: 'wf-1', limit: 10 }, {
 			session,
@@ -472,7 +472,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		);
 	});
 
-	test('list_workflow_patches uses workflowPatches query, forwards workflowId, and formats patches', async () => {
+	test('buddy_list_workflow_patches uses workflowPatches query, forwards workflowId, and formats patches', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -499,8 +499,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const listWorkflowPatches = getCapability('list_workflow_patches');
-		assert.ok(listWorkflowPatches, 'list_workflow_patches is registered');
+		const listWorkflowPatches = getCapability('buddy_list_workflow_patches');
+		assert.ok(listWorkflowPatches, 'buddy_list_workflow_patches is registered');
 
 		const output = await listWorkflowPatches.run({ orgId: 'org-1', workflowId: 'wf-1', limit: 5 }, {
 			session,
@@ -522,7 +522,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		);
 	});
 
-	test('get_workflow_patch uses workflowPatch query, forwards id, and serializes the patch JSON', async () => {
+	test('buddy_get_workflow_patch uses workflowPatch query, forwards id, and serializes the patch JSON', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		const workflowPatch = {
@@ -547,8 +547,8 @@ suite('Unit: rewstReadCapabilities', () => {
 				},
 			},
 		});
-		const getWorkflowPatch = getCapability('get_workflow_patch');
-		assert.ok(getWorkflowPatch, 'get_workflow_patch is registered');
+		const getWorkflowPatch = getCapability('buddy_get_workflow_patch');
+		assert.ok(getWorkflowPatch, 'buddy_get_workflow_patch is registered');
 
 		const output = await getWorkflowPatch.run({ orgId: 'org-1', patchId: 'patch-1' }, {
 			session,
