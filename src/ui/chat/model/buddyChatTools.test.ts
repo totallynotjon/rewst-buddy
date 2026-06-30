@@ -6,6 +6,7 @@ import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import { _resetMcpThrottleForTesting, type McpToolDescriptor } from '@mcp';
 import { SessionManager } from '@sessions';
 import { buddyChatToolSpecs, runBuddyChatTool, toolSpecsFromDescriptors } from './buddyChatTools';
+import { WORKFLOW_EDIT_TOOL_NAME } from '../tools/workflowTools';
 
 const { suite, test, setup, teardown } = Mocha;
 
@@ -36,22 +37,25 @@ suite('Unit: buddyChatTools', () => {
 	});
 
 	suite('buddyChatToolSpecs()', () => {
-		test('advertises nothing while the MCP server is disabled (the default)', () => {
-			// rewst-buddy.mcp.enable defaults to false, so an opted-out user gets no
-			// buddy tools injected into Cage-Free Rewsty.
-			assert.deepStrictEqual(buddyChatToolSpecs(), []);
+		test('advertises read Buddy tools even while the external MCP server is disabled', () => {
+			// rewst-buddy.mcp.enable controls external /mcp access only. Cage-Free Rewsty
+			// still needs in-process Buddy tools so server-side Rewst tools are redirected
+			// to the local approval/scope path.
+			const names = buddyChatToolSpecs().map(spec => spec.name);
+			assert.ok(names.length > 0, 'read tools are advertised by default');
+			assert.ok(names.includes('buddy_list_orgs'), 'a known read tool is advertised');
+			assert.ok(names.includes(RESULT_READ_TOOL_NAME), 'result paging is advertised to Cage-Free Rewsty');
+			assert.ok(!names.includes(WORKFLOW_EDIT_TOOL_NAME), 'write tools stay hidden by default');
 		});
 
-		test('advertises the MCP-exposed read tools once the server is enabled', async () => {
+		test('honors the write-tool toggle without requiring the external MCP server', async () => {
 			const config = vscode.workspace.getConfiguration('rewst-buddy.mcp');
-			await config.update('enable', true, vscode.ConfigurationTarget.Global);
+			await config.update('enableWriteTools', true, vscode.ConfigurationTarget.Global);
 			try {
 				const names = buddyChatToolSpecs().map(spec => spec.name);
-				assert.ok(names.length > 0, 'enabling the server advertises the exposed tools');
-				assert.ok(names.includes('buddy_list_orgs'), 'a known read tool is advertised');
-				assert.ok(names.includes(RESULT_READ_TOOL_NAME), 'result paging is advertised to Cage-Free Rewsty');
+				assert.ok(names.includes(WORKFLOW_EDIT_TOOL_NAME), 'write tools follow enableWriteTools');
 			} finally {
-				await config.update('enable', undefined, vscode.ConfigurationTarget.Global);
+				await config.update('enableWriteTools', undefined, vscode.ConfigurationTarget.Global);
 			}
 		});
 	});

@@ -255,7 +255,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(!textOf(harness.parts).includes('vscode-tool'), 'fence never renders');
 	});
 
-	test('advertises buddy MCP tools when the MCP server is connected', async () => {
+	test('advertises Buddy tools from the in-process Buddy path', async () => {
 		const harness = makeHarness([completeTurn('hi')], { buddyToolSpecs: () => [BUDDY_GET_SPEC] });
 		await harness.run([message(User, [text('what workflows exist?')])]);
 
@@ -265,7 +265,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(harness.captured[0].message.includes('Fetch a workflow'), 'buddy description advertised');
 	});
 
-	test('advertises no buddy tools when the MCP server is disconnected', async () => {
+	test('advertises no Buddy tools when the Buddy spec provider returns none', async () => {
 		const harness = makeHarness([completeTurn('hi')]); // default: buddyToolSpecs → []
 		await harness.run([message(User, [text('hi')])]);
 		assert.ok(!/\bbuddy_/.test(harness.captured[0].message), 'nothing buddy-related is advertised');
