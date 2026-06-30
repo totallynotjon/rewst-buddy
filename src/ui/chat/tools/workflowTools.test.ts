@@ -342,6 +342,46 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(merge.join, 1);
 		});
 
+		test('add_task reports back when it drops task mode/join inputs instead of silently ignoring them', () => {
+			const { applied } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'add_task', name: 'merge', action: 'core.noop', transitionMode: 'FOLLOW_ALL', join: 0 }],
+				NOOP_REF,
+			);
+			const line = applied.find(entry => entry.startsWith('add_task merge'));
+			assert.ok(line, 'add_task is logged');
+			assert.match(
+				line!,
+				/ignored transitionMode\/join/,
+				'the dropped parallelism inputs are reported to the model',
+			);
+		});
+
+		test('update_task reports back when it drops task mode/join inputs', () => {
+			const { applied } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'update_task', name: 'start', set: { transitionMode: 'FOLLOW_ALL', join: 2 } }],
+				NO_ACTIONS,
+			);
+			const line = applied.find(entry => entry.startsWith('update_task'));
+			assert.ok(line, 'update_task is logged');
+			assert.match(
+				line!,
+				/ignored transitionMode\/join/,
+				'the dropped parallelism inputs are reported to the model',
+			);
+		});
+
+		test('a clean add_task carries no ignored-input note', () => {
+			const { applied } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'add_task', name: 'leaf', action: 'core.noop' }],
+				NOOP_REF,
+			);
+			const line = applied.find(entry => entry.startsWith('add_task leaf'));
+			assert.ok(line && !/ignored/.test(line), 'no note when no parallelism inputs are passed');
+		});
+
 		test('every existing task is normalized to an explicit FOLLOW_FIRST + join 1 on save', () => {
 			// sampleTasks() leave transitionMode/join unset (Rewst would treat that as
 			// FOLLOW_ALL at runtime); any edit must make the safe default explicit.

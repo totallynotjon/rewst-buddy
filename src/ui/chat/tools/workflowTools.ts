@@ -875,6 +875,17 @@ function resolveTask(tasks: RawTask[], ref: string): RawTask {
 }
 
 /**
+ * This tool does not set task parallelism, so it drops any transitionMode/join a
+ * caller passes (new tasks get sequential defaults; existing fan-out is preserved
+ * from the read-back workflow). Returns a summary suffix naming what was dropped
+ * so the change report tells the model rather than ignoring it silently.
+ */
+function droppedParallelControlsNote(source: Record<string, unknown>): string {
+	const dropped = ['transitionMode', 'join'].filter(key => key in source);
+	return dropped.length ? ` (ignored ${dropped.join('/')}: this tool does not set task parallelism)` : '';
+}
+
+/**
  * Applies operations to a copy of the task list. Action refs in add/update ops
  * are resolved to ids beforehand via actionIdByRef. Returns the new task list
  * and a human-readable summary of what changed. Pure — no network.
@@ -937,7 +948,7 @@ export function applyOperations(
 				}
 				next.push(task);
 				applied.push(
-					`add_task ${name} (${id}) ${subWorkflowId ? `subWorkflow=${subWorkflowId}` : `action=${action}`}`,
+					`add_task ${name} (${id}) ${subWorkflowId ? `subWorkflow=${subWorkflowId}` : `action=${action}`}${droppedParallelControlsNote(operation)}`,
 				);
 				break;
 			}
@@ -954,7 +965,7 @@ export function applyOperations(
 				if ('timeout' in set) task.timeout = coerceTaskNumber(set.timeout, 'timeout');
 				if ('description' in set) task.description = set.description as string;
 				if ('with' in set) task.with = coerceObjectField(set.with, 'task "with"') as RawTask['with'];
-				applied.push(`update_task ${task.name} (${task.id})`);
+				applied.push(`update_task ${task.name} (${task.id})${droppedParallelControlsNote(set)}`);
 				break;
 			}
 			case 'delete_task': {
