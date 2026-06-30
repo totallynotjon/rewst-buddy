@@ -151,7 +151,7 @@
 				"rewst-buddy.mcp.enableWriteTools": {
 					"type": "boolean",
 					"default": false,
-					"description": "Allow workflow MCP tools that change Rewst data (buddy_workflow_edit, buddy_workflow_autolayout, and buddy_workflow_run). Even when enabled, each change still requires your approval inside VS Code. Workflow edits save tasks with sequential graph defaults and do not expose task parallelism controls. Does not expose raw GraphQL mutation."
+					"description": "Allow workflow MCP tools that change Rewst data (buddy_workflow_edit, buddy_workflow_autolayout, and buddy_workflow_run). Even when enabled, each change still requires your approval inside VS Code. Workflow edits do not expose task parallelism controls (new tasks use sequential graph defaults). Does not expose raw GraphQL mutation."
 				},
 				"rewst-buddy.mcp.enableDangerousGraphqlMutation": {
 					"type": "boolean",

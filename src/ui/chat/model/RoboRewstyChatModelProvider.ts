@@ -577,6 +577,9 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			emittedText = '';
 			needsSeparator = trailingResults !== undefined;
 			lastStatusLabel = undefined;
+			// The stateless retry is a fresh attempt, so its first native tool should
+			// get its own redirect rather than the abandoned reuse turn's stop.
+			redirectedNativeRewstTool = false;
 		}
 	}
 

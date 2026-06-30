@@ -68,7 +68,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_SEARCH_TOOL_NAME,
 		args: '{"query"?: string, "orgId"?: string, "refresh"?: boolean, "limit"?: number}',
 		description:
-			'Find Rewst workflows by name (or id) across every org you can access — the reliable way to resolve a workflow instead of guessing its id or paging through GraphQL. On first use for an exact search request it builds and CACHES an index of all workflows (id, name, org id, org name) reachable from your session — managed orgs and sub-orgs alike — then reuses that cached index only when the same request is repeated. Pass query to match by name or id — matching ignores case, punctuation, and word order and requires every word, so "jon sandbox" finds "Jon\'s Sandbox" and "lock workflow" finds "[RAVEN] Workflow Lock". Workflows that match only because their ORG name matched are summarized separately (with the org id), so an org-name query never floods the list. orgId scopes to one org; limit caps results (default 25); refresh:true rebuilds the cache after workflows are created or renamed. Each result shows the workflow name, its id, and the ORG NAME (with org id) — feed those straight into buddy_workflow_get / buddy_workflow_edit / buddy_workflow_run.',
+			'Find Rewst workflows by name (or id) across every org you can access — the reliable way to resolve a workflow instead of guessing its id or paging through GraphQL. On first use it builds and CACHES an index of all workflows (id, name, org id, org name) reachable from your session — managed orgs and sub-orgs alike — then answers this and every later search from that one cached index with no re-listing. Pass query to match by name or id — matching ignores case, punctuation, and word order and requires every word, so "jon sandbox" finds "Jon\'s Sandbox" and "lock workflow" finds "[RAVEN] Workflow Lock". Workflows that match only because their ORG name matched are summarized separately (with the org id), so an org-name query never floods the list. orgId scopes to one org; limit caps results (default 25); refresh:true rebuilds the cache after workflows are created or renamed. Each result shows the workflow name, its id, and the ORG NAME (with org id) — feed those straight into buddy_workflow_get / buddy_workflow_edit / buddy_workflow_run.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -108,7 +108,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. It does not expose parallel task controls: saved workflow tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. It does not expose parallel task controls: new tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -450,9 +450,13 @@ function taskToInput(t: RawTask): Record<string, unknown> {
 	if (t.packOverrides != null) input.packOverrides = t.packOverrides.map(packOverrideToInput);
 	if (t.actionId) input.actionId = t.actionId;
 	if (t.description != null) input.description = t.description;
-	input.transitionMode = 'FOLLOW_FIRST';
+	// Resend the task's own mode/join. The edit tooling never lets the model set a
+	// fan-out, but a workflow can already carry a human-authored FOLLOW_ALL or join,
+	// and updateWorkflow replaces the whole task — so dropping these would silently
+	// rewrite an existing parallel branch to sequential on an unrelated edit.
+	if (t.transitionMode != null) input.transitionMode = t.transitionMode;
 	if (t.publishResultAs != null) input.publishResultAs = t.publishResultAs;
-	input.join = 1;
+	if (t.join != null) input.join = t.join;
 	if (t.timeout != null) input.timeout = t.timeout;
 	if (t.humanSecondsSaved != null) input.humanSecondsSaved = t.humanSecondsSaved;
 	if (t.isMocked != null) input.isMocked = t.isMocked;
@@ -1118,13 +1122,14 @@ export function applyOperations(
 
 /**
  * Rewst's runtime default for an unset task mode can fan out across every
- * matching transition. To remove that footgun from the edit tooling, every saved
- * task is forced to sequential defaults on each edit.
+ * matching transition. To remove that footgun from the edit tooling, fill the
+ * safe sequential defaults (FOLLOW_FIRST, join 1) only where a task leaves them
+ * unset — an intentional FOLLOW_ALL fan-out or explicit join is preserved.
  */
 function ensureTaskDefaults(tasks: RawTask[]): void {
 	for (const task of tasks) {
-		task.transitionMode = 'FOLLOW_FIRST';
-		task.join = 1;
+		if (!task.transitionMode) task.transitionMode = 'FOLLOW_FIRST';
+		if (task.join == null) task.join = 1;
 	}
 }
 
@@ -1877,9 +1882,13 @@ interface NameHit {
 	rank: number;
 }
 
+// The index spans every org reachable from the session, so query/orgId/limit only
+// filter its entries at read time — they must NOT be part of the cache key. Keying
+// on the session scope alone means one build serves all searches (no re-list per
+// distinct query) and a refresh rebuilds the single shared index for everyone
+// (so a later query can't return a stale index that omits a new workflow).
 function workflowSearchCacheKey(request: ToolRequest, deps: GraphqlToolDeps): string {
-	const { refresh: _refresh, ...queryArgs } = request.args;
-	const payload = stableJson({ args: queryArgs, scope: deps.cacheScope ?? null, tool: request.tool });
+	const payload = stableJson({ scope: deps.cacheScope ?? null, tool: request.tool });
 	return createHash('sha256').update(payload).digest('hex');
 }
 

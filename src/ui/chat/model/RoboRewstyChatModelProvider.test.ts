@@ -472,6 +472,51 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(!out.includes('unreachable'), 'no third backend turn is started');
 	});
 
+	test('a downgrade after a native-tool redirect resets the redirect budget for the fresh attempt', async () => {
+		// One redirect happens on the reuse turn; that turn then errors and downgrades
+		// to a fresh stateless attempt. The native tool in the fresh attempt is the
+		// first of that attempt and must redirect again, not hit the "requested again"
+		// stop left over from the abandoned reuse turn.
+		const nativeStatus: ConversationEvent[] = [
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: listWorkflow…',
+				activity: true,
+				tool: { name: 'listWorkflow' },
+			},
+		];
+		const harness = makeHarness(
+			[
+				completeTurn('Hello', 'conv-1'), // run 1: establishes conv-1 for reuse
+				nativeStatus, // run 2 reuse attempt: native tool → redirect #1
+				[{ kind: 'error', message: 'conversation not found' }], // correction turn errors → downgrade
+				nativeStatus, // fresh stateless attempt: native tool again
+				completeTurn('Recovered via Buddy.'), // stateless correction turn answers
+			],
+			{ buddyToolSpecs: () => [BUDDY_GET_SPEC] },
+		);
+		harness.wrapper.when('deleteConversation', { data: { deleteConversation: 'conv-1' } });
+
+		await harness.run([message(User, [text('hi')])]);
+		await harness.run([
+			message(User, [text('hi')]),
+			message(Assistant, [text('Hello')]),
+			message(User, [text('next')]),
+		]);
+
+		const out = visibleText(harness.parts);
+		assert.ok(
+			!out.includes('Stopped after a server-side Rewst tool was requested again'),
+			'the fresh stateless attempt is not aborted by a stale redirect flag',
+		);
+		assert.ok(out.includes('Recovered via Buddy.'), 'the downgraded attempt redirects again and reaches an answer');
+		const lastSent = harness.captured[harness.captured.length - 1];
+		assert.ok(
+			lastSent.message.includes('local tool protocol'),
+			'a fresh correction was sent for the stateless native tool',
+		);
+	});
+
 	suite('truncateArgsLabel()', () => {
 		test('returns args at or below the limit unchanged', () => {
 			assert.strictEqual(truncateArgsLabel('{"a":1}'), '{"a":1}');

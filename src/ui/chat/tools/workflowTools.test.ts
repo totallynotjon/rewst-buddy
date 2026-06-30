@@ -203,7 +203,7 @@ suite('Unit: workflowTools', () => {
 			};
 			const w = { ...sampleWorkflow(), tasks: [loaded] };
 			const out = (workflowToInput(w as never, [loaded] as never).tasks as Record<string, unknown>[])[0];
-			// Every advanced setting except task mode/join is present and unchanged on the write payload.
+			// Every advanced setting, including an existing task mode/join, is present and unchanged on the write payload.
 			for (const field of [
 				'description',
 				'publishResultAs',
@@ -221,8 +221,8 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(out.input, loaded.input, 'input preserved');
 			assert.deepStrictEqual(out.metadata, loaded.metadata, 'metadata (incl. extra keys) preserved');
 			assert.deepStrictEqual(out.packOverrides, loaded.packOverrides, 'pack override preserved');
-			assert.strictEqual(out.transitionMode, 'FOLLOW_FIRST', 'task mode is forced to the safe default');
-			assert.strictEqual(out.join, 1, 'join is forced to the safe default');
+			assert.strictEqual(out.transitionMode, 'FOLLOW_ALL', 'an existing fan-out mode survives the round-trip');
+			assert.strictEqual(out.join, 2, 'an existing join value survives the round-trip');
 		});
 	});
 
@@ -356,13 +356,30 @@ suite('Unit: workflowTools', () => {
 			}
 		});
 
-		test('normalization overwrites explicit FOLLOW_ALL and join 0', () => {
+		test('normalization is fill-only: an explicit FOLLOW_ALL fan-out and join 0 survive', () => {
 			const tasksIn = sampleTasks();
 			(tasksIn[0] as { transitionMode?: string }).transitionMode = 'FOLLOW_ALL';
 			(tasksIn[1] as { join?: number }).join = 0;
 			const { tasks } = applyOperations(tasksIn as never, [], NO_ACTIONS);
-			assert.strictEqual(tasks.find(t => t.name === 'start')!.transitionMode, 'FOLLOW_FIRST');
-			assert.strictEqual(tasks.find(t => t.name === 'end')!.join, 1);
+			assert.strictEqual(tasks.find(t => t.name === 'start')!.transitionMode, 'FOLLOW_ALL', 'fan-out preserved');
+			assert.strictEqual(tasks.find(t => t.name === 'end')!.join, 0, 'explicit join preserved');
+		});
+
+		test("editing one task never clobbers a sibling task's FOLLOW_ALL fan-out", () => {
+			// The edit resends the whole workflow, so a forced default would silently
+			// rewrite a parallel fan-out the user never touched.
+			const tasksIn = sampleTasks();
+			(tasksIn[0] as { transitionMode?: string }).transitionMode = 'FOLLOW_ALL';
+			const { tasks } = applyOperations(
+				tasksIn as never,
+				[{ op: 'update_task', name: 'end', set: { description: 'touched' } }],
+				NO_ACTIONS,
+			);
+			assert.strictEqual(
+				tasks.find(t => t.name === 'start')!.transitionMode,
+				'FOLLOW_ALL',
+				'the untouched sibling keeps its fan-out',
+			);
 		});
 
 		test('update_task merges set fields', () => {
@@ -1446,25 +1463,45 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(indexCalls, 2, 'reused within a session, rebuilt when the session changed');
 		});
 
-		test('buddy_workflow_search rebuilds for a different full query in the same session', async () => {
+		test('buddy_workflow_search reuses the cached index across different full queries in the same session', async () => {
 			const { deps, calls } = makeDeps();
+			// The index spans every org; orgId/query only filter the cached entries, so a
+			// different filter must reuse the index, not re-list every workflow again.
 			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { orgId: 'org-1' } }, deps);
 			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { orgId: 'org-2' } }, deps);
 
 			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
-			assert.strictEqual(indexCalls, 2, 'a different org-scoped query must not reuse stale cached results');
+			assert.strictEqual(indexCalls, 1, 'a different filter reuses the all-orgs index');
 		});
 
-		test('buddy_workflow_search evicts old exact-query cache entries', async () => {
+		test('buddy_workflow_search refresh rebuilds the shared index for later distinct queries too', async () => {
 			const { deps, calls } = makeDeps();
-			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'query-0' } }, deps);
-			for (let i = 1; i <= 8; i++) {
-				await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: `query-${i}` } }, deps);
-			}
-			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'query-0' } }, deps);
+			// refresh must invalidate the one shared index, not just the current query's
+			// entry — otherwise a later distinct query keeps returning the stale index
+			// that omits a newly created workflow.
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { orgId: 'org-1' } }, deps);
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { refresh: true } }, deps);
+			await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { orgId: 'org-2' } }, deps);
 
 			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
-			assert.strictEqual(indexCalls, 10, 'old full-query cache entries are evicted instead of growing forever');
+			assert.strictEqual(
+				indexCalls,
+				2,
+				'refresh rebuilt the shared index once; the later query reused the rebuild',
+			);
+		});
+
+		test('buddy_workflow_search builds the index once no matter how many distinct queries run', async () => {
+			const { deps, calls } = makeDeps();
+			// The cache is keyed by session scope, not by the query, so many distinct
+			// searches share one index build instead of re-listing every workflow each
+			// time (and never accumulate a per-query cache entry).
+			for (let i = 0; i < 10; i++) {
+				await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: `query-${i}` } }, deps);
+			}
+
+			const indexCalls = calls.filter(c => c.query.includes('RewstBuddyWorkflowsIndex')).length;
+			assert.strictEqual(indexCalls, 1, 'ten distinct queries reused the one cached all-orgs index');
 		});
 
 		test('buddy_workflow_search scopes to a single org with orgId', async () => {
