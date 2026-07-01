@@ -20,3 +20,15 @@ export function formatHostPort(host: string, port: number): string {
 	const needsBrackets = trimmed.includes(':') && !trimmed.startsWith('[');
 	return needsBrackets ? `[${trimmed}]:${port}` : `${trimmed}:${port}`;
 }
+
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+/**
+ * True only for the loopback host forms `rewst-buddy.server.host` is allowed to
+ * take (`127.0.0.1`, `localhost`, `::1`, `[::1]`, case-insensitive, surrounding
+ * whitespace trimmed). Anything else — wildcards (`0.0.0.0`, `::`), LAN/public
+ * addresses, or an arbitrary hostname — is not loopback and must not be bound.
+ */
+export function isLoopbackHost(host: string): boolean {
+	return LOOPBACK_HOSTS.has(host.trim().toLowerCase());
+}

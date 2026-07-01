@@ -37,7 +37,11 @@ reviews:
               test-first. Any new or changed behavior that lacks a colocated *.test.ts
               case asserting that behavior (plus an integration test under
               src/test/integration/ when live API or assistant behavior is involved) is
-              a blocking issue — request changes, do not approve. The test must assert
+              a blocking issue — request changes, do not approve. Behavior is also
+              specified in openspec/specs/**: a change to observable behavior that
+              contradicts a requirement there, or that lacks a matching spec update in
+              the same PR, is a blocking issue — spec, test, and code move together. The
+              test must assert
               the behavior, not merely that the code runs; flag tests that only cover
               the happy path and skip the error, edge, and skip branches. Do not add
               obvious or redundant comments — match the surrounding comment density and
@@ -99,6 +103,30 @@ reviews:
               Marketplace/GitHub landing page — short and user-facing. Flag coding
               conventions, contributor workflow, or internal technical detail; those
               live in CLAUDE.md or internal docs, not here.
+        - path: 'openspec/specs/**/*.md'
+          instructions: >-
+              OpenSpec capability specs are the behavioral baseline — the normative
+              contract the code and tests must satisfy (conventions in
+              openspec/specs/README.md). Enforce internal consistency: every
+              Requirement uses "SHALL" and carries at least one GIVEN/WHEN/THEN
+              Scenario, and every Scenario sits under a Requirement. Enforce cross-spec
+              consistency: a requirement that references another spec (by backticked
+              title) must name a requirement that exists and must not contradict it;
+              keep terminology identical across specs — flag drift such as renaming the
+              same concept differently in two files; Source lines follow the README
+              convention (point at files, no private function names or line numbers);
+              settings, command titles, and storage keys quoted here mirror package.json
+              contributes.* and the persistence keys. Where a requirement states the
+              target contract but the code does not implement it yet, that gap belongs
+              in a short "Implementation status" note under the requirement, not in
+              softened requirement wording. Most importantly, keep spec and tests
+              aligned: a changed or added requirement/scenario must land in the same PR
+              with a corresponding *.test.ts under src/ (colocated with the code it
+              covers, not beside the spec), plus an integration test under
+              src/test/integration/ when live API or assistant behavior is involved,
+              that asserts that behavior — flag a spec change with no corresponding test
+              change, and a scenario whose asserted behavior no test covers, as a
+              blocking issue.
 
     # Auto-label PRs by area so reviews and history are easy to scan.
     auto_apply_labels: true
@@ -109,6 +137,8 @@ reviews:
           instructions: 'Changes README.md, docs/, or CLAUDE.md.'
         - label: 'tests'
           instructions: 'Adds or changes *.test.ts files.'
+        - label: 'spec'
+          instructions: 'Changes OpenSpec capability specs under openspec/specs/.'
         - label: 'release'
           instructions: 'A release/* branch: version bump and collated CHANGELOG.md.'
         - label: 'ci'
@@ -134,10 +164,12 @@ reviews:
         semgrep:
             enabled: true
 
-# Let CodeRabbit treat CLAUDE.md and docs as authoritative project guidelines.
+# Let CodeRabbit treat CLAUDE.md, docs, and the OpenSpec baseline as
+# authoritative project guidelines — so code is reviewed against the specs.
 knowledge_base:
     code_guidelines:
         enabled: true
         filePatterns:
             - 'CLAUDE.md'
             - 'docs/**'
+            - 'openspec/specs/**'

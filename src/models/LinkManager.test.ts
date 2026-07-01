@@ -1,5 +1,8 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
 import * as Mocha from 'mocha';
+import * as os from 'os';
+import * as path from 'path';
 import vscode from 'vscode';
 import { LinkManager, TemplateLink, FolderLink, Link } from '@models';
 import { initTestEnvironment } from '@test';
@@ -518,6 +521,76 @@ suite('Unit: LinkManager', () => {
 			LinkManager._handleDeleteForTesting({ files: [unlinkedUri] });
 
 			assert.strictEqual(LinkManager.isLinked(linkedUri), true, 'Existing link should remain');
+		});
+	});
+
+	// handleRename's single-file branch is already covered indirectly via
+	// moveLink() (see 'org index' suite below); this covers the directory
+	// branch, which must relink every descendant under the new folder path.
+	// vscode.workspace.fs.stat in this test host is real, so the *new* path
+	// needs to actually exist on disk for the directory check to pass — the
+	// old path does not (handleRename never stats it).
+	suite('handleRename() directory branch', () => {
+		let newDirPath: string;
+
+		setup(() => {
+			newDirPath = fs.mkdtempSync(path.join(os.tmpdir(), 'rewst-buddy-rename-'));
+		});
+
+		teardown(() => {
+			fs.rmSync(newDirPath, { recursive: true, force: true });
+		});
+
+		test('renaming a folder relinks every descendant link under the new path', async () => {
+			const oldDirUri = vscode.Uri.file('/test/old-project');
+			const newDirUri = vscode.Uri.file(newDirPath);
+
+			const child1Old = vscode.Uri.file('/test/old-project/file1.txt');
+			const child2Old = vscode.Uri.file('/test/old-project/sub/file2.txt');
+			const outsideUri = vscode.Uri.file('/test/other/file3.txt');
+
+			const makeLink = (uri: vscode.Uri, id: string): TemplateLink => ({
+				uriString: uri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id, name: `Template ${id}`, updatedAt: '' } as any,
+				bodyHash: `hash-${id}`,
+			});
+
+			LinkManager.addLink(makeLink(child1Old, 't1'));
+			LinkManager.addLink(makeLink(child2Old, 't2'));
+			LinkManager.addLink(makeLink(outsideUri, 't3'));
+
+			await LinkManager._handleRenameForTesting({ files: [{ oldUri: oldDirUri, newUri: newDirUri }] });
+
+			const child1New = vscode.Uri.joinPath(newDirUri, 'file1.txt');
+			const child2New = vscode.Uri.joinPath(newDirUri, 'sub', 'file2.txt');
+
+			assert.strictEqual(LinkManager.isLinked(child1Old), false, 'old child path no longer linked');
+			assert.strictEqual(LinkManager.isLinked(child2Old), false, 'old nested child path no longer linked');
+			assert.strictEqual(LinkManager.isLinked(child1New), true, 'child relinked under the new folder path');
+			assert.strictEqual(
+				LinkManager.isLinked(child2New),
+				true,
+				'nested child relinked under the new folder path',
+			);
+			assert.strictEqual(LinkManager.isLinked(outsideUri), true, 'unrelated link is untouched');
+
+			const movedLink1 = LinkManager.getTemplateLink(child1New);
+			assert.strictEqual(movedLink1.bodyHash, 'hash-t1', 'link data is preserved across the move');
+			assert.strictEqual(
+				LinkManager.getTemplateLinkFromId('t1')[0]?.uriString,
+				child1New.toString(),
+				'reverse index follows the move',
+			);
+
+			const movedLink2 = LinkManager.getTemplateLink(child2New);
+			assert.strictEqual(movedLink2.bodyHash, 'hash-t2', 'nested link data is preserved across the move');
+			assert.strictEqual(
+				LinkManager.getTemplateLinkFromId('t2')[0]?.uriString,
+				child2New.toString(),
+				'nested reverse index follows the move',
+			);
 		});
 	});
 

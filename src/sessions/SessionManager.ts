@@ -348,18 +348,40 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 	public async clearProfiles(): Promise<void> {
 		log.debug('clearProfiles: clearing all sessions');
+
+		// Collect every profile about to be discarded (active sessions plus
+		// anything cached or saved as a known profile) before clearing in-memory
+		// state, so every primary-org and legacy managed-org secret key gets deleted.
+		const profilesToClear = this.getActiveSessions()
+			.map(s => s.profile)
+			.concat(this.getAllKnownProfiles())
+			.concat(this.getSavedProfiles());
+
+		const orgIdsToClear = new Set<string>();
+		for (const profile of profilesToClear) {
+			orgIdsToClear.add(profile.org.id);
+			for (const managedOrg of profile.allManagedOrgs) {
+				orgIdsToClear.add(managedOrg.id);
+			}
+		}
+
+		await Promise.all(Array.from(orgIdsToClear).map(orgId => context.secrets.delete(orgId)));
+
 		await context.globalState.update('SessionProfiles', []);
+		await context.globalState.update('RewstAllKnownProfiles', []);
 		this.sessionMap.clear();
 		this.orgSessionIndex.clear();
+		this.knownProfilesCache = undefined;
+		this.knownProfileOrgIndex.clear();
 		this.setAnyActiveSessions(false);
 
 		this.sessionChangeEmitter.fire({
 			type: 'cleared',
-			allProfiles: this.getAllKnownProfiles(),
+			allProfiles: [],
 			activeProfiles: [],
 		});
 
-		log.trace('clearProfiles: cleared');
+		log.trace('clearProfiles: cleared', { secretsCleared: orgIdsToClear.size });
 	}
 
 	public getSessionForOrg(orgId: string): Session {

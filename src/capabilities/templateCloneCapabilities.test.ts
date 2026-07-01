@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { createMockSession, initTestEnvironment } from '@test';
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover, type CapabilityContext } from '@capabilities';
+import { LinkManager } from '@models';
 import type { FullTemplateFragment, Session } from '@sessions';
 import { _resetApprovedMutationScopes, type MutationScope } from '../ui/chat/tools/graphqlTool';
 import {
@@ -98,11 +99,13 @@ suite('Unit: templateCloneCapabilities', () => {
 		initTestEnvironment();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
+		LinkManager._resetForTesting();
 	});
 
 	teardown(() => {
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
+		LinkManager._resetForTesting();
 	});
 
 	suite('rewriteReferences', () => {
@@ -201,9 +204,16 @@ suite('Unit: templateCloneCapabilities', () => {
 			assert.ok(!rootUpdate.body.includes(B), 'old id no longer present');
 		});
 
-		test('copies source contentType / language / context onto each clone', async () => {
+		test('copies source contentType / language / context / cloneOverrides / description onto each clone', async () => {
 			const remote = {
-				[A]: tmpl(A, { body: 'print(1)', contentType: 'powershell', language: 'python', context: { x: 1 } }),
+				[A]: tmpl(A, {
+					body: 'print(1)',
+					contentType: 'powershell',
+					language: 'python',
+					context: { x: 1 },
+					cloneOverrides: { y: 2 },
+					description: 'a real description',
+				}),
 			};
 			const { deps, calls } = makeCloneDeps(remote);
 			await runBundleClone({ orgId: 'tgt-org', rootTemplateId: A }, makeCtx(), deps);
@@ -211,6 +221,17 @@ suite('Unit: templateCloneCapabilities', () => {
 			assert.strictEqual(update.language, 'python');
 			assert.strictEqual(update.contentType, 'powershell');
 			assert.deepStrictEqual(update.context, { x: 1 });
+			assert.deepStrictEqual(update.cloneOverrides, { y: 2 });
+			assert.strictEqual(update.description, 'a real description');
+		});
+
+		test('creates no local file or link (clone is remote-only)', async () => {
+			const remote = { [A]: tmpl(A, { body: refBody([B]) }), [B]: tmpl(B) };
+			const { deps } = makeCloneDeps(remote);
+
+			await runBundleClone({ orgId: 'tgt-org', rootTemplateId: A }, makeCtx(), deps);
+
+			assert.strictEqual(LinkManager.getAllTemplateLinks().length, 0, 'no local link was created');
 		});
 
 		test('handles a cycle without looping forever', async () => {
@@ -287,7 +308,10 @@ suite('Unit: templateCloneCapabilities', () => {
 			const remote = { [A]: tmpl(A, { body: refBody([B]) }), [B]: tmpl(B) };
 			const { deps, calls } = makeCloneDeps(remote);
 			await runBundleClone({ orgId: 'tgt-org', rootTemplateId: A }, makeCtx(), deps);
-			assert.ok(calls.create.every(c => c.orgId === 'tgt-org'), 'all creates target the requested org');
+			assert.ok(
+				calls.create.every(c => c.orgId === 'tgt-org'),
+				'all creates target the requested org',
+			);
 		});
 
 		test('fetches the root from a later session when the first cannot', async () => {
@@ -296,7 +320,10 @@ suite('Unit: templateCloneCapabilities', () => {
 			const base = deps.getTemplate;
 			const s1 = {} as unknown as Session;
 			const s2 = {
-				profile: { org: { id: 'tgt-org', name: 'Target' }, allManagedOrgs: [{ id: 'tgt-org', name: 'Target' }] },
+				profile: {
+					org: { id: 'tgt-org', name: 'Target' },
+					allManagedOrgs: [{ id: 'tgt-org', name: 'Target' }],
+				},
 			} as unknown as Session;
 			deps.getTemplate = async (s, id) => {
 				if (s === s1) throw new Error('first session cannot read it');
@@ -354,7 +381,15 @@ suite('Unit: templateCloneCapabilities', () => {
 	});
 
 	suite('defaultTemplateCloneDeps (production SDK glue)', () => {
-		const update = { id: 'x', body: 'b', contentType: 'text', language: 'jinja', context: null, cloneOverrides: null, description: null };
+		const update = {
+			id: 'x',
+			body: 'b',
+			contentType: 'text',
+			language: 'jinja',
+			context: null,
+			cloneOverrides: null,
+			description: null,
+		};
 
 		test('createTemplate returns the minted id', async () => {
 			const { session, wrapper } = createMockSession({ profile: { org: { id: 'tgt', name: 'T' } } });
@@ -366,7 +401,10 @@ suite('Unit: templateCloneCapabilities', () => {
 		test('createTemplate throws when the response has no template', async () => {
 			const { session, wrapper } = createMockSession();
 			wrapper.when('createTemplateMinimal', { data: { template: null } });
-			await assert.rejects(() => defaultTemplateCloneDeps.createTemplate(session, 'X', 'tgt'), /returned no template/);
+			await assert.rejects(
+				() => defaultTemplateCloneDeps.createTemplate(session, 'X', 'tgt'),
+				/returned no template/,
+			);
 		});
 
 		test('updateTemplate succeeds and throws on a missing template', async () => {
@@ -376,7 +414,10 @@ suite('Unit: templateCloneCapabilities', () => {
 
 			const bad = createMockSession();
 			bad.wrapper.when('updateTemplate', { data: { template: null } });
-			await assert.rejects(() => defaultTemplateCloneDeps.updateTemplate(bad.session, update), /returned no template/);
+			await assert.rejects(
+				() => defaultTemplateCloneDeps.updateTemplate(bad.session, update),
+				/returned no template/,
+			);
 		});
 
 		test('deleteTemplate succeeds and throws on a null result', async () => {
@@ -386,7 +427,10 @@ suite('Unit: templateCloneCapabilities', () => {
 
 			const bad = createMockSession();
 			bad.wrapper.when('deleteTemplate', { data: { deleteTemplate: null } });
-			await assert.rejects(() => defaultTemplateCloneDeps.deleteTemplate(bad.session, 'x'), /rollback delete failed/);
+			await assert.rejects(
+				() => defaultTemplateCloneDeps.deleteTemplate(bad.session, 'x'),
+				/rollback delete failed/,
+			);
 		});
 	});
 });

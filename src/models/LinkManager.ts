@@ -67,6 +67,10 @@ export const LinkManager = new (class _ implements vscode.Disposable {
 		return this.handleDelete(e);
 	}
 
+	_handleRenameForTesting(e: vscode.FileRenameEvent): Promise<void> {
+		return this.handleRename(e);
+	}
+
 	private async handleRename(e: vscode.FileRenameEvent): Promise<void> {
 		log.trace('LinkManager.handleRename: processing', { fileCount: e.files.length });
 

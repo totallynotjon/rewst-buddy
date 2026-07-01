@@ -344,6 +344,27 @@ Hover, completion, and definition providers are called frequently during editing
 - Cache regex results when processing the same document repeatedly
 - Keep provider logic minimal - offload to cached manager data
 
+## Spec-Driven Development
+
+`openspec/specs/` holds the behavioral baseline — OpenSpec-style capability specs distilled from the code (conventions in `openspec/specs/README.md`). They are the normative, human-readable contract that sits above the tests: each `Requirement` is a `SHALL` guarantee, each `Scenario` a `GIVEN/WHEN/THEN` behavior under it. Specs describe _what_ the extension guarantees, not _how_ the code is structured — no private function names or line numbers; the `Source:` line points at files for traceability.
+
+**Behavior moves as a trio — spec, test, code — in the same PR.** When you change observable behavior:
+
+1. Update the affected `Requirement`/`Scenario` (or add one) in the relevant `openspec/specs/*/spec.md`.
+2. Write or adjust the colocated `*.test.ts` (plus an integration test when live API or assistant behavior is involved) so a test asserts that scenario. Tests stay the executable contract; the spec is the normative layer above them.
+3. Make the code satisfy both.
+
+Never let them drift: code that contradicts a requirement, a requirement no test covers, and a spec change with no matching test are all gaps to fix, not to defer.
+
+**Consistency when editing a spec:**
+
+- Every `Requirement` uses `SHALL` and carries at least one `Scenario`; every `Scenario` sits under a `Requirement`.
+- Cross-spec references (a requirement citing another spec's requirement by backticked title) must name a requirement that exists and must not contradict it. Keep terminology identical across specs — don't rename the same concept differently in two files.
+- Settings, command titles, and storage keys quoted in a spec mirror `package.json` `contributes.*` and the persistence keys.
+- **Implementation status convention:** when a requirement states the intended contract but the code doesn't fully implement it yet, keep the requirement as the target and add a short _Implementation status_ note under it describing the gap — don't soften the requirement to match a bug.
+
+CodeRabbit enforces this: `openspec/specs/**` is registered as authoritative guidelines so code is reviewed against the specs, and per-path review instructions flag spec/test drift and cross-spec inconsistency.
+
 ## Testing
 
 **IMPORTANT: Write the test first.** Tests are the definition and contract of behavior — every feature and fix starts with a failing test that asserts the intended behavior, then the implementation that makes it pass. No functionality changes without a test that defines it: a colocated `*.test.ts` unit test, plus an integration test when live API or assistant behavior is involved. CodeRabbit treats a functionality change with no test as a blocking issue.
