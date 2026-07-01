@@ -96,6 +96,14 @@ suite('Unit: requestGuard', () => {
 			}
 		});
 
+		test('rejects opaque and malformed origins', () => {
+			for (const origin of ['null', 'blob:https://attacker.example/asset', 'not a url']) {
+				const result = evaluateRequestGuard(input({ headers: { host: '127.0.0.1:27121', origin } }));
+				assert.strictEqual(result.allowed, false, origin);
+				assert.strictEqual(result.allowedOrigin, undefined, origin);
+			}
+		});
+
 		test('allows and echoes back a loopback http(s) origin', () => {
 			for (const origin of ['http://localhost:5500', 'https://127.0.0.1:9999', 'http://[::1]:5500']) {
 				const result = evaluateRequestGuard(input({ headers: { host: '127.0.0.1:27121', origin } }));

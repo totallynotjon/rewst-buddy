@@ -337,5 +337,33 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
 			assert.throws(() => SessionManager.getSessionForOrg('org-clear-primary'));
 		});
+
+		test('deletes secrets for profiles saved only in SessionProfiles', async () => {
+			const savedOnlyProfile: SessionProfile = {
+				region: {
+					name: 'Local Test',
+					cookieName: 'appSession',
+					graphqlUrl: 'http://127.0.0.1/graphql',
+					loginUrl: 'http://127.0.0.1',
+				},
+				org: { id: 'org-saved-primary', name: 'Saved Primary' },
+				allManagedOrgs: [
+					{ id: 'org-saved-primary', name: 'Saved Primary' },
+					{ id: 'org-saved-managed', name: 'Saved Managed' },
+				],
+				label: 'saved-user (Saved Primary)',
+				user: { id: 'saved-user' } as SessionProfile['user'],
+			};
+			await context.globalState.update('SessionProfiles', [savedOnlyProfile]);
+			await context.secrets.store('org-saved-primary', 'cookie-primary');
+			await context.secrets.store('org-saved-managed', 'cookie-managed');
+
+			await SessionManager.clearProfiles();
+
+			assert.strictEqual(await context.secrets.get('org-saved-primary'), undefined);
+			assert.strictEqual(await context.secrets.get('org-saved-managed'), undefined);
+			assert.deepStrictEqual(context.globalState.get('SessionProfiles'), []);
+			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
+		});
 	});
 });

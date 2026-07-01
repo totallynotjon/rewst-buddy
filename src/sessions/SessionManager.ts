@@ -350,11 +350,12 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		log.debug('clearProfiles: clearing all sessions');
 
 		// Collect every profile about to be discarded (active sessions plus
-		// anything cached as a known profile) before clearing in-memory state, so
-		// every primary-org and legacy managed-org secret key gets deleted.
+		// anything cached or saved as a known profile) before clearing in-memory
+		// state, so every primary-org and legacy managed-org secret key gets deleted.
 		const profilesToClear = this.getActiveSessions()
 			.map(s => s.profile)
-			.concat(this.getAllKnownProfiles());
+			.concat(this.getAllKnownProfiles())
+			.concat(this.getSavedProfiles());
 
 		const orgIdsToClear = new Set<string>();
 		for (const profile of profilesToClear) {

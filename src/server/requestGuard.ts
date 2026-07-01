@@ -30,6 +30,7 @@ export interface RequestGuardResult {
 
 const LOOPBACK_REMOTE_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
 const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '::1']);
+const ALLOWED_EXTENSION_ORIGIN_PROTOCOLS = new Set(['chrome-extension:', 'moz-extension:']);
 
 function isLoopbackRemoteAddress(address: string | undefined): boolean {
 	return !!address && LOOPBACK_REMOTE_ADDRESSES.has(address.toLowerCase());
@@ -89,22 +90,23 @@ export function evaluateRequestGuard(input: RequestGuardInput): RequestGuardResu
 
 	const originHeader = input.headers.origin;
 	if (originHeader) {
-		let originUrl: URL | undefined;
+		let originUrl: URL;
 		try {
 			originUrl = new URL(originHeader);
 		} catch {
-			originUrl = undefined;
+			return { allowed: false, reason: `malformed Origin header: ${originHeader}` };
 		}
-		const isWebOrigin = originUrl?.protocol === 'http:' || originUrl?.protocol === 'https:';
-		// Web origins must be loopback to be allowed; a browser-extension scheme
-		// (chrome-extension:, moz-extension:) or anything else unparseable/opaque
-		// is allowed through — only an http(s) origin naming a remote host is the
-		// actual threat this guard defends against (the browser sets Host
-		// correctly regardless, so Host alone can't catch a cross-origin fetch()).
-		// `URL.host` carries the IPv6-bracketed form that hostnameOf() expects
-		// (`.hostname` strips the brackets, which our bracket-aware parser wants).
-		if (isWebOrigin && !isLoopbackHostname(hostnameOf(originUrl!.host))) {
-			return { allowed: false, reason: `non-loopback web origin: ${originHeader}` };
+		const isWebOrigin = originUrl.protocol === 'http:' || originUrl.protocol === 'https:';
+		const isAllowedExtensionOrigin = ALLOWED_EXTENSION_ORIGIN_PROTOCOLS.has(originUrl.protocol);
+		// Web origins must be loopback to be allowed. `URL.host` carries the
+		// IPv6-bracketed form that hostnameOf() expects (`.hostname` strips the
+		// brackets, which our bracket-aware parser wants).
+		if (isWebOrigin) {
+			if (!isLoopbackHostname(hostnameOf(originUrl.host))) {
+				return { allowed: false, reason: `non-loopback web origin: ${originHeader}` };
+			}
+		} else if (!isAllowedExtensionOrigin) {
+			return { allowed: false, reason: `disallowed Origin scheme: ${originHeader}` };
 		}
 	}
 
