@@ -173,17 +173,17 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 				continue;
 			}
 
-			if (!session.validate()) {
+			if (!(await session.validate())) {
 				log.trace('getOrgSession: skipping session, validation failed');
 				continue;
 			}
 
-			if (session.profile.org.id === orgId) {
+			const managesOrg =
+				session.profile.org.id === orgId || session.profile.allManagedOrgs.some(org => org.id === orgId);
+			if (managesOrg) {
 				log.debug('getOrgSession: found matching session', { label: session.profile.label });
 				return session;
 			}
-
-			// make a call to the org and check if this has access
 		}
 
 		throw log.error(`getOrgSession: no session found for org '${orgId}' in region '${baseURL.host}'`);

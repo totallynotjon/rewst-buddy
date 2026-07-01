@@ -1,10 +1,11 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
+import { initTestEnvironment, stub as replaceMethod } from '@test';
+import { setLastAiAnswer } from '@ui';
 import vscode from 'vscode';
-import { applyWithPreview, type ApplyEditDeps } from './ApplyRewstAiEdit';
+import { ApplyRewstAiEdit, applyWithPreview, type ApplyEditDeps } from './ApplyRewstAiEdit';
 
-const { suite, test, setup } = Mocha;
+const { suite, test, setup, teardown } = Mocha;
 
 function recordingDeps(confirmAnswer: boolean): { deps: ApplyEditDeps; order: string[] } {
 	const order: string[] = [];
@@ -26,9 +27,37 @@ function recordingDeps(confirmAnswer: boolean): { deps: ApplyEditDeps; order: st
 	};
 }
 
+interface BlockPickItem {
+	label: string;
+	content: string;
+}
+
+/** The palette resolution seam: active file + a code block from the last answer. */
+function resolveInteractive(): Promise<{ target: vscode.Uri; content: string } | undefined> {
+	return (
+		new ApplyRewstAiEdit() as unknown as {
+			resolveInteractive(): Promise<{ target: vscode.Uri; content: string } | undefined>;
+		}
+	).resolveInteractive();
+}
+
 suite('Unit: ApplyRewstAiEdit', () => {
+	const restores: (() => void)[] = [];
+
+	function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): void {
+		restores.push(replaceMethod(obj, key, impl));
+	}
+
+	function stubActiveEditor(uri: vscode.Uri): void {
+		stub(vscode.window, 'activeTextEditor', { document: { uri } } as unknown as vscode.TextEditor);
+	}
+
 	setup(() => {
 		initTestEnvironment();
+	});
+
+	teardown(() => {
+		while (restores.length) restores.pop()!();
 	});
 
 	test('the diff preview and confirmation always precede the write', async () => {
@@ -43,5 +72,74 @@ suite('Unit: ApplyRewstAiEdit', () => {
 		const applied = await applyWithPreview(vscode.Uri.file('/tmp/example.jinja'), 'new content', deps);
 		assert.strictEqual(applied, false);
 		assert.deepStrictEqual(order, ['diff', 'confirm']);
+	});
+
+	test('a single code block resolves without prompting for a choice', async () => {
+		stubActiveEditor(vscode.Uri.file('/tmp/example.jinja'));
+		setLastAiAnswer('Try this:\n\n```jinja\n{{ only_block }}\n```');
+		let prompted = false;
+		stub(vscode.window, 'showQuickPick', (async () => {
+			prompted = true;
+			return undefined;
+		}) as unknown as typeof vscode.window.showQuickPick);
+
+		const resolved = await resolveInteractive();
+
+		assert.strictEqual(prompted, false, 'a single block needs no choice');
+		assert.strictEqual(resolved?.content, '{{ only_block }}');
+		assert.strictEqual(resolved?.target.path, '/tmp/example.jinja');
+	});
+
+	test('several code blocks prompt the user to choose which block to apply', async () => {
+		stubActiveEditor(vscode.Uri.file('/tmp/example.jinja'));
+		setLastAiAnswer('First:\n```jinja\n{{ first }}\n```\nSecond:\n```yaml\nsecond: true\n```');
+		let offered: readonly BlockPickItem[] = [];
+		let placeholder: string | undefined;
+		stub(vscode.window, 'showQuickPick', (async (
+			items: readonly BlockPickItem[],
+			options?: vscode.QuickPickOptions,
+		) => {
+			offered = items;
+			placeholder = options?.placeHolder;
+			return items[1];
+		}) as unknown as typeof vscode.window.showQuickPick);
+
+		const resolved = await resolveInteractive();
+
+		assert.deepStrictEqual(
+			offered.map(item => item.label),
+			['Block 1 (jinja)', 'Block 2 (yaml)'],
+			'every block is offered',
+		);
+		assert.strictEqual(placeholder, 'Which code block should be applied?');
+		assert.strictEqual(resolved?.content, 'second: true', 'the chosen block is returned');
+	});
+
+	test('resolves nothing without an active file-scheme editor', async () => {
+		stub(vscode.window, 'activeTextEditor', undefined as unknown as vscode.TextEditor);
+		setLastAiAnswer('```jinja\n{{ block }}\n```');
+
+		assert.strictEqual(await resolveInteractive(), undefined);
+
+		stub(vscode.window, 'activeTextEditor', {
+			document: { uri: vscode.Uri.parse('untitled:draft') },
+		} as unknown as vscode.TextEditor);
+
+		assert.strictEqual(await resolveInteractive(), undefined, 'a non-file scheme is refused');
+	});
+
+	test('resolves nothing when the last answer has no code blocks', async () => {
+		stubActiveEditor(vscode.Uri.file('/tmp/example.jinja'));
+		setLastAiAnswer('Prose only, no fences.');
+
+		assert.strictEqual(await resolveInteractive(), undefined);
+	});
+
+	test('cancelling the block picker resolves nothing', async () => {
+		stubActiveEditor(vscode.Uri.file('/tmp/example.jinja'));
+		setLastAiAnswer('First:\n```jinja\n{{ first }}\n```\nSecond:\n```yaml\nsecond: true\n```');
+		stub(vscode.window, 'showQuickPick', (async () => undefined) as unknown as typeof vscode.window.showQuickPick);
+
+		assert.strictEqual(await resolveInteractive(), undefined);
 	});
 });

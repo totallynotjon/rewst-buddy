@@ -104,12 +104,6 @@ instant later than the link's last-known `updatedAt`; if either timestamp is
 missing, unparsable, or cannot prove the remote is newer, auto-fetch SHALL leave
 the local file unchanged.
 
-**Implementation status:** today the comparison is a strict string inequality
-between `remote.updatedAt` and the link's stored timestamp, not a parsed-instant
-comparison — any differing timestamp is treated as newer, and there is no
-missing/unparsable fallback. Adding real timestamp parsing as described above is
-tracked as follow-up work.
-
 #### Scenario: Remote is newer and local is untouched
 
 - **GIVEN** a linked file whose local body still matches its stored hash
@@ -138,6 +132,12 @@ tracked as follow-up work.
 - **WHEN** the file is opened
 - **THEN** auto-fetch does not replace the local file
 
+#### Scenario: Auto-fetch disabled
+
+- **GIVEN** `rewst-buddy.autoFetchOnOpen` is disabled
+- **WHEN** a linked file is opened
+- **THEN** no remote fetch occurs and the local file is left unchanged
+
 ### Requirement: Normalize organizations during sync updates
 
 The system SHALL record the template's owning organization from trusted remote
@@ -157,12 +157,6 @@ organization is missing or mismatched, the sync SHALL fail closed before local
 or remote mutation. The system SHALL NOT trust stale legacy link org metadata
 when trusted template metadata identifies a different owning org and the remote
 fetch confirms that owner.
-
-**Implementation status:** today this guard is fully enforced only on the MCP
-sync path (`runSync`); sync-on-save, auto-fetch-on-open, interactive sync, and
-metadata refresh do not yet perform the verification step before changing local
-or remote content. Extending the guard to those paths is tracked as follow-up
-work.
 
 #### Scenario: Stale link org is corrected
 
@@ -230,7 +224,8 @@ approval required before uploads to Rewst. The `buddy_template_sync` tool SHALL
 be classified as write-tier for external MCP exposure in every direction
 because automatic sync can upload to Rewst and explicit download can overwrite a
 workspace file; every call SHALL require write tools to be enabled and the
-target org to pass the effective write allowlist. Download-only and
+target org to be in the effective allowed set (see mcp-bridge's
+`Bound writes to the effective allowed organizations` requirement). Download-only and
 metadata-only calls do not require Rewst mutation approval, but they remain
 subject to workspace target validation and sync organization guards.
 

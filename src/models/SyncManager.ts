@@ -6,7 +6,7 @@ import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { determineSyncAction, type SyncDecision } from './syncDecision';
-import type { Org } from './types';
+import { nonEmptyString, type Org } from './types';
 
 /**
  * The org a template actually belongs to, taken from the template itself — not
@@ -16,7 +16,8 @@ import type { Org } from './types';
  * relation is absent.
  */
 export function orgFromTemplate(template: FullTemplateFragment): Org {
-	return { id: template.orgId, name: template.organization?.name ?? template.orgId };
+	const id = nonEmptyString(template.orgId) ?? nonEmptyString(template.organization?.id) ?? template.orgId;
+	return { id, name: template.organization?.name ?? id };
 }
 
 /**
@@ -135,14 +136,24 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			return;
 		}
 
+		try {
+			this.verifyRemoteTemplateOrg(link, remoteTemplate, session);
+		} catch {
+			// verifyRemoteTemplateOrg already logged; an open event must not throw.
+			return;
+		}
+
 		if (link.bodyHash !== getHash(doc.getText())) {
 			log.trace('checkAutoFetch: file has changed since last sync');
 			return;
 		}
 
-		// if the remote template is in sync then we have nothing to fetch
-		if (remoteTemplate.updatedAt === link.template.updatedAt) {
-			log.trace('checkAutoFetch: remote in sync, no fetch needed');
+		// Only fetch when the remote is provably newer: both timestamps must parse
+		// and the remote instant must be strictly later than the last-known one.
+		const remoteInstant = Date.parse(remoteTemplate.updatedAt ?? '');
+		const localInstant = Date.parse(link.template.updatedAt ?? '');
+		if (Number.isNaN(remoteInstant) || Number.isNaN(localInstant) || remoteInstant <= localInstant) {
+			log.trace('checkAutoFetch: remote is not provably newer, no fetch needed');
 			return;
 		}
 
@@ -270,11 +281,49 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 	}
 
 	/**
+	 * Fails closed unless the fetched remote template belongs to the org the
+	 * link is expected to live in. The expected org is the link's trusted
+	 * template-owner metadata when present, otherwise the stored link org. A
+	 * legacy link without trusted owner metadata may only be corrected to the
+	 * remote owner when the template ids match and the resolving session
+	 * manages that owner.
+	 */
+	private verifyRemoteTemplateOrg(link: TemplateLink, remoteTemplate: FullTemplateFragment, session: Session): void {
+		const remoteOrgId = nonEmptyString(remoteTemplate.orgId) ?? nonEmptyString(remoteTemplate.organization?.id);
+		if (remoteOrgId === undefined) {
+			throw log.error('Sync rejected: the remote template has no owning organization');
+		}
+
+		const trustedOrgId = nonEmptyString(link.template.orgId) ?? nonEmptyString(link.template.organization?.id);
+		const expectedOrgId = trustedOrgId ?? link.org.id;
+		if (remoteOrgId === expectedOrgId) {
+			return;
+		}
+
+		// Legacy link without trusted owner metadata: allow the remote owner to
+		// correct the stored org only when the ids match and this session manages
+		// the owner; anything else fails closed.
+		if (trustedOrgId === undefined) {
+			const sessionManagesOwner =
+				session.profile.org.id === remoteOrgId ||
+				session.profile.allManagedOrgs.some(org => org.id === remoteOrgId);
+			if (remoteTemplate.id === link.template.id && sessionManagesOwner) {
+				return;
+			}
+		}
+
+		throw log.error(
+			`Sync rejected: remote template belongs to org '${remoteOrgId}' but the link expects org '${expectedOrgId}'`,
+		);
+	}
+
+	/**
 	 * Gathers the remote template and computes the sync action for a linked
 	 * document without mutating local or remote state. The interactive
 	 * save-driven sync and the non-interactive MCP sync tools both build on this
-	 * so they decide identically. Throws if the document is not a template link
-	 * or the remote template cannot be fetched.
+	 * so they decide identically. Throws if the document is not a template link,
+	 * the remote template cannot be fetched, or the remote template does not
+	 * belong to the link's expected organization.
 	 */
 	async computeSyncDecision(doc: vscode.TextDocument): Promise<SyncDecisionContext> {
 		const link = LinkManager.getTemplateLink(doc.uri);
@@ -287,6 +336,8 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		} catch (e) {
 			throw log.error('computeSyncDecision: failed to fetch remote template', e);
 		}
+
+		this.verifyRemoteTemplateOrg(link, remoteTemplate, session);
 
 		const localBody = doc.getText();
 		const decision = determineSyncAction({

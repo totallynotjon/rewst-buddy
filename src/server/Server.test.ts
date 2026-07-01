@@ -4,7 +4,7 @@ import * as Mocha from 'mocha';
 import net from 'net';
 import vscode from 'vscode';
 import { SessionManager } from '@sessions';
-import { initTestEnvironment } from '@test';
+import { initTestEnvironment, stub as replaceMethod } from '@test';
 import { Server } from './Server';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -42,6 +42,12 @@ async function setHost(host: string | undefined): Promise<void> {
 async function setEnabled(enabled: boolean | undefined): Promise<void> {
 	const config = vscode.workspace.getConfiguration('rewst-buddy.server');
 	await config.update('enabled', enabled, vscode.ConfigurationTarget.Global);
+}
+
+async function setMcpEnabled(value: boolean | undefined): Promise<void> {
+	await vscode.workspace
+		.getConfiguration('rewst-buddy.mcp')
+		.update('enable', value, vscode.ConfigurationTarget.Global);
 }
 
 /**
@@ -91,13 +97,7 @@ interface Restore {
 }
 
 function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): Restore {
-	const original = obj[key];
-	Object.defineProperty(obj, key, { value: impl, configurable: true, writable: true });
-	return {
-		restore() {
-			Object.defineProperty(obj, key, { value: original, configurable: true, writable: true });
-		},
-	};
+	return { restore: replaceMethod(obj, key, impl) };
 }
 
 /**
@@ -328,5 +328,96 @@ suite('Unit: Server request guard (Host/CORS)', () => {
 
 		assert.notStrictEqual(res.headers['access-control-allow-origin'], '*');
 		assert.strictEqual(res.headers['access-control-allow-origin'], 'http://localhost:5500');
+	});
+});
+
+/**
+ * Polls the configured port until it answers with the server's method-not-allowed
+ * response for GET (405) — proof a rewst-buddy server is listening there — or the
+ * timeout elapses. Polling instead of a single request keeps the check
+ * instance-agnostic: several bundled Server copies (this test bundle plus the
+ * activated extension) share the real config and race for the port, and any
+ * winner satisfies the spec's "the server listens" contract.
+ */
+async function waitForListening(port: number, timeoutMs = 2000): Promise<boolean> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		try {
+			const res = await rawRequest({ port, method: 'GET', headers: { Host: `127.0.0.1:${port}` } });
+			if (res.statusCode === 405) return true;
+		} catch {
+			// not listening yet
+		}
+		await new Promise(resolve => setTimeout(resolve, 25));
+	}
+	return false;
+}
+
+/**
+ * Closes the "Server enabled" and "Kept alive by the MCP bridge" gaps in the
+ * credential-server spec's "Run a localhost-only server when enabled"
+ * requirement: activation's startIfEnabled() path brings the server up on the
+ * validated loopback host/port when `rewst-buddy.server.enabled` is on, and
+ * `rewst-buddy.mcp.enable` alone keeps it up while the browser-action server is
+ * off (an auto start self-stops via shouldStayRunning() only when no driver
+ * wants it).
+ */
+suite('Unit: Server lifecycle drivers', () => {
+	let port = 0;
+
+	setup(async () => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+		await Server.start(); // settle any in-flight activation bind first
+		await Server.stop();
+		await setEnabled(false);
+		await setMcpEnabled(false);
+		port = await findFreePort();
+		await setPort(port);
+		await setHost(undefined);
+	});
+
+	teardown(async () => {
+		await Server.stop();
+		await setMcpEnabled(undefined); // MCP off first, so McpServerController's sync stops an MCP-kept copy
+		await setEnabled(false); // stops an enabled-driven copy and keeps the resets below from restarting one
+		await setPort(undefined as unknown as number); // clear override
+		await setHost(undefined); // clear override
+		await setEnabled(undefined); // clear override
+	});
+
+	test('rewst-buddy.server.enabled brings the server up on the validated loopback host and port', async () => {
+		await setEnabled(true);
+
+		await Server.startIfEnabled();
+
+		assert.ok(
+			await waitForListening(port),
+			'the configured loopback port answers HTTP once the enabled driver is on',
+		);
+	});
+
+	test('the server stays up when only rewst-buddy.mcp.enable is on', async () => {
+		await setMcpEnabled(true);
+
+		// Exercises the auto-start decision path directly; the extension's own
+		// McpServerController reacts to the same setting, and either starter
+		// satisfies the spec — the port must come up and stay up.
+		await Server.start(true);
+
+		assert.ok(await waitForListening(port), 'the MCP driver alone brings the server up');
+		await new Promise(resolve => setTimeout(resolve, 100)); // let post-bind reconciliation settle
+		const res = await rawRequest({ port, method: 'GET', headers: { Host: `127.0.0.1:${port}` } });
+		assert.strictEqual(res.statusCode, 405, 'the server stays up to serve the MCP bridge');
+	});
+
+	test('with both drivers off, startIfEnabled is a no-op and an auto start self-stops', async () => {
+		await Server.startIfEnabled();
+		assert.strictEqual(Server.getStatus(), false, 'startIfEnabled does not start while the enabled driver is off');
+
+		const started = await Server.start(true);
+
+		assert.strictEqual(started, false, 'an auto start with no driver reports not started');
+		assert.strictEqual(Server.getStatus(), false, 'the server does not stay up when both drivers are off');
 	});
 });

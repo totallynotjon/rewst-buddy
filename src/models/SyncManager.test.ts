@@ -1,6 +1,6 @@
 import { FolderLink, LinkManager, Org, SyncOnSaveManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
-import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
 import { getHash } from '@utils';
 import * as assert from 'assert';
 import * as fs from 'fs';
@@ -50,16 +50,6 @@ function createMockDocument(options: { uri: vscode.Uri; content: string }): vsco
 		validateRange: (range: vscode.Range) => range,
 		validatePosition: (pos: vscode.Position) => pos,
 	} as vscode.TextDocument;
-}
-
-/**
- * Stub a vscode.* method for the duration of a test and return a restore
- * function. Mirrors the pattern in src/utils/openTemplateById.test.ts.
- */
-function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): () => void {
-	const original = obj[key];
-	Object.defineProperty(obj, key, { value: impl, configurable: true, writable: true });
-	return () => Object.defineProperty(obj, key, { value: original, configurable: true, writable: true });
 }
 
 suite('Unit: SyncManager.checkAutoFetch', () => {
@@ -138,6 +128,8 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 				name: 'Test Template',
 				body: content,
 				updatedAt, // Same timestamp = no update
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
 
@@ -241,6 +233,8 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 				name: 'Test Template',
 				body: '// remote content',
 				updatedAt: remoteUpdatedAt,
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
 
@@ -300,6 +294,8 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 				name: 'Test Template',
 				body: content,
 				updatedAt, // Same as local = no update needed
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
 
@@ -331,6 +327,16 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 
 		const withoutOrg = Fixtures.fullTemplate({ orgId: 'sub-org', organization: null as any });
 		assert.deepStrictEqual(orgFromTemplate(withoutOrg), { id: 'sub-org', name: 'sub-org' });
+
+		const blankOrgId = Fixtures.fullTemplate({
+			orgId: '' as any,
+			organization: Fixtures.org({ id: 'sub-org', name: 'Sub Org' }),
+		});
+		assert.deepStrictEqual(
+			orgFromTemplate(blankOrgId),
+			{ id: 'sub-org', name: 'Sub Org' },
+			'a blank orgId must fall back to organization.id, never persist an empty org id',
+		);
 	});
 
 	test('refreshLinkMetadata keeps a sub-org template in its sub-org, not the session org', () => {
@@ -450,6 +456,8 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 				name: 'Test Template',
 				body: remoteBody,
 				updatedAt: remoteUpdatedAt,
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
 
@@ -472,6 +480,178 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 			1,
 			'getTemplate should be called when remote may be newer',
 		);
+	});
+
+	// Spec: template-sync "Auto-fetch disabled". The rewst-buddy.autoFetchOnOpen
+	// gate is the first check in checkAutoFetch; when off, no remote fetch happens
+	// even for a linked, otherwise fetch-eligible file.
+	test('does not fetch when rewst-buddy.autoFetchOnOpen is disabled', async () => {
+		const uri = vscode.Uri.file('/test/auto-fetch-disabled.txt');
+		const content = '// template content';
+		const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
+
+		const link: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org,
+			template: { id: 'template-123', name: 'Test Template', updatedAt: 'local-ts' } as any,
+			bodyHash: getHash(content),
+		};
+		LinkManager.addLink(link);
+
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		// A newer remote is available, so only the setting stops the fetch.
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: 'template-123',
+				name: 'Test Template',
+				body: '// newer remote content',
+				updatedAt: 'remote-ts',
+			}),
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		const restore = stub(vscode.workspace, 'getConfiguration', (() => ({
+			get: (key: string, defaultValue?: unknown) => (key === 'autoFetchOnOpen' ? false : defaultValue),
+		})) as unknown as typeof vscode.workspace.getConfiguration);
+
+		const doc = createMockDocument({ uri, content });
+		try {
+			await (SyncManager as any)['checkAutoFetch'](doc);
+		} finally {
+			restore();
+		}
+
+		assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 0, 'no remote fetch when auto-fetch is disabled');
+		const after = LinkManager.getTemplateLink(uri);
+		assert.strictEqual(after.template.updatedAt, 'local-ts', 'link is left unchanged');
+		assert.strictEqual(after.bodyHash, getHash(content), 'local content is left unchanged');
+	});
+
+	test('auto-fetch on open records the template sub-org, not the session org', async () => {
+		const mainOrg = Fixtures.orgModel({ id: 'main-org', name: 'Main Org' });
+		const { session, wrapper } = createMockSession({
+			profile: { org: mainOrg, allManagedOrgs: [mainOrg, { id: 'sub-org', name: 'Sub Org' }] },
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		const uri = vscode.Uri.file('/test/auto-fetch-sub-org.txt');
+		const content = '// unchanged local body';
+		// Pre-set with the session (main) org so a clobber would be visible.
+		const existing: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org: mainOrg,
+			template: { id: 'tpl-af', name: 'Sub Tpl', updatedAt: '2024-01-01T00:00:00Z' } as any,
+			bodyHash: getHash(content),
+		};
+		LinkManager.addLink(existing);
+
+		// Remote is newer and local matches its stored hash -> auto-fetch applies it.
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: 'tpl-af',
+				name: 'Sub Tpl',
+				body: '// newer remote body',
+				updatedAt: '2024-01-02T00:00:00Z',
+				orgId: 'sub-org',
+				organization: Fixtures.org({ id: 'sub-org', name: 'Sub Org' }),
+			}),
+		});
+
+		const doc = createMockDocument({ uri, content });
+		try {
+			await (SyncManager as any)['checkAutoFetch'](doc);
+		} catch {
+			// expected: vscode.workspace.save of an unopened mock document fails here,
+			// after applyTemplateToDocument has already updated the link.
+		}
+
+		assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 1);
+		const link = LinkManager.getTemplateLink(uri);
+		assert.strictEqual(link.org.id, 'sub-org', 'auto-fetched link records the template sub-org');
+		assert.strictEqual(link.org.name, 'Sub Org');
+	});
+});
+
+// Spec: template-sync "Sync on save when enabled". handleSave is the
+// onDidSaveTextDocument handler: it consults SyncOnSaveManager and either runs
+// a full sync or does nothing. Accessed via bracket notation, matching the
+// checkAutoFetch pattern above.
+suite('Unit: SyncManager.handleSave (sync on save)', () => {
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+		LinkManager._resetForTesting();
+		SyncOnSaveManager._resetForTesting();
+	});
+
+	teardown(() => {
+		SessionManager._resetForTesting();
+		LinkManager._resetForTesting();
+		SyncOnSaveManager._resetForTesting();
+	});
+
+	function setUpLinkedDoc() {
+		const uri = vscode.Uri.file('/test/save-file.txt');
+		const templateId = 'template-save';
+		const org = Fixtures.orgModel({ id: 'org-save', name: 'Save Org' });
+
+		const link: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org,
+			template: { id: templateId, name: 'Save Template', updatedAt: 'ts-1' } as any,
+			bodyHash: getHash('// prior synced content'),
+		};
+		LinkManager.addLink(link);
+
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		// Remote timestamp matches the link but the body differs from local ->
+		// upload-local, a clean action with no vscode editor interaction.
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: templateId,
+				name: 'Save Template',
+				body: '// remote body',
+				updatedAt: 'ts-1',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		wrapper.when('updateTemplateBody', {
+			data: Fixtures.updateTemplateBodyMutation({
+				id: templateId,
+				name: 'Save Template',
+				updatedAt: 'ts-2',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		const doc = createMockDocument({ uri, content: '// locally edited content' });
+		return { uri, doc, wrapper };
+	}
+
+	test('a save of a linked file with sync-on-save active runs a sync', async () => {
+		const { uri, doc, wrapper } = setUpLinkedDoc();
+		SyncOnSaveManager.enableSync(uri);
+
+		await (SyncManager as any)['handleSave'](doc);
+
+		assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 1, 'save triggers a sync fetch');
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 1, 'local edit is uploaded');
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody')[0].variables.body, '// locally edited content');
+	});
+
+	test('a save of a linked file without sync-on-save active does not sync', async () => {
+		const { doc, wrapper } = setUpLinkedDoc();
+
+		await (SyncManager as any)['handleSave'](doc);
+
+		assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 0, 'no fetch without sync-on-save');
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload without sync-on-save');
 	});
 });
 
@@ -635,6 +815,14 @@ suite('Unit: SyncManager.fetchFolder', () => {
 		const links = LinkManager.getOrgTemplateLinks(org);
 		assert.strictEqual(links.length, 2, 'the failed template is not linked');
 		assert.ok(!links.some(l => l.template.id === 't2'));
+		for (const link of links) {
+			const filePath = vscode.Uri.parse(link.uriString).fsPath;
+			assert.strictEqual(
+				fs.readFileSync(filePath, 'utf8'),
+				`${link.template.id}-body`,
+				'fetch continued: successful templates are written to disk',
+			);
+		}
 		assert.ok(
 			messages.includes('Fetched 2/3 templates into the folder'),
 			`expected a partial-failure message, got: ${messages.join(' | ')}`,
@@ -1067,5 +1255,175 @@ suite('Unit: SyncManager.fetchAllFolders', () => {
 		assert.ok(fs.existsSync(fileB), 'org B template written to disk');
 		assert.strictEqual(fs.readFileSync(fileA, 'utf8'), 'a1-body');
 		assert.strictEqual(fs.readFileSync(fileB, 'utf8'), 'b1-body');
+	});
+});
+
+// Contract from openspec/specs/template-sync "Auto-fetch on open without
+// clobbering local edits": "newer" means a parsed instant later than the link's
+// last-known updatedAt; older, missing, or unparsable timestamps must not
+// replace the local file.
+suite('Unit: SyncManager.checkAutoFetch (spec contract: timestamp comparison)', () => {
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+		LinkManager._resetForTesting();
+		SyncOnSaveManager._resetForTesting();
+	});
+
+	teardown(() => {
+		SessionManager._resetForTesting();
+		LinkManager._resetForTesting();
+		SyncOnSaveManager._resetForTesting();
+	});
+
+	test('an older remote timestamp does not replace the local file', async () => {
+		const uri = vscode.Uri.file('/test/older-remote.txt');
+		const content = '// synced content';
+		const bodyHash = getHash(content);
+		const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
+
+		const link: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org,
+			template: { id: 'tpl-old', name: 'Tpl', updatedAt: '2024-05-02T00:00:00Z' } as any,
+			bodyHash,
+		};
+		LinkManager.addLink(link);
+
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: 'tpl-old',
+				name: 'Tpl',
+				body: '// stale remote body',
+				updatedAt: '2024-05-01T00:00:00Z',
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
+			}),
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		const doc = createMockDocument({ uri, content });
+		try {
+			await (SyncManager as any)['checkAutoFetch'](doc);
+		} catch {
+			// applying an edit in the unit host throws; the link mutation below is the observable signal
+		}
+
+		const after = LinkManager.getTemplateLink(uri);
+		assert.strictEqual(
+			after.template.updatedAt,
+			'2024-05-02T00:00:00Z',
+			'an older remote must not replace the local link state',
+		);
+		assert.strictEqual(after.bodyHash, bodyHash, 'an older remote must not rewrite the local body');
+	});
+
+	test('an unparsable remote timestamp does not replace the local file', async () => {
+		const uri = vscode.Uri.file('/test/unparsable-remote.txt');
+		const content = '// synced content';
+		const bodyHash = getHash(content);
+		const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
+
+		const link: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org,
+			template: { id: 'tpl-bad-ts', name: 'Tpl', updatedAt: '2024-05-02T00:00:00Z' } as any,
+			bodyHash,
+		};
+		LinkManager.addLink(link);
+
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: 'tpl-bad-ts',
+				name: 'Tpl',
+				body: '// remote body',
+				updatedAt: 'not-a-timestamp',
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
+			}),
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		const doc = createMockDocument({ uri, content });
+		try {
+			await (SyncManager as any)['checkAutoFetch'](doc);
+		} catch {
+			// applying an edit in the unit host throws; the link mutation below is the observable signal
+		}
+
+		const after = LinkManager.getTemplateLink(uri);
+		assert.strictEqual(
+			after.template.updatedAt,
+			'2024-05-02T00:00:00Z',
+			'a remote that cannot prove it is newer must leave the local file unchanged',
+		);
+		assert.strictEqual(after.bodyHash, bodyHash);
+	});
+});
+
+// Contract from openspec/specs/template-sync "Normalize organizations during
+// sync updates": every content-changing path — including the interactive
+// save-driven sync — verifies the fetched remote template belongs to the
+// expected organization before changing either side.
+suite('Unit: SyncManager.syncTemplate (spec contract: org guard)', () => {
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+		LinkManager._resetForTesting();
+		SyncOnSaveManager._resetForTesting();
+	});
+
+	teardown(() => {
+		SessionManager._resetForTesting();
+		LinkManager._resetForTesting();
+		SyncOnSaveManager._resetForTesting();
+	});
+
+	test('an interactive sync fails closed before uploading when the remote template belongs to another org', async () => {
+		const uri = vscode.Uri.file('/test/org-guard-upload.txt');
+		const localContent = '// locally edited content';
+		const org = Fixtures.orgModel({ id: 'org-a', name: 'Org A' });
+
+		const link: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org,
+			template: { id: 'tpl-guard', name: 'Guarded', updatedAt: 'ts-1', orgId: 'org-a' } as any,
+			bodyHash: getHash('// prior synced content'),
+		};
+		LinkManager.addLink(link);
+
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery(
+				Fixtures.fullTemplate({
+					id: 'tpl-guard',
+					name: 'Guarded',
+					body: '// prior synced content',
+					updatedAt: 'ts-1',
+					orgId: 'org-b',
+				}),
+			),
+		});
+		wrapper.when('updateTemplateBody', {
+			data: Fixtures.updateTemplateBodyMutation({ id: 'tpl-guard', updatedAt: 'ts-2' }),
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		const doc = createMockDocument({ uri, content: localContent });
+		await assert.rejects(
+			SyncManager.syncTemplate(doc),
+			'a remote template owned by another org must fail the sync closed',
+		);
+
+		assert.strictEqual(
+			wrapper.getCallsFor('updateTemplateBody').length,
+			0,
+			'no upload may happen once the remote org mismatches the expected org',
+		);
 	});
 });

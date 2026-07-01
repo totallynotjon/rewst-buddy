@@ -150,6 +150,114 @@ suite('Unit: SessionManager', () => {
 		});
 	});
 
+	// Contract from openspec/specs/session-auth "Manage multiple organizations
+	// per session": region-scoped resolution matches managed sub-orgs, returns
+	// the first capable session for duplicate org ids, and only returns sessions
+	// that still validate.
+	suite('multi-org resolution (spec contract)', () => {
+		test('getOrgSession resolves a managed sub-org within the requested region', async () => {
+			const { session } = createMockSession({
+				profile: {
+					org: { id: 'parent-org', name: 'Parent' },
+					allManagedOrgs: [
+						{ id: 'parent-org', name: 'Parent' },
+						{ id: 'sub-org', name: 'Sub' },
+					],
+				},
+			});
+			SessionManager._setSessionsForTesting([session]);
+
+			const resolved = await SessionManager.getOrgSession('sub-org', new URL(session.profile.region.loginUrl));
+			assert.strictEqual(resolved, session);
+		});
+
+		test('a duplicate org id resolves to a capable session instead of failing as ambiguous', () => {
+			const { session: northAmerica } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-na' }),
+					org: { id: 'dup-org', name: 'Dup NA' },
+					allManagedOrgs: [{ id: 'dup-org', name: 'Dup NA' }],
+					region: {
+						name: 'North America',
+						cookieName: 'appSession',
+						graphqlUrl: 'https://api.rewst.io/graphql',
+						loginUrl: 'https://app.rewst.io',
+					},
+				},
+			});
+			const { session: europe } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-eu' }),
+					org: { id: 'dup-org', name: 'Dup EU' },
+					allManagedOrgs: [{ id: 'dup-org', name: 'Dup EU' }],
+					region: {
+						name: 'Europe',
+						cookieName: 'appSession',
+						graphqlUrl: 'https://api.eu.rewst.io/graphql',
+						loginUrl: 'https://app.eu.rewst.io',
+					},
+				},
+			});
+			SessionManager._setSessionsForTesting([northAmerica, europe]);
+
+			const resolved = SessionManager.getSessionForOrg('dup-org');
+			assert.ok(
+				resolved === northAmerica || resolved === europe,
+				'a shared org id must resolve to one of the capable sessions, not error',
+			);
+		});
+
+		test('getOrgSession does not return a session that no longer validates', async () => {
+			const { session, wrapper } = createMockSession({
+				profile: {
+					org: { id: 'org-a', name: 'A' },
+					allManagedOrgs: [{ id: 'org-a', name: 'A' }],
+				},
+			});
+			wrapper.when('User', { data: { user: null } });
+			SessionManager._setSessionsForTesting([session]);
+
+			await assert.rejects(
+				SessionManager.getOrgSession('org-a', new URL(session.profile.region.loginUrl)),
+				'a session whose validation fails must be skipped, leaving no session to return',
+			);
+		});
+
+		test('getProfileForOrg returns a capable profile when several known profiles share an org id', () => {
+			const { session: northAmerica } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-na' }),
+					org: { id: 'shared-org', name: 'Shared NA' },
+					allManagedOrgs: [{ id: 'shared-org', name: 'Shared NA' }],
+					region: {
+						name: 'North America',
+						cookieName: 'appSession',
+						graphqlUrl: 'https://api.rewst.io/graphql',
+						loginUrl: 'https://app.rewst.io',
+					},
+				},
+			});
+			const { session: europe } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-eu' }),
+					org: { id: 'shared-org', name: 'Shared EU' },
+					allManagedOrgs: [{ id: 'shared-org', name: 'Shared EU' }],
+					region: {
+						name: 'Europe',
+						cookieName: 'appSession',
+						graphqlUrl: 'https://api.eu.rewst.io/graphql',
+						loginUrl: 'https://app.eu.rewst.io',
+					},
+				},
+			});
+			SessionManager._setKnownProfilesForTesting([northAmerica.profile, europe.profile]);
+
+			const profile = SessionManager.getProfileForOrg('shared-org');
+			assert.ok(profile, 'a shared org id must still resolve to a known profile');
+			assert.strictEqual(profile.org.id, 'shared-org');
+		});
+	});
+
 	suite('known profiles cache', () => {
 		test('getProfileForOrg resolves after _setKnownProfilesForTesting', () => {
 			const { session } = createMockSession({

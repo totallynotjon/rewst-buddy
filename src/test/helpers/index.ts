@@ -19,6 +19,7 @@ export {
 } from './mockWrapper';
 
 export { Fixtures } from './fixtures';
+export { stub } from './stub';
 
 export { createMockSession, MockSessionOptions } from './mockSession';
 

@@ -1120,6 +1120,19 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(harness.captured[0].message.includes("User's standing instructions: answer in haiku"));
 	});
 
+	test('the configured conversation type starts the backend conversation in workflow-diagnosis mode', async () => {
+		const harness = makeHarness([completeTurn('ok')], {
+			aiConfig: () => ({
+				customInstructions: '',
+				conversationType: 'WORKFLOW_DIAGNOSIS',
+				showActivity: true,
+				maxBuddyToolRounds: MAX_BUDDY_TOOL_ROUNDS,
+			}),
+		});
+		await harness.run([message(User, [text('why did my workflow fail?')])]);
+		assert.strictEqual(harness.captured[0].conversationType, 'WORKFLOW_DIAGNOSIS');
+	});
+
 	const activityTurn: ConversationEvent[] = [
 		{ kind: 'conversation', conversationId: 'conv-1' },
 		{ kind: 'status', label: 'Thinking…' }, // housekeeping (no activity flag) → hidden

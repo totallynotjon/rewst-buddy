@@ -80,17 +80,10 @@ whose primary or managed organizations include the parsed organization, and
 either open the template (reusing a link when present) or link an existing local
 file to it.
 
-**Implementation status:** resolving a parsed organization that is a managed
-sub-organization (rather than a session's primary organization) depends on
-session-auth's managed-org resolution, which is not yet implemented (see
-session-auth's `Manage multiple organizations per session` requirement); today
-this resolution succeeds reliably only when the parsed organization is a
-session's primary organization.
-
 #### Scenario: Open from URL
 
 - **GIVEN** a Rewst template URL
-- **WHEN** the user runs `Open Template from URL`
+- **WHEN** the user runs `Rewst Buddy: Open Template from URL`
 - **THEN** the org/template/base are parsed and the template is opened with the
   same reuse behavior as interactive open
 - **AND** if the parsed org is a managed sub-organization, the session is
@@ -99,7 +92,7 @@ session's primary organization.
 #### Scenario: Link a local file from URL
 
 - **GIVEN** a saved, unlinked local file and a Rewst template URL
-- **WHEN** the user runs `Link File to Template from URL`
+- **WHEN** the user runs `Rewst Buddy: Link File to Template from URL`
 - **THEN** the file is linked to the parsed template and an immediate sync
   reconciles local and remote
 
