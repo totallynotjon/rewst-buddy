@@ -108,7 +108,9 @@ the local file unchanged.
 between `remote.updatedAt` and the link's stored timestamp, not a parsed-instant
 comparison — any differing timestamp is treated as newer, and there is no
 missing/unparsable fallback. Adding real timestamp parsing as described above is
-tracked as follow-up work.
+tracked as follow-up work; red target-contract unit tests in
+`src/models/SyncManager.test.ts` pin the older-remote and unparsable-timestamp
+gaps.
 
 #### Scenario: Remote is newer and local is untouched
 
@@ -138,6 +140,12 @@ tracked as follow-up work.
 - **WHEN** the file is opened
 - **THEN** auto-fetch does not replace the local file
 
+#### Scenario: Auto-fetch disabled
+
+- **GIVEN** `rewst-buddy.autoFetchOnOpen` is disabled
+- **WHEN** a linked file is opened
+- **THEN** no remote fetch occurs and the local file is left unchanged
+
 ### Requirement: Normalize organizations during sync updates
 
 The system SHALL record the template's owning organization from trusted remote
@@ -162,7 +170,8 @@ fetch confirms that owner.
 sync path (`runSync`); sync-on-save, auto-fetch-on-open, interactive sync, and
 metadata refresh do not yet perform the verification step before changing local
 or remote content. Extending the guard to those paths is tracked as follow-up
-work.
+work; a red target-contract unit test in `src/models/SyncManager.test.ts` pins
+the interactive-sync gap.
 
 #### Scenario: Stale link org is corrected
 
@@ -230,7 +239,8 @@ approval required before uploads to Rewst. The `buddy_template_sync` tool SHALL
 be classified as write-tier for external MCP exposure in every direction
 because automatic sync can upload to Rewst and explicit download can overwrite a
 workspace file; every call SHALL require write tools to be enabled and the
-target org to pass the effective write allowlist. Download-only and
+target org to be in the effective allowed set (see mcp-bridge's
+`Bound writes to the effective allowed organizations` requirement). Download-only and
 metadata-only calls do not require Rewst mutation approval, but they remain
 subject to workspace target validation and sync organization guards.
 

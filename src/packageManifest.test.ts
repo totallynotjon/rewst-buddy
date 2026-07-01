@@ -27,6 +27,7 @@ interface PackageManifest {
 			properties?: Record<string, { type?: string; default?: unknown; description?: string }>;
 		};
 		commands: { command: string; title: string }[];
+		keybindings?: { command: string; key: string; mac?: string }[];
 	};
 }
 
@@ -95,6 +96,13 @@ suite('Unit: package manifest', () => {
 		const ids = manifest.contributes.commands.map(entry => entry.command);
 		assert.ok(ids.includes('rewst-buddy.prefix.ResumeRewstAiConversation'));
 		assert.ok(ids.includes('rewst-buddy.prefix.ApplyRewstAiEdit'));
+	});
+
+	test('Ask Rewst AI is bound to ctrl+alt+r / cmd+alt+r', () => {
+		const bindings = manifest.contributes.keybindings ?? [];
+		const ask = bindings.find(binding => binding.command === 'rewst-buddy.prefix.AskRewstAI');
+		assert.strictEqual(ask?.key, 'ctrl+alt+r');
+		assert.strictEqual(ask?.mac, 'cmd+alt+r');
 	});
 
 	test('working-scope settings replace the write allowlist and the commands are contributed', () => {

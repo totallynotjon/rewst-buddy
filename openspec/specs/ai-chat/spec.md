@@ -215,9 +215,9 @@ percentage and token counts.
 
 ### Requirement: Open the assistant quickly
 
-The system SHALL provide an `Ask Rewst AI` command (bound to Ctrl+Alt+R /
-Cmd+Alt+R) that opens the chat view, and a command to resume a prior
-conversation.
+The system SHALL provide a `Rewst Buddy: Ask Rewst AI` command (bound to
+Ctrl+Alt+R / Cmd+Alt+R) that opens the chat view, and a command to resume a
+prior conversation.
 
 #### Scenario: Ask Rewst AI
 
@@ -227,7 +227,7 @@ conversation.
 #### Scenario: Resume a conversation
 
 - **GIVEN** prior conversations exist for the org
-- **WHEN** the user runs `Resume Rewst AI Conversation`
+- **WHEN** the user runs `Rewst Buddy: Resume Rewst AI Conversation`
 - **THEN** recent conversations are listed and the chosen one's transcript opens
   as a markdown document
 
@@ -240,7 +240,7 @@ save — and any resulting sync — to the user).
 #### Scenario: User applies a suggestion
 
 - **GIVEN** an assistant answer containing a code block and an active file
-- **WHEN** the user runs `Apply Rewst AI Suggestion`
+- **WHEN** the user runs `Rewst Buddy: Apply Rewst AI Suggestion`
 - **THEN** a diff of the proposed change is shown, and on confirmation the edit is
   applied to the file without saving it
 

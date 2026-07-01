@@ -152,7 +152,7 @@ links at once.
 #### Scenario: Unlink everything
 
 - **GIVEN** multiple linked files
-- **WHEN** the user runs `Unlink All Templates`
+- **WHEN** the user runs `Rewst Buddy: Unlink All Templates`
 - **THEN** all template links are removed
 
 ### Requirement: Link a folder to an organization

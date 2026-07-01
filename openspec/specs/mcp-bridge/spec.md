@@ -70,13 +70,13 @@ way to register the bridge natively in VS Code with live token injection.
 #### Scenario: Copy MCP config
 
 - **GIVEN** the bridge is enabled
-- **WHEN** the user runs `Copy MCP Config to Clipboard`
+- **WHEN** the user runs `Rewst Buddy: Copy MCP Config to Clipboard`
 - **THEN** the copied JSON points at the localhost `/mcp` URL and carries the
   token only as an env-var placeholder, not the literal value
 
 #### Scenario: Add to VS Code
 
-- **WHEN** the user runs `Add MCP Server to VS Code`
+- **WHEN** the user runs `Rewst Buddy: Add MCP Server to VS Code`
 - **THEN** the bridge is enabled if needed, the native provider is refreshed, and
   VS Code injects the live token without an env-var step
 

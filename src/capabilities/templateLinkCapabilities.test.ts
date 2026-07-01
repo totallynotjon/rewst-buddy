@@ -127,6 +127,17 @@ suite('Unit: templateLinkCapabilities', () => {
 				assert.strictEqual(c.requiresOrg, false, `${name} requiresOrg`);
 			}
 		});
+
+		test('read-tier descriptions disclose the local state mutation, not a Rewst write', () => {
+			const descriptionOf = (name: string): string => {
+				const c = TEMPLATE_LINK_CAPABILITIES.find(candidate => candidate.spec.name === name);
+				assert.ok(c, `missing ${name}`);
+				return c.spec.description;
+			};
+			assert.match(descriptionOf('buddy_template_link'), /changes only local link state \(no Rewst write\)/);
+			assert.match(descriptionOf('buddy_template_unlink'), /only the local association/);
+			assert.match(descriptionOf('buddy_template_sync_on_save'), /changes only local state \(no Rewst write\)/);
+		});
 	});
 
 	suite('buddy_template_link', () => {

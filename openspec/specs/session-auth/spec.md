@@ -69,7 +69,9 @@ the primary secret key for restoration. The cookie SHALL NOT be written to
 distinguishing region, and does not report ambiguity when two known profiles
 share an org id in different regions; the region-aware and ambiguity-reporting
 behavior described in the scenario below is the target lookup contract.
-Region-aware known-profile resolution is tracked as follow-up work.
+Region-aware known-profile resolution is tracked as follow-up work; a red
+target-contract unit test in `src/sessions/SessionManager.test.ts` pins the
+ambiguity-reporting half of this gap.
 
 #### Scenario: Credential placement after login
 
@@ -139,7 +141,9 @@ matches only a session's primary organization id; resolving an operation against
 a _managed_ sub-organization id, and failing closed when two active sessions
 ambiguously report the same org id, are not yet implemented — these are the
 target multi-org resolution contract described above. Implementing managed-org
-matching and ambiguous-duplicate detection is tracked as follow-up work.
+matching and ambiguous-duplicate detection is tracked as follow-up work; red
+target-contract unit tests in `src/sessions/SessionManager.test.ts` pin both
+gaps.
 
 #### Scenario: Operation targets a managed sub-org
 
