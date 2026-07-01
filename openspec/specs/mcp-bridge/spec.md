@@ -13,7 +13,8 @@ working-scope rules that bound what a tool may touch.
 Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`,
 `McpDefinitionProvider.ts`, `runtime.ts`, `settings.ts`, `throttle.ts`),
 `src/commands/mcp/`, `src/capabilities/*Capabilities.ts`,
-`src/models/WorkingScopeManager.ts`.
+`src/models/WorkingScopeManager.ts`, `src/ui/chat/tools/graphqlTool.ts`,
+`src/ui/chat/tools/workflowTools.ts`, `src/extension.ts`.
 
 ## Requirements
 
@@ -211,6 +212,38 @@ writes are allowed.
 - **WHEN** any write tool runs
 - **THEN** it is rejected because the effective allowed set is empty
 
+### Requirement: Verify resource ownership before approval on by-id writes
+
+For every by-id write capability in the org-variable, tag, trigger, and
+workflow CRUD families, the system SHALL fetch the target resource by id
+scoped to the requested `orgId` and reject with a resource-specific "not in
+org" error before requesting mutation approval. This pre-flight ownership
+check is a distinct, additional verification step from the generic
+`org_out_of_scope` check described above: the generic check validates only
+that the requested `orgId` argument itself is in the effective allowed set,
+while this check re-verifies that the specific resource id supplied actually
+belongs to that org — closing the gap where a caller supplies an in-scope
+`orgId` together with a resource id that belongs to a different org the same
+session happens to manage.
+
+#### Scenario: Resource id belongs to a different org
+
+- **GIVEN** a write tool's `orgId` argument is in the effective allowed set
+- **AND** the supplied resource id (e.g. a variable, tag, trigger, or workflow
+  id) actually belongs to a different org
+- **WHEN** the tool runs
+- **THEN** it is rejected with a "not in org" error naming the resource and the
+  requested org
+- **AND** no approval prompt is shown and no mutation runs
+
+#### Scenario: Ownership check runs before approval
+
+- **GIVEN** a by-id write tool targets a resource that does belong to the
+  requested org
+- **WHEN** the tool runs
+- **THEN** the ownership read happens first, then the mutation approval
+  prompt, then the mutation itself
+
 ### Requirement: Bound writes to a pinned working workflow
 
 When a working workflow is pinned, the system SHALL require a workflow-targeting
@@ -221,6 +254,69 @@ write to name a workflow in scope, rejecting others with `workflow_out_of_scope`
 - **GIVEN** a specific workflow is pinned as the working scope
 - **WHEN** a write tool targets a different workflow
 - **THEN** it is rejected with `workflow_out_of_scope`
+
+### Requirement: Round-trip workflow fields exactly when editing
+
+The system SHALL apply `buddy_workflow_edit` and `buddy_workflow_autolayout`
+operations by reading the full workflow and resending every task in a single
+`updateWorkflow` call, because the GraphQL `tasks` array is a full replace — a
+task omitted from that array is deleted, not left alone. Each resent task
+SHALL explicitly carry forward its existing advanced settings
+(`transitionMode`, `join`, `publishResultAs`, `timeout`, `humanSecondsSaved`,
+`isMocked`, `mockInput`, `runAsOrgId`, `retry`, `with`, `metadata`,
+`packOverrides`) so that an edit unrelated to those fields does not reset them.
+Top-level workflow fields the tool does not read or write (such as `output`,
+`tags`, `notes`, `triggers`, and the workflow's own `humanSecondsSaved`) SHALL
+be left untouched by the mutation rather than reset, since `updateWorkflow`
+only replaces fields actually present in its input — unlike the per-task
+`tasks` array, the top level of the mutation behaves as a patch, not a full
+replace. A `buddy_workflow_edit` operation that sets a task's `input` or
+`with` object SHALL accept that value as a JSON-encoded string and parse it
+back into an object rather than storing the literal string. A `set_transition`
+operation that omits both `to` and `transitionId` SHALL resolve to the task's
+sole outgoing transition when exactly one exists, and SHALL error asking the
+caller to disambiguate with `to` or `transitionId` otherwise.
+
+#### Scenario: Saving resends every existing task
+
+- **GIVEN** a workflow has several tasks and an edit only adds one new task
+- **WHEN** `buddy_workflow_edit` saves the workflow
+- **THEN** the `updateWorkflow` mutation's `tasks` array includes every
+  existing task plus the new one, not just the new one
+
+#### Scenario: Editing one task preserves another task's advanced settings
+
+- **GIVEN** a workflow has a task with a human-authored `transitionMode` of
+  `FOLLOW_ALL` and a `packOverrides` entry
+- **WHEN** `buddy_workflow_edit` applies an operation to a different task
+- **THEN** the unrelated task's resent fields still carry its `transitionMode`,
+  `join`, and `packOverrides` unchanged
+
+#### Scenario: Untouched top-level fields are left as-is
+
+- **GIVEN** a workflow has tags, notes, triggers, and output configured
+  directly in Rewst
+- **WHEN** `buddy_workflow_edit` saves an unrelated task change
+- **THEN** the mutation input does not include `tags`, `notes`, `triggers`, or
+  the workflow-level `humanSecondsSaved`
+- **AND** those fields remain whatever they were before the edit
+
+#### Scenario: A JSON-string task input is parsed
+
+- **GIVEN** an `add_task` or `update_task` operation supplies a task's
+  `"input"` (or `"with"`) as a JSON-encoded string rather than an object
+- **WHEN** `buddy_workflow_edit` applies the operation
+- **THEN** the string is parsed into an object before being sent, rather than
+  stored as a literal string value
+
+#### Scenario: set_transition disambiguates a single outgoing edge
+
+- **GIVEN** a task has exactly one outgoing transition and the operation
+  supplies neither `to` nor `transitionId`
+- **WHEN** `set_transition` runs
+- **THEN** it targets that sole transition
+- **AND** if the task has more than one outgoing transition instead, the
+  operation errors asking for `to` or `transitionId`
 
 ### Requirement: Scope reads per configuration
 
@@ -321,19 +417,63 @@ evicted or was never cached.
 - **THEN** the bridge returns the requested character slice without re-running the
   original Rewst API call
 
+### Requirement: Derive the Jinja docs engine host and cache only successful fetches
+
+`buddy_get_jinja_filter_docs` SHALL derive the Jinja engine host from the
+session's region GraphQL host by replacing a leading `api.` with `engine.`,
+falling back to a hardcoded `https://engine.rewst.io` default when the
+region's host is missing, does not start with `api.`, or fails to parse as a
+URL. A successfully fetched filter catalog SHALL be cached in memory per engine
+host for the life of the extension session. A failed fetch SHALL NOT be
+cached, so the next call retries the fetch rather than repeating the failure
+from a cached error.
+
+#### Scenario: Region host maps to the engine host
+
+- **GIVEN** the session's region GraphQL host is `api.rewst.io`
+- **WHEN** `buddy_get_jinja_filter_docs` runs
+- **THEN** the catalog is fetched from `engine.rewst.io`
+
+#### Scenario: Unrecognized region falls back to the default engine host
+
+- **GIVEN** the session's region host is missing or does not start with `api.`
+- **WHEN** `buddy_get_jinja_filter_docs` runs
+- **THEN** the catalog is fetched from the hardcoded default engine host
+
+#### Scenario: A failed fetch is not cached
+
+- **GIVEN** a catalog fetch for an engine host fails
+- **WHEN** `buddy_get_jinja_filter_docs` is called again
+- **THEN** the tool retries the fetch rather than reusing a cached failure
+
 ### Requirement: Reuse approvals only for reusable mutation scopes
 
 The system SHALL remember approval for mutation scopes that are safe to reuse
 within the current extension session, such as repeated writes to the same
-approved GraphQL or workflow-edit scope. It SHALL still require fresh approval
-for operations whose execution itself is the risky action, such as running a
-workflow.
+approved GraphQL or workflow-edit scope, in a single process-global cache keyed
+by organization id and resource id. This cache is not transport-specific: it
+is shared by both the in-process Cage-Free Rewsty chat tool path and the
+external MCP transport, behind the one mutation-approval modal both paths
+call — see ai-chat's `Run in-process Buddy tools with a per-response cap`
+requirement for the chat-side description of this same mechanism. The system
+SHALL still require fresh approval for operations whose execution itself is
+the risky action, such as running a workflow.
 
 #### Scenario: Reused raw GraphQL mutation approval
 
 - **GIVEN** a raw GraphQL mutation scope was approved for an org and resource
 - **WHEN** the same mutation scope is requested again in the same session
 - **THEN** the mutation can run without prompting again
+
+#### Scenario: Approval reuse crosses the chat/MCP transport boundary
+
+- **GIVEN** a mutation scope was approved through the in-process Cage-Free
+  Rewsty chat tool path
+- **WHEN** the same org+resource scope is requested again through the external
+  MCP transport in the same extension session
+- **THEN** the mutation can run without prompting again
+- **AND** the reverse also holds: a scope approved through the external MCP
+  transport is reused for the in-process chat path
 
 #### Scenario: Workflow run approval is always fresh
 

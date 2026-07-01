@@ -1,7 +1,11 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
 import * as Mocha from 'mocha';
+import * as os from 'os';
+import * as path from 'path';
 import { initTestEnvironment } from '@test';
 import { LinkManager, TemplateBundleManager, TemplateLink } from '@models';
+import vscode from 'vscode';
 
 const { suite, test, setup, teardown } = Mocha;
 
@@ -320,6 +324,58 @@ suite('Unit: TemplateBundleManager', () => {
 			assert.ok(allMemberIds.includes(b));
 			assert.ok(allMemberIds.includes(c));
 			assert.ok(allMemberIds.includes(d));
+		});
+	});
+
+	suite('legacy links missing reference metadata', () => {
+		test('re-derives referencedTemplateIds from the local file body when undefined', async () => {
+			const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewst-buddy-bundle-backfill-'));
+			try {
+				const [a, b] = [uuid(), uuid()];
+				const filePath = path.join(tmpDir, `${a}.jinja`);
+				fs.writeFileSync(filePath, `{{ template('${b}') }}`);
+				const uri = vscode.Uri.file(filePath);
+
+				const legacyLink: TemplateLink = {
+					uriString: uri.toString(),
+					org: { id: 'org-1', name: 'Test Org' },
+					type: 'Template',
+					template: { id: a, name: 'Root', updatedAt: '' } as any,
+					bodyHash: 'hash',
+					referencedTemplateIds: undefined,
+				};
+				LinkManager.addLink(legacyLink);
+				LinkManager.addLink(makeLink(b, 'Child'));
+
+				await TemplateBundleManager.buildBundles();
+
+				assert.deepStrictEqual(bundleIds(), [[a, b].sort()]);
+				const stored = LinkManager.getTemplateLink(uri);
+				assert.deepStrictEqual(stored.referencedTemplateIds, [b], 'backfilled from the file on disk');
+			} finally {
+				fs.rmSync(tmpDir, { recursive: true, force: true });
+			}
+		});
+
+		test('backfills to an empty array when the local file cannot be read', async () => {
+			const a = uuid();
+			const missingUri = vscode.Uri.file(path.join(os.tmpdir(), `rewst-buddy-missing-${a}.jinja`));
+
+			const legacyLink: TemplateLink = {
+				uriString: missingUri.toString(),
+				org: { id: 'org-1', name: 'Test Org' },
+				type: 'Template',
+				template: { id: a, name: 'Unreadable', updatedAt: '' } as any,
+				bodyHash: 'hash',
+				referencedTemplateIds: undefined,
+			};
+			LinkManager.addLink(legacyLink);
+
+			await TemplateBundleManager.buildBundles();
+
+			const stored = LinkManager.getTemplateLink(missingUri);
+			assert.deepStrictEqual(stored.referencedTemplateIds, []);
+			assert.deepStrictEqual(standaloneIds(), [a]);
 		});
 	});
 

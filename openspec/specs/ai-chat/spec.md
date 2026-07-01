@@ -100,11 +100,14 @@ whenever the model is used, regardless of `rewst-buddy.mcp.enable`; that setting
 controls the external `/mcp` bridge, not the chat model's local tool
 contribution. The in-process path SHALL still honor the capability registry's
 write-tool, dangerous-GraphQL, working-scope, approval, throttle, and
-per-capability gates. Each in-process Buddy tool call SHALL request fresh
-confirmation through VS Code's native tool-confirmation UI; the extension does
-not implement its own approval-reuse cache for this path the way mcp-bridge's
-session-scoped reuse applies to the external MCP transport — any once-vs-session
-memory here comes from VS Code's own auto-approve setting, not the extension.
+per-capability gates. Each in-process Buddy tool call that mutates Rewst data
+SHALL be confirmed through the same custom approval modal and session-scoped
+mutation-scope reuse cache that mcp-bridge's external MCP transport uses (see
+mcp-bridge's `Reuse approvals only for reusable mutation scopes` requirement) —
+Buddy tools never surface as native `vscode.lm` tool calls, so VS Code's own
+per-tool confirmation/auto-approve UI does not apply to this path. Approving a
+mutation scope from chat also satisfies it for the external MCP transport
+within the same extension session, and vice versa.
 
 #### Scenario: Assistant requests a tool
 

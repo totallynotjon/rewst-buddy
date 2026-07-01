@@ -3,8 +3,9 @@ import http, { IncomingMessage, ServerResponse } from 'http';
 import vscode from 'vscode';
 import { handleMcpHttp } from '../mcp/mcpServer';
 import { readMcpSettings } from '../mcp/settings';
-import { getServerConfig } from './config';
+import { getServerConfig, isLoopbackHost } from './config';
 import { handleAddSession, handleOpenTemplate, validateRequest } from './handlers';
+import { evaluateRequestGuard, requestGuardInputFromRequest } from './requestGuard';
 import { BrowserRequest, Response, ServerConfig } from './types';
 
 export const Server = new (class _ implements vscode.Disposable {
@@ -104,6 +105,14 @@ export const Server = new (class _ implements vscode.Disposable {
 		const config = getServerConfig();
 		log.debug('Server.start: config', { host: config.host, port: config.port });
 
+		if (!isLoopbackHost(config.host)) {
+			log.notifyError(
+				`Refusing to start the Rewst Buddy server: '${config.host}' is not a loopback host. ` +
+					`Only localhost bindings are allowed (rewst-buddy.server.host).`,
+			);
+			return false;
+		}
+
 		try {
 			this.server = http.createServer(this.handleRequest.bind(this));
 
@@ -162,7 +171,25 @@ export const Server = new (class _ implements vscode.Disposable {
 		}
 
 		res.setHeader('Content-Type', 'application/json');
-		res.setHeader('Access-Control-Allow-Origin', '*');
+
+		// Localhost-only control plane: reject before reading any body or
+		// setting any CORS header, so a non-loopback Host/forwarded-host/web
+		// origin can't ingest credentials or trigger actions. See the
+		// credential-server spec's "Reject non-local HTTP requests" requirement.
+		const guard = evaluateRequestGuard(requestGuardInputFromRequest(req));
+		if (!guard.allowed) {
+			log.warn('Server.handleRequest: rejected by request guard', { reason: guard.reason });
+			this.sendResponse(res, 400, { success: false, error: 'Request rejected: not a local request' });
+			return;
+		}
+
+		// Echo the caller's own Origin back instead of a wildcard, and only ever
+		// after the guard above has validated it. No Origin header (e.g. the
+		// browser extension's background/service-worker context) means no
+		// browser is enforcing CORS for this response, so it's fine to omit.
+		if (guard.allowedOrigin) {
+			res.setHeader('Access-Control-Allow-Origin', guard.allowedOrigin);
+		}
 		res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
 		res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 

@@ -211,12 +211,6 @@ present. It SHALL remove `SessionProfiles` and `RewstAllKnownProfiles` from
 known-profile caches, and update extension context so no session is considered
 active.
 
-**Implementation status:** today `Clear Sessions` removes `SessionProfiles` and
-`RewstAllKnownProfiles` from `globalState` and clears in-memory state, but does
-not call `secrets.delete()` — stored cookies are not removed, so a cleared
-session's credential remains in VS Code `secrets`. Wiring secret deletion into
-Clear Sessions is tracked as a security-relevant follow-up.
-
 #### Scenario: User clears sessions
 
 - **GIVEN** one or more active sessions

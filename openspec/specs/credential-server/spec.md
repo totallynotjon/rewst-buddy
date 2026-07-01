@@ -23,11 +23,6 @@ non-loopback interface. The server SHALL run when either
 `rewst-buddy.server.enabled` or `rewst-buddy.mcp.enable` is on, and SHALL guard
 against concurrent starts.
 
-**Implementation status:** today the configured host is passed to `listen()`
-unchecked — a non-loopback `server.host` value is not validated or rejected
-before binding. Validating the host and refusing non-loopback values, as
-described above, is tracked as a security-relevant follow-up.
-
 #### Scenario: Server enabled
 
 - **GIVEN** `rewst-buddy.server.enabled` is on
@@ -66,13 +61,6 @@ when the request still targets a loopback host and remote address. The server
 SHALL NOT use wildcard CORS for routes that can ingest credentials or trigger
 actions; preflight responses SHALL be emitted only after the same local request
 validation passes.
-
-**Implementation status:** today only the external `/mcp` route enforces a Host
-allowlist (via the MCP SDK's `allowedHosts`); the session-ingestion and
-template-open routes perform no Host or remote-address check and respond with a
-wildcard `Access-Control-Allow-Origin: *`. Implementing the loopback enforcement
-and non-wildcard CORS described above for those routes is tracked as a
-security-relevant follow-up.
 
 #### Scenario: Non-local Host header
 
