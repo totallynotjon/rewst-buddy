@@ -16,7 +16,8 @@ import { nonEmptyString, type Org } from './types';
  * relation is absent.
  */
 export function orgFromTemplate(template: FullTemplateFragment): Org {
-	return { id: template.orgId, name: template.organization?.name ?? template.orgId };
+	const id = nonEmptyString(template.orgId) ?? nonEmptyString(template.organization?.id) ?? template.orgId;
+	return { id, name: template.organization?.name ?? id };
 }
 
 /**
@@ -299,23 +300,21 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			return;
 		}
 
-		if (trustedOrgId !== undefined) {
-			throw log.error(
-				`Sync rejected: remote template belongs to org '${remoteOrgId}' but the link expects org '${expectedOrgId}'`,
-			);
-		}
-
 		// Legacy link without trusted owner metadata: allow the remote owner to
 		// correct the stored org only when the ids match and this session manages
 		// the owner; anything else fails closed.
-		const sessionManagesOwner =
-			session.profile.org.id === remoteOrgId ||
-			session.profile.allManagedOrgs.some(org => org.id === remoteOrgId);
-		if (remoteTemplate.id !== link.template.id || !sessionManagesOwner) {
-			throw log.error(
-				`Sync rejected: remote template belongs to org '${remoteOrgId}' but the link expects org '${expectedOrgId}'`,
-			);
+		if (trustedOrgId === undefined) {
+			const sessionManagesOwner =
+				session.profile.org.id === remoteOrgId ||
+				session.profile.allManagedOrgs.some(org => org.id === remoteOrgId);
+			if (remoteTemplate.id === link.template.id && sessionManagesOwner) {
+				return;
+			}
 		}
+
+		throw log.error(
+			`Sync rejected: remote template belongs to org '${remoteOrgId}' but the link expects org '${expectedOrgId}'`,
+		);
 	}
 
 	/**

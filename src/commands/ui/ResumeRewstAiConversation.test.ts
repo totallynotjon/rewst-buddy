@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { SessionManager } from '@sessions';
-import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import { createMockSession, Fixtures, initTestEnvironment, stub as replaceMethod } from '@test';
 import vscode from 'vscode';
 import { ResumeRewstAiConversation } from './ResumeRewstAiConversation';
 
@@ -31,9 +31,7 @@ suite('Unit: ResumeRewstAiConversation', () => {
 	const restores: (() => void)[] = [];
 
 	function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): void {
-		const original = obj[key];
-		Object.defineProperty(obj, key, { value: impl, configurable: true, writable: true });
-		restores.push(() => Object.defineProperty(obj, key, { value: original, configurable: true, writable: true }));
+		restores.push(replaceMethod(obj, key, impl));
 	}
 
 	setup(() => {
@@ -123,5 +121,50 @@ suite('Unit: ResumeRewstAiConversation', () => {
 
 		assert.strictEqual(wrapper.getCallsFor('getConversation').length, 0);
 		assert.strictEqual(shown.length, 0);
+	});
+
+	test('an empty conversation list informs the user and never shows the picker', async () => {
+		const org = Fixtures.orgModel({ id: 'org-ai', name: 'AI Org' });
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getConversations', { data: { conversations: [] } });
+		SessionManager._setSessionsForTesting([session]);
+
+		let picked = false;
+		stub(vscode.window, 'showQuickPick', (async () => {
+			picked = true;
+			return undefined;
+		}) as unknown as typeof vscode.window.showQuickPick);
+
+		await new ResumeRewstAiConversation().execute();
+
+		assert.strictEqual(picked, false, 'no picker without conversations');
+		assert.strictEqual(wrapper.getCallsFor('getConversation').length, 0);
+	});
+
+	test('an unloadable conversation reports an error and opens nothing', async () => {
+		const org = Fixtures.orgModel({ id: 'org-ai', name: 'AI Org' });
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getConversations', {
+			data: { conversations: [storedConversation('conv-gone', 'Deleted one', 'hello?')] },
+		});
+		wrapper.when('getConversation', { data: { conversation: null } });
+		SessionManager._setSessionsForTesting([session]);
+
+		stub(
+			vscode.window,
+			'showQuickPick',
+			(async (items: readonly ConversationPickItem[]) =>
+				items[0]) as unknown as typeof vscode.window.showQuickPick,
+		);
+		const shown: vscode.TextDocument[] = [];
+		stub(vscode.window, 'showTextDocument', (async (document: vscode.TextDocument) => {
+			shown.push(document);
+			return undefined as unknown as vscode.TextEditor;
+		}) as unknown as typeof vscode.window.showTextDocument);
+
+		await new ResumeRewstAiConversation().execute();
+
+		assert.strictEqual(wrapper.getCallsFor('getConversation').length, 1, 'the pick is fetched');
+		assert.strictEqual(shown.length, 0, 'nothing opens when the conversation cannot be loaded');
 	});
 });

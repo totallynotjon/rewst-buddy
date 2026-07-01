@@ -4,7 +4,7 @@ import * as Mocha from 'mocha';
 import net from 'net';
 import vscode from 'vscode';
 import { SessionManager } from '@sessions';
-import { initTestEnvironment } from '@test';
+import { initTestEnvironment, stub as replaceMethod } from '@test';
 import { Server } from './Server';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -97,13 +97,7 @@ interface Restore {
 }
 
 function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): Restore {
-	const original = obj[key];
-	Object.defineProperty(obj, key, { value: impl, configurable: true, writable: true });
-	return {
-		restore() {
-			Object.defineProperty(obj, key, { value: original, configurable: true, writable: true });
-		},
-	};
+	return { restore: replaceMethod(obj, key, impl) };
 }
 
 /**

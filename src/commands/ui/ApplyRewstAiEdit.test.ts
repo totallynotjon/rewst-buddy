@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
+import { initTestEnvironment, stub as replaceMethod } from '@test';
 import { setLastAiAnswer } from '@ui';
 import vscode from 'vscode';
 import { ApplyRewstAiEdit, applyWithPreview, type ApplyEditDeps } from './ApplyRewstAiEdit';
@@ -45,9 +45,7 @@ suite('Unit: ApplyRewstAiEdit', () => {
 	const restores: (() => void)[] = [];
 
 	function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): void {
-		const original = obj[key];
-		Object.defineProperty(obj, key, { value: impl, configurable: true, writable: true });
-		restores.push(() => Object.defineProperty(obj, key, { value: original, configurable: true, writable: true }));
+		restores.push(replaceMethod(obj, key, impl));
 	}
 
 	function stubActiveEditor(uri: vscode.Uri): void {
@@ -115,5 +113,33 @@ suite('Unit: ApplyRewstAiEdit', () => {
 		);
 		assert.strictEqual(placeholder, 'Which code block should be applied?');
 		assert.strictEqual(resolved?.content, 'second: true', 'the chosen block is returned');
+	});
+
+	test('resolves nothing without an active file-scheme editor', async () => {
+		stub(vscode.window, 'activeTextEditor', undefined as unknown as vscode.TextEditor);
+		setLastAiAnswer('```jinja\n{{ block }}\n```');
+
+		assert.strictEqual(await resolveInteractive(), undefined);
+
+		stub(vscode.window, 'activeTextEditor', {
+			document: { uri: vscode.Uri.parse('untitled:draft') },
+		} as unknown as vscode.TextEditor);
+
+		assert.strictEqual(await resolveInteractive(), undefined, 'a non-file scheme is refused');
+	});
+
+	test('resolves nothing when the last answer has no code blocks', async () => {
+		stubActiveEditor(vscode.Uri.file('/tmp/example.jinja'));
+		setLastAiAnswer('Prose only, no fences.');
+
+		assert.strictEqual(await resolveInteractive(), undefined);
+	});
+
+	test('cancelling the block picker resolves nothing', async () => {
+		stubActiveEditor(vscode.Uri.file('/tmp/example.jinja'));
+		setLastAiAnswer('First:\n```jinja\n{{ first }}\n```\nSecond:\n```yaml\nsecond: true\n```');
+		stub(vscode.window, 'showQuickPick', (async () => undefined) as unknown as typeof vscode.window.showQuickPick);
+
+		assert.strictEqual(await resolveInteractive(), undefined);
 	});
 });

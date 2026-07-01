@@ -1,6 +1,6 @@
 import { FolderLink, LinkManager, Org, SyncOnSaveManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
-import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
 import { getHash } from '@utils';
 import * as assert from 'assert';
 import * as fs from 'fs';
@@ -50,16 +50,6 @@ function createMockDocument(options: { uri: vscode.Uri; content: string }): vsco
 		validateRange: (range: vscode.Range) => range,
 		validatePosition: (pos: vscode.Position) => pos,
 	} as vscode.TextDocument;
-}
-
-/**
- * Stub a vscode.* method for the duration of a test and return a restore
- * function. Mirrors the pattern in src/utils/openTemplateById.test.ts.
- */
-function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): () => void {
-	const original = obj[key];
-	Object.defineProperty(obj, key, { value: impl, configurable: true, writable: true });
-	return () => Object.defineProperty(obj, key, { value: original, configurable: true, writable: true });
 }
 
 suite('Unit: SyncManager.checkAutoFetch', () => {
@@ -138,6 +128,8 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 				name: 'Test Template',
 				body: content,
 				updatedAt, // Same timestamp = no update
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
 
@@ -241,6 +233,8 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 				name: 'Test Template',
 				body: '// remote content',
 				updatedAt: remoteUpdatedAt,
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
 
@@ -300,6 +294,8 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 				name: 'Test Template',
 				body: content,
 				updatedAt, // Same as local = no update needed
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
 
@@ -331,6 +327,16 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 
 		const withoutOrg = Fixtures.fullTemplate({ orgId: 'sub-org', organization: null as any });
 		assert.deepStrictEqual(orgFromTemplate(withoutOrg), { id: 'sub-org', name: 'sub-org' });
+
+		const blankOrgId = Fixtures.fullTemplate({
+			orgId: '' as any,
+			organization: Fixtures.org({ id: 'sub-org', name: 'Sub Org' }),
+		});
+		assert.deepStrictEqual(
+			orgFromTemplate(blankOrgId),
+			{ id: 'sub-org', name: 'Sub Org' },
+			'a blank orgId must fall back to organization.id, never persist an empty org id',
+		);
 	});
 
 	test('refreshLinkMetadata keeps a sub-org template in its sub-org, not the session org', () => {
@@ -450,6 +456,8 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 				name: 'Test Template',
 				body: remoteBody,
 				updatedAt: remoteUpdatedAt,
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
 
@@ -1290,6 +1298,8 @@ suite('Unit: SyncManager.checkAutoFetch (spec contract: timestamp comparison)', 
 				name: 'Tpl',
 				body: '// stale remote body',
 				updatedAt: '2024-05-01T00:00:00Z',
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
 		SessionManager._setSessionsForTesting([session]);
@@ -1332,6 +1342,8 @@ suite('Unit: SyncManager.checkAutoFetch (spec contract: timestamp comparison)', 
 				name: 'Tpl',
 				body: '// remote body',
 				updatedAt: 'not-a-timestamp',
+				orgId: 'org-1',
+				organization: Fixtures.org({ id: 'org-1', name: 'Test Org' }),
 			}),
 		});
 		SessionManager._setSessionsForTesting([session]);
