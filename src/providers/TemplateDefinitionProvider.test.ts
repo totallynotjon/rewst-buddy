@@ -4,9 +4,19 @@ import vscode from 'vscode';
 import { initTestEnvironment, createMockSession, Fixtures } from '@test';
 import { LinkManager, TemplateLink, TemplateMetadataStore } from '@models';
 import { SessionManager } from '@sessions';
+import { log } from '@utils';
 import { TemplateDefinitionProvider } from './TemplateDefinitionProvider';
 
 const { suite, test, setup, teardown } = Mocha;
+
+/** Poll `predicate` until it is true or the timeout elapses, instead of waiting a fixed delay. */
+async function waitFor(predicate: () => boolean, timeoutMs = 2000, stepMs = 10): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (!predicate()) {
+		if (Date.now() >= deadline) throw new Error('waitFor: condition not met before timeout');
+		await new Promise(resolve => setTimeout(resolve, stepMs));
+	}
+}
 
 /**
  * Covers the Ctrl+Click side of the language-navigation spec: jump straight to a
@@ -94,7 +104,7 @@ suite('Unit: TemplateDefinitionProvider', () => {
 
 		SessionManager._setSessionsForTesting([session]);
 		TemplateMetadataStore.init();
-		await new Promise(resolve => setTimeout(resolve, 100));
+		await waitFor(() => TemplateMetadataStore.getTemplateMetadata(CACHED_TEMPLATE_ID) !== undefined);
 
 		// Sanity check: the referenced template is cached but not itself linked.
 		assert.strictEqual(LinkManager.getTemplateLinkFromId(CACHED_TEMPLATE_ID).length, 0);
@@ -134,7 +144,7 @@ suite('Unit: TemplateDefinitionProvider', () => {
 		const result = provider.provideDefinition(doc, position, token);
 		assert.strictEqual(result, undefined, 'the fetch-and-link happens in the background, not synchronously');
 
-		await new Promise(resolve => setTimeout(resolve, 150));
+		await waitFor(() => LinkManager.getTemplateLinkFromId(CACHED_TEMPLATE_ID).length === 1);
 
 		const getTemplateCalls = wrapper.getCallsFor('getTemplate');
 		assert.strictEqual(getTemplateCalls.length, 1, 'the template was fetched');
@@ -145,5 +155,59 @@ suite('Unit: TemplateDefinitionProvider', () => {
 		assert.strictEqual(newLinks[0].uriString, newFileUri.toString());
 
 		assert.ok(shownDocs.length > 0, 'the new file was opened in an editor');
+	});
+
+	test('reports an error and creates no link when the background fetch of a cached template fails', async () => {
+		const cacheOrg = Fixtures.orgModel({ id: 'cache-org', name: 'Cache Org' });
+		const doc = await openDoc(`template('${CACHED_TEMPLATE_ID}')`);
+		LinkManager.addLink(templateLink(doc.uri, 'anchor-template', cacheOrg.id, cacheOrg.name, 'Anchor Template'));
+
+		const { session, wrapper } = createMockSession({ profile: { org: cacheOrg, allManagedOrgs: [cacheOrg] } });
+		wrapper.when('listTemplates', {
+			data: Fixtures.listTemplatesQuery([
+				Fixtures.template({ id: 'anchor-template', name: 'Anchor Template', orgId: cacheOrg.id }),
+				Fixtures.template({ id: CACHED_TEMPLATE_ID, name: 'Cached Template', orgId: cacheOrg.id }),
+			]),
+		});
+		wrapper.when('getTemplate', { error: new Error('fetch exploded') });
+		SessionManager._setSessionsForTesting([session]);
+		TemplateMetadataStore.init();
+		await waitFor(() => TemplateMetadataStore.getTemplateMetadata(CACHED_TEMPLATE_ID) !== undefined);
+
+		const errors: string[] = [];
+		stub(log, 'notifyError', ((message: string) => {
+			errors.push(message);
+			return new Error(message);
+		}) as typeof log.notifyError);
+
+		const result = provider.provideDefinition(doc, position, token);
+		assert.strictEqual(result, undefined);
+
+		await waitFor(() => errors.length > 0);
+		assert.ok(
+			errors.some(m => m.includes('Failed to open template')),
+			'the fetch failure is surfaced via notifyError',
+		);
+		assert.strictEqual(
+			LinkManager.getTemplateLinkFromId(CACHED_TEMPLATE_ID).length,
+			0,
+			'no link is created when the fetch fails',
+		);
+	});
+
+	test('returns undefined with no side effects when the referenced template is neither linked nor cached', async () => {
+		const doc = await openDoc(`template('${CACHED_TEMPLATE_ID}')`);
+		// The host file is linked, but nothing knows about the referenced id: no
+		// local link and no metadata-store entry, so there is nothing to open.
+		LinkManager.addLink(templateLink(doc.uri, 'host-template', 'host-org', 'Host Org', 'Host Template'));
+
+		const result = provider.provideDefinition(doc, position, token);
+
+		assert.strictEqual(result, undefined);
+		assert.strictEqual(
+			LinkManager.getTemplateLinkFromId(CACHED_TEMPLATE_ID).length,
+			0,
+			'no background fetch-and-link happened',
+		);
 	});
 });

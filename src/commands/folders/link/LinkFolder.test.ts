@@ -1,4 +1,4 @@
-import { LinkManager } from '@models';
+import { LinkManager, SyncManager } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import * as assert from 'assert';
@@ -78,5 +78,26 @@ suite('Unit: LinkFolder', () => {
 		await new LinkFolder().execute([folderUri]);
 
 		assert.strictEqual(LinkManager.getFolderLinks().length, 0);
+	});
+
+	test('still links the folder when fetching its templates fails', async () => {
+		const org = Fixtures.orgModel({ id: 'org-fetch-fail', name: 'Fetch Fail Org' });
+		const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		SessionManager._setSessionsForTesting([session]);
+
+		stub(vscode.window, 'showQuickPick', (async (items: readonly { detail?: string }[]) =>
+			items.find(i => i.detail === 'Primary Organization')) as unknown as typeof vscode.window.showQuickPick);
+
+		let fetchCalled = false;
+		stub(SyncManager, 'fetchFolder', (async () => {
+			fetchCalled = true;
+			throw new Error('fetch failed');
+		}) as typeof SyncManager.fetchFolder);
+
+		await new LinkFolder().execute([folderUri]);
+
+		assert.ok(fetchCalled, 'the folder fetch was attempted');
+		const folderLink = LinkManager.getFolderLink(folderUri);
+		assert.strictEqual(folderLink.org.id, org.id, 'the folder link persists despite the fetch failure');
 	});
 });

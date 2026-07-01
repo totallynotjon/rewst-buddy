@@ -121,8 +121,9 @@ reviews:
               in a short "Implementation status" note under the requirement, not in
               softened requirement wording. Most importantly, keep spec and tests
               aligned: a changed or added requirement/scenario must land in the same PR
-              with the colocated *.test.ts (and an integration test under
-              src/test/integration/ when live API or assistant behavior is involved)
+              with a corresponding *.test.ts under src/ (colocated with the code it
+              covers, not beside the spec), plus an integration test under
+              src/test/integration/ when live API or assistant behavior is involved,
               that asserts that behavior — flag a spec change with no corresponding test
               change, and a scenario whose asserted behavior no test covers, as a
               blocking issue.

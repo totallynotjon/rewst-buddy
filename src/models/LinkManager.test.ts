@@ -561,7 +561,7 @@ suite('Unit: LinkManager', () => {
 			LinkManager.addLink(makeLink(child2Old, 't2'));
 			LinkManager.addLink(makeLink(outsideUri, 't3'));
 
-			await (LinkManager as any)['handleRename']({ files: [{ oldUri: oldDirUri, newUri: newDirUri }] });
+			await LinkManager._handleRenameForTesting({ files: [{ oldUri: oldDirUri, newUri: newDirUri }] });
 
 			const child1New = vscode.Uri.joinPath(newDirUri, 'file1.txt');
 			const child2New = vscode.Uri.joinPath(newDirUri, 'sub', 'file2.txt');

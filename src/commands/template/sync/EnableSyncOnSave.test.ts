@@ -58,4 +58,14 @@ suite('Unit: EnableSyncOnSave', () => {
 
 		assert.strictEqual(SyncOnSaveManager.isUriSynced(uri), true, 'remains enabled');
 	});
+
+	test('enabling one linked file does not affect another linked file', async () => {
+		const uri = linkedFile('a.j2');
+		const other = linkedFile('b.j2');
+
+		await new EnableSyncOnSave().execute([uri]);
+
+		assert.strictEqual(SyncOnSaveManager.isUriSynced(uri), true, 'the targeted file becomes synced');
+		assert.strictEqual(SyncOnSaveManager.isUriSynced(other), false, 'the untouched file stays unsynced');
+	});
 });

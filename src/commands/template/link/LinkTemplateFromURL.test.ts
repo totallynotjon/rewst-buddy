@@ -107,4 +107,20 @@ suite('Unit: LinkTemplateFromURL', () => {
 
 		await assert.rejects(() => new LinkTemplateFromURL().execute([uri]), /Already linked/);
 	});
+
+	test('rejects before linking when the URL prompt is cancelled', async () => {
+		const uri = writeFile('cancelled.j2', 'body');
+		stubURLInput(undefined);
+
+		await assert.rejects(() => new LinkTemplateFromURL().execute([uri]), /not a string/);
+		assert.strictEqual(LinkManager.isLinked(uri), false, 'no link is created when the URL is missing');
+	});
+
+	test('rejects before linking when the URL is malformed', async () => {
+		const uri = writeFile('malformed.j2', 'body');
+		stubURLInput('not-a-valid-template-url');
+
+		await assert.rejects(() => new LinkTemplateFromURL().execute([uri]));
+		assert.strictEqual(LinkManager.isLinked(uri), false, 'no link is created when the URL cannot be parsed');
+	});
 });

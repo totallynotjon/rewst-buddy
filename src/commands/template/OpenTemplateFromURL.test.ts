@@ -40,10 +40,14 @@ suite('Unit: OpenTemplateFromURL', () => {
 		LinkManager._resetForTesting();
 	});
 
-	teardown(() => {
+	teardown(async () => {
 		while (restores.length) restores.pop()!();
 		SessionManager._resetForTesting();
 		LinkManager._resetForTesting();
+		// Runs after restores, so this hits the real command even for tests that
+		// stubbed executeCommand — disposes any untitled editor a test opened,
+		// even if an assertion failed before the test reached its own cleanup.
+		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 	});
 
 	test('reuses an existing local link instead of fetching a duplicate', async () => {
@@ -93,8 +97,6 @@ suite('Unit: OpenTemplateFromURL', () => {
 		const link = LinkManager.getTemplateLink(fixedUri);
 		assert.strictEqual(link.template.id, TEMPLATE_ID);
 		assert.strictEqual(link.org.id, ORG_ID);
-
-		await vscode.commands.executeCommand('workbench.action.closeAllEditors');
 	});
 
 	test('does nothing when the user cancels the URL prompt', async () => {
