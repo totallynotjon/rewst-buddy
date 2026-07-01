@@ -24,7 +24,7 @@ export interface FolderLink extends Link {
 	type: 'Folder';
 }
 
-function nonEmptyString(value: unknown): string | undefined {
+export function nonEmptyString(value: unknown): string | undefined {
 	return typeof value === 'string' && value.trim() !== '' ? value : undefined;
 }
 

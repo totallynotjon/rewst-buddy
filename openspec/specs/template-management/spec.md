@@ -80,13 +80,6 @@ whose primary or managed organizations include the parsed organization, and
 either open the template (reusing a link when present) or link an existing local
 file to it.
 
-**Implementation status:** resolving a parsed organization that is a managed
-sub-organization (rather than a session's primary organization) depends on
-session-auth's managed-org resolution, which is not yet implemented (see
-session-auth's `Manage multiple organizations per session` requirement); today
-this resolution succeeds reliably only when the parsed organization is a
-session's primary organization.
-
 #### Scenario: Open from URL
 
 - **GIVEN** a Rewst template URL

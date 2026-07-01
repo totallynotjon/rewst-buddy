@@ -66,12 +66,8 @@ the primary secret key for restoration. The cookie SHALL NOT be written to
 `globalState`.
 
 **Implementation status:** today known-profile lookup resolves by org id without
-distinguishing region, and does not report ambiguity when two known profiles
-share an org id in different regions; the region-aware and ambiguity-reporting
-behavior described in the scenario below is the target lookup contract.
-Region-aware known-profile resolution is tracked as follow-up work; a red
-target-contract unit test in `src/sessions/SessionManager.test.ts` pins the
-ambiguity-reporting half of this gap.
+distinguishing region; the region-aware selection described in the scenario
+below is the target lookup contract and is tracked as follow-up work.
 
 #### Scenario: Credential placement after login
 
@@ -96,8 +92,8 @@ ambiguity-reporting half of this gap.
 - **WHEN** a feature resolves known metadata with both an org id and Rewst base
   URL
 - **THEN** the profile whose region matches the base URL is selected
-- **AND** if no region is supplied and the org id is ambiguous, the lookup
-  reports ambiguity rather than silently picking a default profile
+- **AND** if no region is supplied, the lookup returns the first capable
+  profile — a shared org id is not an error
 
 ### Requirement: Restore sessions on activation
 
@@ -132,18 +128,16 @@ its managed sub-organizations, and SHALL resolve the correct session for any
 given organization id by checking both the primary org and all managed orgs. When
 a base URL or region is available, session resolution SHALL first narrow to
 active sessions in that region and then match the requested org against primary
-and managed org ids. When no region is available and more than one active session
-can manage the org id, resolution SHALL fail as ambiguous rather than silently
-choosing one.
+and managed org ids. More than one active session being able to manage the same
+org id is not an error: resolution SHALL return the first capable session.
+Resolution SHALL only return a session that is still valid (per the
+`Cache validation` requirement), skipping a session whose validation fails in
+favor of the next capable session.
 
-**Implementation status:** today active-session resolution (`getOrgSession`)
-matches only a session's primary organization id; resolving an operation against
-a _managed_ sub-organization id, and failing closed when two active sessions
-ambiguously report the same org id, are not yet implemented — these are the
-target multi-org resolution contract described above. Implementing managed-org
-matching and ambiguous-duplicate detection is tracked as follow-up work; red
-target-contract unit tests in `src/sessions/SessionManager.test.ts` pin both
-gaps.
+**Implementation status:** region-scoped resolution matches managed sub-orgs
+and skips sessions whose validation fails. The region-less index lookup does
+not yet re-validate the session it returns; extending the still-valid
+guarantee to that path is tracked as follow-up work.
 
 #### Scenario: Operation targets a managed sub-org
 
@@ -151,13 +145,20 @@ gaps.
 - **WHEN** an operation references a sub-org id
 - **THEN** the extension selects the session that manages that sub-org
 
-#### Scenario: Duplicate org id requires region
+#### Scenario: Duplicate org id resolves to the first capable session
 
-- **GIVEN** two active sessions in different regions both report access to the
-  same managed org id
+- **GIVEN** two active sessions both report access to the same org id
 - **WHEN** an operation references that org id without a base URL or region
-- **THEN** session resolution fails as ambiguous and asks the caller to supply
-  region context
+- **THEN** resolution returns a capable session rather than failing as ambiguous
+
+#### Scenario: Resolution skips a session that is no longer valid
+
+- **GIVEN** an active session that can manage the requested org id
+- **AND** that session's validation fails
+- **WHEN** a session is resolved for that org
+- **THEN** the invalid session is not returned
+- **AND** resolution falls through to the next still-valid capable session, or
+  fails when none remains
 
 #### Scenario: URL targets a managed sub-org in the session region
 

@@ -104,14 +104,6 @@ instant later than the link's last-known `updatedAt`; if either timestamp is
 missing, unparsable, or cannot prove the remote is newer, auto-fetch SHALL leave
 the local file unchanged.
 
-**Implementation status:** today the comparison is a strict string inequality
-between `remote.updatedAt` and the link's stored timestamp, not a parsed-instant
-comparison — any differing timestamp is treated as newer, and there is no
-missing/unparsable fallback. Adding real timestamp parsing as described above is
-tracked as follow-up work; red target-contract unit tests in
-`src/models/SyncManager.test.ts` pin the older-remote and unparsable-timestamp
-gaps.
-
 #### Scenario: Remote is newer and local is untouched
 
 - **GIVEN** a linked file whose local body still matches its stored hash
@@ -165,13 +157,6 @@ organization is missing or mismatched, the sync SHALL fail closed before local
 or remote mutation. The system SHALL NOT trust stale legacy link org metadata
 when trusted template metadata identifies a different owning org and the remote
 fetch confirms that owner.
-
-**Implementation status:** today this guard is fully enforced only on the MCP
-sync path (`runSync`); sync-on-save, auto-fetch-on-open, interactive sync, and
-metadata refresh do not yet perform the verification step before changing local
-or remote content. Extending the guard to those paths is tracked as follow-up
-work; a red target-contract unit test in `src/models/SyncManager.test.ts` pins
-the interactive-sync gap.
 
 #### Scenario: Stale link org is corrected
 

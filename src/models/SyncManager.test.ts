@@ -534,7 +534,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 			type: 'Template',
 			uriString: uri.toString(),
 			org: mainOrg,
-			template: { id: 'tpl-af', name: 'Sub Tpl', updatedAt: 'local-ts' } as any,
+			template: { id: 'tpl-af', name: 'Sub Tpl', updatedAt: '2024-01-01T00:00:00Z' } as any,
 			bodyHash: getHash(content),
 		};
 		LinkManager.addLink(existing);
@@ -545,7 +545,7 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 				id: 'tpl-af',
 				name: 'Sub Tpl',
 				body: '// newer remote body',
-				updatedAt: 'remote-ts',
+				updatedAt: '2024-01-02T00:00:00Z',
 				orgId: 'sub-org',
 				organization: Fixtures.org({ id: 'sub-org', name: 'Sub Org' }),
 			}),
@@ -1250,12 +1250,11 @@ suite('Unit: SyncManager.fetchAllFolders', () => {
 	});
 });
 
-// Target contract from openspec/specs/template-sync "Auto-fetch on open without
+// Contract from openspec/specs/template-sync "Auto-fetch on open without
 // clobbering local edits": "newer" means a parsed instant later than the link's
 // last-known updatedAt; older, missing, or unparsable timestamps must not
-// replace the local file. The spec's Implementation status note acknowledges
-// today's strict string inequality — red here is the tracked gap.
-suite('Unit: SyncManager.checkAutoFetch (spec target contract: timestamp comparison)', () => {
+// replace the local file.
+suite('Unit: SyncManager.checkAutoFetch (spec contract: timestamp comparison)', () => {
 	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
@@ -1354,13 +1353,11 @@ suite('Unit: SyncManager.checkAutoFetch (spec target contract: timestamp compari
 	});
 });
 
-// Target contract from openspec/specs/template-sync "Normalize organizations
-// during sync updates": every content-changing path — including the interactive
+// Contract from openspec/specs/template-sync "Normalize organizations during
+// sync updates": every content-changing path — including the interactive
 // save-driven sync — verifies the fetched remote template belongs to the
-// expected organization before changing either side. The spec's Implementation
-// status note acknowledges the guard currently exists only on the MCP runSync
-// path — red here is the tracked gap.
-suite('Unit: SyncManager.syncTemplate (spec target contract: org guard)', () => {
+// expected organization before changing either side.
+suite('Unit: SyncManager.syncTemplate (spec contract: org guard)', () => {
 	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();

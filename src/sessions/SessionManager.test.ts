@@ -150,10 +150,11 @@ suite('Unit: SessionManager', () => {
 		});
 	});
 
-	// Target contract from openspec/specs/session-auth "Manage multiple organizations
-	// per session" and "Store credentials securely". The spec's Implementation status
-	// notes acknowledge these are not implemented yet — red here is the tracked gap.
-	suite('multi-org resolution (spec target contract)', () => {
+	// Contract from openspec/specs/session-auth "Manage multiple organizations
+	// per session": region-scoped resolution matches managed sub-orgs, returns
+	// the first capable session for duplicate org ids, and only returns sessions
+	// that still validate.
+	suite('multi-org resolution (spec contract)', () => {
 		test('getOrgSession resolves a managed sub-org within the requested region', async () => {
 			const { session } = createMockSession({
 				profile: {
@@ -170,7 +171,7 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(resolved, session);
 		});
 
-		test('a duplicate org id with no region context fails as ambiguous instead of silently picking one session', () => {
+		test('a duplicate org id resolves to a capable session instead of failing as ambiguous', () => {
 			const { session: northAmerica } = createMockSession({
 				profile: {
 					user: Fixtures.userFragment({ id: 'user-na' }),
@@ -199,10 +200,30 @@ suite('Unit: SessionManager', () => {
 			});
 			SessionManager._setSessionsForTesting([northAmerica, europe]);
 
-			assert.throws(() => SessionManager.getSessionForOrg('dup-org'));
+			const resolved = SessionManager.getSessionForOrg('dup-org');
+			assert.ok(
+				resolved === northAmerica || resolved === europe,
+				'a shared org id must resolve to one of the capable sessions, not error',
+			);
 		});
 
-		test('getProfileForOrg reports ambiguity when two known profiles share an org id in different regions', () => {
+		test('getOrgSession does not return a session that no longer validates', async () => {
+			const { session, wrapper } = createMockSession({
+				profile: {
+					org: { id: 'org-a', name: 'A' },
+					allManagedOrgs: [{ id: 'org-a', name: 'A' }],
+				},
+			});
+			wrapper.when('User', { data: { user: null } });
+			SessionManager._setSessionsForTesting([session]);
+
+			await assert.rejects(
+				SessionManager.getOrgSession('org-a', new URL(session.profile.region.loginUrl)),
+				'a session whose validation fails must be skipped, leaving no session to return',
+			);
+		});
+
+		test('getProfileForOrg returns a capable profile when several known profiles share an org id', () => {
 			const { session: northAmerica } = createMockSession({
 				profile: {
 					user: Fixtures.userFragment({ id: 'user-na' }),
@@ -231,7 +252,9 @@ suite('Unit: SessionManager', () => {
 			});
 			SessionManager._setKnownProfilesForTesting([northAmerica.profile, europe.profile]);
 
-			assert.throws(() => SessionManager.getProfileForOrg('shared-org'));
+			const profile = SessionManager.getProfileForOrg('shared-org');
+			assert.ok(profile, 'a shared org id must still resolve to a known profile');
+			assert.strictEqual(profile.org.id, 'shared-org');
 		});
 	});
 
