@@ -465,6 +465,46 @@ suite('Unit: TemplateMetadataStore', () => {
 				'Template should be cleared after sessions cleared',
 			);
 		});
+
+		test('should drop metadata for orgs no remaining session manages when one session is removed', async () => {
+			const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
+			const org2 = Fixtures.orgModel({ id: 'org-2', name: 'Org 2' });
+
+			const { session: session1, wrapper: wrapper1 } = createMockSession({
+				profile: { user: Fixtures.userFragment({ id: 'user-1' }), org: org1, allManagedOrgs: [org1] },
+			});
+			wrapper1.when('listTemplates', {
+				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-org1', name: 'T1', orgId: org1.id })]),
+			});
+			const { session: session2, wrapper: wrapper2 } = createMockSession({
+				profile: { user: Fixtures.userFragment({ id: 'user-2' }), org: org2, allManagedOrgs: [org2] },
+			});
+			wrapper2.when('listTemplates', {
+				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-org2', name: 'T2', orgId: org2.id })]),
+			});
+
+			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
+			LinkManager.addLink(makeTemplateLink(org2.id, org2.name, 'link-org2'));
+			SessionManager._setSessionsForTesting([session1, session2]);
+
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 100));
+			assert.ok(TemplateMetadataStore.getTemplateMetadata('t-org1'), 'org 1 metadata loaded');
+			assert.ok(TemplateMetadataStore.getTemplateMetadata('t-org2'), 'org 2 metadata loaded');
+
+			await SessionManager.removeSession('user-1');
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata('t-org1'),
+				undefined,
+				"the removed session's org metadata must be dropped so hovers cannot offer dead sessions",
+			);
+			assert.ok(
+				TemplateMetadataStore.getTemplateMetadata('t-org2'),
+				"the surviving session's org metadata stays available",
+			);
+		});
 	});
 
 	suite('dispose()', () => {

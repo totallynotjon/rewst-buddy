@@ -486,6 +486,71 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(promptCalled, false, 'loadSessions must not prompt for a cookie');
 			assert.strictEqual(await SessionManager.getSessionForOrg('org-restore'), sessions[0]);
 		});
+
+		test('a session removed while loadSessions is in flight is not resurrected by the load', async () => {
+			// Server that holds every response until released, so Remove Session
+			// can run while the load's createSession is still awaiting the network.
+			let release!: () => void;
+			const gate = new Promise<void>(resolve => (release = resolve));
+			const user = {
+				id: 'user-late',
+				username: 'late-user',
+				organization: { id: 'org-late', name: 'Late Org' },
+				allManagedOrgs: [{ id: 'org-late', name: 'Late Org' }],
+			};
+			const server = createServer((request, response) => {
+				request.on('data', () => {});
+				request.on('end', async () => {
+					await gate;
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(JSON.stringify({ data: { user } }));
+				});
+			});
+			servers.push(server);
+			const port = await listen(server);
+
+			const region = {
+				name: 'Local Test',
+				cookieName: 'appSession',
+				graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+				loginUrl: `http://127.0.0.1:${port}`,
+			};
+			await vscode.workspace
+				.getConfiguration('rewst-buddy')
+				.update('regions', [region], vscode.ConfigurationTarget.Global);
+
+			const savedProfile: SessionProfile = {
+				region,
+				org: { id: 'org-late', name: 'Late Org' },
+				allManagedOrgs: [{ id: 'org-late', name: 'Late Org' }],
+				label: 'late-user (Late Org)',
+				user: { id: 'user-late' } as SessionProfile['user'],
+			};
+			await context.globalState.update('SessionProfiles', [savedProfile]);
+			await context.globalState.update('RewstAllKnownProfiles', [savedProfile]);
+			await context.secrets.store('org-late', 'appSession=late-cookie');
+
+			const loadPromise = SessionManager.loadSessions();
+			// Give the load a moment to read the cookie and start the request.
+			await new Promise(resolve => setTimeout(resolve, 50));
+
+			await SessionManager.removeSession('user-late');
+			release();
+			await loadPromise;
+
+			assert.strictEqual(
+				SessionManager.getActiveSessions().length,
+				0,
+				'the removed session must not be resurrected by the in-flight load',
+			);
+			assert.strictEqual(
+				await context.secrets.get('org-late'),
+				undefined,
+				'the removed session cookie must not be re-stored by the load',
+			);
+			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
+			await assert.rejects(SessionManager.getSessionForOrg('org-late'));
+		});
 	});
 
 	suite('clearProfiles()', () => {
@@ -646,6 +711,64 @@ suite('Unit: SessionManager', () => {
 
 		test('throws when no active or known session matches the given user id', async () => {
 			await assert.rejects(SessionManager.removeSession('does-not-exist'));
+		});
+
+		test('keeps a secret still needed by another profile whose org overlaps the removed session', async () => {
+			const { session: parent } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-parent' }),
+					org: { id: 'org-parent', name: 'Parent' },
+					allManagedOrgs: [
+						{ id: 'org-parent', name: 'Parent' },
+						{ id: 'org-child', name: 'Child' },
+					],
+				},
+			});
+			const { session: child } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-child' }),
+					org: { id: 'org-child', name: 'Child' },
+					allManagedOrgs: [{ id: 'org-child', name: 'Child' }],
+				},
+			});
+			await context.secrets.store('org-parent', 'cookie-parent');
+			await context.secrets.store('org-child', 'cookie-child');
+
+			const saver = SessionManager as unknown as SessionSaver;
+			await saver.saveSession(parent);
+			await saver.saveSession(child);
+
+			await SessionManager.removeSession('user-parent');
+
+			assert.strictEqual(
+				await context.secrets.get('org-parent'),
+				undefined,
+				"the removed session's own cookie is deleted",
+			);
+			assert.strictEqual(
+				await context.secrets.get('org-child'),
+				'cookie-child',
+				"another session's cookie stored under a shared org id must survive",
+			);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-child'), child);
+		});
+
+		test('stops resolving the session for its orgs before any persistence completes', async () => {
+			const { session } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-race' }),
+					org: { id: 'org-race', name: 'Race' },
+					allManagedOrgs: [{ id: 'org-race', name: 'Race' }],
+				},
+			});
+			const saver = SessionManager as unknown as SessionSaver;
+			await saver.saveSession(session);
+
+			const removal = SessionManager.removeSession('user-race');
+			// Deliberately not awaited yet: a concurrent sync must not land on a
+			// session the user has already confirmed removing.
+			await assert.rejects(SessionManager.getSessionForOrg('org-race'));
+			await removal;
 		});
 	});
 });

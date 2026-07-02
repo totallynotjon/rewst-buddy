@@ -52,8 +52,23 @@ export const TemplateMetadataStore = new (class _ implements vscode.Disposable {
 	private handleSessionChange(event: SessionChangeEvent): void {
 		if (event.type === 'saved') {
 			this.loadAllSessionTemplates(DEFERRED_DELAY_SESSION_EVENT_MS);
+		} else if (event.type === 'removed') {
+			// Drop metadata for orgs no remaining session manages so hovers and
+			// definitions cannot offer templates whose session is gone, then
+			// reload: an org the removed session shared with a survivor stays.
+			this.pruneOrgsWithoutSession();
+			this.loadAllSessionTemplates(DEFERRED_DELAY_SESSION_EVENT_MS);
 		} else if (event.type === 'cleared') {
 			this.clearAll();
+		}
+	}
+
+	private pruneOrgsWithoutSession(): void {
+		const covered = this.collectOrgSessionMap();
+		for (const orgId of Array.from(this.orgIndex.keys())) {
+			if (!covered.has(orgId)) {
+				this.clearOrgTemplates(orgId);
+			}
 		}
 	}
 

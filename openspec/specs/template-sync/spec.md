@@ -303,3 +303,11 @@ fetched.
   present locally
 - **THEN** the missing templates are written as local files, linked, and the user
   is notified of the count fetched
+
+#### Scenario: One folder's failure does not stop the others
+
+- **GIVEN** several linked folders, one of whose orgs has no usable session
+  (for example, its session was removed)
+- **WHEN** the background fetch runs
+- **THEN** the failing folder is skipped with a logged error
+- **AND** the remaining folders are still fetched

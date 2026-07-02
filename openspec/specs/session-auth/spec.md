@@ -249,10 +249,14 @@ The system SHALL provide a way to remove one authenticated or previously
 authenticated session — active or known-only — without disturbing any other
 session. Removing a session SHALL delete its raw cookie(s) from VS Code
 `secrets` (primary organization key and any legacy managed-organization keys),
-remove its profile from `SessionProfiles` (if active) and `RewstAllKnownProfiles`,
-and clear its entries from in-memory sessions and org indexes. If the removed
+except keys another remaining profile still needs, remove its profile from
+`SessionProfiles` (if active) and `RewstAllKnownProfiles`, and clear its
+entries from in-memory sessions and org indexes before any persistence await,
+so the session stops resolving the moment removal is confirmed. If the removed
 session was the only active session, extension context SHALL be updated so no
-session is considered active.
+session is considered active. A removal that races the startup session load
+SHALL win: the load must not restore the removed session or re-store its
+cookie.
 
 #### Scenario: User removes one active session from the Sessions tree
 
@@ -280,3 +284,24 @@ session is considered active.
 - **WHEN** the user removes it
 - **THEN** the extension no longer considers any session active
 - **AND** the background credential-refresh interval stops
+
+#### Scenario: A secret shared with another profile survives removal
+
+- **GIVEN** session A whose managed orgs include the primary org of session B
+- **WHEN** the user removes session A
+- **THEN** session A's own cookie is deleted from `secrets`
+- **AND** the cookie stored under session B's primary org id is kept
+- **AND** session B still resolves for its orgs
+
+#### Scenario: A session being removed stops resolving immediately
+
+- **GIVEN** an active session being removed
+- **WHEN** an org lookup runs concurrently with the removal
+- **THEN** the lookup does not resolve to the session being removed
+
+#### Scenario: Removal during the startup load is not undone
+
+- **GIVEN** the startup session load is restoring a saved profile
+- **WHEN** the user removes that session before the restore completes
+- **THEN** the completed load does not resurrect the session
+- **AND** its cookie is not re-stored in `secrets`

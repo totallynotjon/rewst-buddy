@@ -59,6 +59,14 @@ cached metadata entry — and SHALL indicate when the template is unknown.
 - **WHEN** the user hovers it
 - **THEN** the hover shows the id and marks the template as unknown
 
+#### Scenario: Session removal drops orphaned cached metadata
+
+- **GIVEN** cached metadata loaded from a session that is then removed
+- **WHEN** no remaining session manages the removed session's orgs
+- **THEN** those orgs' cached entries are dropped, so hovers and navigation do
+  not offer templates whose session is gone
+- **AND** metadata for orgs a remaining session manages stays available
+
 ### Requirement: Navigate to the referenced template
 
 On Ctrl+Click of a recognized reference, the system SHALL navigate to the linked

@@ -462,7 +462,13 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		const links = LinkManager.getFolderLinks();
 		for (const link of links) {
 			if (!this.isActive) break; // Stop if deactivated mid-fetch
-			await this.fetchFolder(link);
+			try {
+				await this.fetchFolder(link);
+			} catch (e) {
+				// One folder's failure (e.g. its org's session was removed) must
+				// not stop the remaining folders from being fetched.
+				log.error(`fetchAllFolders: failed to fetch folder ${link.uriString}`, e);
+			}
 		}
 	}
 

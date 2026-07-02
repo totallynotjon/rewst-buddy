@@ -1334,6 +1334,42 @@ suite('Unit: SyncManager.fetchAllFolders', () => {
 		assert.strictEqual(fs.readFileSync(fileA, 'utf8'), 'a1-body');
 		assert.strictEqual(fs.readFileSync(fileB, 'utf8'), 'b1-body');
 	});
+
+	test('a folder whose org has no session does not stop the remaining folders from fetching', async () => {
+		// Only org B has a session; org A's folder link is stale (its session
+		// was removed) and its failure must not abort the whole background pass.
+		const { session, wrapper } = createMockSession({ profile: { org: orgB, allManagedOrgs: [orgB] } });
+		wrapper.when('listTemplates', {
+			data: Fixtures.listTemplatesQuery([
+				Fixtures.template({
+					id: 'b1',
+					name: 'Bravo',
+					orgId: orgB.id,
+					organization: Fixtures.org({ id: orgB.id, name: orgB.name }),
+				}),
+			]),
+		});
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: 'b1',
+				name: 'Bravo',
+				body: 'b1-body',
+				orgId: orgB.id,
+				organization: Fixtures.org({ id: orgB.id, name: orgB.name }),
+			}),
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		// Org A first: its failure previously aborted the loop before org B ran.
+		LinkManager.addLink({ type: 'Folder', uriString: folderUriA.toString(), org: orgA });
+		LinkManager.addLink({ type: 'Folder', uriString: folderUriB.toString(), org: orgB });
+
+		(SyncManager as any)['isActive'] = true;
+		await SyncManager.fetchAllFolders();
+
+		const linksB = LinkManager.getOrgTemplateLinks(orgB);
+		assert.strictEqual(linksB.length, 1, "org B's folder is still fetched after org A's folder failed");
+	});
 });
 
 // Contract from openspec/specs/template-sync "Auto-fetch on open without
