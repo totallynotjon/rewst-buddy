@@ -48,6 +48,15 @@ suite('Unit: chatToolCapabilities', () => {
 			assert.strictEqual(deps.alternates![0].cacheScope, 'org-1');
 		});
 
+		test('an orgId matching a managed sub-org routes to the session that manages it', async () => {
+			const { ctx } = twoSessionContext();
+			ctx.sessions[1].profile.allManagedOrgs.push({ id: 'sub-org-1', name: 'Sub Org' });
+			const deps = await executionLogsDeps({ orgId: 'sub-org-1' }, ctx);
+			assert.strictEqual(deps.cacheScope, 'org-2', 'primary is the session managing the sub-org');
+			assert.strictEqual(deps.alternates?.length, 1);
+			assert.strictEqual(deps.alternates![0].cacheScope, 'org-1');
+		});
+
 		test('an unknown orgId falls back to the context session instead of erroring', async () => {
 			const { ctx } = twoSessionContext();
 			const deps = await executionLogsDeps({ orgId: 'org-nope' }, ctx);
