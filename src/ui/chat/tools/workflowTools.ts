@@ -195,9 +195,9 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	},
 	{
 		name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
-		args: '{"executionId": string, "orgId"?: string, "failedOnly"?: boolean, "includeResult"?: boolean}',
+		args: '{"executionId": string, "orgId"?: string, "failedOnly"?: boolean, "includeResult"?: boolean, "includeSubExecutions"?: boolean}',
 		description:
-			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }). Each signed-in Rewst session only sees its own org hierarchy: if the first session has no rows for the execution, the other active sessions are checked automatically; pass orgId (the org that owns the execution) to query the right session directly.",
+			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task that called a sub-workflow is marked with the sub-execution it spawned (workflow name, execution id, status) — a sub-workflow's own tasks are NOT in the parent's logs, so drill into a sub-execution by calling this tool again with its execution id, or pass includeSubExecutions:true to inline the task logs of the first few sub-executions. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }). Each signed-in Rewst session only sees its own org hierarchy: if the first session has no rows for the execution, the other active sessions are checked automatically; pass orgId (the org that owns the execution) to query the right session directly.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -211,6 +211,11 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 				includeResult: {
 					type: 'boolean',
 					description: "Include every task's result, not just failed tasks' (default false).",
+				},
+				includeSubExecutions: {
+					type: 'boolean',
+					description:
+						'Also inline the task logs of the first few sub-workflow executions this run spawned (default false).',
 				},
 			},
 			required: ['executionId'],
@@ -1355,7 +1360,19 @@ const WORKFLOW_EXECUTIONS_QUERY = `query RewstBuddyExecutions($where: WorkflowEx
 
 const TASK_LOGS_QUERY = `query RewstBuddyTaskLogs($where: TaskLogWhereInput) {
 	taskLogs(where: $where, order: [["createdAt", "ASC"]]) {
-		id originalWorkflowTaskName status message input result createdAt
+		id originalWorkflowTaskName status message input result createdAt taskExecutionId
+	}
+}`;
+
+// A sub-workflow call spawns a child execution whose parentTaskExecutionId
+// points back at the spawning task's taskExecutionId — the only linkage between
+// a parent's task logs and its sub-workflow runs. WorkflowExecutionWhereInput
+// has no parentExecutionId filter, so children are read via the parent's
+// childExecutions traversal.
+const CHILD_EXECUTIONS_QUERY = `query RewstBuddyChildExecutions($where: WorkflowExecutionWhereInput) {
+	workflowExecution(where: $where) {
+		id
+		childExecutions { id status createdAt parentTaskExecutionId workflow { id name } }
 	}
 }`;
 
@@ -1816,9 +1833,21 @@ interface TaskLogRow {
 	input?: unknown;
 	result?: unknown;
 	createdAt?: string | null;
+	taskExecutionId?: string | null;
+}
+
+interface ChildExecutionRow {
+	id?: string | null;
+	status?: string | null;
+	createdAt?: string | null;
+	parentTaskExecutionId?: string | null;
+	workflow?: { id?: string | null; name?: string | null } | null;
 }
 
 const TASK_VALUE_CHARS = 600;
+// includeSubExecutions inlines one extra task-log read per child; cap it so a
+// wide fan-out (a loop task spawning dozens of runs) cannot flood the output.
+const MAX_INLINE_SUB_EXECUTIONS = 5;
 
 /** A failed/errored status, for both task and execution status strings. */
 function isFailedStatus(status: string | null | undefined): boolean {
@@ -1839,6 +1868,31 @@ async function fetchTaskLogs(deps: GraphqlToolDeps, executionId: string): Promis
 	return ((result.data as { taskLogs?: (TaskLogRow | null)[] } | undefined)?.taskLogs ?? []).filter(
 		(r): r is TaskLogRow => !!r,
 	);
+}
+
+/**
+ * Direct child executions (sub-workflow runs) of one execution. Non-fatal by
+ * design: the primary task logs must still come back if this traversal errors,
+ * so failures are returned as a note, never thrown.
+ */
+async function fetchChildExecutions(
+	deps: GraphqlToolDeps,
+	executionId: string,
+): Promise<{ children: ChildExecutionRow[]; error?: string }> {
+	try {
+		const result = await deps.execute(CHILD_EXECUTIONS_QUERY, { where: { id: executionId } });
+		const error = firstErrorMessage(result);
+		if (error) return { children: [], error };
+		const parent = (result.data as { workflowExecution?: { childExecutions?: (ChildExecutionRow | null)[] } })
+			?.workflowExecution;
+		return { children: (parent?.childExecutions ?? []).filter((row): row is ChildExecutionRow => !!row) };
+	} catch (error) {
+		return { children: [], error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+function describeChildExecution(child: ChildExecutionRow): string {
+	return `${child.workflow?.name ?? '(unknown workflow)'} (${child.id ?? '?'}, ${child.status ?? '?'})`;
 }
 
 async function assertExecutionBelongsToOrg(deps: GraphqlToolDeps, executionId: string, orgId: string): Promise<void> {
@@ -1865,7 +1919,11 @@ async function fetchTaskLogsForVisibleExecution(
 	return fetchTaskLogs(deps, executionId);
 }
 
-function formatTaskLogs(rows: TaskLogRow[], opts: { failedOnly?: boolean; includeResult?: boolean }): string {
+function formatTaskLogs(
+	rows: TaskLogRow[],
+	opts: { failedOnly?: boolean; includeResult?: boolean },
+	childrenByTask?: Map<string, ChildExecutionRow[]>,
+): string {
 	const visible = opts.failedOnly ? rows.filter(r => isFailedStatus(r.status)) : rows;
 	if (visible.length === 0) {
 		return opts.failedOnly ? 'No failed tasks in this execution.' : 'This execution has no task logs yet.';
@@ -1875,6 +1933,9 @@ function formatTaskLogs(rows: TaskLogRow[], opts: { failedOnly?: boolean; includ
 			const name = row.originalWorkflowTaskName ?? '(unnamed task)';
 			const failed = isFailedStatus(row.status);
 			const parts = [`- ${name}: ${row.status ?? '?'}`];
+			for (const child of (row.taskExecutionId && childrenByTask?.get(row.taskExecutionId)) || []) {
+				parts.push(`    sub-execution: ${describeChildExecution(child)}`);
+			}
 			if (failed) {
 				if (row.message) parts.push(`    message: ${briefValue(row.message)}`);
 				parts.push(`    input: ${briefValue(row.input)}`);
@@ -1893,7 +1954,9 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 	const orgId = asStringArg(request.args, 'orgId');
 	const failedOnly = request.args.failedOnly === true;
 	const includeResult = request.args.includeResult === true;
+	const includeSubExecutions = request.args.includeSubExecutions === true;
 	let rows: TaskLogRow[] = [];
+	let sourceDeps = deps;
 	let sourceNote = '';
 	let firstError: unknown;
 	let hadVisibleSession = false;
@@ -1901,6 +1964,7 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 		try {
 			const found = await fetchTaskLogsForVisibleExecution(candidate, executionId, orgId);
 			hadVisibleSession = true;
+			sourceDeps = candidate;
 			return found;
 		} catch (error) {
 			firstError ??= error;
@@ -1933,7 +1997,65 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 		rows.length === 0 && alternates.length > 0
 			? `\nNone of the ${alternates.length + 1} active session(s) can see task logs for this execution — check the execution id, or sign in to the Rewst account whose org owns it.`
 			: '';
-	return formatWorkflowOutput(`${header}${emptyHint}\n${formatTaskLogs(rows, { failedOnly, includeResult })}`);
+
+	// Sub-workflow calls look like one opaque task in the parent's logs (#127);
+	// surface the child executions they spawned so the run tree is visible.
+	let children: ChildExecutionRow[] = [];
+	let childLookupError: string | undefined;
+	if (rows.length > 0) {
+		({ children, error: childLookupError } = await fetchChildExecutions(sourceDeps, executionId));
+	}
+	const childrenByTask = new Map<string, ChildExecutionRow[]>();
+	const orphanChildren: ChildExecutionRow[] = [];
+	const taskExecutionIds = new Set(rows.map(row => row.taskExecutionId).filter((id): id is string => !!id));
+	for (const child of children) {
+		const parentTask = child.parentTaskExecutionId;
+		if (parentTask && taskExecutionIds.has(parentTask)) {
+			childrenByTask.set(parentTask, [...(childrenByTask.get(parentTask) ?? []), child]);
+		} else {
+			orphanChildren.push(child);
+		}
+	}
+
+	const footer: string[] = [];
+	if (childLookupError) {
+		footer.push(`Sub-workflow executions could not be checked: ${childLookupError}`);
+	}
+	if (children.length > 0) {
+		footer.push(
+			`Spawned ${children.length} sub-workflow execution(s). Drill into one with buddy_execution_logs {"executionId": "<sub-execution id>"}${includeSubExecutions ? '' : ', or pass includeSubExecutions:true to inline their task logs'}.`,
+		);
+	}
+	if (orphanChildren.length > 0) {
+		footer.push(
+			`Sub-execution(s) not tied to a listed task: ${orphanChildren.map(describeChildExecution).join(', ')}`,
+		);
+	}
+	if (includeSubExecutions) {
+		for (const child of children.slice(0, MAX_INLINE_SUB_EXECUTIONS)) {
+			if (!child.id) continue;
+			try {
+				const childRows = await fetchTaskLogs(sourceDeps, child.id);
+				footer.push(
+					`Sub-execution ${describeChildExecution(child)}:\n${formatTaskLogs(childRows, { failedOnly, includeResult })}`,
+				);
+			} catch (error) {
+				footer.push(
+					`Sub-execution ${describeChildExecution(child)}: task logs could not be read (${error instanceof Error ? error.message : String(error)})`,
+				);
+			}
+		}
+		if (children.length > MAX_INLINE_SUB_EXECUTIONS) {
+			footer.push(
+				`(${children.length - MAX_INLINE_SUB_EXECUTIONS} more sub-execution(s) not inlined — drill into them individually.)`,
+			);
+		}
+	}
+
+	const footerText = footer.length > 0 ? `\n${footer.join('\n')}` : '';
+	return formatWorkflowOutput(
+		`${header}${emptyHint}\n${formatTaskLogs(rows, { failedOnly, includeResult }, childrenByTask)}${footerText}`,
+	);
 }
 
 // ---------------------------------------------------------------------------

@@ -529,6 +529,40 @@ confined to sessions managing an org in the effective allowed set.
 - **THEN** the out-of-scope session is never queried and its rows do not
   appear in the result
 
+### Requirement: Surface sub-workflow executions in execution logs
+
+Because a sub-workflow call appears in its parent's task logs as a single
+opaque task whose child run is otherwise invisible, `buddy_execution_logs`
+SHALL look up the execution's direct child executions and mark each task that
+spawned one with the child's workflow name, execution id, and status, and
+SHALL summarize the spawned children with a pointer to drill down by calling
+the tool again with a child's execution id. An `includeSubExecutions` option
+SHALL additionally inline the task logs of the first few child executions
+(bounded, so a wide fan-out cannot flood the output). Child executions that
+cannot be tied to a listed task SHALL still be listed. A failed
+child-execution lookup SHALL NOT fail the call: the task logs are returned
+with a note that sub-executions could not be checked.
+
+#### Scenario: A task that ran a sub-workflow is marked
+
+- **GIVEN** an execution with a task that spawned a sub-workflow execution
+- **WHEN** `buddy_execution_logs` runs
+- **THEN** that task's entry names the child's workflow, execution id, and
+  status, and the result summarizes how many sub-executions were spawned
+
+#### Scenario: Sub-execution details on demand
+
+- **GIVEN** the same execution
+- **WHEN** `buddy_execution_logs` runs with `includeSubExecutions: true`
+- **THEN** the result appends the child execution's own task logs
+
+#### Scenario: Child lookup failure degrades gracefully
+
+- **GIVEN** the child-execution lookup errors
+- **WHEN** `buddy_execution_logs` runs
+- **THEN** the parent's task logs are returned with a note that sub-workflow
+  executions could not be checked
+
 ### Requirement: Page oversized tool results
 
 The system SHALL keep MCP tool responses below the transport-friendly output

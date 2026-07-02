@@ -1037,6 +1037,9 @@ suite('Unit: workflowTools', () => {
 				renderResult: unknown;
 				contexts: Record<string, unknown>[];
 				taskLogs: unknown[];
+				taskLogsByExecution: Record<string, unknown[]>;
+				childExecutions: unknown[];
+				childExecutionsError: string;
 				executions: unknown[];
 				executionOwnerOrgId: string;
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
@@ -1103,7 +1106,18 @@ suite('Unit: workflowTools', () => {
 					};
 				}
 				if (query.includes('RewstBuddyTaskLogs')) {
+					const where = (variables?.where ?? {}) as { workflowExecutionId?: string };
+					const byExecution = over.taskLogsByExecution ?? {};
+					if (where.workflowExecutionId && where.workflowExecutionId in byExecution) {
+						return { data: { taskLogs: byExecution[where.workflowExecutionId] } };
+					}
 					return { data: { taskLogs: over.taskLogs ?? [] } };
+				}
+				if (query.includes('RewstBuddyChildExecutions')) {
+					if (over.childExecutionsError) return { errors: [{ message: over.childExecutionsError }] };
+					return {
+						data: { workflowExecution: { id: 'exec-1', childExecutions: over.childExecutions ?? [] } },
+					};
 				}
 				if (query.includes('RewstBuddyWorkflowsIndex')) {
 					const all = over.indexWorkflows ?? [
@@ -2038,6 +2052,117 @@ suite('Unit: workflowTools', () => {
 				() => runWorkflowTool({ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: {} }, deps),
 				/executionId/,
 			);
+		});
+
+		test('buddy_execution_logs marks tasks that spawned sub-workflow executions', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [
+					{ originalWorkflowTaskName: 'call_sub', status: 'succeeded', taskExecutionId: 'te-1' },
+					{ originalWorkflowTaskName: 'plain', status: 'succeeded', taskExecutionId: 'te-2' },
+				],
+				childExecutions: [
+					{
+						id: 'exec-child',
+						status: 'succeeded',
+						createdAt: '1500',
+						parentTaskExecutionId: 'te-1',
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /call_sub: succeeded/);
+			assert.match(
+				output,
+				/sub-execution: Sub Flow \(exec-child, succeeded\)/,
+				'the spawning task names its child execution',
+			);
+			const annotations = output.split('\n').filter(line => line.startsWith('    sub-execution:'));
+			assert.strictEqual(annotations.length, 1, 'only the spawning task is marked, not plain tasks');
+			assert.match(output, /1 sub-workflow execution\(s\)/, 'the summary counts spawned children');
+			assert.match(output, /includeSubExecutions/, 'the summary names the drill-down option');
+		});
+
+		test('buddy_execution_logs lists sub-executions it cannot tie to a task', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'start', status: 'succeeded' }],
+				childExecutions: [
+					{
+						id: 'exec-orphan',
+						status: 'running',
+						createdAt: '1500',
+						parentTaskExecutionId: null,
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /Sub Flow \(exec-orphan, running\)/, 'unmatched children are still listed');
+		});
+
+		test('buddy_execution_logs keeps task logs when the sub-execution lookup fails', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'start', status: 'succeeded' }],
+				childExecutionsError: 'resolver broke',
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /start: succeeded/, 'the primary task logs still come back');
+			assert.match(output, /[Ss]ub-workflow executions could not be checked/);
+		});
+
+		test('buddy_execution_logs includeSubExecutions inlines child task logs', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'call_sub', status: 'succeeded', taskExecutionId: 'te-1' }],
+				childExecutions: [
+					{
+						id: 'exec-child',
+						status: 'failed',
+						createdAt: '1500',
+						parentTaskExecutionId: 'te-1',
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+				taskLogsByExecution: {
+					'exec-child': [
+						{
+							originalWorkflowTaskName: 'inner_task',
+							status: 'failed',
+							message: 'inner boom',
+							input: {},
+							result: {},
+						},
+					],
+				},
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: true },
+				},
+				deps,
+			);
+			assert.match(output, /Sub-execution Sub Flow \(exec-child, failed\):/);
+			assert.match(output, /inner_task: failed/);
+			assert.match(output, /inner boom/);
+		});
+
+		test('buddy_execution_logs spec documents sub-execution visibility and includeSubExecutions', () => {
+			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME);
+			assert.ok(spec, 'buddy_execution_logs spec exists');
+			assert.match(spec.args, /"includeSubExecutions"\?/);
+			assert.match(spec.description, /sub-workflow/i, 'description explains sub-workflow visibility');
+			assert.match(spec.description, /includeSubExecutions/);
+			const props = (spec.inputSchema as { properties: Record<string, unknown> }).properties;
+			assert.ok('includeSubExecutions' in props, 'inputSchema declares includeSubExecutions');
 		});
 
 		test('buddy_workflow_search indexes every accessible org and shows the org name', async () => {
