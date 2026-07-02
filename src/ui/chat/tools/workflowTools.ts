@@ -1589,6 +1589,121 @@ function requireScopeFields(toolName: string, args: Record<string, unknown>): { 
 	return { workflowId: asStringArg(args, 'workflowId')!, orgId: asStringArg(args, 'orgId')! };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * One-directional deep match: everything we sent must be present deep-equal in
+ * what the server stored; extra stored keys (server defaults) are fine. One
+ * deliberate looseness: two non-object values with the same textual value
+ * (1 vs "1") match, because the server round-trips scalars through its own
+ * typing and that is not data loss.
+ */
+function storedValueMatches(sent: unknown, stored: unknown): boolean {
+	if (sent === stored) return true;
+	if (isPlainObject(sent) && isPlainObject(stored)) {
+		return Object.entries(sent).every(([key, value]) => key in stored && storedValueMatches(value, stored[key]));
+	}
+	if (Array.isArray(sent) && Array.isArray(stored)) {
+		return sent.length === stored.length && sent.every((value, i) => storedValueMatches(value, stored[i]));
+	}
+	if (sent != null && stored != null && typeof sent !== 'object' && typeof stored !== 'object') {
+		return String(sent) === String(stored);
+	}
+	return false;
+}
+
+/**
+ * Lines describing where a stored value diverges from what was sent, each
+ * prefixed with the dotted path. The Rewst API filters a task's input against
+ * the action's inputSchema and reports success anyway — dropped keys and
+ * coerced values are only visible by re-reading and comparing.
+ */
+export function sentValueDivergences(sent: unknown, stored: unknown, path: string): string[] {
+	if (isPlainObject(sent) && isPlainObject(stored)) {
+		const lines: string[] = [];
+		for (const [key, value] of Object.entries(sent)) {
+			const childPath = `${path}.${key}`;
+			if (!(key in stored)) {
+				lines.push(`${childPath}: sent ${briefValue(value)}, not stored`);
+			} else {
+				lines.push(...sentValueDivergences(value, stored[key], childPath));
+			}
+		}
+		return lines;
+	}
+	return storedValueMatches(sent, stored) ? [] : [`${path}: sent ${briefValue(sent)}, stored ${briefValue(stored)}`];
+}
+
+/**
+ * The tasks whose stored input/with are worth verifying after a save: those an
+ * operation in this batch supplied an input or with for. Graph-only edits
+ * (connect, reposition, autolayout…) verify nothing, so they stay one read.
+ */
+function tasksToVerify(operations: WorkflowOperation[], sentTasks: RawTask[]): RawTask[] {
+	const byId = new Map<string, RawTask>();
+	for (const operation of operations) {
+		let provided: Record<string, unknown> | undefined;
+		let ref: string | undefined;
+		if (operation.op === 'add_task') {
+			provided = operation;
+			ref = str(operation.name);
+		} else if (operation.op === 'update_task') {
+			provided = asObject(operation.set);
+			ref = str(operation.id) ?? str(operation.name);
+		}
+		if (!provided || !ref || (provided.input == null && provided.with == null)) continue;
+		try {
+			const task = resolveTask(sentTasks, ref);
+			byId.set(task.id, task);
+		} catch {
+			// Renamed by a later operation in the batch or deleted again; skip.
+		}
+	}
+	return [...byId.values()];
+}
+
+/**
+ * Best-effort post-save check: re-read the workflow and compare each verified
+ * task's stored input/with against what was sent. Returns a suffix for the
+ * tool result — a WARNING listing divergences, a note when the verification
+ * read failed, or an empty string when everything matches.
+ */
+async function verifySavedTaskValues(
+	deps: GraphqlToolDeps,
+	workflowId: string,
+	orgId: string,
+	toVerify: RawTask[],
+): Promise<string> {
+	try {
+		const saved = await fetchWorkflow(deps, workflowId, orgId);
+		const storedById = new Map(saved.tasks.map(t => [t.id, t]));
+		const problems: string[] = [];
+		for (const sent of toVerify) {
+			const stored = storedById.get(sent.id);
+			if (!stored) {
+				problems.push(`- task "${sent.name}": not present in the saved workflow`);
+				continue;
+			}
+			const lines = [
+				...sentValueDivergences(sent.input ?? {}, stored.input ?? {}, 'input'),
+				...(sent.with != null ? sentValueDivergences(sent.with, stored.with ?? {}, 'with') : []),
+			];
+			problems.push(...lines.map(line => `- task "${sent.name}": ${line}`));
+		}
+		if (problems.length === 0) return '';
+		return (
+			`\n\nWARNING — the server did not store some task values as sent. Rewst filters a task's input against its action's inputSchema: unknown keys are dropped and mistyped values coerced (a string in an object-typed field becomes {}), while the save still reports success.\n` +
+			`${problems.join('\n')}\n` +
+			`Check the action's accepted parameters with buddy_action_search describe mode, then re-apply with matching keys and types.`
+		);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return `\n\nNote: the edit saved, but the tool could not verify the stored task inputs (${message}); re-read with buddy_workflow_get to confirm.`;
+	}
+}
+
 /**
  * The shared workflow write pipeline: resolve any action refs, read the current
  * workflow, apply the operations to the whole graph, and save with the correct
@@ -1634,7 +1749,12 @@ async function applyWorkflowMutation(
 
 	const updated = (result.data as { updateWorkflow?: { name?: string; updatedAt?: string } } | undefined)
 		?.updateWorkflow;
-	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.`;
+	// The server can accept the save yet silently drop or coerce task input
+	// keys (schema filtering). Re-read and compare what this batch sent, so a
+	// "success" that lost data comes back as an explicit warning instead.
+	const toVerify = tasksToVerify(operations, tasks);
+	const verification = toVerify.length > 0 ? await verifySavedTaskValues(deps, workflowId, orgId, toVerify) : '';
+	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.${verification}`;
 }
 
 async function runWorkflowEdit(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
