@@ -25,3 +25,6 @@ export { createMockSession, MockSessionOptions } from './mockSession';
 
 export { createCapabilityTestHarness, fakeCapabilityContext, findTestCapability } from './capabilityTestUtils';
 export type { RawGraphqlCall } from './capabilityTestUtils';
+
+export { listen, close, createRefreshableSessionServer, refreshableSessionProfile } from './refreshableServer';
+export type { RefreshableSessionServer } from './refreshableServer';

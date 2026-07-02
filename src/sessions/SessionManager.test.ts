@@ -1,30 +1,21 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { createServer, type Server } from 'http';
-import type { AddressInfo } from 'net';
 import vscode from 'vscode';
 import { context } from '@global';
 import { SessionManager, Session } from '@sessions';
-import { initTestEnvironment, createMockSession, Fixtures } from '@test';
+import {
+	initTestEnvironment,
+	createMockSession,
+	Fixtures,
+	listen,
+	close,
+	createRefreshableSessionServer,
+	refreshableSessionProfile,
+} from '@test';
 import SessionProfile from './SessionProfile';
 
 const { suite, test, setup, teardown } = Mocha;
-
-function listen(server: Server): Promise<number> {
-	return new Promise((resolve, reject) => {
-		server.once('error', reject);
-		server.listen(0, '127.0.0.1', () => {
-			server.off('error', reject);
-			resolve((server.address() as AddressInfo).port);
-		});
-	});
-}
-
-function close(server: Server): Promise<void> {
-	return new Promise((resolve, reject) => {
-		server.close(error => (error ? reject(error) : resolve()));
-	});
-}
 
 interface MockUser {
 	id: string;
@@ -78,7 +69,7 @@ suite('Unit: SessionManager', () => {
 	});
 
 	suite('getSessionForOrg()', () => {
-		test('should resolve session via org index for managed (non-primary) org', () => {
+		test('should resolve session via org index for managed (non-primary) org', async () => {
 			const { session } = createMockSession({
 				profile: {
 					org: { id: 'primary-org', name: 'Primary' },
@@ -91,17 +82,17 @@ suite('Unit: SessionManager', () => {
 
 			SessionManager._setSessionsForTesting([session]);
 
-			assert.strictEqual(SessionManager.getSessionForOrg('managed-org'), session);
-			assert.strictEqual(SessionManager.getSessionForOrg('primary-org'), session);
+			assert.strictEqual(await SessionManager.getSessionForOrg('managed-org'), session);
+			assert.strictEqual(await SessionManager.getSessionForOrg('primary-org'), session);
 		});
 
-		test('should throw for unknown org', () => {
+		test('should throw for unknown org', async () => {
 			const { session } = createMockSession({
 				profile: { allManagedOrgs: [{ id: 'org-a', name: 'A' }] },
 			});
 			SessionManager._setSessionsForTesting([session]);
 
-			assert.throws(() => SessionManager.getSessionForOrg('unknown-org'));
+			await assert.rejects(SessionManager.getSessionForOrg('unknown-org'));
 		});
 
 		test('should throw after clearProfiles()', async () => {
@@ -109,11 +100,11 @@ suite('Unit: SessionManager', () => {
 				profile: { org: { id: 'org-a', name: 'A' }, allManagedOrgs: [{ id: 'org-a', name: 'A' }] },
 			});
 			SessionManager._setSessionsForTesting([session]);
-			assert.strictEqual(SessionManager.getSessionForOrg('org-a'), session);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-a'), session);
 
 			await SessionManager.clearProfiles();
 
-			assert.throws(() => SessionManager.getSessionForOrg('org-a'));
+			await assert.rejects(SessionManager.getSessionForOrg('org-a'));
 		});
 
 		test('re-auth for same user purges index entries for dropped orgs', async () => {
@@ -138,15 +129,78 @@ suite('Unit: SessionManager', () => {
 
 			const saver = SessionManager as unknown as SessionSaver;
 			await saver.saveSession(first);
-			assert.strictEqual(SessionManager.getSessionForOrg('org-b'), first);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-b'), first);
 
 			await saver.saveSession(second);
 
-			assert.strictEqual(SessionManager.getSessionForOrg('org-a'), second);
-			assert.throws(
-				() => SessionManager.getSessionForOrg('org-b'),
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-a'), second);
+			await assert.rejects(
+				SessionManager.getSessionForOrg('org-b'),
 				'dropped org should no longer resolve to the stale session',
 			);
+		});
+
+		test('skips a session that no longer validates and falls through to another capable session', async () => {
+			const { session: stale, wrapper: staleWrapper } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-stale' }),
+					org: { id: 'dup-org', name: 'Stale' },
+					allManagedOrgs: [{ id: 'dup-org', name: 'Stale' }],
+				},
+			});
+			staleWrapper.when('User', { data: { user: null } });
+			const { session: fresh } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-fresh' }),
+					org: { id: 'dup-org', name: 'Fresh' },
+					allManagedOrgs: [{ id: 'dup-org', name: 'Fresh' }],
+				},
+			});
+			SessionManager._setSessionsForTesting([stale, fresh]);
+
+			const resolved = await SessionManager.getSessionForOrg('dup-org');
+			assert.strictEqual(
+				resolved,
+				fresh,
+				'an invalid session must not be returned when another capable session is still valid',
+			);
+		});
+
+		test('throws when every session capable of managing the org has gone invalid', async () => {
+			const { session, wrapper } = createMockSession({
+				profile: {
+					org: { id: 'org-all-stale', name: 'Stale' },
+					allManagedOrgs: [{ id: 'org-all-stale', name: 'Stale' }],
+				},
+			});
+			wrapper.when('User', { data: { user: null } });
+			SessionManager._setSessionsForTesting([session]);
+
+			await assert.rejects(SessionManager.getSessionForOrg('org-all-stale'));
+		});
+
+		test('recovers a stale-but-refreshable session via refresh instead of skipping or failing it', async () => {
+			const orgId = 'org-recovers-via-refresh';
+			const { server, port } = await createRefreshableSessionServer('user-recovers');
+
+			try {
+				await context.secrets.store(orgId, 'appSession=stale-cookie');
+				// No sdk yet: validate() fails immediately, exactly like a session
+				// whose cached User() query previously failed.
+				const session = new Session(undefined, refreshableSessionProfile(orgId, port, 'user-recovers'));
+				SessionManager._setSessionsForTesting([session]);
+
+				const resolved = await SessionManager.getSessionForOrg(orgId);
+
+				assert.strictEqual(
+					resolved,
+					session,
+					'the same session recovers rather than being reported unreachable',
+				);
+				assert.notStrictEqual(session.sdk, undefined, 'refresh should have replaced the in-memory SDK');
+			} finally {
+				await close(server);
+			}
 		});
 	});
 
@@ -171,7 +225,7 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(resolved, session);
 		});
 
-		test('a duplicate org id resolves to a capable session instead of failing as ambiguous', () => {
+		test('a duplicate org id resolves to a capable session instead of failing as ambiguous', async () => {
 			const { session: northAmerica } = createMockSession({
 				profile: {
 					user: Fixtures.userFragment({ id: 'user-na' }),
@@ -200,7 +254,7 @@ suite('Unit: SessionManager', () => {
 			});
 			SessionManager._setSessionsForTesting([northAmerica, europe]);
 
-			const resolved = SessionManager.getSessionForOrg('dup-org');
+			const resolved = await SessionManager.getSessionForOrg('dup-org');
 			assert.ok(
 				resolved === northAmerica || resolved === europe,
 				'a shared org id must resolve to one of the capable sessions, not error',
@@ -221,6 +275,26 @@ suite('Unit: SessionManager', () => {
 				SessionManager.getOrgSession('org-a', new URL(session.profile.region.loginUrl)),
 				'a session whose validation fails must be skipped, leaving no session to return',
 			);
+		});
+
+		test('getOrgSession recovers a stale-but-refreshable session via refresh instead of skipping it', async () => {
+			const orgId = 'org-recovers-region-scoped';
+			const { server, port } = await createRefreshableSessionServer('user-region-recovers');
+
+			try {
+				await context.secrets.store(orgId, 'appSession=stale-cookie');
+				// No sdk yet: validate() fails immediately, exactly like a session
+				// whose cached User() query previously failed.
+				const session = new Session(undefined, refreshableSessionProfile(orgId, port, 'user-region-recovers'));
+				SessionManager._setSessionsForTesting([session]);
+
+				const resolved = await SessionManager.getOrgSession(orgId, new URL(session.profile.region.loginUrl));
+
+				assert.strictEqual(resolved, session, 'the same session recovers rather than being skipped');
+				assert.notStrictEqual(session.sdk, undefined, 'refresh should have replaced the in-memory SDK');
+			} finally {
+				await close(server);
+			}
 		});
 
 		test('getProfileForOrg returns a capable profile when several known profiles share an org id', () => {
@@ -333,7 +407,7 @@ suite('Unit: SessionManager', () => {
 			const session = await SessionManager.createSession('raw-test-token');
 
 			assert.strictEqual(session.profile.label, 'jdoe (Acme Co)');
-			assert.strictEqual(SessionManager.getSessionForOrg('org-create'), session);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-create'), session);
 			assert.strictEqual(await context.secrets.get('org-create'), 'appSession=raw-test-token');
 		});
 
@@ -410,7 +484,72 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(sessions.length, 1);
 			assert.strictEqual(sessions[0].profile.org.id, 'org-restore');
 			assert.strictEqual(promptCalled, false, 'loadSessions must not prompt for a cookie');
-			assert.strictEqual(SessionManager.getSessionForOrg('org-restore'), sessions[0]);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-restore'), sessions[0]);
+		});
+
+		test('a session removed while loadSessions is in flight is not resurrected by the load', async () => {
+			// Server that holds every response until released, so Remove Session
+			// can run while the load's createSession is still awaiting the network.
+			let release!: () => void;
+			const gate = new Promise<void>(resolve => (release = resolve));
+			const user = {
+				id: 'user-late',
+				username: 'late-user',
+				organization: { id: 'org-late', name: 'Late Org' },
+				allManagedOrgs: [{ id: 'org-late', name: 'Late Org' }],
+			};
+			const server = createServer((request, response) => {
+				request.on('data', () => {});
+				request.on('end', async () => {
+					await gate;
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(JSON.stringify({ data: { user } }));
+				});
+			});
+			servers.push(server);
+			const port = await listen(server);
+
+			const region = {
+				name: 'Local Test',
+				cookieName: 'appSession',
+				graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+				loginUrl: `http://127.0.0.1:${port}`,
+			};
+			await vscode.workspace
+				.getConfiguration('rewst-buddy')
+				.update('regions', [region], vscode.ConfigurationTarget.Global);
+
+			const savedProfile: SessionProfile = {
+				region,
+				org: { id: 'org-late', name: 'Late Org' },
+				allManagedOrgs: [{ id: 'org-late', name: 'Late Org' }],
+				label: 'late-user (Late Org)',
+				user: { id: 'user-late' } as SessionProfile['user'],
+			};
+			await context.globalState.update('SessionProfiles', [savedProfile]);
+			await context.globalState.update('RewstAllKnownProfiles', [savedProfile]);
+			await context.secrets.store('org-late', 'appSession=late-cookie');
+
+			const loadPromise = SessionManager.loadSessions();
+			// Give the load a moment to read the cookie and start the request.
+			await new Promise(resolve => setTimeout(resolve, 50));
+
+			await SessionManager.removeSession('user-late');
+			release();
+			await loadPromise;
+
+			assert.strictEqual(
+				SessionManager.getActiveSessions().length,
+				0,
+				'the removed session must not be resurrected by the in-flight load',
+			);
+			assert.strictEqual(
+				await context.secrets.get('org-late'),
+				undefined,
+				'the removed session cookie must not be re-stored by the load',
+			);
+			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
+			await assert.rejects(SessionManager.getSessionForOrg('org-late'));
 		});
 	});
 
@@ -443,7 +582,7 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(await context.secrets.get('org-clear-primary'), undefined);
 			assert.strictEqual(await context.secrets.get('org-clear-managed'), undefined);
 			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
-			assert.throws(() => SessionManager.getSessionForOrg('org-clear-primary'));
+			await assert.rejects(SessionManager.getSessionForOrg('org-clear-primary'));
 		});
 
 		test('deletes secrets for profiles saved only in SessionProfiles', async () => {
@@ -472,6 +611,164 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(await context.secrets.get('org-saved-managed'), undefined);
 			assert.deepStrictEqual(context.globalState.get('SessionProfiles'), []);
 			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
+		});
+	});
+
+	suite('removeSession()', () => {
+		test('removes an active session: deletes its cookie, drops it from active and known profiles, and clears the org index', async () => {
+			const { session } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-remove' }),
+					org: { id: 'org-remove-primary', name: 'Primary' },
+					allManagedOrgs: [
+						{ id: 'org-remove-primary', name: 'Primary' },
+						{ id: 'org-remove-managed', name: 'Managed' },
+					],
+				},
+			});
+			await context.secrets.store('org-remove-primary', 'cookie-primary');
+			await context.secrets.store('org-remove-managed', 'cookie-managed');
+
+			const saver = SessionManager as unknown as SessionSaver;
+			await saver.saveSession(session);
+			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 1);
+
+			await SessionManager.removeSession('user-remove');
+
+			assert.strictEqual(await context.secrets.get('org-remove-primary'), undefined);
+			assert.strictEqual(await context.secrets.get('org-remove-managed'), undefined);
+			assert.strictEqual(SessionManager.getActiveSessions().length, 0);
+			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
+			await assert.rejects(SessionManager.getSessionForOrg('org-remove-primary'));
+		});
+
+		test('removes a known-only (previously authenticated) session with no active session', async () => {
+			const knownProfile: SessionProfile = {
+				region: {
+					name: 'Local Test',
+					cookieName: 'appSession',
+					graphqlUrl: 'http://127.0.0.1/graphql',
+					loginUrl: 'http://127.0.0.1',
+				},
+				org: { id: 'org-known-only', name: 'Known Only' },
+				allManagedOrgs: [{ id: 'org-known-only', name: 'Known Only' }],
+				label: 'known-user (Known Only)',
+				user: { id: 'known-user' } as SessionProfile['user'],
+			};
+			SessionManager._setKnownProfilesForTesting([knownProfile]);
+			await context.secrets.store('org-known-only', 'cookie-known');
+
+			await SessionManager.removeSession('known-user');
+
+			assert.strictEqual(await context.secrets.get('org-known-only'), undefined);
+			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
+			assert.strictEqual(SessionManager.getProfileForOrg('org-known-only'), undefined);
+		});
+
+		test('removing one active session leaves another active session untouched', async () => {
+			const { session: first } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-a' }),
+					org: { id: 'org-a', name: 'A' },
+					allManagedOrgs: [{ id: 'org-a', name: 'A' }],
+				},
+			});
+			const { session: second } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-b' }),
+					org: { id: 'org-b', name: 'B' },
+					allManagedOrgs: [{ id: 'org-b', name: 'B' }],
+				},
+			});
+			const saver = SessionManager as unknown as SessionSaver;
+			await saver.saveSession(first);
+			await saver.saveSession(second);
+
+			await SessionManager.removeSession('user-a');
+
+			assert.strictEqual(SessionManager.getActiveSessions().length, 1);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-b'), second);
+			await assert.rejects(SessionManager.getSessionForOrg('org-a'));
+			assert.strictEqual(SessionManager.hasActiveSessions(), true);
+		});
+
+		test('removing the only active session clears the active-sessions context', async () => {
+			const { session } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-solo' }),
+					org: { id: 'org-solo', name: 'Solo' },
+					allManagedOrgs: [{ id: 'org-solo', name: 'Solo' }],
+				},
+			});
+			const saver = SessionManager as unknown as SessionSaver;
+			await saver.saveSession(session);
+			assert.strictEqual(SessionManager.hasActiveSessions(), true);
+
+			await SessionManager.removeSession('user-solo');
+
+			assert.strictEqual(SessionManager.hasActiveSessions(), false);
+		});
+
+		test('throws when no active or known session matches the given user id', async () => {
+			await assert.rejects(SessionManager.removeSession('does-not-exist'));
+		});
+
+		test('keeps a secret still needed by another profile whose org overlaps the removed session', async () => {
+			const { session: parent } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-parent' }),
+					org: { id: 'org-parent', name: 'Parent' },
+					allManagedOrgs: [
+						{ id: 'org-parent', name: 'Parent' },
+						{ id: 'org-child', name: 'Child' },
+					],
+				},
+			});
+			const { session: child } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-child' }),
+					org: { id: 'org-child', name: 'Child' },
+					allManagedOrgs: [{ id: 'org-child', name: 'Child' }],
+				},
+			});
+			await context.secrets.store('org-parent', 'cookie-parent');
+			await context.secrets.store('org-child', 'cookie-child');
+
+			const saver = SessionManager as unknown as SessionSaver;
+			await saver.saveSession(parent);
+			await saver.saveSession(child);
+
+			await SessionManager.removeSession('user-parent');
+
+			assert.strictEqual(
+				await context.secrets.get('org-parent'),
+				undefined,
+				"the removed session's own cookie is deleted",
+			);
+			assert.strictEqual(
+				await context.secrets.get('org-child'),
+				'cookie-child',
+				"another session's cookie stored under a shared org id must survive",
+			);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-child'), child);
+		});
+
+		test('stops resolving the session for its orgs before any persistence completes', async () => {
+			const { session } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-race' }),
+					org: { id: 'org-race', name: 'Race' },
+					allManagedOrgs: [{ id: 'org-race', name: 'Race' }],
+				},
+			});
+			const saver = SessionManager as unknown as SessionSaver;
+			await saver.saveSession(session);
+
+			const removal = SessionManager.removeSession('user-race');
+			// Deliberately not awaited yet: a concurrent sync must not land on a
+			// session the user has already confirmed removing.
+			await assert.rejects(SessionManager.getSessionForOrg('org-race'));
+			await removal;
 		});
 	});
 });

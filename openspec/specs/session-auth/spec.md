@@ -131,13 +131,9 @@ active sessions in that region and then match the requested org against primary
 and managed org ids. More than one active session being able to manage the same
 org id is not an error: resolution SHALL return the first capable session.
 Resolution SHALL only return a session that is still valid (per the
-`Cache validation` requirement), skipping a session whose validation fails in
-favor of the next capable session.
-
-**Implementation status:** region-scoped resolution matches managed sub-orgs
-and skips sessions whose validation fails. The region-less index lookup does
-not yet re-validate the session it returns; extending the still-valid
-guarantee to that path is tracked as follow-up work.
+`Cache validation` requirement) or that becomes valid after one credential
+refresh attempt; a session is skipped in favor of the next capable session
+only if it remains invalid after that refresh attempt.
 
 #### Scenario: Operation targets a managed sub-org
 
@@ -154,11 +150,22 @@ guarantee to that path is tracked as follow-up work.
 #### Scenario: Resolution skips a session that is no longer valid
 
 - **GIVEN** an active session that can manage the requested org id
-- **AND** that session's validation fails
+- **AND** that session's validation fails, and a credential refresh attempt
+  also fails to recover it
 - **WHEN** a session is resolved for that org
 - **THEN** the invalid session is not returned
 - **AND** resolution falls through to the next still-valid capable session, or
   fails when none remains
+
+#### Scenario: A stale-but-refreshable session recovers instead of being skipped
+
+- **GIVEN** an active session that can manage the requested org id
+- **AND** that session's cached validation has failed, but its cookie still
+  logs in
+- **WHEN** a session is resolved for that org without a base URL or region
+- **THEN** the extension refreshes the session's credentials
+- **AND** the refreshed session is returned rather than being treated as
+  unreachable or skipped in favor of a worse fallback
 
 #### Scenario: URL targets a managed sub-org in the session region
 
@@ -235,3 +242,66 @@ active.
 - **THEN** known profiles and their primary-org and legacy managed-org secrets
   are removed
 - **AND** future startup does not restore those sessions without a new cookie
+
+### Requirement: Remove a single session
+
+The system SHALL provide a way to remove one authenticated or previously
+authenticated session — active or known-only — without disturbing any other
+session. Removing a session SHALL delete its raw cookie(s) from VS Code
+`secrets` (primary organization key and any legacy managed-organization keys),
+except keys another remaining profile still needs, remove its profile from
+`SessionProfiles` (if active) and `RewstAllKnownProfiles`, and clear its
+entries from in-memory sessions and org indexes before any persistence await,
+so the session stops resolving the moment removal is confirmed. If the removed
+session was the only active session, extension context SHALL be updated so no
+session is considered active. A removal that races the startup session load
+SHALL win: the load must not restore the removed session or re-store its
+cookie.
+
+#### Scenario: User removes one active session from the Sessions tree
+
+- **GIVEN** two or more active sessions
+- **WHEN** the user right-clicks one in the Sessions tree and runs "Remove
+  Session"
+- **THEN** that session's cookie is deleted from `secrets`
+- **AND** its profile is removed from `SessionProfiles` and
+  `RewstAllKnownProfiles`
+- **AND** no org id it managed resolves to it any longer
+- **AND** every other active session is unaffected
+
+#### Scenario: User removes a known-only (previously authenticated) session
+
+- **GIVEN** no active session, but `RewstAllKnownProfiles` contains a
+  previously saved profile
+- **WHEN** the user runs `Rewst Buddy: Remove Session` and picks that profile
+- **THEN** its cookie is deleted from `secrets`
+- **AND** it is removed from `RewstAllKnownProfiles`
+- **AND** future startup does not restore it without a new cookie
+
+#### Scenario: Removing the last active session clears the active-sessions context
+
+- **GIVEN** exactly one active session
+- **WHEN** the user removes it
+- **THEN** the extension no longer considers any session active
+- **AND** the background credential-refresh interval stops
+
+#### Scenario: A secret shared with another profile survives removal
+
+- **GIVEN** session A whose managed orgs include the primary org of session B
+- **WHEN** the user removes session A
+- **THEN** session A's own cookie is deleted from `secrets`
+- **AND** the cookie stored under session B's primary org id is kept
+- **AND** session B still resolves for its orgs
+
+#### Scenario: A session being removed stops resolving immediately
+
+- **GIVEN** an active session being removed
+- **WHEN** an org lookup runs concurrently with the removal
+- **THEN** the lookup does not resolve to the session being removed
+
+#### Scenario: Removal during the startup load is not undone
+
+- **GIVEN** the startup session load is restoring a saved profile
+- **WHEN** the user removes that session before the restore completes
+- **THEN** the completed load does not resurrect the session
+- **AND** its cookie is not re-stored in `secrets`

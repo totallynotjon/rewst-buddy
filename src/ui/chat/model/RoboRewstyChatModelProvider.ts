@@ -50,7 +50,7 @@ const MAX_OUTPUT_TOKENS = 16_000;
 export interface ProviderDeps {
 	ask(options: AskOptions): AsyncGenerator<ConversationEvent>;
 	sessions(): Session[];
-	sessionForOrg(orgId: string): Session;
+	sessionForOrg(orgId: string): Promise<Session>;
 	workspaceRoot(): string | undefined;
 	aiConfig(): {
 		customInstructions: string;
@@ -296,7 +296,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 	): Promise<void> {
 		if (messages.length === 0) throw new Error('No messages in the chat request.');
 		const orgId = model.id;
-		const session = this.deps.sessionForOrg(orgId);
+		const session = await this.deps.sessionForOrg(orgId);
 		const tools = options.tools ?? [];
 		const vscodeNames = new Set(tools.map(tool => tool.name));
 		// Buddy (MCP) tools the chat advertises and runs in-process, so they survive

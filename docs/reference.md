@@ -46,6 +46,7 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 **Session Management**
 
 - `New Rewst Session` — Add a new session with token
+- `Remove Session` — Remove one authenticated or previously authenticated session (also available by right-clicking it in the Sessions view)
 - `Clear Sessions` — Remove all saved sessions
 
 **Working Scope**

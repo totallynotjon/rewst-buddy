@@ -17,9 +17,12 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 	sessionMap: Map<string, Session> = new Map<string, Session>();
 	private knownProfileOrgIndex = new Map<string, SessionProfile>();
-	private orgSessionIndex = new Map<string, Session>();
+	private orgSessionIndex = new Map<string, Session[]>();
 	private knownProfilesCache: SessionProfile[] | undefined;
 	private suppressProfileSaves = false;
+	// User ids removed while loadSessions was in flight; the load reconciles
+	// these afterwards so a completed createSession cannot resurrect them.
+	private removedDuringLoad = new Set<string>();
 
 	private readonly sessionChangeEmitter = new vscode.EventEmitter<SessionChangeEvent>();
 	private loaded = false;
@@ -173,7 +176,9 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 				continue;
 			}
 
-			if (!(await session.validate())) {
+			// ensureValid (not validate) so a stale-but-refreshable session
+			// recovers here too, matching getSessionForOrg's contract.
+			if (!(await session.ensureValid())) {
 				log.trace('getOrgSession: skipping session, validation failed');
 				continue;
 			}
@@ -247,6 +252,19 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			this.loaded = true;
 
 			await this.saveProfiles();
+
+			// A profile removed while its cookie-driven load was still in flight
+			// may have been resurrected by createSession completing afterwards;
+			// purge it again now that the load has settled.
+			const toPurge = Array.from(this.removedDuringLoad);
+			this.removedDuringLoad.clear();
+			for (const userId of toPurge) {
+				if (this.sessionMap.has(userId)) {
+					log.debug('loadSessions: purging session resurrected past its removal', userId);
+					await this.removeSession(userId);
+				}
+			}
+			this.removedDuringLoad.clear();
 
 			log.debug('loadSessions: completed', { sessionCount: this.sessionMap.size });
 			return this.getActiveSessions();
@@ -330,15 +348,40 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	private indexSession(session: Session): void {
-		this.orgSessionIndex.set(session.profile.org.id, session);
+		this.addToOrgIndex(session.profile.org.id, session);
 		for (const org of session.profile.allManagedOrgs) {
-			this.orgSessionIndex.set(org.id, session);
+			this.addToOrgIndex(org.id, session);
+		}
+	}
+
+	// Several active sessions can legitimately manage the same org id (see
+	// getSessionForOrg); keep every capable session so resolution can fall
+	// through to the next one when the first is no longer valid.
+	private addToOrgIndex(orgId: string, session: Session): void {
+		const existing = this.orgSessionIndex.get(orgId);
+		if (existing) {
+			if (!existing.includes(session)) existing.push(session);
+		} else {
+			this.orgSessionIndex.set(orgId, [session]);
 		}
 	}
 
 	private unindexSession(session: Session): void {
-		for (const [orgId, indexed] of this.orgSessionIndex) {
-			if (indexed === session) this.orgSessionIndex.delete(orgId);
+		this.removeFromOrgIndex(session.profile.org.id, session);
+		for (const org of session.profile.allManagedOrgs) {
+			this.removeFromOrgIndex(org.id, session);
+		}
+	}
+
+	private removeFromOrgIndex(orgId: string, session: Session): void {
+		const sessions = this.orgSessionIndex.get(orgId);
+		if (!sessions) return;
+
+		const remaining = sessions.filter(candidate => candidate !== session);
+		if (remaining.length === 0) {
+			this.orgSessionIndex.delete(orgId);
+		} else if (remaining.length !== sessions.length) {
+			this.orgSessionIndex.set(orgId, remaining);
 		}
 	}
 
@@ -384,12 +427,87 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		log.trace('clearProfiles: cleared', { secretsCleared: orgIdsToClear.size });
 	}
 
-	public getSessionForOrg(orgId: string): Session {
-		log.trace('getSessionForOrg: looking for', orgId);
-		const session = this.orgSessionIndex.get(orgId);
+	/**
+	 * Removes one authenticated or previously authenticated session — active or
+	 * known-only — identified by its profile's user id, without disturbing any
+	 * other session. Mirrors clearProfiles() but scoped to a single profile.
+	 */
+	public async removeSession(userId: string): Promise<void> {
+		log.debug('removeSession: removing', userId);
+
+		const session = this.sessionMap.get(userId);
+		const knownProfile = this.getAllKnownProfiles().find(profile => profile.user.id === userId);
+		const profile = session?.profile ?? knownProfile;
+		if (!profile) {
+			throw log.error(`removeSession: no active or known session found for user ${userId}`);
+		}
+
+		// Drop the session from the in-memory indexes before any await so a
+		// concurrent getSessionForOrg cannot resolve a session the user has
+		// already confirmed removing.
 		if (session) {
-			log.trace('getSessionForOrg: found', { label: session.profile.label });
-			return session;
+			this.unindexSession(session);
+			this.sessionMap.delete(userId);
+			this.setAnyActiveSessions(this.sessionMap.size > 0);
+		}
+
+		// A load in flight may have already read this profile's cookie and can
+		// re-create the session after this removal completes; mark it so
+		// loadSessions purges any such resurrection once the load finishes.
+		if (this.loading) {
+			this.removedDuringLoad.add(userId);
+		}
+
+		// Only delete secrets no remaining profile still needs: another session
+		// can legitimately store its cookie under one of this profile's org ids
+		// (e.g. this session managed the other session's primary org).
+		const retainedOrgIds = new Set<string>();
+		const remainingProfiles = this.getActiveSessions()
+			.map(s => s.profile)
+			.concat(this.getAllKnownProfiles().filter(known => known.user.id !== userId))
+			.concat(this.getSavedProfiles().filter(saved => saved.user.id !== userId));
+		for (const remaining of remainingProfiles) {
+			retainedOrgIds.add(remaining.org.id);
+			for (const org of remaining.allManagedOrgs) {
+				retainedOrgIds.add(org.id);
+			}
+		}
+		const orgIdsToClear = [profile.org.id, ...profile.allManagedOrgs.map(org => org.id)].filter(
+			orgId => !retainedOrgIds.has(orgId),
+		);
+		await Promise.all(orgIdsToClear.map(orgId => context.secrets.delete(orgId)));
+
+		await context.globalState.update(
+			'SessionProfiles',
+			this.getSavedProfiles().filter(saved => saved.user.id !== userId),
+		);
+
+		const remainingKnown = this.getAllKnownProfiles().filter(known => known.user.id !== userId);
+		this.knownProfilesCache = remainingKnown;
+		await context.globalState.update('RewstAllKnownProfiles', remainingKnown);
+		this.rebuildKnownProfileOrgIndex();
+
+		this.sessionChangeEmitter.fire({
+			type: 'removed',
+			session,
+			allProfiles: remainingKnown,
+			activeProfiles: this.getActiveSessions().map(s => s.profile),
+		});
+
+		log.info(`removeSession: removed ${profile.label}`);
+	}
+
+	public async getSessionForOrg(orgId: string): Promise<Session> {
+		log.trace('getSessionForOrg: looking for', orgId);
+		for (const session of this.orgSessionIndex.get(orgId) ?? []) {
+			// ensureValid (not validate) so a stale-but-refreshable session
+			// recovers here rather than being skipped in favor of a worse
+			// fallback, or a false "no session manages this org".
+			if (await session.ensureValid()) {
+				log.trace('getSessionForOrg: found', { label: session.profile.label });
+				return session;
+			}
+			log.trace('getSessionForOrg: skipping invalid session', { label: session.profile.label });
 		}
 		throw log.error(`getSessionForOrg: no session found for ${orgId}`);
 	}
@@ -455,6 +573,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		this.orgSessionIndex.clear();
 		this.knownProfilesCache = undefined;
 		this.suppressProfileSaves = false;
+		this.removedDuringLoad.clear();
 		this.loaded = false;
 		this.loading = false;
 		this.setAnyActiveSessions(false);

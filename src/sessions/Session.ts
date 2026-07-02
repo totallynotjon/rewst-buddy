@@ -11,6 +11,7 @@ import { createRetryWrapper } from './retryWrapper';
 export default class Session {
 	private secrets: vscode.SecretStorage;
 	private lastValidated = 0;
+	private refreshPromise: Promise<void> | undefined;
 
 	public constructor(
 		public sdk: Sdk | undefined,
@@ -124,7 +125,45 @@ export default class Session {
 		return valid;
 	}
 
-	public async refreshToken() {
+	/**
+	 * Validates the session, attempting one refresh if the check fails, so a
+	 * merely stale (but still logged-in) cookie recovers instead of being
+	 * treated as dead. Used by org resolution, where skipping a session over
+	 * an unattempted refresh would wrongly report the org unreachable.
+	 */
+	public async ensureValid(): Promise<boolean> {
+		if (await this.validate()) return true;
+
+		try {
+			await this.refreshToken();
+		} catch {
+			return false;
+		}
+
+		// refreshToken() already re-validated the refreshed SDK and stamped
+		// lastValidated, so a second live validate() here would just repeat the
+		// same network call it already made.
+		return true;
+	}
+
+	/**
+	 * Single-flights concurrent refresh requests onto one in-progress attempt so
+	 * callers (the 15-minute background refresh, ensureValid(), and any other
+	 * caller) racing each other don't fire duplicate logins or clobber each
+	 * other's cookie/SDK writes.
+	 */
+	public async refreshToken(): Promise<void> {
+		if (this.refreshPromise) return this.refreshPromise;
+
+		this.refreshPromise = this.performRefresh();
+		try {
+			await this.refreshPromise;
+		} finally {
+			this.refreshPromise = undefined;
+		}
+	}
+
+	private async performRefresh(): Promise<void> {
 		log.trace('refreshToken: starting', { label: this.profile.label, orgId: this.profile.org.id });
 
 		const config = this.profile.region;
@@ -159,6 +198,7 @@ export default class Session {
 			log.trace('refreshToken: storing new cookie');
 			await this.secrets.store(this.profile.org.id, cookieString);
 			this.sdk = sdk;
+			this.lastValidated = Date.now();
 			log.info(`refreshToken: success for ${this.profile.label}`);
 		} catch (error) {
 			log.notifyError(`refreshToken: failed for ${this.profile.label}: ${error}`);

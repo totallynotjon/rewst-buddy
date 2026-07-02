@@ -209,26 +209,17 @@ async function ensureValidSession(session: Session): Promise<void> {
 }
 
 /**
- * Resolves the session + org context a capability runs against. This does no
- * authenticated I/O — session validation/refresh is deferred to the call site so
- * it runs only after the scope gate, keeping an out-of-scope request from
- * touching Rewst.
+ * Determines which org id a capability call targets — a pure, no-I/O
+ * computation safe to run before the scope gate. Throws org_required for an
+ * org-scoped capability with no resolvable org id, mirroring the priority the
+ * old single-pass resolveContext gave that check.
  */
-function resolveContext(
+function resolveOrgId(
 	capability: Capability,
 	args: Record<string, unknown>,
 	requestOrgId: string | undefined,
-): CapabilityContext {
-	const sessions = SessionManager.getActiveSessions();
-	if (sessions.length === 0) {
-		throw new McpError(
-			'no_session',
-			'No Rewst sessions are active. Open VS Code with Rewst Buddy and sign in, then retry.',
-		);
-	}
-	if (capability.requiresOrg === false) {
-		return { session: sessions[0], orgId: sessions[0].profile.org.id, sessions };
-	}
+): string | undefined {
+	if (capability.requiresOrg === false) return undefined;
 	// When the org is omitted and exactly one working org is pinned, target it —
 	// the model never has to name it and so cannot misname it.
 	const workingOrgs = WorkingScopeManager.getOrgs();
@@ -240,16 +231,46 @@ function resolveContext(
 	// Surface the resolved org back into the arguments so capabilities that read
 	// `orgId` from their input (the common case) see the injected working org.
 	args.orgId = orgId;
+	return orgId;
+}
+
+/**
+ * Resolves the session + org context a capability runs against, given the org
+ * id resolveOrgId already cleared through the scope gate. Session lookup may
+ * run a cached (normally free; network only once the 24h validation cache has
+ * expired) validity check via SessionManager.getSessionForOrg, so an org whose
+ * only registered session has gone stale falls through to another session
+ * that still manages it rather than erroring. Callers MUST run this only
+ * after assertScopeAllowed (see callTool/readResource), so an out-of-scope
+ * request never triggers authenticated Rewst traffic.
+ */
+async function resolveContext(
+	capability: Capability,
+	args: Record<string, unknown>,
+	orgId: string | undefined,
+): Promise<CapabilityContext> {
+	const sessions = SessionManager.getActiveSessions();
+	if (sessions.length === 0) {
+		throw new McpError(
+			'no_session',
+			'No Rewst sessions are active. Open VS Code with Rewst Buddy and sign in, then retry.',
+		);
+	}
+	if (capability.requiresOrg === false) {
+		return { session: sessions[0], orgId: sessions[0].profile.org.id, sessions };
+	}
+	// orgId is guaranteed defined here: resolveOrgId already threw org_required
+	// otherwise, for every capability whose requiresOrg is not false.
 	let session: Session;
 	try {
-		session = SessionManager.getSessionForOrg(orgId);
+		session = await SessionManager.getSessionForOrg(orgId as string);
 	} catch {
 		throw new McpError(
 			'org_not_found',
 			`No active session manages org "${orgId}". Call buddy_list_orgs for valid ids.`,
 		);
 	}
-	return { session, orgId, sessions };
+	return { session, orgId: orgId as string, sessions };
 }
 
 function describeTool(capability: Capability): McpToolDescriptor {
@@ -299,11 +320,14 @@ export async function callTool(
 		}
 
 		const args = params.arguments ?? {};
-		const ctx = resolveContext(capability, args, params.orgId);
-		auditOrgId = capability.requiresOrg === false ? '—' : ctx.orgId || '—';
+		const orgId = resolveOrgId(capability, args, params.orgId);
+		auditOrgId = capability.requiresOrg === false ? '—' : orgId || '—';
 		// Reject an out-of-scope call before the capability runs (and before any
-		// approval modal, which may never surface to an external MCP client).
-		assertScopeAllowed(capability, ctx.orgId, args, settings);
+		// approval modal, which may never surface to an external MCP client), and
+		// before resolving a session for it — an out-of-scope orgId must never
+		// trigger authenticated Rewst traffic.
+		assertScopeAllowed(capability, orgId ?? '', args, settings);
+		const ctx = await resolveContext(capability, args, orgId);
 		// Validate/refresh the session only after the scope gate passes, so an
 		// out-of-scope request triggers no authenticated Rewst traffic.
 		if (capability.requiresOrg !== false) await ensureValidSession(ctx.session);
@@ -393,9 +417,12 @@ export async function readResource(uri: string, settings: McpSettings = readMcpS
 
 	const args: Record<string, unknown> = { orgId: parsed.orgId };
 	if (parsed.id) args[parsed.collection === 'templates' ? 'templateId' : 'workflowId'] = parsed.id;
-	const ctx = resolveContext(capability, args, parsed.orgId);
-	// Resources run read capabilities directly, so honour the working scope here too.
-	assertScopeAllowed(capability, ctx.orgId, args, settings);
+	const orgId = resolveOrgId(capability, args, parsed.orgId);
+	// Resources run read capabilities directly, so honour the working scope here too,
+	// and before resolving a session — an out-of-scope orgId must never trigger
+	// authenticated Rewst traffic.
+	assertScopeAllowed(capability, orgId ?? '', args, settings);
+	const ctx = await resolveContext(capability, args, orgId);
 	await ensureValidSession(ctx.session);
 	const text = formatMcpOutput(toolName, await capability.run(args, ctx));
 	log.info(`MCP readResource: ${uri}`);

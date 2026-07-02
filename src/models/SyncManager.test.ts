@@ -952,6 +952,84 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		assert.strictEqual(link.template.updatedAt, 'uploaded-ts', 'link reflects the upload response');
 	});
 
+	test('force override re-resolves the session instead of reusing one captured before the modal', async () => {
+		const { doc, wrapper: staleWrapper, templateId, org } = setUpConflict();
+
+		// A session can be refreshed, removed, or replaced while the user is
+		// staring at the (indefinitely long) conflict modal. Swap in a distinct
+		// session for the same org from inside the modal stub to simulate that,
+		// and assert the upload lands on the new session, not the stale one
+		// captured before the modal was shown.
+		const { session: freshSession, wrapper: freshWrapper } = createMockSession({
+			profile: { org, allManagedOrgs: [org] },
+		});
+		freshWrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: templateId,
+				name: 'Conflict Template',
+				body: '// remote content, different from local',
+				updatedAt: 'remote-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		freshWrapper.when('updateTemplateBody', {
+			data: Fixtures.updateTemplateBodyMutation({
+				id: templateId,
+				name: 'Conflict Template',
+				updatedAt: 'uploaded-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+
+		const restore = stub(vscode.window, 'showInformationMessage', (async () => {
+			SessionManager._setSessionsForTesting([freshSession]);
+			return 'Force Override';
+		}) as unknown as typeof vscode.window.showInformationMessage);
+
+		try {
+			await SyncManager.syncTemplate(doc);
+		} finally {
+			restore();
+		}
+
+		assert.strictEqual(
+			staleWrapper.getCallsFor('updateTemplateBody').length,
+			0,
+			'the session captured before the modal must not be used for the upload',
+		);
+		assert.strictEqual(
+			freshWrapper.getCallsFor('updateTemplateBody').length,
+			1,
+			'the session swapped in during the modal wait should receive the upload',
+		);
+	});
+
+	test('force override surfaces a clear error when no session remains for the org after the modal', async () => {
+		const { doc, wrapper: staleWrapper } = setUpConflict();
+
+		// The org's only session is removed while the user is staring at the
+		// conflict modal; re-resolution must fail loudly rather than fall back
+		// to the stale session captured before the modal.
+		const restore = stub(vscode.window, 'showInformationMessage', (async () => {
+			SessionManager._setSessionsForTesting([]);
+			return 'Force Override';
+		}) as unknown as typeof vscode.window.showInformationMessage);
+
+		try {
+			await assert.rejects(() => SyncManager.syncTemplate(doc), /no session found/);
+		} finally {
+			restore();
+		}
+
+		assert.strictEqual(
+			staleWrapper.getCallsFor('updateTemplateBody').length,
+			0,
+			'the stale session must not receive the upload when re-resolution fails',
+		);
+	});
+
 	test('user takes the remote version: the remote body replaces the local file', async () => {
 		const { doc, wrapper } = setUpConflict();
 		const restore = stub(
@@ -1255,6 +1333,42 @@ suite('Unit: SyncManager.fetchAllFolders', () => {
 		assert.ok(fs.existsSync(fileB), 'org B template written to disk');
 		assert.strictEqual(fs.readFileSync(fileA, 'utf8'), 'a1-body');
 		assert.strictEqual(fs.readFileSync(fileB, 'utf8'), 'b1-body');
+	});
+
+	test('a folder whose org has no session does not stop the remaining folders from fetching', async () => {
+		// Only org B has a session; org A's folder link is stale (its session
+		// was removed) and its failure must not abort the whole background pass.
+		const { session, wrapper } = createMockSession({ profile: { org: orgB, allManagedOrgs: [orgB] } });
+		wrapper.when('listTemplates', {
+			data: Fixtures.listTemplatesQuery([
+				Fixtures.template({
+					id: 'b1',
+					name: 'Bravo',
+					orgId: orgB.id,
+					organization: Fixtures.org({ id: orgB.id, name: orgB.name }),
+				}),
+			]),
+		});
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: 'b1',
+				name: 'Bravo',
+				body: 'b1-body',
+				orgId: orgB.id,
+				organization: Fixtures.org({ id: orgB.id, name: orgB.name }),
+			}),
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		// Org A first: its failure previously aborted the loop before org B ran.
+		LinkManager.addLink({ type: 'Folder', uriString: folderUriA.toString(), org: orgA });
+		LinkManager.addLink({ type: 'Folder', uriString: folderUriB.toString(), org: orgB });
+
+		(SyncManager as any)['isActive'] = true;
+		await SyncManager.fetchAllFolders();
+
+		const linksB = LinkManager.getOrgTemplateLinks(orgB);
+		assert.strictEqual(linksB.length, 1, "org B's folder is still fetched after org A's folder failed");
 	});
 });
 

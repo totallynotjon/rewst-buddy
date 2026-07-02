@@ -109,7 +109,7 @@ export async function handleOpenTemplate(
 		await SessionManager.loadSessions();
 
 		// Get session for org (needed for both paths)
-		const session = SessionManager.getSessionForOrg(request.orgId);
+		const session = await SessionManager.getSessionForOrg(request.orgId);
 
 		// Check for existing linked document
 		const existingLink = await openTemplateById(request.templateId);

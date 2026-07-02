@@ -216,7 +216,7 @@ suite('Unit: OpenInRewst', () => {
 		SessionManager._setSessionsForTesting([session]);
 
 		// Verify the URL would be correct by checking getSessionForOrg resolves
-		const resolvedSession = SessionManager.getSessionForOrg(orgId);
+		const resolvedSession = await SessionManager.getSessionForOrg(orgId);
 		const expectedUrl = `${resolvedSession.profile.region.loginUrl}/organizations/${orgId}/templates/${templateId}`;
 		assert.strictEqual(expectedUrl, `https://app.rewst.io/organizations/${orgId}/templates/${templateId}`);
 

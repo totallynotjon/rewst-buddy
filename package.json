@@ -289,6 +289,16 @@
 				"title": "Rewst Buddy: Clear Sessions"
 			},
 			{
+				"command": "rewst-buddy.prefix.RemoveSession",
+				"title": "Rewst Buddy: Remove Session",
+				"icon": "$(trash)"
+			},
+			{
+				"command": "rewst-buddy.RemoveSession",
+				"title": "Remove Session",
+				"icon": "$(trash)"
+			},
+			{
 				"command": "rewst-buddy.prefix.OpenTemplateFromURL",
 				"title": "Rewst Buddy: Open Template from URL"
 			},
@@ -484,6 +494,10 @@
 					"when": "rewst-buddy.anyActiveSessions"
 				},
 				{
+					"command": "rewst-buddy.RemoveSession",
+					"when": "false"
+				},
+				{
 					"command": "rewst-buddy.prefix.OpenTemplateFromURL",
 					"when": "rewst-buddy.anyActiveSessions"
 				},
@@ -630,6 +644,11 @@
 					"command": "rewst-buddy.DeleteTemplate",
 					"when": "viewItem == bundleTemplate && rewst-buddy.anyActiveSessions",
 					"group": "z_rewst@5"
+				},
+				{
+					"command": "rewst-buddy.RemoveSession",
+					"when": "viewItem == session",
+					"group": "z_rewst@1"
 				}
 			],
 			"editor/context": [

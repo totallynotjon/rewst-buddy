@@ -29,7 +29,7 @@ export class OpenInRewst extends GenericCommand {
 
 			let baseUrl: string;
 			try {
-				const session = SessionManager.getSessionForOrg(link.org.id);
+				const session = await SessionManager.getSessionForOrg(link.org.id);
 				baseUrl = session.profile.region.loginUrl;
 			} catch {
 				const knownProfile = SessionManager.getProfileForOrg(link.org.id);

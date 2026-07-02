@@ -65,7 +65,7 @@ function makeHarness(turns: ConversationEvent[][], overrides: Partial<ProviderDe
 	const deps: ProviderDeps = {
 		ask,
 		sessions: () => [session],
-		sessionForOrg: () => session,
+		sessionForOrg: async () => session,
 		workspaceRoot: () => undefined,
 		aiConfig: () => ({
 			customInstructions: '',

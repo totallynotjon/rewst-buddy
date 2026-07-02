@@ -51,7 +51,7 @@ export class TemplateDefinitionProvider implements vscode.DefinitionProvider {
 
 	private async openUnlinkedTemplate(templateId: string, metadata: TemplateMetadata): Promise<void> {
 		try {
-			const session = SessionManager.getSessionForOrg(metadata.org.id);
+			const session = await SessionManager.getSessionForOrg(metadata.org.id);
 			const fullTemplate = await session.getTemplate(templateId);
 			await createAndLinkNewTemplate(fullTemplate);
 		} catch (error) {
