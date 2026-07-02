@@ -952,6 +952,60 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		assert.strictEqual(link.template.updatedAt, 'uploaded-ts', 'link reflects the upload response');
 	});
 
+	test('force override re-resolves the session instead of reusing one captured before the modal', async () => {
+		const { doc, wrapper: staleWrapper, templateId, org } = setUpConflict();
+
+		// A session can be refreshed, removed, or replaced while the user is
+		// staring at the (indefinitely long) conflict modal. Swap in a distinct
+		// session for the same org from inside the modal stub to simulate that,
+		// and assert the upload lands on the new session, not the stale one
+		// captured before the modal was shown.
+		const { session: freshSession, wrapper: freshWrapper } = createMockSession({
+			profile: { org, allManagedOrgs: [org] },
+		});
+		freshWrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: templateId,
+				name: 'Conflict Template',
+				body: '// remote content, different from local',
+				updatedAt: 'remote-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		freshWrapper.when('updateTemplateBody', {
+			data: Fixtures.updateTemplateBodyMutation({
+				id: templateId,
+				name: 'Conflict Template',
+				updatedAt: 'uploaded-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+
+		const restore = stub(vscode.window, 'showInformationMessage', (async () => {
+			SessionManager._setSessionsForTesting([freshSession]);
+			return 'Force Override';
+		}) as unknown as typeof vscode.window.showInformationMessage);
+
+		try {
+			await SyncManager.syncTemplate(doc);
+		} finally {
+			restore();
+		}
+
+		assert.strictEqual(
+			staleWrapper.getCallsFor('updateTemplateBody').length,
+			0,
+			'the session captured before the modal must not be used for the upload',
+		);
+		assert.strictEqual(
+			freshWrapper.getCallsFor('updateTemplateBody').length,
+			1,
+			'the session swapped in during the modal wait should receive the upload',
+		);
+	});
+
 	test('user takes the remote version: the remote body replaces the local file', async () => {
 		const { doc, wrapper } = setUpConflict();
 		const restore = stub(

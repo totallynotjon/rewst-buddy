@@ -1,12 +1,13 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
+import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover, type CapabilityContext } from '@capabilities';
 import { LinkManager, type SyncDecision, type SyncDecisionContext, type TemplateLink } from '@models';
-import type { FullTemplateFragment, Session } from '@sessions';
+import { SessionManager, type FullTemplateFragment, type Session } from '@sessions';
 import vscode from 'vscode';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import {
+	defaultTemplateSyncDeps,
 	matchLinkByPath,
 	resolveLinkedUri,
 	runSync,
@@ -501,6 +502,73 @@ suite('Unit: templateSyncCapabilities', () => {
 			addTemplateLink('/ws/b/dup.j2', 'org-1', 't-b');
 			assert.strictEqual(resolveLinkedUri('dup.j2'), undefined);
 			assert.strictEqual(resolveLinkedUri('/ws/a/dup.j2')?.link.template.id, 't-a');
+		});
+	});
+
+	suite('defaultTemplateSyncDeps.upload', () => {
+		setup(() => {
+			SessionManager._resetForTesting();
+		});
+
+		teardown(() => {
+			SessionManager._resetForTesting();
+		});
+
+		test('resolves the session fresh at upload time instead of reusing target.context.session', async () => {
+			const org = { id: 'org-upload-fresh', name: 'Upload Fresh' };
+			const uri = addTemplateLink('/ws/upload-fresh.j2', org.id, 'tpl-upload-fresh');
+			const link = LinkManager.getTemplateLink(uri);
+
+			// The session captured in target.context (e.g. before an approval
+			// prompt) must not be the one used at mutation time.
+			const { session: staleSession, wrapper: staleWrapper } = createMockSession({
+				profile: { org, allManagedOrgs: [org] },
+			});
+			const { session: freshSession, wrapper: freshWrapper } = createMockSession({
+				profile: { org, allManagedOrgs: [org] },
+			});
+			freshWrapper.when('updateTemplateBody', {
+				data: Fixtures.updateTemplateBodyMutation({
+					id: 'tpl-upload-fresh',
+					name: 'Greeting',
+					updatedAt: 'ts-uploaded',
+					orgId: org.id,
+				}),
+			});
+			SessionManager._setSessionsForTesting([freshSession]);
+
+			const doc = { uri, getText: () => 'local body' } as unknown as vscode.TextDocument;
+			const target: TemplateSyncTarget = {
+				uri,
+				doc,
+				dirty: false,
+				context: {
+					link,
+					session: staleSession,
+					remoteTemplate: {
+						id: 'tpl-upload-fresh',
+						name: 'Greeting',
+						body: 'remote',
+						updatedAt: '1',
+						orgId: org.id,
+					},
+					localBody: 'local body',
+					decision: { action: 'upload-local' },
+				} as unknown as SyncDecisionContext,
+			};
+
+			await defaultTemplateSyncDeps.upload(target);
+
+			assert.strictEqual(
+				staleWrapper.getCallsFor('updateTemplateBody').length,
+				0,
+				'the session captured on target.context must not be used for the upload',
+			);
+			assert.strictEqual(
+				freshWrapper.getCallsFor('updateTemplateBody').length,
+				1,
+				'the freshly-resolved session should receive the upload',
+			);
 		});
 	});
 

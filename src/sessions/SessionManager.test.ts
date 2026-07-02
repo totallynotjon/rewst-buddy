@@ -1,30 +1,21 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { createServer, type Server } from 'http';
-import type { AddressInfo } from 'net';
 import vscode from 'vscode';
 import { context } from '@global';
 import { SessionManager, Session } from '@sessions';
-import { initTestEnvironment, createMockSession, Fixtures } from '@test';
+import {
+	initTestEnvironment,
+	createMockSession,
+	Fixtures,
+	listen,
+	close,
+	createRefreshableSessionServer,
+	refreshableSessionProfile,
+} from '@test';
 import SessionProfile from './SessionProfile';
 
 const { suite, test, setup, teardown } = Mocha;
-
-function listen(server: Server): Promise<number> {
-	return new Promise((resolve, reject) => {
-		server.once('error', reject);
-		server.listen(0, '127.0.0.1', () => {
-			server.off('error', reject);
-			resolve((server.address() as AddressInfo).port);
-		});
-	});
-}
-
-function close(server: Server): Promise<void> {
-	return new Promise((resolve, reject) => {
-		server.close(error => (error ? reject(error) : resolve()));
-	});
-}
 
 interface MockUser {
 	id: string;
@@ -190,42 +181,13 @@ suite('Unit: SessionManager', () => {
 
 		test('recovers a stale-but-refreshable session via refresh instead of skipping or failing it', async () => {
 			const orgId = 'org-recovers-via-refresh';
-			// Answers a GET (refreshToken's login request) with a fresh cookie, and
-			// a POST (the User() query re-validating the refreshed SDK) with a user.
-			const server = createServer((request, response) => {
-				if (request.method === 'GET') {
-					response.writeHead(200, { 'set-cookie': 'appSession=refreshed-cookie' });
-					response.end();
-					return;
-				}
-				let body = '';
-				request.on('data', chunk => {
-					body += String(chunk);
-				});
-				request.on('end', () => {
-					response.writeHead(200, { 'content-type': 'application/json' });
-					response.end(JSON.stringify({ data: { user: { id: 'user-recovers' } } }));
-				});
-			});
-			const port = await listen(server);
+			const { server, port } = await createRefreshableSessionServer('user-recovers');
 
 			try {
 				await context.secrets.store(orgId, 'appSession=stale-cookie');
-				const profile: SessionProfile = {
-					region: {
-						name: 'Local Test',
-						cookieName: 'appSession',
-						graphqlUrl: `http://127.0.0.1:${port}/graphql`,
-						loginUrl: `http://127.0.0.1:${port}`,
-					},
-					org: { id: orgId, name: 'Recovers Via Refresh' },
-					allManagedOrgs: [{ id: orgId, name: 'Recovers Via Refresh' }],
-					label: 'Recovers Via Refresh Session',
-					user: { id: 'user-recovers' } as SessionProfile['user'],
-				};
 				// No sdk yet: validate() fails immediately, exactly like a session
 				// whose cached User() query previously failed.
-				const session = new Session(undefined, profile);
+				const session = new Session(undefined, refreshableSessionProfile(orgId, port, 'user-recovers'));
 				SessionManager._setSessionsForTesting([session]);
 
 				const resolved = await SessionManager.getSessionForOrg(orgId);
@@ -313,6 +275,26 @@ suite('Unit: SessionManager', () => {
 				SessionManager.getOrgSession('org-a', new URL(session.profile.region.loginUrl)),
 				'a session whose validation fails must be skipped, leaving no session to return',
 			);
+		});
+
+		test('getOrgSession recovers a stale-but-refreshable session via refresh instead of skipping it', async () => {
+			const orgId = 'org-recovers-region-scoped';
+			const { server, port } = await createRefreshableSessionServer('user-region-recovers');
+
+			try {
+				await context.secrets.store(orgId, 'appSession=stale-cookie');
+				// No sdk yet: validate() fails immediately, exactly like a session
+				// whose cached User() query previously failed.
+				const session = new Session(undefined, refreshableSessionProfile(orgId, port, 'user-region-recovers'));
+				SessionManager._setSessionsForTesting([session]);
+
+				const resolved = await SessionManager.getOrgSession(orgId, new URL(session.profile.region.loginUrl));
+
+				assert.strictEqual(resolved, session, 'the same session recovers rather than being skipped');
+				assert.notStrictEqual(session.sdk, undefined, 'refresh should have replaced the in-memory SDK');
+			} finally {
+				await close(server);
+			}
 		});
 
 		test('getProfileForOrg returns a capable profile when several known profiles share an org id', () => {

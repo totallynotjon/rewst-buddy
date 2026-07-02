@@ -131,8 +131,9 @@ active sessions in that region and then match the requested org against primary
 and managed org ids. More than one active session being able to manage the same
 org id is not an error: resolution SHALL return the first capable session.
 Resolution SHALL only return a session that is still valid (per the
-`Cache validation` requirement), skipping a session whose validation fails in
-favor of the next capable session.
+`Cache validation` requirement) or that becomes valid after one credential
+refresh attempt; a session is skipped in favor of the next capable session
+only if it remains invalid after that refresh attempt.
 
 #### Scenario: Operation targets a managed sub-org
 
@@ -149,7 +150,8 @@ favor of the next capable session.
 #### Scenario: Resolution skips a session that is no longer valid
 
 - **GIVEN** an active session that can manage the requested org id
-- **AND** that session's validation fails
+- **AND** that session's validation fails, and a credential refresh attempt
+  also fails to recover it
 - **WHEN** a session is resolved for that org
 - **THEN** the invalid session is not returned
 - **AND** resolution falls through to the next still-valid capable session, or

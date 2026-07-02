@@ -1,29 +1,19 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { createServer, type Server } from 'http';
-import type { AddressInfo } from 'net';
 import vscode from 'vscode';
-import { initTestEnvironment, createMockSession } from '@test';
+import {
+	initTestEnvironment,
+	createMockSession,
+	listen,
+	close,
+	createRefreshableSessionServer,
+	refreshableSessionProfile,
+} from '@test';
 import SessionProfile from './SessionProfile';
 import Session from './Session';
 
 const { suite, test, setup, teardown } = Mocha;
-
-function listen(server: Server): Promise<number> {
-	return new Promise((resolve, reject) => {
-		server.once('error', reject);
-		server.listen(0, '127.0.0.1', () => {
-			server.off('error', reject);
-			resolve((server.address() as AddressInfo).port);
-		});
-	});
-}
-
-function close(server: Server): Promise<void> {
-	return new Promise((resolve, reject) => {
-		server.close(error => (error ? reject(error) : resolve()));
-	});
-}
 
 suite('Unit: Session', () => {
 	let servers: Server[] = [];
@@ -220,58 +210,33 @@ suite('Unit: Session', () => {
 			assert.strictEqual(wrapper.getCallsFor('User').length, 1);
 		});
 
-		function refreshProfile(orgId: string, port: number): SessionProfile {
-			return {
-				region: {
-					name: 'Local Test',
-					cookieName: 'appSession',
-					graphqlUrl: `http://127.0.0.1:${port}/graphql`,
-					loginUrl: `http://127.0.0.1:${port}`,
-				},
-				org: { id: orgId, name: 'Ensure Valid Org' },
-				allManagedOrgs: [{ id: orgId, name: 'Ensure Valid Org' }],
-				label: 'Ensure Valid Session',
-				user: { id: 'user-1' } as SessionProfile['user'],
-			};
-		}
-
 		test('recovers via refresh when the session is initially invalid but the cookie still logs in', async () => {
 			const orgId = 'org-ensure-valid-recovers';
-			const server = createServer((request, response) => {
-				if (request.method === 'GET') {
-					response.writeHead(200, { 'set-cookie': 'appSession=refreshed-cookie' });
-					response.end();
-					return;
-				}
-				let body = '';
-				request.on('data', chunk => {
-					body += String(chunk);
-				});
-				request.on('end', () => {
-					response.writeHead(200, { 'content-type': 'application/json' });
-					response.end(JSON.stringify({ data: { user: { id: 'user-1' } } }));
-				});
-			});
+			const { server, port, getRequestCounts } = await createRefreshableSessionServer('user-1');
 			servers.push(server);
-			const port = await listen(server);
 
 			const context = initTestEnvironment();
 			await context.secrets.store(orgId, 'appSession=stale-cookie');
 			// No sdk yet, so validate() fails immediately without a network call,
 			// exactly like a session whose cached User() query previously failed.
-			const session = new Session(undefined, refreshProfile(orgId, port));
+			const session = new Session(undefined, refreshableSessionProfile(orgId, port, 'user-1'));
 
 			const result = await session.ensureValid();
 
 			assert.strictEqual(result, true);
 			assert.notStrictEqual(session.sdk, undefined, 'refresh should have replaced the in-memory SDK');
+			assert.strictEqual(
+				getRequestCounts().post,
+				1,
+				'ensureValid should reuse the validation refreshToken() already performed, not re-query User()',
+			);
 		});
 
 		test('returns false when the session is invalid and the refresh attempt also fails', async () => {
 			const orgId = 'org-ensure-valid-dead';
 			// No secret stored for this org, so refreshToken's getCookies() throws
 			// before any network call — the session cannot be recovered.
-			const session = new Session(undefined, refreshProfile(orgId, 0));
+			const session = new Session(undefined, refreshableSessionProfile(orgId, 0, 'user-1'));
 
 			const result = await session.ensureValid();
 
@@ -419,6 +384,25 @@ suite('Unit: Session', () => {
 				'secret is not overwritten on validation failure',
 			);
 			assert.strictEqual(session.sdk, undefined, 'in-memory SDK is not set on validation failure');
+		});
+
+		test('single-flights concurrent calls into one login/validate round trip', async () => {
+			const orgId = 'org-refresh-concurrent';
+			const { server, port, getRequestCounts } = await createRefreshableSessionServer('user-1');
+			servers.push(server);
+
+			const context = initTestEnvironment();
+			await context.secrets.store(orgId, 'appSession=stale-cookie');
+			const session = new Session(undefined, refreshableSessionProfile(orgId, port, 'user-1'));
+
+			await Promise.all([session.refreshToken(), session.refreshToken(), session.refreshToken()]);
+
+			assert.deepStrictEqual(
+				getRequestCounts(),
+				{ get: 1, post: 1 },
+				'concurrent refreshToken() callers should share one login/validate attempt',
+			);
+			assert.notStrictEqual(session.sdk, undefined);
 		});
 	});
 });

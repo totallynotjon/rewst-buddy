@@ -182,11 +182,9 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	async updateTemplateBody(doc: vscode.TextDocument) {
+	async updateTemplateBody(doc: vscode.TextDocument, session: Session) {
 		log.trace('updateTemplateBody: starting', doc.uri.fsPath);
 		const link = LinkManager.getTemplateLink(doc.uri);
-
-		const session = await SessionManager.getSessionForOrg(link.org.id);
 
 		try {
 			const body = doc.getText() ?? '';
@@ -270,7 +268,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 			case 'upload-local':
 				log.debug('syncTemplateInternal: uploading local changes (in sync)');
-				await this.updateTemplateBody(doc);
+				await this.updateTemplateBody(doc, session);
 				break;
 
 			case 'conflict':
@@ -395,10 +393,16 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		log.debug('handleConflict: user chose', choice);
 
 		switch (choice) {
-			case 'Force Override':
+			case 'Force Override': {
 				log.trace('handleConflict: force overriding remote');
-				await this.updateTemplateBody(doc);
+				// Re-resolve rather than reusing the session captured before this
+				// modal: the user may take arbitrarily long to respond, during which
+				// the session could be refreshed, removed, or replaced.
+				const link = LinkManager.getTemplateLink(doc.uri);
+				const freshSession = await SessionManager.getSessionForOrg(link.org.id);
+				await this.updateTemplateBody(doc, freshSession);
 				break;
+			}
 
 			case 'Download Latest':
 				log.trace('handleConflict: downloading remote');

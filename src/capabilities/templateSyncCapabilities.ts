@@ -7,6 +7,7 @@ import {
 	type SyncDecisionContext,
 	type TemplateLink,
 } from '@models';
+import { SessionManager } from '@sessions';
 import vscode from 'vscode';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
@@ -131,7 +132,12 @@ export const defaultTemplateSyncDeps: TemplateSyncDeps = {
 		}
 	},
 	async upload(target) {
-		await SyncManager.updateTemplateBody(target.doc);
+		// Re-resolve rather than reusing target.context.session: upload() runs
+		// behind the per-call VS Code approval prompt, which can wait
+		// indefinitely for the user, during which that session could be
+		// refreshed, removed, or replaced.
+		const session = await SessionManager.getSessionForOrg(target.context.link.org.id);
+		await SyncManager.updateTemplateBody(target.doc, session);
 		const link = LinkManager.getTemplateLink(target.uri);
 		return { templateId: link.template.id, name: link.template.name, updatedAt: link.template.updatedAt };
 	},

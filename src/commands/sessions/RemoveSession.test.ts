@@ -1,6 +1,7 @@
 import { SessionManager } from '@sessions';
 import { SessionTreeItem } from '@ui';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import { log } from '@utils';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
@@ -65,6 +66,31 @@ suite('Unit: RemoveSession', () => {
 
 		assert.strictEqual(SessionManager.getActiveSessions().length, 0);
 		assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
+	});
+
+	test('notifies the user when SessionManager.removeSession fails', async () => {
+		const { session } = createMockSession({
+			profile: {
+				user: Fixtures.userFragment({ id: 'user-remove-fails' }),
+				org: { id: 'org-remove-fails', name: 'Remove Fails' },
+				allManagedOrgs: [{ id: 'org-remove-fails', name: 'Remove Fails' }],
+			},
+		});
+		SessionManager._setSessionsForTesting([session]);
+		const item = new SessionTreeItem(session.profile, true, vscode.TreeItemCollapsibleState.None);
+		stubConfirm('Remove');
+		stub(SessionManager, 'removeSession', (async () => {
+			throw new Error('boom');
+		}) as unknown as typeof SessionManager.removeSession);
+		let notifiedMessage: string | undefined;
+		stub(log, 'notifyError', ((message: string) => {
+			notifiedMessage = message;
+			return new Error(message);
+		}) as unknown as typeof log.notifyError);
+
+		await new RemoveSession().execute([item]);
+
+		assert.match(notifiedMessage ?? '', /Failed to remove session: Error: boom/);
 	});
 
 	test('does nothing when the user dismisses the confirmation', async () => {

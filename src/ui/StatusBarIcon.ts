@@ -34,6 +34,7 @@ export class StatusBar implements vscode.Disposable {
 			this.clear();
 			return;
 		}
+		const editorUriAtStart = activeEditor.document.uri.toString();
 
 		let link;
 		try {
@@ -55,10 +56,15 @@ export class StatusBar implements vscode.Disposable {
 		try {
 			await SessionManager.getSessionForOrg(link.org.id);
 		} catch (e) {
+			// The active editor may have changed while this awaited; a stale
+			// result must not clobber the status bar the newer update() owns.
+			if (!this.isStillActiveEditor(editorUriAtStart)) return;
 			log.error(`No session found with access to org ${link.template.organization.name}`);
 			this.privateWarnNoSession();
 			return;
 		}
+
+		if (!this.isStillActiveEditor(editorUriAtStart)) return;
 
 		const isSyncEnabled = SyncOnSaveManager.isUriSynced(activeEditor.document.uri);
 
@@ -67,6 +73,10 @@ export class StatusBar implements vscode.Disposable {
 		} else {
 			this.privateWarnSyncOnSaveDisabled();
 		}
+	}
+
+	private isStillActiveEditor(uriString: string): boolean {
+		return vscode.window.activeTextEditor?.document.uri.toString() === uriString;
 	}
 
 	private privateWarnSyncOnSaveDisabled() {

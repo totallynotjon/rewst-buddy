@@ -173,7 +173,9 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 				continue;
 			}
 
-			if (!(await session.validate())) {
+			// ensureValid (not validate) so a stale-but-refreshable session
+			// recovers here too, matching getSessionForOrg's contract.
+			if (!(await session.ensureValid())) {
 				log.trace('getOrgSession: skipping session, validation failed');
 				continue;
 			}
@@ -349,13 +351,21 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	private unindexSession(session: Session): void {
-		for (const [orgId, sessions] of this.orgSessionIndex) {
-			const remaining = sessions.filter(candidate => candidate !== session);
-			if (remaining.length === 0) {
-				this.orgSessionIndex.delete(orgId);
-			} else if (remaining.length !== sessions.length) {
-				this.orgSessionIndex.set(orgId, remaining);
-			}
+		this.removeFromOrgIndex(session.profile.org.id, session);
+		for (const org of session.profile.allManagedOrgs) {
+			this.removeFromOrgIndex(org.id, session);
+		}
+	}
+
+	private removeFromOrgIndex(orgId: string, session: Session): void {
+		const sessions = this.orgSessionIndex.get(orgId);
+		if (!sessions) return;
+
+		const remaining = sessions.filter(candidate => candidate !== session);
+		if (remaining.length === 0) {
+			this.orgSessionIndex.delete(orgId);
+		} else if (remaining.length !== sessions.length) {
+			this.orgSessionIndex.set(orgId, remaining);
 		}
 	}
 
