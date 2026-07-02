@@ -395,6 +395,35 @@ duration), and tag the approval origin so that approval prompts name the caller.
 - **THEN** the audit line contains the tool, resolved org, outcome, and duration
 - **AND** the log does not include tool arguments or embedded line separators
 
+### Requirement: Resolve execution logs across all active sessions
+
+Because a Rewst session only sees its own org hierarchy and
+`buddy_execution_logs` resolves an execution by its globally unique id without
+requiring an org, the system SHALL NOT report an execution as having no task
+logs based on the first active session alone: when the primary session returns
+zero rows, it SHALL query each other active session (skipping ones that error)
+and use the first non-empty result, noting that the logs came from another
+session. The tool SHALL accept an optional `orgId` that routes the primary
+lookup to the session managing that org, falling back to the default session
+when no session manages it. When no session has rows, the result SHALL say
+that none of the active sessions can see the execution rather than implying
+the execution has no logs.
+
+#### Scenario: Execution owned by another signed-in account
+
+- **GIVEN** two active sessions and an execution in the second session's org
+  hierarchy
+- **WHEN** `buddy_execution_logs` runs without an `orgId`
+- **THEN** the first session's empty result triggers a sweep and the second
+  session's task logs are returned, noting the alternate source
+
+#### Scenario: No session can see the execution
+
+- **GIVEN** an execution id no active session has access to
+- **WHEN** `buddy_execution_logs` runs
+- **THEN** the result states that none of the active sessions can see task
+  logs for it
+
 ### Requirement: Page oversized tool results
 
 The system SHALL keep MCP tool responses below the transport-friendly output

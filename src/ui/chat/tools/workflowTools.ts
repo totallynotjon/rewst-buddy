@@ -195,13 +195,18 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	},
 	{
 		name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
-		args: '{"executionId": string, "failedOnly"?: boolean, "includeResult"?: boolean}',
+		args: '{"executionId": string, "orgId"?: string, "failedOnly"?: boolean, "includeResult"?: boolean}',
 		description:
-			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }).",
+			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }). Each signed-in Rewst session only sees its own org hierarchy: if the first session has no rows for the execution, the other active sessions are checked automatically; pass orgId (the org that owns the execution) to query the right session directly.",
 		inputSchema: {
 			type: 'object',
 			properties: {
 				executionId: { type: 'string', description: 'The workflow execution id to inspect.' },
+				orgId: {
+					type: 'string',
+					description:
+						'Optional: the org that owns the execution — routes the lookup to the session managing that org (useful with several signed-in accounts).',
+				},
 				failedOnly: { type: 'boolean', description: 'List only failed tasks (default false).' },
 				includeResult: {
 					type: 'boolean',
@@ -1674,10 +1679,33 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 	if (!executionId) throw new Error('buddy_execution_logs requires "executionId".');
 	const failedOnly = request.args.failedOnly === true;
 	const includeResult = request.args.includeResult === true;
-	const rows = await fetchTaskLogs(deps, executionId);
+	let rows = await fetchTaskLogs(deps, executionId);
+	let sourceNote = '';
+	// A Rewst session only sees its own org hierarchy, so an execution owned by
+	// another signed-in account legitimately yields zero rows here (#116). The
+	// execution id is globally unique — sweep the other sessions before
+	// concluding the execution has no logs.
+	const alternates = deps.alternates ?? [];
+	if (rows.length === 0) {
+		for (const alternate of alternates) {
+			try {
+				rows = await fetchTaskLogs(alternate, executionId);
+			} catch {
+				continue;
+			}
+			if (rows.length > 0) {
+				sourceNote = ' (found via another active session)';
+				break;
+			}
+		}
+	}
 	const failed = rows.filter(r => isFailedStatus(r.status)).length;
-	const header = `Execution ${executionId}: ${rows.length} task(s), ${failed} failed.`;
-	return formatWorkflowOutput(`${header}\n${formatTaskLogs(rows, { failedOnly, includeResult })}`);
+	const header = `Execution ${executionId}: ${rows.length} task(s), ${failed} failed.${sourceNote}`;
+	const emptyHint =
+		rows.length === 0 && alternates.length > 0
+			? `\nNone of the ${alternates.length + 1} active session(s) can see task logs for this execution — check the execution id, or sign in to the Rewst account whose org owns it.`
+			: '';
+	return formatWorkflowOutput(`${header}${emptyHint}\n${formatTaskLogs(rows, { failedOnly, includeResult })}`);
 }
 
 // ---------------------------------------------------------------------------

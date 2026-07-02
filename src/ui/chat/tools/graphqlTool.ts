@@ -93,6 +93,13 @@ export interface GraphqlToolDeps {
 	 * same extension host never reuses another session's data. Undefined in tests.
 	 */
 	cacheScope?: string;
+	/**
+	 * Deps bound to the OTHER active sessions. A tool that looks an entity up by
+	 * a globally unique id (e.g. execution logs by execution id) can sweep these
+	 * when the primary session cannot see the entity — each Rewst session only
+	 * sees its own org hierarchy.
+	 */
+	alternates?: GraphqlToolDeps[];
 }
 
 interface GraphqlTypeRef {
