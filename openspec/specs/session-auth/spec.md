@@ -230,3 +230,41 @@ active.
 - **THEN** known profiles and their primary-org and legacy managed-org secrets
   are removed
 - **AND** future startup does not restore those sessions without a new cookie
+
+### Requirement: Remove a single session
+
+The system SHALL provide a way to remove one authenticated or previously
+authenticated session — active or known-only — without disturbing any other
+session. Removing a session SHALL delete its raw cookie(s) from VS Code
+`secrets` (primary organization key and any legacy managed-organization keys),
+remove its profile from `SessionProfiles` (if active) and `RewstAllKnownProfiles`,
+and clear its entries from in-memory sessions and org indexes. If the removed
+session was the only active session, extension context SHALL be updated so no
+session is considered active.
+
+#### Scenario: User removes one active session from the Sessions tree
+
+- **GIVEN** two or more active sessions
+- **WHEN** the user right-clicks one in the Sessions tree and runs "Remove
+  Session"
+- **THEN** that session's cookie is deleted from `secrets`
+- **AND** its profile is removed from `SessionProfiles` and
+  `RewstAllKnownProfiles`
+- **AND** no org id it managed resolves to it any longer
+- **AND** every other active session is unaffected
+
+#### Scenario: User removes a known-only (previously authenticated) session
+
+- **GIVEN** no active session, but `RewstAllKnownProfiles` contains a
+  previously saved profile
+- **WHEN** the user runs `Rewst Buddy: Remove Session` and picks that profile
+- **THEN** its cookie is deleted from `secrets`
+- **AND** it is removed from `RewstAllKnownProfiles`
+- **AND** future startup does not restore it without a new cookie
+
+#### Scenario: Removing the last active session clears the active-sessions context
+
+- **GIVEN** exactly one active session
+- **WHEN** the user removes it
+- **THEN** the extension no longer considers any session active
+- **AND** the background credential-refresh interval stops

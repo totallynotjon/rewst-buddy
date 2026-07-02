@@ -1,4 +1,4 @@
-import { Session, SessionManager } from '@sessions';
+import { Session, SessionManager, SessionProfile } from '@sessions';
 import { log } from '@utils';
 import vscode from 'vscode';
 
@@ -26,4 +26,36 @@ export async function pickSession(): Promise<Session | undefined> {
 	});
 
 	return picked?.session;
+}
+
+/**
+ * Picks from every known session profile — active or previously authenticated
+ * (known-only) — for operations like removal that must reach an inactive
+ * profile too, not just a currently active one.
+ */
+export async function pickKnownProfile(): Promise<SessionProfile | undefined> {
+	const profiles = SessionManager.getAllKnownProfiles();
+
+	if (profiles.length === 0) {
+		log.notifyWarn('No sessions available.');
+		return undefined;
+	}
+
+	if (profiles.length === 1) {
+		log.debug(`Only one known session, returning it for ease`);
+		return profiles[0];
+	}
+
+	const activeUserIds = new Set(SessionManager.getActiveSessions().map(session => session.profile.user.id));
+	const items = profiles.map(profile => ({
+		label: profile.label,
+		description: `${profile.org.id}${activeUserIds.has(profile.user.id) ? '' : ' (inactive)'}`,
+		profile,
+	}));
+
+	const picked = await vscode.window.showQuickPick(items, {
+		placeHolder: 'Select a session to remove',
+	});
+
+	return picked?.profile;
 }

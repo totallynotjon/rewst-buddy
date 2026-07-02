@@ -401,6 +401,50 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		log.trace('clearProfiles: cleared', { secretsCleared: orgIdsToClear.size });
 	}
 
+	/**
+	 * Removes one authenticated or previously authenticated session — active or
+	 * known-only — identified by its profile's user id, without disturbing any
+	 * other session. Mirrors clearProfiles() but scoped to a single profile.
+	 */
+	public async removeSession(userId: string): Promise<void> {
+		log.debug('removeSession: removing', userId);
+
+		const session = this.sessionMap.get(userId);
+		const knownProfile = this.getAllKnownProfiles().find(profile => profile.user.id === userId);
+		const profile = session?.profile ?? knownProfile;
+		if (!profile) {
+			throw log.error(`removeSession: no active or known session found for user ${userId}`);
+		}
+
+		const orgIdsToClear = new Set<string>([profile.org.id, ...profile.allManagedOrgs.map(org => org.id)]);
+		await Promise.all(Array.from(orgIdsToClear).map(orgId => context.secrets.delete(orgId)));
+
+		if (session) {
+			this.unindexSession(session);
+			this.sessionMap.delete(userId);
+			this.setAnyActiveSessions(this.sessionMap.size > 0);
+		}
+
+		await context.globalState.update(
+			'SessionProfiles',
+			this.getSavedProfiles().filter(saved => saved.user.id !== userId),
+		);
+
+		const remainingKnown = this.getAllKnownProfiles().filter(known => known.user.id !== userId);
+		this.knownProfilesCache = remainingKnown;
+		await context.globalState.update('RewstAllKnownProfiles', remainingKnown);
+		this.rebuildKnownProfileOrgIndex();
+
+		this.sessionChangeEmitter.fire({
+			type: 'removed',
+			session,
+			allProfiles: remainingKnown,
+			activeProfiles: this.getActiveSessions().map(s => s.profile),
+		});
+
+		log.info(`removeSession: removed ${profile.label}`);
+	}
+
 	public async getSessionForOrg(orgId: string): Promise<Session> {
 		log.trace('getSessionForOrg: looking for', orgId);
 		for (const session of this.orgSessionIndex.get(orgId) ?? []) {

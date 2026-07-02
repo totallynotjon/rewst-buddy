@@ -513,4 +513,104 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
 		});
 	});
+
+	suite('removeSession()', () => {
+		test('removes an active session: deletes its cookie, drops it from active and known profiles, and clears the org index', async () => {
+			const { session } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-remove' }),
+					org: { id: 'org-remove-primary', name: 'Primary' },
+					allManagedOrgs: [
+						{ id: 'org-remove-primary', name: 'Primary' },
+						{ id: 'org-remove-managed', name: 'Managed' },
+					],
+				},
+			});
+			await context.secrets.store('org-remove-primary', 'cookie-primary');
+			await context.secrets.store('org-remove-managed', 'cookie-managed');
+
+			const saver = SessionManager as unknown as SessionSaver;
+			await saver.saveSession(session);
+			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 1);
+
+			await SessionManager.removeSession('user-remove');
+
+			assert.strictEqual(await context.secrets.get('org-remove-primary'), undefined);
+			assert.strictEqual(await context.secrets.get('org-remove-managed'), undefined);
+			assert.strictEqual(SessionManager.getActiveSessions().length, 0);
+			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
+			await assert.rejects(SessionManager.getSessionForOrg('org-remove-primary'));
+		});
+
+		test('removes a known-only (previously authenticated) session with no active session', async () => {
+			const knownProfile: SessionProfile = {
+				region: {
+					name: 'Local Test',
+					cookieName: 'appSession',
+					graphqlUrl: 'http://127.0.0.1/graphql',
+					loginUrl: 'http://127.0.0.1',
+				},
+				org: { id: 'org-known-only', name: 'Known Only' },
+				allManagedOrgs: [{ id: 'org-known-only', name: 'Known Only' }],
+				label: 'known-user (Known Only)',
+				user: { id: 'known-user' } as SessionProfile['user'],
+			};
+			SessionManager._setKnownProfilesForTesting([knownProfile]);
+			await context.secrets.store('org-known-only', 'cookie-known');
+
+			await SessionManager.removeSession('known-user');
+
+			assert.strictEqual(await context.secrets.get('org-known-only'), undefined);
+			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
+			assert.strictEqual(SessionManager.getProfileForOrg('org-known-only'), undefined);
+		});
+
+		test('removing one active session leaves another active session untouched', async () => {
+			const { session: first } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-a' }),
+					org: { id: 'org-a', name: 'A' },
+					allManagedOrgs: [{ id: 'org-a', name: 'A' }],
+				},
+			});
+			const { session: second } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-b' }),
+					org: { id: 'org-b', name: 'B' },
+					allManagedOrgs: [{ id: 'org-b', name: 'B' }],
+				},
+			});
+			const saver = SessionManager as unknown as SessionSaver;
+			await saver.saveSession(first);
+			await saver.saveSession(second);
+
+			await SessionManager.removeSession('user-a');
+
+			assert.strictEqual(SessionManager.getActiveSessions().length, 1);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-b'), second);
+			await assert.rejects(SessionManager.getSessionForOrg('org-a'));
+			assert.strictEqual(SessionManager.hasActiveSessions(), true);
+		});
+
+		test('removing the only active session clears the active-sessions context', async () => {
+			const { session } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-solo' }),
+					org: { id: 'org-solo', name: 'Solo' },
+					allManagedOrgs: [{ id: 'org-solo', name: 'Solo' }],
+				},
+			});
+			const saver = SessionManager as unknown as SessionSaver;
+			await saver.saveSession(session);
+			assert.strictEqual(SessionManager.hasActiveSessions(), true);
+
+			await SessionManager.removeSession('user-solo');
+
+			assert.strictEqual(SessionManager.hasActiveSessions(), false);
+		});
+
+		test('throws when no active or known session matches the given user id', async () => {
+			await assert.rejects(SessionManager.removeSession('does-not-exist'));
+		});
+	});
 });
