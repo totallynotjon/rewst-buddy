@@ -736,7 +736,7 @@ async function runListWorkflowTasks(input: Record<string, unknown>, ctx: Capabil
 			task =>
 				`${task.name ?? '(unnamed)'} (${task.id})${task.actionId ? ` — action ${task.actionId}` : ''}${
 					task.isMocked === true ? ' [mocked]' : ''
-				}`,
+				}${task.timeout != null ? ` — timeout ${task.timeout}` : ''}${task.description ? ` — ${task.description}` : ''}`,
 		)
 		.join('\n');
 }

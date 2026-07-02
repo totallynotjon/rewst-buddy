@@ -118,6 +118,11 @@ suite('Unit: workflowTools', () => {
 		assert.match(spec.description, /isMocked/, 'documents task mocking edits');
 		assert.match(spec.description, /mockInput/, 'documents mock input edits');
 		assert.match(spec.description, /with:\s*\{items, concurrency\}/, 'documents loop concurrency shape');
+		assert.match(
+			spec.description,
+			/add_task \{name, action \(ref or id\) OR subWorkflowId, input\?, publishResultAs\?, description\?, with\?, runAsOrgId\?, packOverrides\?, isMocked\?, mockInput\?, retry\?, x\?, y\?\}/,
+			'enumerates the add_task fields including description',
+		);
 	});
 
 	test('buddy_workflow_edit spec teaches sub-workflow composition through set_output', () => {
@@ -692,6 +697,52 @@ suite('Unit: workflowTools', () => {
 			assert.throws(
 				() => applyOperations(sampleTasks() as never, ops, NO_ACTIONS),
 				/Unsupported update_task\.set field "definitelyWrong"/,
+			);
+		});
+
+		test('add_task accepts a description like update_task does', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'notify', action: 'core.noop', description: 'Sends the alert' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			assert.strictEqual(tasks.find(t => t.name === 'notify')!.description, 'Sends the alert');
+		});
+
+		test('mockInput parses a JSON-string payload back to an object (not a char-indexed blob)', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'add_task',
+					name: 'notify',
+					action: 'core.noop',
+					isMocked: true,
+					mockInput: '{"ok": true}',
+				},
+				{ op: 'update_task', name: 'start', set: { isMocked: true, mockInput: '{"id": "mocked"}' } },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'notify')!.mockInput, { ok: true });
+			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.mockInput, { id: 'mocked' });
+		});
+
+		test('retry.count rejects non-scalar values instead of stringifying garbage', () => {
+			for (const count of [{ value: 3 }, [3], true]) {
+				assert.throws(
+					() =>
+						applyOperations(
+							sampleTasks() as never,
+							[{ op: 'update_task', name: 'start', set: { retry: { count } } }],
+							NO_ACTIONS,
+						),
+					/retry\.count must be a string or number/,
+				);
+			}
+		});
+
+		test('update_task.set x/y error points at the reposition op', () => {
+			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { x: 100, y: 400 } }];
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, ops, NO_ACTIONS),
+				/reposition \{task, x, y\}/,
 			);
 		});
 
@@ -1366,6 +1417,58 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!('mockInput' in byName('plain')), 'disabled mock payload is omitted');
 		});
 
+		test('buddy_workflow_get replaces a large mockInput with a size note in summary but keeps it in full', async () => {
+			const bigPayload = { blob: 'x'.repeat(2000) };
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					return {
+						data: {
+							workflow: {
+								id: 'wf-1',
+								name: 'Sample',
+								orgId: 'org-1',
+								organization: { id: 'org-1', name: 'Test Org' },
+								input: [],
+								action: { parameters: {} },
+								updatedAt: '1000',
+								tasks: [
+									{
+										id: 'mocked',
+										name: 'mocked',
+										actionId: 'x',
+										action: { ref: 'core.noop' },
+										next: [],
+										isMocked: true,
+										mockInput: bigPayload,
+									},
+								],
+							},
+						},
+					};
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			const summary = JSON.parse(
+				await runWorkflowTool(
+					{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
+					deps,
+				),
+			);
+			const summaryNode = summary.nodes[0];
+			assert.strictEqual(summaryNode.isMocked, true);
+			assert.strictEqual(typeof summaryNode.mockInput, 'string', 'summary carries a placeholder, not the payload');
+			assert.match(summaryNode.mockInput, /detail:"full"/);
+			assert.ok(!JSON.stringify(summary).includes('xxxxxxxxxx'), 'payload does not leak into the summary');
+			const full = JSON.parse(
+				await runWorkflowTool(
+					{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1', detail: 'full' } },
+					deps,
+				),
+			);
+			assert.deepStrictEqual(full.nodes[0].mockInput, bigPayload, 'full detail keeps the verbatim payload');
+		});
+
 		test('buddy_action_search returns ranked matches', async () => {
 			const { deps } = makeDeps();
 			const output = await runWorkflowTool(
@@ -1530,6 +1633,19 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /Rendered:/);
 			assert.match(output, /WARNING.*control character/i);
 			assert.match(output, /regex_replace.*\\\\\\\\1/i);
+		});
+
+		test('buddy_render_jinja does not warn about ordinary multiline or tabbed output', async () => {
+			const { deps } = makeDeps({ renderResult: 'line1\nline2\tcolumn\r\nend' });
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_render_jinja',
+					args: { orgId: 'org-1', vars: {}, template: "{{ items | join('\\n') }}" },
+				},
+				deps,
+			);
+			assert.match(output, /Rendered:/);
+			assert.doesNotMatch(output, /WARNING/, 'newlines, tabs, and carriage returns are legitimate output');
 		});
 
 		test('buddy_render_jinja requires an execution or vars', async () => {
@@ -2224,7 +2340,22 @@ suite('Unit: workflowTools', () => {
 			assert.match(out, /Acme Onboarding {2}\(id: wf-ccc\) {2}org: Acme Corp \(org-2\)/);
 			assert.ok(!out.includes('Offboarding'), 'only the matching workflows are listed');
 			assert.match(out, /across 2 org/, 'reports how many orgs were indexed');
-			assert.match(out, /indexed orgs: Primary Org \(org-1\), Acme Corp \(org-2\)/);
+			assert.match(out, /orgs with indexed workflows: Primary Org \(org-1\), Acme Corp \(org-2\)/);
+		});
+
+		test('buddy_workflow_search names a requested org that has no workflows in the index', async () => {
+			const { deps } = makeDeps();
+			const out = await runWorkflowTool(
+				{ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'onboarding', orgId: 'org-empty' } },
+				deps,
+			);
+			assert.match(out, /No matches/);
+			assert.match(
+				out,
+				/org-empty has no workflows in the index/,
+				'a zero-match against an absent org is explained, not left ambiguous',
+			);
+			assert.match(out, /no workflows.*or this session cannot see it/i);
 		});
 
 		test('buddy_workflow_search ranks an exact name match first', async () => {

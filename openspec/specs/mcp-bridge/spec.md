@@ -265,6 +265,13 @@ SHALL explicitly carry forward its existing advanced settings
 (`transitionMode`, `join`, `publishResultAs`, `timeout`, `humanSecondsSaved`,
 `isMocked`, `mockInput`, `runAsOrgId`, `retry`, `with`, `metadata`,
 `packOverrides`) so that an edit unrelated to those fields does not reset them.
+An `add_task` or `update_task` operation SHALL set the advanced task fields
+`runAsOrgId`, `packOverrides`, `isMocked`, `mockInput`, and `retry` when
+supplied, validating each value's shape before saving, and SHALL reject an
+operation field outside the supported set with an error naming that field
+rather than silently dropping it (`transitionMode` and `join` are the
+exception: they are accepted and reported as ignored, because the tool does
+not set task parallelism).
 Top-level workflow fields the tool does not write (such as `tags`, `notes`,
 `triggers`, and the workflow's own `humanSecondsSaved`) SHALL be left
 untouched by the mutation rather than reset, since `updateWorkflow` only
@@ -272,9 +279,9 @@ replaces fields actually present in its input — unlike the per-task `tasks`
 array, the top level of the mutation behaves as a patch, not a full replace.
 The workflow's `output` list SHALL follow the same rule: it is sent only when
 a `set_output` operation provides it, so an unrelated edit never resends or
-resets it. A `buddy_workflow_edit` operation that sets a task's `input` or
-`with` object SHALL accept that value as a JSON-encoded string and parse it
-back into an object rather than storing the literal string. A `set_transition`
+resets it. A `buddy_workflow_edit` operation that sets a task's `input`, `with`, or
+`mockInput` object SHALL accept that value as a JSON-encoded string and parse
+it back into an object rather than storing the literal string. A `set_transition`
 operation that omits both `to` and `transitionId` SHALL resolve to the task's
 sole outgoing transition when exactly one exists, and SHALL error asking the
 caller to disambiguate with `to` or `transitionId` otherwise.
@@ -306,10 +313,18 @@ caller to disambiguate with `to` or `transitionId` otherwise.
 #### Scenario: A JSON-string task input is parsed
 
 - **GIVEN** an `add_task` or `update_task` operation supplies a task's
-  `"input"` (or `"with"`) as a JSON-encoded string rather than an object
+  `"input"` (or `"with"`, or `"mockInput"`) as a JSON-encoded string rather
+  than an object
 - **WHEN** `buddy_workflow_edit` applies the operation
 - **THEN** the string is parsed into an object before being sent, rather than
   stored as a literal string value
+
+#### Scenario: An unsupported operation field fails loudly
+
+- **GIVEN** an `add_task` or `update_task` operation carrying a misspelled or
+  unsupported field
+- **WHEN** `buddy_workflow_edit` applies the batch
+- **THEN** the edit errors naming the unsupported field and nothing is saved
 
 #### Scenario: set_transition disambiguates a single outgoing edge
 
@@ -319,6 +334,24 @@ caller to disambiguate with `to` or `transitionId` otherwise.
 - **THEN** it targets that sole transition
 - **AND** if the task has more than one outgoing transition instead, the
   operation errors asking for `to` or `transitionId`
+
+### Requirement: Surface non-default task fields when reading a workflow
+
+`buddy_workflow_get` SHALL include a task's advanced fields in its graph view
+only when they change behavior — `transitionMode` when not `FOLLOW_FIRST`,
+`join` when not `1`, `runAsOrgId` when set, `isMocked` and `mockInput` only
+when the task is mocked, and `retry` when configured — so the default view
+stays concise without hiding behavior-changing state. In the summary view a
+large `mockInput` payload SHALL be replaced by a size note that points at
+`detail:"full"`; the full view keeps the verbatim payload.
+
+#### Scenario: A mocked task is visible in the graph view
+
+- **GIVEN** a workflow task with `isMocked` true and a mock payload
+- **WHEN** `buddy_workflow_get` renders the summary view
+- **THEN** the node shows `isMocked` and the payload (or a size note when the
+  payload is large)
+- **AND** a task with `isMocked` false shows neither field
 
 ### Requirement: Expose the sub-workflow output contract
 
@@ -430,15 +463,17 @@ Because the Rewst API filters a task's `input` against the action's
 `inputSchema` — dropping unknown keys and coercing mistyped values (a string in
 an object-typed field becomes `{}`) while the save still reports success — the
 system SHALL, after a `buddy_workflow_edit` save whose operations supplied a
-task `input` or `with`, re-read the workflow and compare each such task's
-stored `input`/`with` against what was sent, appending a warning to the tool
-result naming each divergent dotted path. The comparison SHALL be
+task `input`, `with`, or an advanced task field (`runAsOrgId`,
+`packOverrides`, `isMocked`, `mockInput`, `retry`), re-read the workflow and
+compare each such task's stored values for those fields against what was
+sent, appending a warning to the tool result naming each divergent dotted
+path. The comparison SHALL be
 one-directional (extra stored keys the server added are not divergences) and
 SHALL tolerate textual-equal scalar coercion (`1` vs `"1"`). The tasks to
 verify SHALL be tracked by task id while the operations are applied, so a
 rename — in the same operation or later in the batch — cannot detach a task
 from verification; a task deleted later in the batch SHALL NOT be verified.
-Edits whose operations carry no `input` or `with` SHALL NOT incur the
+Edits whose operations carry none of those fields SHALL NOT incur the
 verification read. A failed verification read SHALL append a note advising a
 manual re-read, not fail the edit.
 

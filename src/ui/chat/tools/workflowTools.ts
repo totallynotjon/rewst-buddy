@@ -108,7 +108,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, with?, runAsOrgId?, packOverrides?, isMocked?, mockInput?, retry?, x?, y?}; update_task {id|name, set:{name?, input?, action? or subWorkflowId?, publishResultAs?, timeout?, description?, with?, runAsOrgId?, packOverrides?, isMocked?, mockInput?, retry?}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you); set_output {outputs: {name: "<jinja>"} object or [{name, value}] array} (replace the workflow\'s caller-visible outputs; raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. PREFER COMPOSITION over one giant canvas: give a chunky reusable sequence (ticket lifecycle, user lookup, license handling) its own workflow with set_inputs for its run inputs and set_output for its return values, then call it with add_task subWorkflowId — the calling task reads RESULT.<name> for exactly the names set_output declared (or CTX.<publishResultAs>.<name> when it sets publishResultAs). A single canvas growing past roughly 15-20 tasks with distinct concerns is a sign to split. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. At runtime a task follows at most one outgoing transition — the first, in listed order, whose condition holds — so a custom-condition edge followed by the "{{ SUCCEEDED }}" catch-all forms a clean two-way branch. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. A transition\'s publish entries apply whenever that transition is taken, including on {{ FAILED }} edges, and entries on one transition evaluate in order (a later entry can read an earlier one from CTX); transition publish is the only place to compute context variables — tasks have no publish of their own, only publishResultAs for their raw result. with is with: {items, concurrency}; concurrency is a string. Inside a with.items loop task, reference the current element as the callable {{ item() }} (not CTX.item); when such a task sets publishResultAs, the published value is a list with one wrapper per item, each holding that item\'s result. It does not expose parallel task controls: new tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, description?, with?, runAsOrgId?, packOverrides?, isMocked?, mockInput?, retry?, x?, y?}; update_task {id|name, set:{name?, input?, action? or subWorkflowId?, publishResultAs?, timeout?, description?, with?, runAsOrgId?, packOverrides?, isMocked?, mockInput?, retry?}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you); set_output {outputs: {name: "<jinja>"} object or [{name, value}] array} (replace the workflow\'s caller-visible outputs; raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. PREFER COMPOSITION over one giant canvas: give a chunky reusable sequence (ticket lifecycle, user lookup, license handling) its own workflow with set_inputs for its run inputs and set_output for its return values, then call it with add_task subWorkflowId — the calling task reads RESULT.<name> for exactly the names set_output declared (or CTX.<publishResultAs>.<name> when it sets publishResultAs). A single canvas growing past roughly 15-20 tasks with distinct concerns is a sign to split. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. At runtime a task follows at most one outgoing transition — the first, in listed order, whose condition holds — so a custom-condition edge followed by the "{{ SUCCEEDED }}" catch-all forms a clean two-way branch. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. A transition\'s publish entries apply whenever that transition is taken, including on {{ FAILED }} edges, and entries on one transition evaluate in order (a later entry can read an earlier one from CTX); transition publish is the only place to compute context variables — tasks have no publish of their own, only publishResultAs for their raw result. with is with: {items, concurrency}; concurrency is a string. Inside a with.items loop task, reference the current element as the callable {{ item() }} (not CTX.item); when such a task sets publishResultAs, the published value is a list with one wrapper per item, each holding that item\'s result. It does not expose parallel task controls: new tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -220,7 +220,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: 'buddy_render_jinja',
 		args: '{"orgId": string, "template"?: string, "executionId"?: string, "vars"?: object, "contextIndex"?: number, "keys"?: boolean}',
 		description:
-			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. An execution's stored snapshots are per-publish deltas (each holds only the keys that publish wrote), so by default the tool merges them all, in order, into one cumulative context — the closest view of the run's final CTX; pass contextIndex to inspect one raw delta instead. Rewst context storage alphabetizes dict keys, so key order from dict.keys() may not match authoring order. For regex_replace backreferences, write '\\\\\\\\1' rather than '\\\\1'; a rendered control character is usually an escaping mistake. Returns the rendered value, or the Jinja error if it fails.",
+			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. An execution's stored snapshots are per-publish deltas (each holds only the keys that publish wrote), so by default the tool merges them all, in order, into one cumulative context — the closest view of the run's final CTX; pass contextIndex to inspect one raw delta instead. Rewst context storage alphabetizes dict keys, so key order from dict.keys() may not match authoring order. For regex_replace backreferences, write '\\\\\\\\1' rather than '\\\\1'; an unexpected non-whitespace control character in the result usually means an escaping mistake. Returns the rendered value, or the Jinja error if it fails.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -940,6 +940,9 @@ function coerceRetry(value: unknown): RawTask['retry'] {
 	if (count === undefined || count === null || count === '') {
 		throw new Error('retry.count must be present.');
 	}
+	if (typeof count !== 'string' && typeof count !== 'number') {
+		throw new Error('retry.count must be a string or number.');
+	}
 	const out: NonNullable<RawTask['retry']> = { count: String(count) };
 	for (const key of ['delay', 'when'] as const) {
 		if (!(key in record)) continue;
@@ -960,6 +963,7 @@ const ADD_TASK_FIELDS = new Set([
 	'input',
 	'publishResultAs',
 	'timeout',
+	'description',
 	'with',
 	'runAsOrgId',
 	'packOverrides',
@@ -1016,7 +1020,7 @@ function setAdvancedTaskFields(
 		mark?.('isMocked');
 	}
 	if ('mockInput' in source) {
-		task.mockInput = source.mockInput;
+		task.mockInput = source.mockInput == null ? null : coerceObjectField(source.mockInput, 'task "mockInput"');
 		mark?.('mockInput');
 	}
 	if ('retry' in source) {
@@ -1134,6 +1138,7 @@ export function applyOperations(
 				};
 				if (str(operation.publishResultAs) != null) task.publishResultAs = str(operation.publishResultAs);
 				if (operation.timeout != null) task.timeout = coerceTaskNumber(operation.timeout, 'timeout');
+				if ('description' in operation) task.description = operation.description as string;
 				if (operation.with != null)
 					task.with = coerceObjectField(operation.with, 'task "with"') as RawTask['with'];
 				setAdvancedTaskFields(task, operation, field => markVerify(id, field));
@@ -1154,6 +1159,9 @@ export function applyOperations(
 				if (!ref) throw new Error('update_task requires "id" or "name".');
 				const task = resolveTask(next, ref);
 				const set = asObject(operation.set);
+				if ('x' in set || 'y' in set) {
+					throw new Error('update_task.set does not move tasks — use reposition {task, x, y} instead.');
+				}
 				rejectUnsupportedFields(set, UPDATE_TASK_SET_FIELDS, 'update_task.set');
 				if (str(set.name)) task.name = str(set.name)!;
 				if ('input' in set) task.input = coerceTaskInput(set.input);
@@ -1568,6 +1576,9 @@ function formatWorkflowOutput(text: string): string {
 	return text;
 }
 
+// Largest mock payload (as JSON) shown verbatim in the summary graph view.
+const MOCK_INPUT_SUMMARY_CHARS = 400;
+
 function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary'): string {
 	const full = detail === 'full';
 	const nameById = new Map(w.tasks.map(t => [t.id, t.name]));
@@ -1592,7 +1603,15 @@ function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary
 		if (t.runAsOrgId) node.runAsOrgId = t.runAsOrgId;
 		if (t.isMocked === true) {
 			node.isMocked = true;
-			if (t.mockInput != null) node.mockInput = t.mockInput;
+			if (t.mockInput != null) {
+				// A mock payload is often a captured API response; keep the summary
+				// view small and defer the verbatim payload to detail:"full".
+				const json = JSON.stringify(t.mockInput);
+				node.mockInput =
+					full || json.length <= MOCK_INPUT_SUMMARY_CHARS
+						? t.mockInput
+						: `(mockInput ${json.length} chars — call buddy_workflow_get with detail:"full" to view)`;
+			}
 		}
 		if (t.retry != null) node.retry = t.retry;
 		if (full) {
@@ -1805,6 +1824,9 @@ function containsControlCharacter(value: unknown): boolean {
 	if (typeof value === 'string') {
 		for (let i = 0; i < value.length; i++) {
 			const code = value.charCodeAt(i);
+			// Ordinary whitespace (\t \n \r) is legitimate rendered output, not
+			// an escaping mistake; only the rest of the C0 range and DEL warn.
+			if (code === 9 || code === 10 || code === 13) continue;
 			if (code <= 31 || code === 127) return true;
 		}
 		return false;
@@ -2254,6 +2276,12 @@ interface WorkflowIndexEntry {
 
 interface WorkflowIndex {
 	entries: WorkflowIndexEntry[];
+	// Orgs that contributed at least one entry. The index is built from one
+	// unscoped workflows query, so an org with zero workflows is unknowable
+	// here — callers must treat absence as "no indexed workflows", not
+	// "not indexed".
+	orgs: Map<string, string>;
+	orgSummary: string;
 	orgCount: number;
 	builtAt: number;
 	truncated: boolean;
@@ -2279,7 +2307,7 @@ interface RawIndexWorkflow {
 
 async function buildWorkflowIndex(deps: GraphqlToolDeps): Promise<WorkflowIndex> {
 	const entries: WorkflowIndexEntry[] = [];
-	const orgIds = new Set<string>();
+	const orgs = new Map<string, string>();
 	let truncated = false;
 	for (let page = 0; page < WORKFLOW_INDEX_MAX_PAGES; page++) {
 		const result = await deps.execute(WORKFLOWS_INDEX_QUERY, {
@@ -2295,19 +2323,27 @@ async function buildWorkflowIndex(deps: GraphqlToolDeps): Promise<WorkflowIndex>
 		for (const w of rows) {
 			if (!w?.id) continue;
 			const orgId = w.orgId ?? w.organization?.id ?? '';
-			orgIds.add(orgId);
+			const orgName = w.organization?.name ?? (orgId || '(unknown org)');
+			if (!orgs.has(orgId)) orgs.set(orgId, orgName);
 			entries.push({
 				id: w.id,
 				name: w.name ?? '(unnamed)',
 				orgId,
-				orgName: w.organization?.name ?? orgId ?? '(unknown org)',
+				orgName,
 			});
 		}
 		if (rows.length < WORKFLOW_INDEX_PAGE_SIZE) break;
 		if (page === WORKFLOW_INDEX_MAX_PAGES - 1) truncated = true;
 	}
 	entries.sort((a, b) => a.name.localeCompare(b.name));
-	return { entries, orgCount: orgIds.size, builtAt: Date.now(), truncated };
+	return {
+		entries,
+		orgs,
+		orgSummary: summarizeIndexedOrgs(orgs),
+		orgCount: orgs.size,
+		builtAt: Date.now(),
+		truncated,
+	};
 }
 
 function ageString(ms: number): string {
@@ -2374,16 +2410,13 @@ function setCachedWorkflowIndex(cacheKey: string, index: WorkflowIndex): void {
 	}
 }
 
-function indexedOrgSummary(index: WorkflowIndex): string {
-	const byOrg = new Map<string, string>();
-	for (const entry of index.entries) {
-		if (!byOrg.has(entry.orgId)) byOrg.set(entry.orgId, entry.orgName);
-	}
-	const shown = [...byOrg.entries()]
+// Computed once at index build time (the index is cached across searches).
+function summarizeIndexedOrgs(orgs: Map<string, string>): string {
+	const shown = [...orgs.entries()]
 		.sort(([a], [b]) => a.localeCompare(b))
 		.slice(0, 8)
 		.map(([id, name]) => `${name} (${id})`);
-	const remaining = byOrg.size - shown.length;
+	const remaining = orgs.size - shown.length;
 	return `${shown.join(', ')}${remaining > 0 ? `, and ${remaining} more` : ''}`;
 }
 
@@ -2429,9 +2462,15 @@ async function runWorkflowSearch(request: ToolRequest, deps: GraphqlToolDeps): P
 	const total = nameHits.length + orgOnly.length;
 	const header =
 		`${total} workflow(s)${rawQuery ? ` matching "${rawQuery}"` : ''}` +
-		` (index: ${index.entries.length} workflows across ${index.orgCount} org(s)${index.truncated ? ', truncated at the page cap' : ''}, built ${ageString(index.builtAt)}; indexed orgs: ${indexedOrgSummary(index) || '(none)'}; refresh:true to rebuild).`;
+		` (index: ${index.entries.length} workflows across ${index.orgCount} org(s)${index.truncated ? ', truncated at the page cap' : ''}, built ${ageString(index.builtAt)}; orgs with indexed workflows: ${index.orgSummary || '(none)'}; refresh:true to rebuild).`;
 	if (total === 0) {
-		return `${header}\nNo matches. Try fewer/looser words, drop orgId, or refresh:true if the workflow is new.`;
+		// The index only knows orgs that contributed a workflow, so an absent
+		// requested org must be explained rather than left looking un-indexed.
+		const missingOrgNote =
+			orgId && !index.orgs.has(orgId)
+				? ` Requested orgId ${orgId} has no workflows in the index: the org may have no workflows, or this session cannot see it.`
+				: '';
+		return `${header}\nNo matches.${missingOrgNote} Try fewer/looser words, drop orgId, or refresh:true if the workflow is new.`;
 	}
 
 	const parts = [header];

@@ -468,7 +468,10 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.strictEqual(calls[0].variables.variables.limit, 10);
 		assert.strictEqual(
 			output,
-			['Create ticket (abc123def456) — action action-1', 'Notify team (fed456cba123)'].join('\n'),
+			[
+				'Create ticket (abc123def456) — action action-1 — timeout 120 — Open a ticket',
+				'Notify team (fed456cba123)',
+			].join('\n'),
 		);
 	});
 
@@ -513,7 +516,7 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.strictEqual(
 			output,
 			[
-				'Create ticket (abc123def456) — action action-1 [mocked]',
+				'Create ticket (abc123def456) — action action-1 [mocked] — timeout 120 — Open a ticket',
 				'Notify team (fed456cba123) — action action-2',
 			].join('\n'),
 		);
