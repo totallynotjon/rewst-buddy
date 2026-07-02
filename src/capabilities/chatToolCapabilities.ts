@@ -1,4 +1,5 @@
-import { createGraphqlDeps } from '../ui/chat/tools/graphqlTool';
+import { SessionManager } from '@sessions';
+import { createGraphqlDeps, type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
@@ -40,14 +41,30 @@ async function runViaChatToolPath(
 	spec: ToolSpec,
 	input: Record<string, unknown>,
 	ctx: CapabilityContext,
+	deps: GraphqlToolDeps = createGraphqlDeps(ctx.session),
 ): Promise<string> {
-	const [result] = await runToolRequests(
-		[{ tool: spec.name, args: input }],
-		undefined,
-		undefined,
-		createGraphqlDeps(ctx.session),
-	);
+	const [result] = await runToolRequests([{ tool: spec.name, args: input }], undefined, undefined, deps);
 	return result.ok ? result.output : `Error: ${result.output}`;
+}
+
+/**
+ * Deps for buddy_execution_logs, which resolves an execution by its globally
+ * unique id and carries no required org. requiresOrg:false capabilities run
+ * against the first active session, but each session only sees its own org
+ * hierarchy — an execution owned by another signed-in account would come back
+ * empty (#116). So: an optional orgId routes the primary to the session
+ * managing that org, and every other active session rides along as an
+ * alternate for the tool's empty-result sweep.
+ */
+export async function executionLogsDeps(
+	input: Record<string, unknown>,
+	ctx: CapabilityContext,
+): Promise<GraphqlToolDeps> {
+	const orgId = typeof input.orgId === 'string' && input.orgId ? input.orgId : undefined;
+	const primary = orgId ? await SessionManager.getSessionForOrg(orgId).catch(() => ctx.session) : ctx.session;
+	const deps = createGraphqlDeps(primary);
+	deps.alternates = ctx.sessions.filter(session => session !== primary).map(createGraphqlDeps);
+	return deps;
 }
 
 function mcpCapability(
@@ -75,9 +92,15 @@ export const WORKSPACE_CHAT_CAPABILITIES: Capability[] = WORKSPACE_TOOL_SPECS.ma
 
 export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec => {
 	const access = workflowAccessFor(spec);
-	return access === 'write'
-		? mcpCapability(spec, access, 'workflow', true, (input, ctx) =>
-				runWorkflowMutationWithApproval(spec, input, ctx),
-			)
-		: mcpCapability(spec, access, 'workflow', true);
+	if (access === 'write') {
+		return mcpCapability(spec, access, 'workflow', true, (input, ctx) =>
+			runWorkflowMutationWithApproval(spec, input, ctx),
+		);
+	}
+	if (spec.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME) {
+		return mcpCapability(spec, access, 'workflow', true, async (input, ctx) =>
+			runViaChatToolPath(spec, input, ctx, await executionLogsDeps(input, ctx)),
+		);
+	}
+	return mcpCapability(spec, access, 'workflow', true);
 });

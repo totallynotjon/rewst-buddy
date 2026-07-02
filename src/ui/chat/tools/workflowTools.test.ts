@@ -1732,6 +1732,64 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!output.includes('"ok":true'), "succeeded task's result is hidden by default");
 		});
 
+		test('buddy_execution_logs sweeps alternate sessions when the primary sees no rows', async () => {
+			// An execution in another account's org hierarchy returns zero rows on
+			// the primary session; the tool must try the other active sessions
+			// (issue #116). The first alternate here errors and must be skipped.
+			const depsFor = (taskLogs: unknown): GraphqlToolDeps => ({
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async query =>
+					query.includes('RewstBuddyTaskLogs')
+						? (taskLogs as { data?: unknown; errors?: unknown })
+						: { data: {} },
+			});
+			const deps = depsFor({ data: { taskLogs: [] } });
+			deps.alternates = [
+				depsFor({ errors: [{ message: 'no access' }] }),
+				depsFor({
+					data: { taskLogs: [{ originalWorkflowTaskName: 'do_thing', status: 'succeeded' }] },
+				}),
+			];
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-9' } },
+				deps,
+			);
+			assert.match(output, /1 task\(s\), 0 failed/);
+			assert.match(output, /do_thing: succeeded/);
+			assert.match(output, /another active session/i);
+		});
+
+		test('buddy_execution_logs explains visibility when no session has rows', async () => {
+			const empty = (): GraphqlToolDeps => ({
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async () => ({ data: { taskLogs: [] } }),
+			});
+			const deps = empty();
+			deps.alternates = [empty()];
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-9' } },
+				deps,
+			);
+			assert.match(output, /0 task\(s\)/);
+			assert.match(output, /none of the \d+ active session/i);
+		});
+
+		test('buddy_execution_logs spec accepts an optional orgId for session routing', () => {
+			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME);
+			assert.ok(spec, 'buddy_execution_logs spec exists');
+			assert.match(spec.args, /"orgId"\?/);
+			const orgId = (spec.inputSchema as { properties: Record<string, { description?: string }> }).properties
+				.orgId;
+			assert.ok(orgId, 'inputSchema declares orgId');
+			assert.match(orgId.description ?? '', /session|account/i);
+			assert.ok(
+				!(spec.inputSchema as { required?: string[] }).required?.includes('orgId'),
+				'orgId stays optional',
+			);
+		});
+
 		test('buddy_execution_logs failedOnly lists only failed tasks', async () => {
 			const { deps } = makeDeps({
 				taskLogs: [
