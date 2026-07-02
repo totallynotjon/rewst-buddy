@@ -1006,6 +1006,30 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		);
 	});
 
+	test('force override surfaces a clear error when no session remains for the org after the modal', async () => {
+		const { doc, wrapper: staleWrapper } = setUpConflict();
+
+		// The org's only session is removed while the user is staring at the
+		// conflict modal; re-resolution must fail loudly rather than fall back
+		// to the stale session captured before the modal.
+		const restore = stub(vscode.window, 'showInformationMessage', (async () => {
+			SessionManager._setSessionsForTesting([]);
+			return 'Force Override';
+		}) as unknown as typeof vscode.window.showInformationMessage);
+
+		try {
+			await assert.rejects(() => SyncManager.syncTemplate(doc), /no session found/);
+		} finally {
+			restore();
+		}
+
+		assert.strictEqual(
+			staleWrapper.getCallsFor('updateTemplateBody').length,
+			0,
+			'the stale session must not receive the upload when re-resolution fails',
+		);
+	});
+
 	test('user takes the remote version: the remote body replaces the local file', async () => {
 		const { doc, wrapper } = setUpConflict();
 		const restore = stub(

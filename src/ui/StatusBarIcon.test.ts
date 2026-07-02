@@ -12,10 +12,14 @@ function itemOf(bar: StatusBar): vscode.StatusBarItem {
 	return (bar as unknown as { item: vscode.StatusBarItem }).item;
 }
 
-function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
+function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void; reject: (error: unknown) => void } {
 	let resolve!: (value: T) => void;
-	const promise = new Promise<T>(r => (resolve = r));
-	return { promise, resolve };
+	let reject!: (error: unknown) => void;
+	const promise = new Promise<T>((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+	return { promise, resolve, reject };
 }
 
 suite('Unit: StatusBar', () => {
@@ -106,6 +110,78 @@ suite('Unit: StatusBar', () => {
 				itemOf(bar).text,
 				'Rewst Sync-On-Save: ON $(check)',
 				"the stale update for file A must not overwrite file B's status once A's slow lookup resolves",
+			);
+		} finally {
+			bar.dispose();
+		}
+	});
+
+	test('a slow session lookup for a previous file that rejects does not overwrite the status bar for the current file', async () => {
+		const uriA = vscode.Uri.file('/test/docA2.jinja');
+		const uriB = vscode.Uri.file('/test/docB2.jinja');
+
+		const linkA: TemplateLink = {
+			type: 'Template',
+			uriString: uriA.toString(),
+			org: { id: 'org-A', name: 'Org A' },
+			bodyHash: 'hash-a',
+			template: Fixtures.fullTemplate({ name: 'Template A' }),
+		};
+		const linkB: TemplateLink = {
+			type: 'Template',
+			uriString: uriB.toString(),
+			org: { id: 'org-B', name: 'Org B' },
+			bodyHash: 'hash-b',
+			template: Fixtures.fullTemplate({ name: 'Template B' }),
+		};
+
+		restores.push(
+			stub(LinkManager, 'getTemplateLink', ((uri: vscode.Uri) =>
+				uri.toString() === uriA.toString() ? linkA : linkB) as typeof LinkManager.getTemplateLink),
+		);
+		restores.push(
+			stub(SessionManager, 'hasActiveSessions', (() => true) as typeof SessionManager.hasActiveSessions),
+		);
+
+		const orgAGate = deferred<Session>();
+		restores.push(
+			stub(SessionManager, 'getSessionForOrg', ((orgId: string) =>
+				orgId === 'org-A'
+					? orgAGate.promise
+					: Promise.resolve({} as Session)) as typeof SessionManager.getSessionForOrg),
+		);
+		restores.push(
+			stub(
+				SyncOnSaveManager,
+				'isUriSynced',
+				((uri: vscode.Uri) => uri.toString() === uriB.toString()) as typeof SyncOnSaveManager.isUriSynced,
+			),
+		);
+
+		// Prevent the constructor's own fire-and-forget update() from racing the
+		// manual calls below.
+		stubActiveEditor(undefined);
+		const bar = new StatusBar();
+		try {
+			stubActiveEditor(uriA);
+			const callA = bar.update();
+
+			stubActiveEditor(uriB);
+			await bar.update();
+
+			assert.strictEqual(
+				itemOf(bar).text,
+				'Rewst Sync-On-Save: ON $(check)',
+				'the current file (B) should show its own synced state',
+			);
+
+			orgAGate.reject(new Error('session lookup failed for org-A'));
+			await callA;
+
+			assert.strictEqual(
+				itemOf(bar).text,
+				'Rewst Sync-On-Save: ON $(check)',
+				"the stale rejected lookup for file A must not overwrite file B's status with the no-session warning",
 			);
 		} finally {
 			bar.dispose();

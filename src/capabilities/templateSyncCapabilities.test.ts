@@ -570,6 +570,46 @@ suite('Unit: templateSyncCapabilities', () => {
 				'the freshly-resolved session should receive the upload',
 			);
 		});
+
+		test('propagates a clear error when no session remains for the org at upload time', async () => {
+			const org = { id: 'org-upload-missing', name: 'Upload Missing' };
+			const uri = addTemplateLink('/ws/upload-missing.j2', org.id, 'tpl-upload-missing');
+			const link = LinkManager.getTemplateLink(uri);
+			const { session: staleSession, wrapper: staleWrapper } = createMockSession({
+				profile: { org, allManagedOrgs: [org] },
+			});
+
+			// No session registered for the org — simulates removal while the
+			// approval prompt was pending.
+			SessionManager._setSessionsForTesting([]);
+
+			const doc = { uri, getText: () => 'local body' } as unknown as vscode.TextDocument;
+			const target: TemplateSyncTarget = {
+				uri,
+				doc,
+				dirty: false,
+				context: {
+					link,
+					session: staleSession,
+					remoteTemplate: {
+						id: 'tpl-upload-missing',
+						name: 'Greeting',
+						body: 'remote',
+						updatedAt: '1',
+						orgId: org.id,
+					},
+					localBody: 'local body',
+					decision: { action: 'upload-local' },
+				} as unknown as SyncDecisionContext,
+			};
+
+			await assert.rejects(() => defaultTemplateSyncDeps.upload(target), /no session found/);
+			assert.strictEqual(
+				staleWrapper.getCallsFor('updateTemplateBody').length,
+				0,
+				'the stale session captured on target.context must not be used as a fallback',
+			);
+		});
 	});
 
 	suite('capability descriptors', () => {
