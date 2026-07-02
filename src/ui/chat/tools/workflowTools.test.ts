@@ -68,6 +68,7 @@ function sampleWorkflow() {
 			},
 		},
 		updatedAt: '1000',
+		output: [{ user_found: '{{ CTX.user_found|d(false) }}' }],
 		tasks: sampleTasks(),
 	};
 }
@@ -108,6 +109,40 @@ suite('Unit: workflowTools', () => {
 		assert.match(spec.description, /does not expose parallel task controls/i);
 	});
 
+	test('buddy_workflow_edit spec teaches sub-workflow composition through set_output', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.match(spec.description, /set_output \{outputs/, 'set_output is listed as an operation');
+		assert.match(spec.description, /RESULT\.<name>/, 'ties a sub-workflow call result to the set_output contract');
+		assert.match(spec.description, /prefer composition/i, 'recommends composing over one giant canvas');
+		assert.match(
+			spec.description,
+			/sign to split/i,
+			'names the smell that should push a build toward sub-workflows',
+		);
+	});
+
+	test('buddy_workflow_edit spec states transition, publish, and loop semantics', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.match(
+			spec.description,
+			/at most one outgoing transition.*first.*listed order/i,
+			'documents first-match transition evaluation',
+		);
+		assert.match(
+			spec.description,
+			/publish entries apply whenever that transition is taken, including on \{\{ FAILED \}\}/i,
+			'documents publish firing on failure edges',
+		);
+		assert.match(spec.description, /\{\{ item\(\) \}\}/, 'documents the with.items current-element callable');
+		assert.match(
+			spec.description,
+			/update_task \{id\|name, set:\{name\?, input\?, action\? or subWorkflowId\?, publishResultAs\?, timeout\?, description\?, with\?\}\}/,
+			'enumerates the update_task settable fields',
+		);
+	});
+
 	suite('normalizePublish()', () => {
 		test('keeps {key,value} array form', () => {
 			assert.deepStrictEqual(normalizePublish([{ key: 'a', value: '1' }]), [{ key: 'a', value: '1' }]);
@@ -145,6 +180,19 @@ suite('Unit: workflowTools', () => {
 			const w = sampleWorkflow();
 			const input = workflowToInput(w as never, w.tasks as never);
 			assert.deepStrictEqual(input.parameters, w.action.parameters, 'parameters preserved');
+		});
+
+		test('output is sent only when a set_output override provides it', () => {
+			// The top level of updateWorkflow behaves as a patch: omitting output
+			// leaves it untouched server-side, so an unrelated edit must not resend
+			// the read-back value — only set_output writes it.
+			const w = sampleWorkflow();
+			const without = workflowToInput(w as never, w.tasks as never);
+			assert.ok(!('output' in without), 'read-back output is not resent on unrelated edits');
+			const withOverride = workflowToInput(w as never, w.tasks as never, {
+				output: [{ done: '{{ true }}' }],
+			});
+			assert.deepStrictEqual(withOverride.output, [{ done: '{{ true }}' }], 'set_output override wins');
 		});
 
 		test('resends a task pack override (integration override) so an edit does not drop it', () => {
@@ -315,6 +363,54 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(params.drop.default, '{{ false }}', 'raw boolean default is Jinja-wrapped');
 			assert.strictEqual(schema.properties.drop.default, '{{ false }}', 'inputSchema default is wrapped too');
 			assert.ok(!('varsSchema' in workflow), 'varsSchema is never touched by set_inputs');
+		});
+
+		test('set_output builds the ordered single-key output list from an object map', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'set_output',
+					outputs: { success: '{{ CTX.success|d(false) }}', data: '{{ CTX.data|d(None) }}' },
+				},
+			];
+			const { workflow, applied } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(
+				workflow.output,
+				[{ success: '{{ CTX.success|d(false) }}' }, { data: '{{ CTX.data|d(None) }}' }],
+				'stored as the API\'s ordered [{name: "<jinja>"}] list',
+			);
+			assert.match(applied[0], /set_output \(2: success, data\)/);
+		});
+
+		test('set_output accepts a {name, value} array and wraps raw scalars as Jinja', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'set_output',
+					outputs: [
+						{ name: 'enabled', value: true },
+						{ name: 'count', value: 3 },
+						{ name: 'log', value: '{{ CTX.automation_log|d([]) }}' },
+					],
+				},
+			];
+			const { workflow } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(workflow.output, [
+				{ enabled: '{{ true }}' },
+				{ count: '{{ 3 }}' },
+				{ log: '{{ CTX.automation_log|d([]) }}' },
+			]);
+		});
+
+		test('set_output with an empty array clears the outputs', () => {
+			const ops: WorkflowOperation[] = [{ op: 'set_output', outputs: [] }];
+			const { workflow } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(workflow.output, []);
+		});
+
+		test('set_output without outputs throws instead of clearing', () => {
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, [{ op: 'set_output' }], NO_ACTIONS),
+				/set_output requires "outputs"/,
+			);
 		});
 
 		test('a new task defaults to FOLLOW_FIRST + join 1 and gets a terminal transition', () => {
@@ -1000,6 +1096,23 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(parsed.nodes[0].id, 'aa01', 'task id present in full view');
 			assert.deepStrictEqual(parsed.nodes[0].position, { x: 0, y: 0 }, 'position present in full view');
 			assert.deepStrictEqual(parsed.edges[0].to, ['end (bb02)'], 'targets carry the id in full view');
+		});
+
+		test('buddy_workflow_get surfaces workflow outputs, the sub-workflow return contract', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
+				deps,
+			);
+			const getCall = calls.find(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.ok(getCall && /\boutput\b/.test(getCall.query), 'the read query selects the output field');
+			const parsed = JSON.parse(output);
+			assert.deepStrictEqual(
+				parsed.workflow.outputs,
+				[{ name: 'user_found', value: '{{ CTX.user_found|d(false) }}' }],
+				'outputs are surfaced as name/value pairs in the workflow header',
+			);
+			assert.match(parsed.note, /set_output/, 'the note points at set_output for changing the contract');
 		});
 
 		test('buddy_workflow_get hides task mode and join criteria', async () => {

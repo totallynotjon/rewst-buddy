@@ -265,12 +265,14 @@ SHALL explicitly carry forward its existing advanced settings
 (`transitionMode`, `join`, `publishResultAs`, `timeout`, `humanSecondsSaved`,
 `isMocked`, `mockInput`, `runAsOrgId`, `retry`, `with`, `metadata`,
 `packOverrides`) so that an edit unrelated to those fields does not reset them.
-Top-level workflow fields the tool does not read or write (such as `output`,
-`tags`, `notes`, `triggers`, and the workflow's own `humanSecondsSaved`) SHALL
-be left untouched by the mutation rather than reset, since `updateWorkflow`
-only replaces fields actually present in its input — unlike the per-task
-`tasks` array, the top level of the mutation behaves as a patch, not a full
-replace. A `buddy_workflow_edit` operation that sets a task's `input` or
+Top-level workflow fields the tool does not write (such as `tags`, `notes`,
+`triggers`, and the workflow's own `humanSecondsSaved`) SHALL be left
+untouched by the mutation rather than reset, since `updateWorkflow` only
+replaces fields actually present in its input — unlike the per-task `tasks`
+array, the top level of the mutation behaves as a patch, not a full replace.
+The workflow's `output` list SHALL follow the same rule: it is sent only when
+a `set_output` operation provides it, so an unrelated edit never resends or
+resets it. A `buddy_workflow_edit` operation that sets a task's `input` or
 `with` object SHALL accept that value as a JSON-encoded string and parse it
 back into an object rather than storing the literal string. A `set_transition`
 operation that omits both `to` and `transitionId` SHALL resolve to the task's
@@ -297,8 +299,8 @@ caller to disambiguate with `to` or `transitionId` otherwise.
 - **GIVEN** a workflow has tags, notes, triggers, and output configured
   directly in Rewst
 - **WHEN** `buddy_workflow_edit` saves an unrelated task change
-- **THEN** the mutation input does not include `tags`, `notes`, `triggers`, or
-  the workflow-level `humanSecondsSaved`
+- **THEN** the mutation input does not include `tags`, `notes`, `triggers`,
+  `output`, or the workflow-level `humanSecondsSaved`
 - **AND** those fields remain whatever they were before the edit
 
 #### Scenario: A JSON-string task input is parsed
@@ -317,6 +319,41 @@ caller to disambiguate with `to` or `transitionId` otherwise.
 - **THEN** it targets that sole transition
 - **AND** if the task has more than one outgoing transition instead, the
   operation errors asking for `to` or `transitionId`
+
+### Requirement: Expose the sub-workflow output contract
+
+The system SHALL let a caller define a workflow's outputs — the caller-visible
+values another workflow reads as `RESULT.<name>` when it runs this workflow as
+a sub-workflow task — via a `set_output` operation on `buddy_workflow_edit`,
+and SHALL surface the existing outputs in `buddy_workflow_get` as name/value
+pairs in the workflow header. `set_output` SHALL accept a `{name: "<jinja>"}`
+object or a `[{name, value}]` array, store the result in the API's ordered
+single-key-object list form, wrap raw boolean/number values as Jinja
+expressions, treat an empty array as clearing the outputs, and error when
+`outputs` is missing. The `buddy_workflow_edit` tool description SHALL
+recommend sub-workflow composition — defining a reusable sequence as its own
+workflow with `set_inputs`/`set_output` and calling it via `add_task` with
+`subWorkflowId` — over growing a single large canvas.
+
+#### Scenario: set_output writes the ordered output list
+
+- **GIVEN** a `set_output` operation with
+  `outputs: {success: "{{ CTX.success|d(false) }}"}`
+- **WHEN** `buddy_workflow_edit` applies it
+- **THEN** the mutation input's `output` is
+  `[{"success": "{{ CTX.success|d(false) }}"}]`
+
+#### Scenario: Outputs are visible to a prospective caller
+
+- **GIVEN** a workflow whose `output` list is non-empty
+- **WHEN** `buddy_workflow_get` reads it (either detail level)
+- **THEN** the workflow header lists each output as a `{name, value}` pair
+
+#### Scenario: Raw scalars become Jinja expressions
+
+- **GIVEN** a `set_output` entry whose value is the boolean `true`
+- **WHEN** `buddy_workflow_edit` applies it
+- **THEN** the stored value is the Jinja expression string `{{ true }}`
 
 ### Requirement: Scope reads per configuration
 

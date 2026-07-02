@@ -108,7 +108,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. It does not expose parallel task controls: new tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, with?, x?, y?}; update_task {id|name, set:{name?, input?, action? or subWorkflowId?, publishResultAs?, timeout?, description?, with?}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you); set_output {outputs: {name: "<jinja>"} object or [{name, value}] array} (replace the workflow\'s caller-visible outputs; raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. PREFER COMPOSITION over one giant canvas: give a chunky reusable sequence (ticket lifecycle, user lookup, license handling) its own workflow with set_inputs for its run inputs and set_output for its return values, then call it with add_task subWorkflowId — the calling task reads RESULT.<name> for exactly the names set_output declared (or CTX.<publishResultAs>.<name> when it sets publishResultAs). A single canvas growing past roughly 15-20 tasks with distinct concerns is a sign to split. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. At runtime a task follows at most one outgoing transition — the first, in listed order, whose condition holds — so a custom-condition edge followed by the "{{ SUCCEEDED }}" catch-all forms a clean two-way branch. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. A transition\'s publish entries apply whenever that transition is taken, including on {{ FAILED }} edges, and entries on one transition evaluate in order (a later entry can read an earlier one from CTX); transition publish is the only place to compute context variables — tasks have no publish of their own, only publishResultAs for their raw result. Inside a with.items loop task, reference the current element as the callable {{ item() }} (not CTX.item); when such a task sets publishResultAs, the published value is a list with one wrapper per item, each holding that item\'s result. It does not expose parallel task controls: new tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -319,6 +319,9 @@ interface RawWorkflow {
 	action?: { parameters?: Record<string, unknown> | null } | null;
 	updatedAt?: string | null;
 	input?: string[] | null;
+	// The caller-visible return contract: an ordered [{name: "<jinja>"}] list a
+	// sub-workflow renders at end of run — what its caller reads as RESULT.<name>.
+	output?: unknown;
 	inputSchema?: unknown;
 	outputSchema?: unknown;
 	varsSchema?: unknown;
@@ -332,7 +335,7 @@ const WORKFLOW_GET_QUERY = `query RewstBuddyWorkflowGet($where: WorkflowWhereInp
 		id name description type schemaVersion version orgId updatedAt
 		organization { id name }
 		action { parameters }
-		input inputSchema outputSchema varsSchema metadata timeout
+		input output inputSchema outputSchema varsSchema metadata timeout
 		tasks {
 			id name actionId description input metadata
 			transitionMode publishResultAs join timeout humanSecondsSaved
@@ -1119,6 +1122,43 @@ export function applyOperations(
 				applied.push(`set_inputs (${names.length}: ${names.join(', ') || 'none'})`);
 				break;
 			}
+			case 'set_output': {
+				// The workflow's outputs are its return contract to callers: when
+				// another workflow runs this one as a sub-workflow task, RESULT.<name>
+				// (or CTX.<publishResultAs>.<name>) is exactly these entries, rendered
+				// at end of run. Stored as the API's ordered [{name: "<jinja>"}] list.
+				const raw = operation.outputs;
+				if (raw == null || typeof raw !== 'object') {
+					throw new Error(
+						'set_output requires "outputs": a {name: "<jinja>"} object or [{name, value}] array (an empty array clears the outputs).',
+					);
+				}
+				// Accept the natural {name, value} array spelling alongside the
+				// {key, value} / object-map / single-key-object forms normalizePublish
+				// already handles.
+				const withKeys = Array.isArray(raw)
+					? raw.map(entry => {
+							const record = entry as Record<string, unknown>;
+							return record &&
+								typeof record === 'object' &&
+								typeof record.name === 'string' &&
+								'value' in record
+								? { key: record.name, value: record.value }
+								: entry;
+						})
+					: raw;
+				const entries = normalizePublish(withKeys);
+				// Output values are Jinja expression strings; wrap raw scalars the same
+				// way set_inputs wraps defaults so a literal true/3 still renders.
+				workflow.output = entries.map(entry => ({
+					[entry.key]:
+						typeof entry.value === 'boolean' || typeof entry.value === 'number'
+							? `{{ ${entry.value} }}`
+							: entry.value,
+				}));
+				applied.push(`set_output (${entries.length}: ${entries.map(entry => entry.key).join(', ') || 'none'})`);
+				break;
+			}
 			default:
 				throw new Error(`Unknown operation "${op}".`);
 		}
@@ -1412,11 +1452,17 @@ function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary
 		type: w.type ?? undefined,
 		inputs,
 	};
+	// Outputs are the caller-visible return contract ([{name: "<jinja>"}] on the
+	// API); shown as name/value pairs so a caller knows what RESULT.<name> holds.
+	const outputEntries = normalizePublish(Array.isArray(w.output) ? w.output : []);
+	if (outputEntries.length > 0) {
+		workflow.outputs = outputEntries.map(entry => ({ name: entry.key, value: entry.value }));
+	}
 	if (full) workflow.versionToken = w.updatedAt;
 
 	const note = full
-		? 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). When troubleshooting a condition or expression, render it against a recent execution with buddy_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").'
-		: 'Analysis view: task ids, transition ids, canvas positions, and the version token are omitted, and tasks/edges are referenced by NAME — which is exactly what buddy_workflow_edit operations use, so you can edit straight from this view. Call buddy_workflow_get again with detail:"full" only to reposition a task or target one specific transition by its id. To edit or run, pass workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). Before changing a condition or expression, confirm it with buddy_render_jinja against a recent execution (types matter: a boolean is not the string "true").';
+		? 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). "workflow.outputs" are the return contract a caller reads from this workflow as RESULT.<name>; change them with the set_output operation. When troubleshooting a condition or expression, render it against a recent execution with buddy_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").'
+		: 'Analysis view: task ids, transition ids, canvas positions, and the version token are omitted, and tasks/edges are referenced by NAME — which is exactly what buddy_workflow_edit operations use, so you can edit straight from this view. Call buddy_workflow_get again with detail:"full" only to reposition a task or target one specific transition by its id. To edit or run, pass workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). "workflow.outputs" are the return contract a caller reads from this workflow as RESULT.<name>; change them with the set_output operation. Before changing a condition or expression, confirm it with buddy_render_jinja against a recent execution (types matter: a boolean is not the string "true").';
 
 	return formatWorkflowOutput(JSON.stringify({ workflow, nodes, edges, note }, null, 1));
 }
