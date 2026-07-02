@@ -1952,9 +1952,9 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 	const executionId = asStringArg(request.args, 'executionId');
 	if (!executionId) throw new Error('buddy_execution_logs requires "executionId".');
 	const orgId = asStringArg(request.args, 'orgId');
-	const failedOnly = request.args.failedOnly === true;
-	const includeResult = request.args.includeResult === true;
-	const includeSubExecutions = request.args.includeSubExecutions === true;
+	const failedOnly = asBooleanArg(request.args, 'failedOnly') ?? false;
+	const includeResult = asBooleanArg(request.args, 'includeResult') ?? false;
+	const includeSubExecutions = asBooleanArg(request.args, 'includeSubExecutions') ?? false;
 	let rows: TaskLogRow[] = [];
 	let sourceDeps = deps;
 	let sourceNote = '';
@@ -2006,14 +2006,20 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 		({ children, error: childLookupError } = await fetchChildExecutions(sourceDeps, executionId));
 	}
 	const childrenByTask = new Map<string, ChildExecutionRow[]>();
-	const orphanChildren: ChildExecutionRow[] = [];
-	const taskExecutionIds = new Set(rows.map(row => row.taskExecutionId).filter((id): id is string => !!id));
+	const unshownChildren: ChildExecutionRow[] = [];
+	// Match against the rows the caller will actually see: a failedOnly view
+	// hides succeeded tasks, and a child annotated onto a hidden row would
+	// vanish with it — its id must fall through to the footer instead.
+	const shownRows = failedOnly ? rows.filter(row => isFailedStatus(row.status)) : rows;
+	const shownTaskExecutionIds = new Set(
+		shownRows.map(row => row.taskExecutionId).filter((id): id is string => !!id),
+	);
 	for (const child of children) {
 		const parentTask = child.parentTaskExecutionId;
-		if (parentTask && taskExecutionIds.has(parentTask)) {
+		if (parentTask && shownTaskExecutionIds.has(parentTask)) {
 			childrenByTask.set(parentTask, [...(childrenByTask.get(parentTask) ?? []), child]);
 		} else {
-			orphanChildren.push(child);
+			unshownChildren.push(child);
 		}
 	}
 
@@ -2026,9 +2032,9 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 			`Spawned ${children.length} sub-workflow execution(s). Drill into one with buddy_execution_logs {"executionId": "<sub-execution id>"}${includeSubExecutions ? '' : ', or pass includeSubExecutions:true to inline their task logs'}.`,
 		);
 	}
-	if (orphanChildren.length > 0) {
+	if (unshownChildren.length > 0) {
 		footer.push(
-			`Sub-execution(s) not tied to a listed task: ${orphanChildren.map(describeChildExecution).join(', ')}`,
+			`Sub-execution(s) not shown with a task above: ${unshownChildren.map(describeChildExecution).join(', ')}`,
 		);
 	}
 	if (includeSubExecutions) {

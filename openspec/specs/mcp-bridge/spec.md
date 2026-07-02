@@ -538,8 +538,9 @@ spawned one with the child's workflow name, execution id, and status, and
 SHALL summarize the spawned children with a pointer to drill down by calling
 the tool again with a child's execution id. An `includeSubExecutions` option
 SHALL additionally inline the task logs of the first few child executions
-(bounded, so a wide fan-out cannot flood the output). Child executions that
-cannot be tied to a listed task SHALL still be listed. A failed
+(bounded, so a wide fan-out cannot flood the output). A child execution whose
+spawning task is not shown — unmatched, or hidden by `failedOnly` — SHALL
+still be listed in the result so its execution id stays reachable. A failed
 child-execution lookup SHALL NOT fail the call: the task logs are returned
 with a note that sub-executions could not be checked.
 

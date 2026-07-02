@@ -2155,6 +2155,203 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /inner boom/);
 		});
 
+		test('buddy_execution_logs failedOnly still surfaces sub-execution ids for hidden tasks', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [
+					{ originalWorkflowTaskName: 'call_sub', status: 'succeeded', taskExecutionId: 'te-1' },
+					{ originalWorkflowTaskName: 'broken', status: 'failed', message: 'boom', input: {}, result: {} },
+				],
+				childExecutions: [
+					{
+						id: 'exec-child',
+						status: 'failed',
+						createdAt: '1500',
+						parentTaskExecutionId: 'te-1',
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', failedOnly: true } },
+				deps,
+			);
+			assert.ok(!output.includes('call_sub:'), 'the succeeded spawning task itself stays hidden');
+			assert.match(
+				output,
+				/Sub Flow \(exec-child, failed\)/,
+				"a hidden task's child execution id is still listed in the footer",
+			);
+		});
+
+		test('buddy_execution_logs accepts includeSubExecutions as the string "true"', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'call_sub', status: 'succeeded', taskExecutionId: 'te-1' }],
+				childExecutions: [
+					{
+						id: 'exec-child',
+						status: 'succeeded',
+						createdAt: '1500',
+						parentTaskExecutionId: 'te-1',
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+				taskLogsByExecution: {
+					'exec-child': [{ originalWorkflowTaskName: 'inner_task', status: 'succeeded' }],
+				},
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: 'true' },
+				},
+				deps,
+			);
+			assert.match(output, /Sub-execution Sub Flow \(exec-child, succeeded\):/, 'string flags are coerced');
+		});
+
+		test('buddy_execution_logs fetches sub-executions from the session that saw the rows', async () => {
+			const primaryCalls: string[] = [];
+			const primary: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async query => {
+					primaryCalls.push(query);
+					if (query.includes('RewstBuddyTaskLogs')) return { data: { taskLogs: [] } };
+					return { data: {} };
+				},
+			};
+			const alternateCalls: string[] = [];
+			const alternate: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async query => {
+					alternateCalls.push(query);
+					if (query.includes('RewstBuddyTaskLogs')) {
+						return {
+							data: {
+								taskLogs: [
+									{
+										originalWorkflowTaskName: 'call_sub',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						return {
+							data: {
+								workflowExecution: {
+									id: 'exec-1',
+									childExecutions: [
+										{
+											id: 'exec-child',
+											status: 'succeeded',
+											parentTaskExecutionId: 'te-1',
+											workflow: { id: 'wf-sub', name: 'Sub Flow' },
+										},
+									],
+								},
+							},
+						};
+					}
+					return { data: {} };
+				},
+			};
+			primary.alternates = [alternate];
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				primary,
+			);
+			assert.match(output, /sub-execution: Sub Flow \(exec-child, succeeded\)/);
+			assert.ok(
+				!primaryCalls.some(q => q.includes('RewstBuddyChildExecutions')),
+				'the primary session is not asked for children it cannot see',
+			);
+			assert.ok(
+				alternateCalls.some(q => q.includes('RewstBuddyChildExecutions')),
+				'children come from the session that produced the rows',
+			);
+		});
+
+		test('buddy_execution_logs caps how many sub-executions it inlines', async () => {
+			const children = Array.from({ length: 6 }, (_, i) => ({
+				id: `exec-c${i}`,
+				status: 'succeeded',
+				parentTaskExecutionId: null,
+				workflow: { id: 'wf-sub', name: `Sub ${i}` },
+			}));
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'start', status: 'succeeded' }],
+				childExecutions: children,
+				taskLogsByExecution: Object.fromEntries(
+					children.map(c => [c.id, [{ originalWorkflowTaskName: 'inner', status: 'succeeded' }]]),
+				),
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: true },
+				},
+				deps,
+			);
+			const inlined = output.split('\n').filter(line => /^Sub-execution Sub \d/.test(line)).length;
+			assert.strictEqual(inlined, 5, 'only the first five children are inlined');
+			assert.match(output, /1 more sub-execution\(s\) not inlined/);
+		});
+
+		test('buddy_execution_logs notes a child whose task logs cannot be read', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						const where = (variables?.where ?? {}) as { workflowExecutionId?: string };
+						if (where.workflowExecutionId === 'exec-child') throw new Error('child hidden');
+						return {
+							data: {
+								taskLogs: [
+									{
+										originalWorkflowTaskName: 'call_sub',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						return {
+							data: {
+								workflowExecution: {
+									id: 'exec-1',
+									childExecutions: [
+										{
+											id: 'exec-child',
+											status: 'succeeded',
+											parentTaskExecutionId: 'te-1',
+											workflow: { id: 'wf-sub', name: 'Sub Flow' },
+										},
+									],
+								},
+							},
+						};
+					}
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: true },
+				},
+				deps,
+			);
+			assert.match(output, /call_sub: succeeded/, 'parent logs survive the child read failure');
+			assert.match(output, /task logs could not be read \(child hidden\)/);
+		});
+
 		test('buddy_execution_logs spec documents sub-execution visibility and includeSubExecutions', () => {
 			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME);
 			assert.ok(spec, 'buddy_execution_logs spec exists');
