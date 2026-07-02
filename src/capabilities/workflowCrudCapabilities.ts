@@ -32,6 +32,8 @@ interface WorkflowRow {
 	orgId?: string;
 }
 
+const WORKFLOW_DESCRIPTION_MAX_LENGTH = 255;
+
 /**
  * Fetches a workflow by id and fails closed unless it belongs to the requested
  * org. Returns the workflow name for the approval scope.
@@ -50,13 +52,13 @@ const createWorkflowSpec: ToolSpec = {
 	name: 'buddy_create_workflow',
 	args: '{"orgId": string, "name": string, "description"?: string}',
 	description:
-		'Create a new, empty Rewst workflow in one organization, returning its id and name. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code.',
+		'Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to 255 characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code.',
 	inputSchema: {
 		type: 'object',
 		properties: {
 			...ORG_ID_PROP,
 			name: { type: 'string', description: 'Name for the new workflow.' },
-			description: { type: 'string', description: 'Optional workflow description.' },
+			description: { type: 'string', description: 'Optional workflow description, up to 255 characters.' },
 		},
 		required: ['orgId', 'name'],
 	},
@@ -66,6 +68,9 @@ async function runCreateWorkflow(input: Record<string, unknown>, ctx: Capability
 	const orgId = requireString(input, 'orgId');
 	const name = requireString(input, 'name');
 	const description = asString(input, 'description');
+	if (description !== undefined && description.length > WORKFLOW_DESCRIPTION_MAX_LENGTH) {
+		throw new Error(`Workflow description must be ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters or fewer.`);
+	}
 	const orgName = orgDisplayName(ctx);
 	const scope: MutationScope = { scopeId: orgId, scopeName: `new workflow "${name}"`, orgId, orgName };
 	const summary = `Create workflow "${name}" in org "${orgName}" (${orgId})`;

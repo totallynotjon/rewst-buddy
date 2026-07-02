@@ -472,6 +472,65 @@ suite('Unit: rewstReadCapabilities', () => {
 		);
 	});
 
+	test('buddy_list_workflow_tasks marks only mocked tasks in the simple list', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', {
+			data: {
+				data: {
+					workflowTasks: [
+						{
+							id: 'abc123def456',
+							name: 'Create ticket',
+							actionId: 'action-1',
+							workflowId: 'wf-1',
+							isMocked: true,
+							timeout: 120,
+							description: 'Open a ticket',
+						},
+						{
+							id: 'fed456cba123',
+							name: 'Notify team',
+							actionId: 'action-2',
+							workflowId: 'wf-1',
+							isMocked: false,
+							timeout: null,
+							description: null,
+						},
+					],
+				},
+			},
+		});
+		const listWorkflowTasks = getCapability('buddy_list_workflow_tasks');
+		assert.ok(listWorkflowTasks, 'buddy_list_workflow_tasks is registered');
+
+		const output = await listWorkflowTasks.run({ orgId: 'org-1', workflowId: 'wf-1' }, {
+			session,
+			orgId: 'org-1',
+			sessions: [session],
+		} satisfies CapabilityContext);
+
+		assert.strictEqual(
+			output,
+			[
+				'Create ticket (abc123def456) — action action-1 [mocked]',
+				'Notify team (fed456cba123) — action action-2',
+			].join('\n'),
+		);
+		assert.ok(!output.includes('isMocked:false'), 'normal tasks do not get a noisy false marker');
+	});
+
+	test('buddy_list_workflow_tasks description documents the conditional mocked marker', () => {
+		const listWorkflowTasks = getCapability('buddy_list_workflow_tasks');
+		assert.ok(listWorkflowTasks, 'buddy_list_workflow_tasks is registered');
+
+		assert.ok(
+			listWorkflowTasks.spec.description.includes('mocked marker only when a task is mocked'),
+			'tool description explains that mocked output is conditional',
+		);
+		assert.ok(!listWorkflowTasks.spec.description.includes('isMocked,'), 'description does not imply isMocked is always listed');
+	});
+
 	test('buddy_list_workflow_patches uses workflowPatches query, forwards workflowId, and formats patches', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);

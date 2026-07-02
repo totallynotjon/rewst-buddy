@@ -185,7 +185,7 @@ const listWorkflowTasksSpec: ToolSpec = {
 	name: 'buddy_list_workflow_tasks',
 	args: '{"orgId": string, "workflowId": string, "limit"?: number}',
 	description:
-		'List the tasks (steps) in one Rewst workflow (id, name, actionId, isMocked, timeout, description). Task ids are dash-less hex strings.',
+		'List the tasks (steps) in one Rewst workflow (id, name, actionId, mocked marker only when a task is mocked, timeout, description). Task ids are dash-less hex strings.',
 	inputSchema: {
 		type: 'object',
 		properties: {
@@ -732,7 +732,12 @@ async function runListWorkflowTasks(input: Record<string, unknown>, ctx: Capabil
 	}[];
 	if (workflowTasks.length === 0) return `No workflow tasks found for workflow ${workflowId}.`;
 	return workflowTasks
-		.map(task => `${task.name ?? '(unnamed)'} (${task.id})${task.actionId ? ` — action ${task.actionId}` : ''}`)
+		.map(
+			task =>
+				`${task.name ?? '(unnamed)'} (${task.id})${task.actionId ? ` — action ${task.actionId}` : ''}${
+					task.isMocked === true ? ' [mocked]' : ''
+				}`,
+		)
 		.join('\n');
 }
 

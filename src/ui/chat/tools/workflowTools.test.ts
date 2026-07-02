@@ -110,6 +110,16 @@ suite('Unit: workflowTools', () => {
 		assert.match(spec.description, /does not expose parallel task controls/i);
 	});
 
+	test('buddy_workflow_edit spec lists advanced task fields and loop concurrency', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.match(spec.description, /runAsOrgId/, 'documents task org override edits');
+		assert.match(spec.description, /packOverrides/, 'documents integration override edits');
+		assert.match(spec.description, /isMocked/, 'documents task mocking edits');
+		assert.match(spec.description, /mockInput/, 'documents mock input edits');
+		assert.match(spec.description, /with:\s*\{items, concurrency\}/, 'documents loop concurrency shape');
+	});
+
 	test('buddy_workflow_edit spec teaches sub-workflow composition through set_output', () => {
 		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
 		assert.ok(spec, 'buddy_workflow_edit spec exists');
@@ -139,9 +149,18 @@ suite('Unit: workflowTools', () => {
 		assert.match(spec.description, /\{\{ item\(\) \}\}/, 'documents the with.items current-element callable');
 		assert.match(
 			spec.description,
-			/update_task \{id\|name, set:\{name\?, input\?, action\? or subWorkflowId\?, publishResultAs\?, timeout\?, description\?, with\?\}\}/,
+			/update_task \{id\|name, set:\{name\?, input\?, action\? or subWorkflowId\?, publishResultAs\?, timeout\?, description\?, with\?, runAsOrgId\?, packOverrides\?, isMocked\?, mockInput\?, retry\?\}\}/,
 			'enumerates the update_task settable fields',
 		);
+	});
+
+	test('buddy_render_jinja spec documents key ordering and backreference escaping gotchas', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === 'buddy_render_jinja');
+		assert.ok(spec, 'buddy_render_jinja spec exists');
+		assert.match(spec.description, /alphabetizes dict keys/i);
+		assert.match(spec.description, /regex_replace/i);
+		assert.match(spec.description, /\\\\\\\\1/, 'shows the doubled escaping needed for backreferences');
+		assert.match(spec.description, /control character/i);
 	});
 
 	suite('normalizePublish()', () => {
@@ -573,6 +592,107 @@ suite('Unit: workflowTools', () => {
 			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: { msg: 'hi' } } }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
 			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.input, { msg: 'hi' });
+		});
+
+		test('update_task sets advanced task execution fields instead of silently dropping them', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'update_task',
+					name: 'start',
+					set: {
+						runAsOrgId: '{{ CTX.org_id }}',
+						packOverrides: [
+							{ packId: 'pack-1', packConfigId: 'cfg-1', configSelectionMode: 'USE_SELECTED_ID' },
+						],
+						isMocked: true,
+						mockInput: { id: 'mocked' },
+						retry: { count: '3', delay: '5', when: '{{ FAILED }}' },
+					},
+				},
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.runAsOrgId, '{{ CTX.org_id }}');
+			assert.deepStrictEqual(start.packOverrides, [
+				{ packId: 'pack-1', packConfigId: 'cfg-1', configSelectionMode: 'USE_SELECTED_ID' },
+			]);
+			assert.strictEqual(start.isMocked, true);
+			assert.deepStrictEqual(start.mockInput, { id: 'mocked' });
+			assert.deepStrictEqual(start.retry, { count: '3', delay: '5', when: '{{ FAILED }}' });
+		});
+
+		test('add_task accepts advanced task execution fields', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'add_task',
+					name: 'notify',
+					action: 'core.noop',
+					runAsOrgId: '{{ CTX.org_id }}',
+					packOverrides: [{ packId: 'pack-1', configSelectionMode: 'USE_DEFAULT' }],
+					isMocked: true,
+					mockInput: { ok: true },
+					retry: { count: '2' },
+				},
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const notify = tasks.find(t => t.name === 'notify')!;
+			assert.strictEqual(notify.runAsOrgId, '{{ CTX.org_id }}');
+			assert.deepStrictEqual(notify.packOverrides, [{ packId: 'pack-1', configSelectionMode: 'USE_DEFAULT' }]);
+			assert.strictEqual(notify.isMocked, true);
+			assert.deepStrictEqual(notify.mockInput, { ok: true });
+			assert.deepStrictEqual(notify.retry, { count: '2' });
+		});
+
+		test('add_task rejects unsupported fields so agents do not trust silent drops', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'notify', action: 'core.noop', definitelyWrong: true },
+			];
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, ops, NOOP_REF),
+				/Unsupported add_task field "definitelyWrong"/,
+			);
+		});
+
+		test('advanced task fields reject unsupported nested fields', () => {
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[
+							{
+								op: 'add_task',
+								name: 'notify',
+								action: 'core.noop',
+								packOverrides: [{ packId: 'pack-1', configSelectionMode: 'USE_DEFAULT', extra: true }],
+							},
+						],
+						NOOP_REF,
+					),
+				/Unsupported packOverrides\[0\] field "extra"/,
+			);
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[
+							{
+								op: 'update_task',
+								name: 'start',
+								set: { retry: { count: '2', delay: '5', extra: true } },
+							},
+						],
+						NO_ACTIONS,
+					),
+				/Unsupported retry field "extra"/,
+			);
+		});
+
+		test('update_task rejects unsupported set fields so agents do not trust silent drops', () => {
+			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { definitelyWrong: true } }];
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, ops, NO_ACTIONS),
+				/Unsupported update_task\.set field "definitelyWrong"/,
+			);
 		});
 
 		test('update_task parses a JSON-string input back to an object (not a char-indexed blob)', () => {
@@ -1181,7 +1301,7 @@ suite('Unit: workflowTools', () => {
 			assert.match(parsed.note, /set_output/, 'the note points at set_output for changing the contract');
 		});
 
-		test('buddy_workflow_get hides task mode and join criteria', async () => {
+		test('buddy_workflow_get surfaces non-default advanced task fields only when behavior changes', async () => {
 			const task = (over: Record<string, unknown>) => ({
 				id: String(over.name),
 				actionId: 'x',
@@ -1202,9 +1322,23 @@ suite('Unit: workflowTools', () => {
 								action: { parameters: {} },
 								updatedAt: '1000',
 								tasks: [
-									task({ name: 'fanout', transitionMode: 'FOLLOW_ALL', join: 1 }),
+									task({
+										name: 'fanout',
+										transitionMode: 'FOLLOW_ALL',
+										join: 1,
+										runAsOrgId: '{{ CTX.org_id }}',
+										isMocked: true,
+										mockInput: { sample: 'value' },
+										retry: { count: '3', delay: '5', when: '{{ FAILED }}' },
+									}),
 									task({ name: 'merge', transitionMode: 'FOLLOW_FIRST', join: 0 }),
-									task({ name: 'plain', transitionMode: 'FOLLOW_FIRST', join: 1 }),
+									task({
+										name: 'plain',
+										transitionMode: 'FOLLOW_FIRST',
+										join: 1,
+										isMocked: false,
+										mockInput: { stale: true },
+									}),
 								],
 							},
 						},
@@ -1220,10 +1354,16 @@ suite('Unit: workflowTools', () => {
 				),
 			);
 			const byName = (n: string) => parsed.nodes.find((x: { name: string }) => x.name === n);
-			for (const name of ['fanout', 'merge', 'plain']) {
-				assert.ok(!('transitionMode' in byName(name)), `${name} hides transitionMode`);
-				assert.ok(!('join' in byName(name)), `${name} hides join`);
-			}
+			assert.strictEqual(byName('fanout').transitionMode, 'FOLLOW_ALL');
+			assert.ok(!('join' in byName('fanout')), 'default join is omitted');
+			assert.strictEqual(byName('fanout').runAsOrgId, '{{ CTX.org_id }}');
+			assert.strictEqual(byName('fanout').isMocked, true);
+			assert.deepStrictEqual(byName('fanout').mockInput, { sample: 'value' });
+			assert.deepStrictEqual(byName('fanout').retry, { count: '3', delay: '5', when: '{{ FAILED }}' });
+			assert.strictEqual(byName('merge').join, 0);
+			assert.ok(!('transitionMode' in byName('merge')), 'default mode is omitted');
+			assert.ok(!('isMocked' in byName('plain')), 'false mocked state is omitted');
+			assert.ok(!('mockInput' in byName('plain')), 'disabled mock payload is omitted');
 		});
 
 		test('buddy_action_search returns ranked matches', async () => {
@@ -1376,6 +1516,20 @@ suite('Unit: workflowTools', () => {
 			);
 			assert.ok(output.includes(longValue), 'full rendered value is present');
 			assert.doesNotMatch(output, /output truncated/);
+		});
+
+		test('buddy_render_jinja warns when the rendered value contains control characters', async () => {
+			const { deps } = makeDeps({ renderResult: '\u0001' });
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_render_jinja',
+					args: { orgId: 'org-1', vars: {}, template: "{{ 'x' | regex_replace('x', '\\\\1') }}" },
+				},
+				deps,
+			);
+			assert.match(output, /Rendered:/);
+			assert.match(output, /WARNING.*control character/i);
+			assert.match(output, /regex_replace.*\\\\\\\\1/i);
 		});
 
 		test('buddy_render_jinja requires an execution or vars', async () => {
@@ -1848,6 +2002,29 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!calls.some(c => c.query.includes('RewstBuddyTaskLogs')), 'no log fetch on success');
 		});
 
+		test('buddy_workflow_run timeout preserves execution id and last known status', async () => {
+			const originalNow = Date.now;
+			let now = 0;
+			Date.now = () => {
+				now += 50_000;
+				return now;
+			};
+			try {
+				const { deps } = makeDeps({ pollStatus: 'running' });
+				const output = await runWorkflowTool(
+					{
+						tool: WORKFLOW_RUN_TOOL_NAME,
+						args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+					},
+					deps,
+				);
+				assert.match(output, /exec-new/, 'execution id is preserved');
+				assert.match(output, /Still running/i, 'last known status is preserved');
+			} finally {
+				Date.now = originalNow;
+			}
+		});
+
 		test('buddy_workflow_run surfaces a polling error instead of looping to the timeout', async () => {
 			const { deps } = makeDeps({ pollError: 'permission denied' });
 			await assert.rejects(
@@ -2047,6 +2224,7 @@ suite('Unit: workflowTools', () => {
 			assert.match(out, /Acme Onboarding {2}\(id: wf-ccc\) {2}org: Acme Corp \(org-2\)/);
 			assert.ok(!out.includes('Offboarding'), 'only the matching workflows are listed');
 			assert.match(out, /across 2 org/, 'reports how many orgs were indexed');
+			assert.match(out, /indexed orgs: Primary Org \(org-1\), Acme Corp \(org-2\)/);
 		});
 
 		test('buddy_workflow_search ranks an exact name match first', async () => {
