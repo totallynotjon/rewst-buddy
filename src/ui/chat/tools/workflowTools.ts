@@ -1560,10 +1560,7 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 			// the last one holds only the keys of the run's final publish. Merge
 			// them in order so the default context is the closest view of the
 			// run's final CTX (later writes to a key win).
-			vars = Object.assign(
-				{},
-				...snapshots.filter(s => typeof s === 'object' && s !== null && !Array.isArray(s)),
-			) as object;
+			vars = Object.assign({}, ...snapshots.filter(isPlainObject)) as object;
 			contextNote = ` (merged from ${snapshots.length} snapshot(s))`;
 		}
 	}

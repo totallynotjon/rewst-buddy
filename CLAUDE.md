@@ -112,6 +112,11 @@ docs/
 - Relative links (`docs/features.md`, `#anchor`) resolve on both GitHub and the VS Code Marketplace — prefer them over absolute URLs.
 - When adding a new feature, update: `docs/features.md` (deep dive), `docs/reference.md` (commands + settings if any), `README.md` "Features at a glance" bullet if user-visible, and add a changelog note (see **Changelog & Releases**).
 
+## Pull Request Conventions
+
+- **Always open PRs as drafts** (`gh pr create --draft`). The maintainer flips a draft to "ready for review" — that transition is what triggers the CodeRabbit review, so opening ready-for-review PRs directly costs review runs. Never mark a PR ready yourself.
+- **One PR per cohesive effort.** Batch closely related changes (e.g. several fixes coming out of the same investigation) into a single PR instead of parallel small PRs, unless asked to split them. Multiple `changelog.d/` notes in one PR are fine.
+
 ## Changelog & Releases
 
 The changelog is generated from **per-PR note files** — never hand-edit `CHANGELOG.md`. This is the canonical process; the CI workflows point back here.
