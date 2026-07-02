@@ -215,7 +215,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: 'buddy_render_jinja',
 		args: '{"orgId": string, "template"?: string, "executionId"?: string, "vars"?: object, "contextIndex"?: number, "keys"?: boolean}',
 		description:
-			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. By default the last context snapshot of the run is used; contextIndex picks another. Returns the rendered value, or the Jinja error if it fails.",
+			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. An execution's stored snapshots are per-publish deltas (each holds only the keys that publish wrote), so by default the tool merges them all, in order, into one cumulative context — the closest view of the run's final CTX; pass contextIndex to inspect one raw delta instead. Returns the rendered value, or the Jinja error if it fails.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -236,7 +236,8 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 				},
 				contextIndex: {
 					type: 'number',
-					description: 'Which context snapshot of the execution to use (default: the last/most-complete).',
+					description:
+						'Inspect a single raw snapshot (a per-publish delta) by index instead of the default merged context.',
 				},
 				keys: {
 					type: 'boolean',
@@ -1495,6 +1496,7 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	// Resolve the render context (CTX). An executionId is fetched server-side so the
 	// (large) run context never enters the chat; vars is an inline alternative.
 	let vars = request.args.vars && typeof request.args.vars === 'object' ? (request.args.vars as object) : undefined;
+	let contextNote = '';
 	const executionId = asStringArg(request.args, 'executionId');
 	if (executionId) {
 		const result = await deps.execute(EXECUTION_CONTEXTS_QUERY, { id: executionId });
@@ -1503,10 +1505,21 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 		const raw = (result.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts;
 		const snapshots = Array.isArray(raw) ? raw : raw ? [raw] : [];
 		if (snapshots.length === 0) throw new Error(`Execution ${executionId} has no context to render against.`);
-		const requested =
-			typeof request.args.contextIndex === 'number' ? request.args.contextIndex : snapshots.length - 1;
-		const index = Math.max(0, Math.min(snapshots.length - 1, requested));
-		vars = snapshots[index] as object;
+		if (typeof request.args.contextIndex === 'number') {
+			const index = Math.max(0, Math.min(snapshots.length - 1, request.args.contextIndex));
+			vars = snapshots[index] as object;
+			contextNote = ` (snapshot ${index} of ${snapshots.length}, unmerged)`;
+		} else {
+			// The stored snapshots are per-publish DELTAS, not cumulative states —
+			// the last one holds only the keys of the run's final publish. Merge
+			// them in order so the default context is the closest view of the
+			// run's final CTX (later writes to a key win).
+			vars = Object.assign(
+				{},
+				...snapshots.filter(s => typeof s === 'object' && s !== null && !Array.isArray(s)),
+			) as object;
+			contextNote = ` (merged from ${snapshots.length} snapshot(s))`;
+		}
 	}
 	if (!vars) {
 		throw new Error(
@@ -1517,7 +1530,7 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	if (keysMode) {
 		const keys = Object.keys(vars as Record<string, unknown>).sort();
 		return formatWorkflowOutput(
-			`Context top-level keys (${keys.length}): ${keys.join(', ') || '(none)'}\n\nDrill in with {{ CTX.<key> }}. System vars: execution id = CTX.execution_id, org id = CTX.organization.id, this workflow's id = CTX.trigger_instance.trigger.workflow_id.`,
+			`Context top-level keys (${keys.length}): ${keys.join(', ') || '(none)'}${contextNote}\n\nDrill in with {{ CTX.<key> }}. System vars: execution id = CTX.execution_id, org id = CTX.organization.id, this workflow's id = CTX.trigger_instance.trigger.workflow_id.`,
 		);
 	}
 

@@ -417,6 +417,31 @@ evicted or was never cached.
 - **THEN** the bridge returns the requested character slice without re-running the
   original Rewst API call
 
+### Requirement: Render Jinja against a merged execution context
+
+Because an execution's stored context snapshots are per-publish deltas — each
+frame holds only the keys that publish wrote, so the last frame is not the
+most complete view — `buddy_render_jinja` SHALL, when given an `executionId`
+and no `contextIndex`, merge all snapshots in order into one cumulative
+context (later writes to a key win) and use that as `CTX`. A `contextIndex`
+SHALL select that single raw snapshot without merging. Keys mode SHALL report
+how many snapshots the listed context was merged from.
+
+#### Scenario: Early-frame keys stay visible by default
+
+- **GIVEN** an execution whose first snapshot holds the run inputs and whose
+  later snapshots each hold only newly published keys
+- **WHEN** `buddy_render_jinja` renders `{{ CTX.<run input> }}` with no
+  `contextIndex`
+- **THEN** the value renders from the merged context rather than being
+  undefined
+
+#### Scenario: contextIndex inspects one raw delta
+
+- **GIVEN** an execution with several snapshots
+- **WHEN** `buddy_render_jinja` is called with `contextIndex: 0`
+- **THEN** the render context is exactly that snapshot, unmerged
+
 ### Requirement: Derive the Jinja docs engine host and cache only successful fetches
 
 `buddy_get_jinja_filter_docs` SHALL derive the Jinja engine host from the
