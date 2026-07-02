@@ -394,6 +394,11 @@ interface PublishEntry {
 	value: unknown;
 }
 
+interface TaskVerifyFields {
+	input?: boolean;
+	with?: boolean;
+}
+
 export function normalizePublish(input: unknown): PublishEntry[] {
 	if (input == null) return [];
 	const entries: PublishEntry[] = [];
@@ -412,6 +417,25 @@ export function normalizePublish(input: unknown): PublishEntry[] {
 		for (const [key, value] of Object.entries(input as Record<string, unknown>)) entries.push({ key, value });
 	}
 	return entries;
+}
+
+function normalizeOutputEntries(input: object): PublishEntry[] {
+	if (Array.isArray(input)) {
+		return input.map(entry => {
+			if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+				throw new Error('set_output array entries must be objects shaped as {name, value}.');
+			}
+			const record = entry as Record<string, unknown>;
+			if (typeof record.name !== 'string' || record.name.trim() === '' || !('value' in record)) {
+				throw new Error('set_output array entries must include non-empty "name" and present "value".');
+			}
+			return { key: record.name, value: record.value };
+		});
+	}
+	return Object.entries(input as Record<string, unknown>).map(([key, value]) => {
+		if (key.trim() === '') throw new Error('set_output object output names must be non-empty.');
+		return { key, value };
+	});
 }
 
 // ---------------------------------------------------------------------------
@@ -896,14 +920,22 @@ function droppedParallelControlsNote(source: Record<string, unknown>): string {
 
 /**
  * Applies operations to a copy of the task list. Action refs in add/update ops
- * are resolved to ids beforehand via actionIdByRef. Returns the new task list
- * and a human-readable summary of what changed. Pure — no network.
+ * are resolved to ids beforehand via actionIdByRef. Returns the new task list,
+ * a human-readable summary of what changed, and the ids of tasks whose
+ * input/with an operation supplied (recorded while applying, so a rename in the
+ * same batch cannot detach them from the post-save verification). Pure — no
+ * network.
  */
 export function applyOperations(
 	tasks: RawTask[],
 	operations: WorkflowOperation[],
 	actionIdByRef: Map<string, string>,
-): { tasks: RawTask[]; applied: string[]; workflow: Record<string, unknown> } {
+): {
+	tasks: RawTask[];
+	applied: string[];
+	workflow: Record<string, unknown>;
+	verifyFields: Map<string, TaskVerifyFields>;
+} {
 	const next: RawTask[] = tasks.map(t => ({
 		...t,
 		next: (t.next ?? []).map(n => ({ ...n, do: [...(n.do ?? [])] })),
@@ -912,6 +944,15 @@ export function applyOperations(
 	// Workflow-level field changes (e.g. set_inputs) collected here, applied over
 	// the read-back workflow when it is converted to WorkflowInput.
 	const workflow: Record<string, unknown> = {};
+	// Tasks worth verifying after the save: those an operation supplied an input
+	// or with for. Graph-only edits (connect, reposition, autolayout…) record
+	// nothing, so they stay one read.
+	const verifyFields = new Map<string, TaskVerifyFields>();
+	const markVerify = (id: string, field: keyof TaskVerifyFields) => {
+		const fields = verifyFields.get(id) ?? {};
+		fields[field] = true;
+		verifyFields.set(id, fields);
+	};
 
 	const resolveActionId = (action: string): string => {
 		if (isActionIdShape(action)) return action;
@@ -956,6 +997,8 @@ export function applyOperations(
 					setPosition(task, operation.x, operation.y);
 				}
 				next.push(task);
+				if ('input' in operation) markVerify(id, 'input');
+				if ('with' in operation) markVerify(id, 'with');
 				applied.push(
 					`add_task ${name} (${id}) ${subWorkflowId ? `subWorkflow=${subWorkflowId}` : `action=${action}`}${droppedParallelControlsNote(operation)}`,
 				);
@@ -974,6 +1017,8 @@ export function applyOperations(
 				if ('timeout' in set) task.timeout = coerceTaskNumber(set.timeout, 'timeout');
 				if ('description' in set) task.description = set.description as string;
 				if ('with' in set) task.with = coerceObjectField(set.with, 'task "with"') as RawTask['with'];
+				if ('input' in set) markVerify(task.id, 'input');
+				if ('with' in set) markVerify(task.id, 'with');
 				applied.push(`update_task ${task.name} (${task.id})${droppedParallelControlsNote(set)}`);
 				break;
 			}
@@ -992,6 +1037,7 @@ export function applyOperations(
 						return !(hadTargets && transition.do.length === 0);
 					});
 				}
+				verifyFields.delete(task.id);
 				applied.push(`delete_task ${task.name} (${task.id})`);
 				break;
 			}
@@ -1139,21 +1185,7 @@ export function applyOperations(
 						'set_output requires "outputs": a {name: "<jinja>"} object or [{name, value}] array (an empty array clears the outputs).',
 					);
 				}
-				// Accept the natural {name, value} array spelling alongside the
-				// {key, value} / object-map / single-key-object forms normalizePublish
-				// already handles.
-				const withKeys = Array.isArray(raw)
-					? raw.map(entry => {
-							const record = entry as Record<string, unknown>;
-							return record &&
-								typeof record === 'object' &&
-								typeof record.name === 'string' &&
-								'value' in record
-								? { key: record.name, value: record.value }
-								: entry;
-						})
-					: raw;
-				const entries = normalizePublish(withKeys);
+				const entries = normalizeOutputEntries(raw);
 				// Output values are Jinja expression strings; wrap raw scalars the same
 				// way set_inputs wraps defaults so a literal true/3 still renders.
 				workflow.output = entries.map(entry => ({
@@ -1174,7 +1206,7 @@ export function applyOperations(
 	orderTransitionsByCondition(next);
 	ensureTaskDefaults(next);
 	layoutNewTasks(next);
-	return { tasks: next, applied, workflow };
+	return { tasks: next, applied, workflow, verifyFields };
 }
 
 /**
@@ -1550,6 +1582,7 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	let contextNote = '';
 	const executionId = asStringArg(request.args, 'executionId');
 	if (executionId) {
+		await assertExecutionBelongsToOrg(deps, executionId, orgId);
 		const result = await deps.execute(EXECUTION_CONTEXTS_QUERY, { id: executionId });
 		const error = firstErrorMessage(result);
 		if (error) throw new Error(`Failed to read execution context: ${error}`);
@@ -1637,6 +1670,11 @@ function storedValueMatches(sent: unknown, stored: unknown): boolean {
  */
 export function sentValueDivergences(sent: unknown, stored: unknown, path: string): string[] {
 	if (isPlainObject(sent) && isPlainObject(stored)) {
+		if (Object.keys(sent).length === 0 && Object.keys(stored).length > 0) {
+			return Object.entries(stored).map(
+				([key, value]) => `${path}.${key}: sent (none), stored ${briefValue(value)}`,
+			);
+		}
 		const lines: string[] = [];
 		for (const [key, value] of Object.entries(sent)) {
 			const childPath = `${path}.${key}`;
@@ -1652,34 +1690,6 @@ export function sentValueDivergences(sent: unknown, stored: unknown, path: strin
 }
 
 /**
- * The tasks whose stored input/with are worth verifying after a save: those an
- * operation in this batch supplied an input or with for. Graph-only edits
- * (connect, reposition, autolayout…) verify nothing, so they stay one read.
- */
-function tasksToVerify(operations: WorkflowOperation[], sentTasks: RawTask[]): RawTask[] {
-	const byId = new Map<string, RawTask>();
-	for (const operation of operations) {
-		let provided: Record<string, unknown> | undefined;
-		let ref: string | undefined;
-		if (operation.op === 'add_task') {
-			provided = operation;
-			ref = str(operation.name);
-		} else if (operation.op === 'update_task') {
-			provided = asObject(operation.set);
-			ref = str(operation.id) ?? str(operation.name);
-		}
-		if (!provided || !ref || (provided.input == null && provided.with == null)) continue;
-		try {
-			const task = resolveTask(sentTasks, ref);
-			byId.set(task.id, task);
-		} catch {
-			// Renamed by a later operation in the batch or deleted again; skip.
-		}
-	}
-	return [...byId.values()];
-}
-
-/**
  * Best-effort post-save check: re-read the workflow and compare each verified
  * task's stored input/with against what was sent. Returns a suffix for the
  * tool result — a WARNING listing divergences, a note when the verification
@@ -1689,21 +1699,21 @@ async function verifySavedTaskValues(
 	deps: GraphqlToolDeps,
 	workflowId: string,
 	orgId: string,
-	toVerify: RawTask[],
+	toVerify: { task: RawTask; fields: TaskVerifyFields }[],
 ): Promise<string> {
 	try {
 		const saved = await fetchWorkflow(deps, workflowId, orgId);
 		const storedById = new Map(saved.tasks.map(t => [t.id, t]));
 		const problems: string[] = [];
-		for (const sent of toVerify) {
+		for (const { task: sent, fields } of toVerify) {
 			const stored = storedById.get(sent.id);
 			if (!stored) {
 				problems.push(`- task "${sent.name}": not present in the saved workflow`);
 				continue;
 			}
 			const lines = [
-				...sentValueDivergences(sent.input ?? {}, stored.input ?? {}, 'input'),
-				...(sent.with != null ? sentValueDivergences(sent.with, stored.with ?? {}, 'with') : []),
+				...(fields.input ? sentValueDivergences(sent.input ?? {}, stored.input ?? {}, 'input') : []),
+				...(fields.with ? sentValueDivergences(sent.with ?? {}, stored.with ?? {}, 'with') : []),
 			];
 			problems.push(...lines.map(line => `- task "${sent.name}": ${line}`));
 		}
@@ -1737,7 +1747,7 @@ async function applyWorkflowMutation(
 	const apply = (source: RawWorkflow) => applyOperations(source.tasks, operations, actionIdByRef);
 
 	const workflow = await fetchWorkflow(deps, workflowId, orgId);
-	let { tasks, applied, workflow: overrides } = apply(workflow);
+	let { tasks, applied, workflow: overrides, verifyFields } = apply(workflow);
 	// Final gate before writing. In production this is already true (the user
 	// approved at prepareInvocation), but a direct/fallback caller can decline.
 	if (!(await deps.confirmMutation(`update workflow "${workflow.name}" (${applied.length} operation(s))`))) {
@@ -1752,7 +1762,7 @@ async function applyWorkflowMutation(
 	let error = firstErrorMessage(result);
 	if (error && /newer version/i.test(error)) {
 		const fresh = await fetchWorkflow(deps, workflowId, orgId);
-		({ tasks, applied, workflow: overrides } = apply(fresh));
+		({ tasks, applied, workflow: overrides, verifyFields } = apply(fresh));
 		result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
 			workflow: workflowToInput(fresh, tasks, overrides),
 			openedAt: fresh.updatedAt,
@@ -1767,7 +1777,10 @@ async function applyWorkflowMutation(
 	// The server can accept the save yet silently drop or coerce task input
 	// keys (schema filtering). Re-read and compare what this batch sent, so a
 	// "success" that lost data comes back as an explicit warning instead.
-	const toVerify = tasksToVerify(operations, tasks);
+	const toVerify = tasks.flatMap(task => {
+		const fields = verifyFields.get(task.id);
+		return fields ? [{ task, fields }] : [];
+	});
 	const verification = toVerify.length > 0 ? await verifySavedTaskValues(deps, workflowId, orgId, toVerify) : '';
 	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.${verification}`;
 }
@@ -1828,6 +1841,30 @@ async function fetchTaskLogs(deps: GraphqlToolDeps, executionId: string): Promis
 	);
 }
 
+async function assertExecutionBelongsToOrg(deps: GraphqlToolDeps, executionId: string, orgId: string): Promise<void> {
+	const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, {
+		where: { id: executionId, orgId },
+		limit: 1,
+	});
+	const error = firstErrorMessage(result);
+	if (error) throw new Error(`Failed to verify execution ${executionId} in org ${orgId}: ${error}`);
+	const row = (
+		(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
+	).find((entry): entry is ExecutionRow => !!entry);
+	if (!row) {
+		throw new Error(`Execution ${executionId} was not found in org ${orgId}.`);
+	}
+}
+
+async function fetchTaskLogsForVisibleExecution(
+	deps: GraphqlToolDeps,
+	executionId: string,
+	orgId: string | undefined,
+): Promise<TaskLogRow[]> {
+	if (orgId) await assertExecutionBelongsToOrg(deps, executionId, orgId);
+	return fetchTaskLogs(deps, executionId);
+}
+
 function formatTaskLogs(rows: TaskLogRow[], opts: { failedOnly?: boolean; includeResult?: boolean }): string {
 	const visible = opts.failedOnly ? rows.filter(r => isFailedStatus(r.status)) : rows;
 	if (visible.length === 0) {
@@ -1853,10 +1890,24 @@ function formatTaskLogs(rows: TaskLogRow[], opts: { failedOnly?: boolean; includ
 async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const executionId = asStringArg(request.args, 'executionId');
 	if (!executionId) throw new Error('buddy_execution_logs requires "executionId".');
+	const orgId = asStringArg(request.args, 'orgId');
 	const failedOnly = request.args.failedOnly === true;
 	const includeResult = request.args.includeResult === true;
-	let rows = await fetchTaskLogs(deps, executionId);
+	let rows: TaskLogRow[] = [];
 	let sourceNote = '';
+	let firstError: unknown;
+	let hadVisibleSession = false;
+	const readFrom = async (candidate: GraphqlToolDeps): Promise<TaskLogRow[] | undefined> => {
+		try {
+			const found = await fetchTaskLogsForVisibleExecution(candidate, executionId, orgId);
+			hadVisibleSession = true;
+			return found;
+		} catch (error) {
+			firstError ??= error;
+			return undefined;
+		}
+	};
+	rows = (await readFrom(deps)) ?? [];
 	// A Rewst session only sees its own org hierarchy, so an execution owned by
 	// another signed-in account legitimately yields zero rows here (#116). The
 	// execution id is globally unique — sweep the other sessions before
@@ -1864,16 +1915,17 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 	const alternates = deps.alternates ?? [];
 	if (rows.length === 0) {
 		for (const alternate of alternates) {
-			try {
-				rows = await fetchTaskLogs(alternate, executionId);
-			} catch {
-				continue;
-			}
+			const alternateRows = await readFrom(alternate);
+			if (!alternateRows) continue;
+			rows = alternateRows;
 			if (rows.length > 0) {
 				sourceNote = ' (found via another active session)';
 				break;
 			}
 		}
+	}
+	if (rows.length === 0 && !hadVisibleSession && firstError) {
+		throw firstError instanceof Error ? firstError : new Error(String(firstError));
 	}
 	const failed = rows.filter(r => isFailedStatus(r.status)).length;
 	const header = `Execution ${executionId}: ${rows.length} task(s), ${failed} failed.${sourceNote}`;

@@ -1,4 +1,3 @@
-import { SessionManager } from '@sessions';
 import { createGraphqlDeps, type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import {
@@ -53,15 +52,23 @@ async function runViaChatToolPath(
  * against the first active session, but each session only sees its own org
  * hierarchy — an execution owned by another signed-in account would come back
  * empty (#116). So: an optional orgId routes the primary to the session
- * managing that org, and every other active session rides along as an
- * alternate for the tool's empty-result sweep.
+ * managing that org, and the other sessions ride along as alternates for the
+ * tool's empty-result sweep. Both primary and alternates come only from
+ * ctx.sessions, which the MCP boundary has already narrowed to the working
+ * scope for this scopedSessions capability (see McpActions), so the sweep
+ * cannot reach a session the scope excludes.
  */
 export async function executionLogsDeps(
 	input: Record<string, unknown>,
 	ctx: CapabilityContext,
 ): Promise<GraphqlToolDeps> {
 	const orgId = typeof input.orgId === 'string' && input.orgId ? input.orgId : undefined;
-	const primary = orgId ? await SessionManager.getSessionForOrg(orgId).catch(() => ctx.session) : ctx.session;
+	const primary = orgId
+		? (ctx.sessions.find(
+				session =>
+					session.profile.org.id === orgId || session.profile.allManagedOrgs.some(org => org.id === orgId),
+			) ?? ctx.session)
+		: ctx.session;
 	const deps = createGraphqlDeps(primary);
 	deps.alternates = ctx.sessions.filter(session => session !== primary).map(createGraphqlDeps);
 	return deps;
@@ -98,9 +105,14 @@ export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(
 		);
 	}
 	if (spec.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME) {
-		return mcpCapability(spec, access, 'workflow', true, async (input, ctx) =>
-			runViaChatToolPath(spec, input, ctx, await executionLogsDeps(input, ctx)),
-		);
+		return {
+			...mcpCapability(spec, access, 'workflow', true, async (input, ctx) =>
+				runViaChatToolPath(spec, input, ctx, await executionLogsDeps(input, ctx)),
+			),
+			// Org data read by globally unique id: the MCP boundary narrows its
+			// session sweep to the working scope under strict read scoping.
+			scopedSessions: true,
+		};
 	}
 	return mcpCapability(spec, access, 'workflow', true);
 });

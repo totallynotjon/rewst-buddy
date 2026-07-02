@@ -452,6 +452,18 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
+		test('set_output rejects malformed name/value entries instead of misreading them as output keys', () => {
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[{ op: 'set_output', outputs: [{ name: 'success' }] } as WorkflowOperation],
+						NO_ACTIONS,
+					),
+				/set_output.*name.*value/i,
+			);
+		});
+
 		test('a new task defaults to FOLLOW_FIRST + join 1 and gets a terminal transition', () => {
 			const { tasks } = applyOperations(
 				sampleTasks() as never,
@@ -1026,6 +1038,7 @@ suite('Unit: workflowTools', () => {
 				contexts: Record<string, unknown>[];
 				taskLogs: unknown[];
 				executions: unknown[];
+				executionOwnerOrgId: string;
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
 			}> = {},
 		) {
@@ -1061,12 +1074,23 @@ suite('Unit: workflowTools', () => {
 					return { data: { testWorkflow: { executionId: 'exec-new' } } };
 				}
 				if (query.includes('RewstBuddyExecutions')) {
-					const where = (variables?.where ?? {}) as { id?: string; workflowId?: string };
+					const where = (variables?.where ?? {}) as { id?: string; workflowId?: string; orgId?: string };
 					// where.id => run-and-wait poll for a single execution's status.
 					if (where.id) {
+						if (where.orgId && over.executionOwnerOrgId && where.orgId !== over.executionOwnerOrgId) {
+							return { data: { workflowExecutions: [] } };
+						}
 						if (over.pollError) return { errors: [{ message: over.pollError }] };
 						return {
-							data: { workflowExecutions: [{ id: where.id, status: over.pollStatus ?? 'failed' }] },
+							data: {
+								workflowExecutions: [
+									{
+										id: where.id,
+										status: over.pollStatus ?? 'failed',
+										orgId: over.executionOwnerOrgId ?? where.orgId,
+									},
+								],
+							},
 						};
 					}
 					return {
@@ -1235,6 +1259,26 @@ suite('Unit: workflowTools', () => {
 			assert.ok(
 				calls.some(c => c.query.includes('RewstBuddyExecutionContexts')),
 				'fetched the execution context server-side',
+			);
+		});
+
+		test('buddy_render_jinja verifies the execution belongs to the requested org before reading context', async () => {
+			const { deps, calls } = makeDeps({ executionOwnerOrgId: 'org-2' });
+
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{
+							tool: 'buddy_render_jinja',
+							args: { orgId: 'org-1', executionId: 'exec-1', template: '{{ CTX.proceed }}' },
+						},
+						deps,
+					),
+				/execution exec-1.*org org-1/i,
+			);
+			assert.ok(
+				!calls.some(c => c.query.includes('RewstBuddyExecutionContexts')),
+				'context is not fetched until ownership is proven',
 			);
 		});
 
@@ -1463,6 +1507,118 @@ suite('Unit: workflowTools', () => {
 			);
 			assert.match(output, /Applied 1 operation/, 'the edit itself succeeded');
 			assert.match(output, /could not verify/i);
+		});
+
+		test('buddy_workflow_edit verifies inputs when the same operation renames the task', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{
+								op: 'update_task',
+								name: 'start',
+								set: { name: 'renamed', input: { params: { text: 'x' } } },
+							},
+						],
+					},
+				},
+				deps,
+			);
+			const gets = calls.filter(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.strictEqual(gets.length, 2, 'the save is verified with a re-read despite the rename');
+			assert.match(output, /WARNING — the server did not store/i);
+			assert.match(output, /task "renamed": input\.params/);
+		});
+
+		test('buddy_workflow_edit verifies inputs when a later operation renames the task', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{ op: 'update_task', name: 'start', set: { input: { params: { text: 'x' } } } },
+							{ op: 'update_task', name: 'start', set: { name: 'renamed' } },
+						],
+					},
+				},
+				deps,
+			);
+			const gets = calls.filter(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.strictEqual(gets.length, 2, 'the touched task is still verified after the rename');
+			assert.match(output, /task "renamed": input\.params/);
+		});
+
+		test('buddy_workflow_edit does not verify a task deleted later in the batch', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{ op: 'update_task', name: 'start', set: { input: { params: { text: 'x' } } } },
+							{ op: 'delete_task', name: 'start' },
+						],
+					},
+				},
+				deps,
+			);
+			const gets = calls.filter(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.strictEqual(gets.length, 1, 'no verification read when the touched task was deleted');
+			assert.doesNotMatch(output, /WARNING/);
+		});
+
+		test('buddy_workflow_edit warns when an explicit input clear leaves stored keys behind', async () => {
+			const calls: { query: string; variables?: Record<string, unknown> }[] = [];
+			let getCount = 0;
+			const workflowWithInput = (input: Record<string, unknown>) => ({
+				...sampleWorkflow(),
+				tasks: sampleTasks().map(task => (task.name === 'start' ? { ...task, input } : task)),
+			});
+			const execute: GraphqlToolDeps['execute'] = async (query, variables) => {
+				calls.push({ query, variables });
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					getCount++;
+					return { data: { workflow: workflowWithInput({ stale: true }) } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: '2000' } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [{ op: 'update_task', name: 'start', set: { input: null } }],
+					},
+				},
+				deps,
+			);
+
+			assert.strictEqual(getCount, 2, 'the explicit clear is verified with a re-read');
+			assert.match(output, /WARNING — the server did not store/i);
+			assert.match(output, /task "start": input\.stale/);
 		});
 
 		test('buddy_workflow_edit retries once on a version conflict with the fresh token', async () => {
@@ -1730,6 +1886,65 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /input:/, 'failed task shows the input it received');
 			assert.match(output, /start: succeeded/);
 			assert.ok(!output.includes('"ok":true'), "succeeded task's result is hidden by default");
+		});
+
+		test('buddy_execution_logs verifies an explicit orgId owns the execution before reading task logs', async () => {
+			const { deps, calls } = makeDeps({
+				executionOwnerOrgId: 'org-2',
+				taskLogs: [{ originalWorkflowTaskName: 'other_org_task', status: 'succeeded' }],
+			});
+
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', orgId: 'org-1' } },
+						deps,
+					),
+				/execution exec-1.*org org-1/i,
+			);
+			assert.ok(
+				!calls.some(c => c.query.includes('RewstBuddyTaskLogs')),
+				'task logs are not fetched until ownership is proven',
+			);
+		});
+
+		test('buddy_execution_logs tries alternates when the primary session errors', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyExecutions')) {
+						return { data: { workflowExecutions: [{ id: (variables?.where as { id: string }).id }] } };
+					}
+					if (query.includes('RewstBuddyTaskLogs')) throw new Error('primary stale');
+					return { data: {} };
+				},
+			};
+			deps.alternates = [
+				{
+					isEnabled: () => true,
+					confirmMutation: async () => true,
+					execute: async (query, variables) => {
+						if (query.includes('RewstBuddyExecutions')) {
+							return { data: { workflowExecutions: [{ id: (variables?.where as { id: string }).id }] } };
+						}
+						if (query.includes('RewstBuddyTaskLogs')) {
+							return {
+								data: { taskLogs: [{ originalWorkflowTaskName: 'do_thing', status: 'succeeded' }] },
+							};
+						}
+						return { data: {} };
+					},
+				},
+			];
+
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+
+			assert.match(output, /do_thing: succeeded/);
+			assert.match(output, /another active session/i);
 		});
 
 		test('buddy_execution_logs sweeps alternate sessions when the primary sees no rows', async () => {

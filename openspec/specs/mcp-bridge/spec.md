@@ -361,13 +361,24 @@ The system SHALL scope reads to the effective allowed set only when
 `rewst-buddy.mcp.workingOrgScope` is `strict` and a working org is pinned. Under
 `writes`, reads may target any organization the session manages. Organization-
 discovery tools (those not requiring an org, e.g. `buddy_list_orgs`,
-`buddy_get_working_scope`) SHALL never be scoped.
+`buddy_get_working_scope`) SHALL never be scoped. A tool that does not require
+an org but reads organization-owned data by a globally unique id
+(`buddy_execution_logs`) is not a discovery tool: under strict scope with a
+working org pinned, an explicitly supplied `orgId` outside the effective
+allowed set SHALL be rejected with `org_out_of_scope`.
 
 #### Scenario: Strict read scoping
 
 - **GIVEN** `workingOrgScope` is `strict` and a working org is pinned
 - **WHEN** a read tool targets a different org
 - **THEN** it is rejected as out of scope
+
+#### Scenario: Explicit orgId on an org-optional read under strict scope
+
+- **GIVEN** `workingOrgScope` is `strict` and a working org is pinned
+- **WHEN** `buddy_execution_logs` is called with an `orgId` outside the
+  effective allowed set
+- **THEN** it is rejected with `org_out_of_scope` before any authenticated I/O
 
 #### Scenario: Discovery tool is never gated
 
@@ -423,10 +434,13 @@ task `input` or `with`, re-read the workflow and compare each such task's
 stored `input`/`with` against what was sent, appending a warning to the tool
 result naming each divergent dotted path. The comparison SHALL be
 one-directional (extra stored keys the server added are not divergences) and
-SHALL tolerate textual-equal scalar coercion (`1` vs `"1"`). Edits whose
-operations carry no `input` or `with` SHALL NOT incur the verification read. A
-failed verification read SHALL append a note advising a manual re-read, not
-fail the edit.
+SHALL tolerate textual-equal scalar coercion (`1` vs `"1"`). The tasks to
+verify SHALL be tracked by task id while the operations are applied, so a
+rename — in the same operation or later in the batch — cannot detach a task
+from verification; a task deleted later in the batch SHALL NOT be verified.
+Edits whose operations carry no `input` or `with` SHALL NOT incur the
+verification read. A failed verification read SHALL append a note advising a
+manual re-read, not fail the edit.
 
 #### Scenario: A dropped nested key is reported
 
@@ -435,6 +449,14 @@ fail the edit.
 - **WHEN** the save succeeds but the server strips that key
 - **THEN** the tool result contains a warning naming the task and the dotted
   path of the dropped key
+
+#### Scenario: A rename in the same batch still verifies
+
+- **GIVEN** operations that supply a task's `input` and rename that task —
+  whether in one `update_task` or across the batch
+- **WHEN** the save succeeds but the server drops a sent key
+- **THEN** the tool result contains a warning naming the task and the dropped
+  path
 
 #### Scenario: Graph-only edits stay a single read
 
@@ -480,7 +502,9 @@ session. The tool SHALL accept an optional `orgId` that routes the primary
 lookup to the session managing that org, falling back to the default session
 when no session manages it. When no session has rows, the result SHALL say
 that none of the active sessions can see the execution rather than implying
-the execution has no logs.
+the execution has no logs. Under strict scope with a working org pinned (see
+`Scope reads per configuration`), the primary lookup and the sweep SHALL be
+confined to sessions managing an org in the effective allowed set.
 
 #### Scenario: Execution owned by another signed-in account
 
@@ -496,6 +520,14 @@ the execution has no logs.
 - **WHEN** `buddy_execution_logs` runs
 - **THEN** the result states that none of the active sessions can see task
   logs for it
+
+#### Scenario: Strict scope confines the sweep
+
+- **GIVEN** `workingOrgScope` is `strict`, a working org is pinned, and the
+  execution is visible only to a session managing no in-scope org
+- **WHEN** `buddy_execution_logs` runs without an `orgId`
+- **THEN** the out-of-scope session is never queried and its rows do not
+  appear in the result
 
 ### Requirement: Page oversized tool results
 
