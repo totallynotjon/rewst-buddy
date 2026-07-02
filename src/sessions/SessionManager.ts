@@ -17,7 +17,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 	sessionMap: Map<string, Session> = new Map<string, Session>();
 	private knownProfileOrgIndex = new Map<string, SessionProfile>();
-	private orgSessionIndex = new Map<string, Session>();
+	private orgSessionIndex = new Map<string, Session[]>();
 	private knownProfilesCache: SessionProfile[] | undefined;
 	private suppressProfileSaves = false;
 
@@ -330,15 +330,32 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	private indexSession(session: Session): void {
-		this.orgSessionIndex.set(session.profile.org.id, session);
+		this.addToOrgIndex(session.profile.org.id, session);
 		for (const org of session.profile.allManagedOrgs) {
-			this.orgSessionIndex.set(org.id, session);
+			this.addToOrgIndex(org.id, session);
+		}
+	}
+
+	// Several active sessions can legitimately manage the same org id (see
+	// getSessionForOrg); keep every capable session so resolution can fall
+	// through to the next one when the first is no longer valid.
+	private addToOrgIndex(orgId: string, session: Session): void {
+		const existing = this.orgSessionIndex.get(orgId);
+		if (existing) {
+			if (!existing.includes(session)) existing.push(session);
+		} else {
+			this.orgSessionIndex.set(orgId, [session]);
 		}
 	}
 
 	private unindexSession(session: Session): void {
-		for (const [orgId, indexed] of this.orgSessionIndex) {
-			if (indexed === session) this.orgSessionIndex.delete(orgId);
+		for (const [orgId, sessions] of this.orgSessionIndex) {
+			const remaining = sessions.filter(candidate => candidate !== session);
+			if (remaining.length === 0) {
+				this.orgSessionIndex.delete(orgId);
+			} else if (remaining.length !== sessions.length) {
+				this.orgSessionIndex.set(orgId, remaining);
+			}
 		}
 	}
 
@@ -384,12 +401,14 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		log.trace('clearProfiles: cleared', { secretsCleared: orgIdsToClear.size });
 	}
 
-	public getSessionForOrg(orgId: string): Session {
+	public async getSessionForOrg(orgId: string): Promise<Session> {
 		log.trace('getSessionForOrg: looking for', orgId);
-		const session = this.orgSessionIndex.get(orgId);
-		if (session) {
-			log.trace('getSessionForOrg: found', { label: session.profile.label });
-			return session;
+		for (const session of this.orgSessionIndex.get(orgId) ?? []) {
+			if (await session.validate()) {
+				log.trace('getSessionForOrg: found', { label: session.profile.label });
+				return session;
+			}
+			log.trace('getSessionForOrg: skipping invalid session', { label: session.profile.label });
 		}
 		throw log.error(`getSessionForOrg: no session found for ${orgId}`);
 	}

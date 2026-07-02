@@ -53,7 +53,7 @@ export class StatusBar implements vscode.Disposable {
 
 		// Check if we have a session for this template's organization
 		try {
-			SessionManager.getSessionForOrg(link.org.id);
+			await SessionManager.getSessionForOrg(link.org.id);
 		} catch (e) {
 			log.error(`No session found with access to org ${link.template.organization.name}`);
 			this.privateWarnNoSession();

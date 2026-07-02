@@ -134,11 +134,6 @@ Resolution SHALL only return a session that is still valid (per the
 `Cache validation` requirement), skipping a session whose validation fails in
 favor of the next capable session.
 
-**Implementation status:** region-scoped resolution matches managed sub-orgs
-and skips sessions whose validation fails. The region-less index lookup does
-not yet re-validate the session it returns; extending the still-valid
-guarantee to that path is tracked as follow-up work.
-
 #### Scenario: Operation targets a managed sub-org
 
 - **GIVEN** a session whose login manages a parent org and several sub-orgs

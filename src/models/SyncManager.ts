@@ -125,7 +125,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 		const link = rawLink as TemplateLink;
 
-		const session = SessionManager.getSessionForOrg(link.org.id);
+		const session = await SessionManager.getSessionForOrg(link.org.id);
 
 		let remoteTemplate;
 		try {
@@ -186,7 +186,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		log.trace('updateTemplateBody: starting', doc.uri.fsPath);
 		const link = LinkManager.getTemplateLink(doc.uri);
 
-		const session = SessionManager.getSessionForOrg(link.org.id);
+		const session = await SessionManager.getSessionForOrg(link.org.id);
 
 		try {
 			const body = doc.getText() ?? '';
@@ -327,7 +327,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 	 */
 	async computeSyncDecision(doc: vscode.TextDocument): Promise<SyncDecisionContext> {
 		const link = LinkManager.getTemplateLink(doc.uri);
-		const session = SessionManager.getSessionForOrg(link.org.id);
+		const session = await SessionManager.getSessionForOrg(link.org.id);
 
 		let remoteTemplate: FullTemplateFragment;
 		try {
@@ -470,7 +470,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		const ids = new Set(LinkManager.getOrgTemplateLinks(org).map(l => l.template.id));
 		log.debug('fetchFolder: existing template count', ids.size);
 
-		const session = SessionManager.getSessionForOrg(org.id);
+		const session = await SessionManager.getSessionForOrg(org.id);
 
 		log.trace('fetchFolder: listing templates from Rewst');
 		const response = await session.sdk?.listTemplates({ orgId: org.id });

@@ -78,7 +78,7 @@ suite('Unit: SessionManager', () => {
 	});
 
 	suite('getSessionForOrg()', () => {
-		test('should resolve session via org index for managed (non-primary) org', () => {
+		test('should resolve session via org index for managed (non-primary) org', async () => {
 			const { session } = createMockSession({
 				profile: {
 					org: { id: 'primary-org', name: 'Primary' },
@@ -91,17 +91,17 @@ suite('Unit: SessionManager', () => {
 
 			SessionManager._setSessionsForTesting([session]);
 
-			assert.strictEqual(SessionManager.getSessionForOrg('managed-org'), session);
-			assert.strictEqual(SessionManager.getSessionForOrg('primary-org'), session);
+			assert.strictEqual(await SessionManager.getSessionForOrg('managed-org'), session);
+			assert.strictEqual(await SessionManager.getSessionForOrg('primary-org'), session);
 		});
 
-		test('should throw for unknown org', () => {
+		test('should throw for unknown org', async () => {
 			const { session } = createMockSession({
 				profile: { allManagedOrgs: [{ id: 'org-a', name: 'A' }] },
 			});
 			SessionManager._setSessionsForTesting([session]);
 
-			assert.throws(() => SessionManager.getSessionForOrg('unknown-org'));
+			await assert.rejects(SessionManager.getSessionForOrg('unknown-org'));
 		});
 
 		test('should throw after clearProfiles()', async () => {
@@ -109,11 +109,11 @@ suite('Unit: SessionManager', () => {
 				profile: { org: { id: 'org-a', name: 'A' }, allManagedOrgs: [{ id: 'org-a', name: 'A' }] },
 			});
 			SessionManager._setSessionsForTesting([session]);
-			assert.strictEqual(SessionManager.getSessionForOrg('org-a'), session);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-a'), session);
 
 			await SessionManager.clearProfiles();
 
-			assert.throws(() => SessionManager.getSessionForOrg('org-a'));
+			await assert.rejects(SessionManager.getSessionForOrg('org-a'));
 		});
 
 		test('re-auth for same user purges index entries for dropped orgs', async () => {
@@ -138,15 +138,54 @@ suite('Unit: SessionManager', () => {
 
 			const saver = SessionManager as unknown as SessionSaver;
 			await saver.saveSession(first);
-			assert.strictEqual(SessionManager.getSessionForOrg('org-b'), first);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-b'), first);
 
 			await saver.saveSession(second);
 
-			assert.strictEqual(SessionManager.getSessionForOrg('org-a'), second);
-			assert.throws(
-				() => SessionManager.getSessionForOrg('org-b'),
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-a'), second);
+			await assert.rejects(
+				SessionManager.getSessionForOrg('org-b'),
 				'dropped org should no longer resolve to the stale session',
 			);
+		});
+
+		test('skips a session that no longer validates and falls through to another capable session', async () => {
+			const { session: stale, wrapper: staleWrapper } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-stale' }),
+					org: { id: 'dup-org', name: 'Stale' },
+					allManagedOrgs: [{ id: 'dup-org', name: 'Stale' }],
+				},
+			});
+			staleWrapper.when('User', { data: { user: null } });
+			const { session: fresh } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-fresh' }),
+					org: { id: 'dup-org', name: 'Fresh' },
+					allManagedOrgs: [{ id: 'dup-org', name: 'Fresh' }],
+				},
+			});
+			SessionManager._setSessionsForTesting([stale, fresh]);
+
+			const resolved = await SessionManager.getSessionForOrg('dup-org');
+			assert.strictEqual(
+				resolved,
+				fresh,
+				'an invalid session must not be returned when another capable session is still valid',
+			);
+		});
+
+		test('throws when every session capable of managing the org has gone invalid', async () => {
+			const { session, wrapper } = createMockSession({
+				profile: {
+					org: { id: 'org-all-stale', name: 'Stale' },
+					allManagedOrgs: [{ id: 'org-all-stale', name: 'Stale' }],
+				},
+			});
+			wrapper.when('User', { data: { user: null } });
+			SessionManager._setSessionsForTesting([session]);
+
+			await assert.rejects(SessionManager.getSessionForOrg('org-all-stale'));
 		});
 	});
 
@@ -171,7 +210,7 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(resolved, session);
 		});
 
-		test('a duplicate org id resolves to a capable session instead of failing as ambiguous', () => {
+		test('a duplicate org id resolves to a capable session instead of failing as ambiguous', async () => {
 			const { session: northAmerica } = createMockSession({
 				profile: {
 					user: Fixtures.userFragment({ id: 'user-na' }),
@@ -200,7 +239,7 @@ suite('Unit: SessionManager', () => {
 			});
 			SessionManager._setSessionsForTesting([northAmerica, europe]);
 
-			const resolved = SessionManager.getSessionForOrg('dup-org');
+			const resolved = await SessionManager.getSessionForOrg('dup-org');
 			assert.ok(
 				resolved === northAmerica || resolved === europe,
 				'a shared org id must resolve to one of the capable sessions, not error',
@@ -333,7 +372,7 @@ suite('Unit: SessionManager', () => {
 			const session = await SessionManager.createSession('raw-test-token');
 
 			assert.strictEqual(session.profile.label, 'jdoe (Acme Co)');
-			assert.strictEqual(SessionManager.getSessionForOrg('org-create'), session);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-create'), session);
 			assert.strictEqual(await context.secrets.get('org-create'), 'appSession=raw-test-token');
 		});
 
@@ -410,7 +449,7 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(sessions.length, 1);
 			assert.strictEqual(sessions[0].profile.org.id, 'org-restore');
 			assert.strictEqual(promptCalled, false, 'loadSessions must not prompt for a cookie');
-			assert.strictEqual(SessionManager.getSessionForOrg('org-restore'), sessions[0]);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-restore'), sessions[0]);
 		});
 	});
 
@@ -443,7 +482,7 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(await context.secrets.get('org-clear-primary'), undefined);
 			assert.strictEqual(await context.secrets.get('org-clear-managed'), undefined);
 			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
-			assert.throws(() => SessionManager.getSessionForOrg('org-clear-primary'));
+			await assert.rejects(SessionManager.getSessionForOrg('org-clear-primary'));
 		});
 
 		test('deletes secrets for profiles saved only in SessionProfiles', async () => {

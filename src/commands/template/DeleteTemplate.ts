@@ -17,7 +17,7 @@ export class DeleteTemplate extends GenericCommand {
 			throw log.notifyError(`There is no template linked to the file to be deleted: ${document.uri.toString()}`);
 		}
 
-		const session = SessionManager.getSessionForOrg(link.org.id);
+		const session = await SessionManager.getSessionForOrg(link.org.id);
 
 		const confirm = await vscode.window.showWarningMessage(
 			`Delete template "${link.template.name}" from Rewst? This cannot be undone.`,
