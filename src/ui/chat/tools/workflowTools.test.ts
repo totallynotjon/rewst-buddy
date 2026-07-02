@@ -16,6 +16,7 @@ import {
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_TOOL_SPECS,
 	_resetWorkflowIndexForTesting,
+	sentValueDivergences,
 	workflowEditConfirmation,
 	workflowEditScope,
 	workflowToInput,
@@ -123,6 +124,44 @@ suite('Unit: workflowTools', () => {
 		});
 		test('null yields empty', () => {
 			assert.deepStrictEqual(normalizePublish(null), []);
+		});
+	});
+
+	suite('sentValueDivergences()', () => {
+		test('flags a nested key the server dropped, with its path', () => {
+			const lines = sentValueDivergences(
+				{ json_body: { status: { name: 'In Progress' } } },
+				{ json_body: { status: {} } },
+				'input',
+			);
+			assert.strictEqual(lines.length, 1);
+			assert.match(lines[0], /^input\.json_body\.status\.name: sent/);
+			assert.match(lines[0], /not stored/);
+		});
+
+		test('flags a string the server coerced into an empty object', () => {
+			const lines = sentValueDivergences({ json_body: '{{ CTX.body }}' }, { json_body: {} }, 'input');
+			assert.strictEqual(lines.length, 1);
+			assert.match(lines[0], /^input\.json_body: sent/);
+		});
+
+		test('ignores extra keys the server added', () => {
+			assert.deepStrictEqual(sentValueDivergences({ a: 1 }, { a: 1, server_default: true }, 'input'), []);
+		});
+
+		test('deep-equal values, including arrays, produce no divergence', () => {
+			const value = { list: [1, { x: 'y' }], flag: false };
+			assert.deepStrictEqual(sentValueDivergences(value, { ...value, extra: 1 }, 'input'), []);
+		});
+
+		test('tolerates harmless primitive coercion (1 vs "1")', () => {
+			assert.deepStrictEqual(sentValueDivergences({ concurrency: 1 }, { concurrency: '1' }, 'with'), []);
+		});
+
+		test('flags an array the server truncated', () => {
+			const lines = sentValueDivergences({ ids: ['a', 'b'] }, { ids: ['a'] }, 'input');
+			assert.strictEqual(lines.length, 1);
+			assert.match(lines[0], /^input\.ids: sent/);
 		});
 	});
 
@@ -1156,6 +1195,104 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /2000/);
 			const update = calls.find(c => c.query.includes('RewstBuddyWorkflowUpdate'))!;
 			assert.strictEqual(update.variables!.openedAt, '1000', 'openedAt is the updatedAt read at fetch');
+		});
+
+		test('buddy_workflow_edit warns when the server did not store an input as sent', async () => {
+			// The Rewst API filters task input against the action's inputSchema and
+			// reports success anyway; the tool must catch the drop by re-reading.
+			let gets = 0;
+			const calls: { query: string }[] = [];
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				calls.push({ query });
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					gets += 1;
+					const w = sampleWorkflow();
+					if (gets > 1) {
+						// The verification read: the nested key was silently stripped.
+						(w.tasks[0] as Record<string, unknown>).input = { json_body: { status: {} } };
+					}
+					return { data: { workflow: w } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: '2000' } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{
+								op: 'update_task',
+								name: 'start',
+								set: { input: { json_body: { status: { name: 'In Progress' } } } },
+							},
+						],
+					},
+				},
+				deps,
+			);
+			assert.strictEqual(gets, 2, 'the save is verified with a re-read');
+			assert.match(output, /Applied 1 operation/, 'the edit still reports what was applied');
+			assert.match(output, /WARNING — the server did not store/i);
+			assert.match(output, /task "start": input\.json_body\.status\.name/);
+			assert.match(output, /inputSchema/, 'explains why the server dropped the key');
+		});
+
+		test('buddy_workflow_edit skips the verification read when no operation carries input', async () => {
+			const { deps, calls } = makeDeps();
+			await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [{ op: 'connect', from: 'end', to: 'start' }],
+					},
+				},
+				deps,
+			);
+			const gets = calls.filter(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.strictEqual(gets.length, 1, 'no verification read for a graph-only edit');
+		});
+
+		test('buddy_workflow_edit notes a failed verification read without failing the edit', async () => {
+			let gets = 0;
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					gets += 1;
+					if (gets > 1) return { errors: [{ message: 'read timed out' }] };
+					return { data: { workflow: sampleWorkflow() } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: '2000' } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [{ op: 'update_task', name: 'start', set: { input: { params: { text: 'x' } } } }],
+					},
+				},
+				deps,
+			);
+			assert.match(output, /Applied 1 operation/, 'the edit itself succeeded');
+			assert.match(output, /could not verify/i);
 		});
 
 		test('buddy_workflow_edit retries once on a version conflict with the fresh token', async () => {

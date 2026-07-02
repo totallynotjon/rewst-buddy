@@ -376,6 +376,42 @@ clamped numbers, enum checks) rather than trusting the schema.
 - **THEN** the capability clamps it to the allowed maximum rather than honoring
   the raw value
 
+### Requirement: Verify saved task inputs after a workflow edit
+
+Because the Rewst API filters a task's `input` against the action's
+`inputSchema` — dropping unknown keys and coercing mistyped values (a string in
+an object-typed field becomes `{}`) while the save still reports success — the
+system SHALL, after a `buddy_workflow_edit` save whose operations supplied a
+task `input` or `with`, re-read the workflow and compare each such task's
+stored `input`/`with` against what was sent, appending a warning to the tool
+result naming each divergent dotted path. The comparison SHALL be
+one-directional (extra stored keys the server added are not divergences) and
+SHALL tolerate textual-equal scalar coercion (`1` vs `"1"`). Edits whose
+operations carry no `input` or `with` SHALL NOT incur the verification read. A
+failed verification read SHALL append a note advising a manual re-read, not
+fail the edit.
+
+#### Scenario: A dropped nested key is reported
+
+- **GIVEN** an `update_task` operation whose `input` contains a key the
+  action's schema does not accept
+- **WHEN** the save succeeds but the server strips that key
+- **THEN** the tool result contains a warning naming the task and the dotted
+  path of the dropped key
+
+#### Scenario: Graph-only edits stay a single read
+
+- **GIVEN** an edit whose operations only connect or reposition tasks
+- **WHEN** the edit saves
+- **THEN** no verification read is issued
+
+#### Scenario: Verification read failure does not fail the edit
+
+- **GIVEN** the save succeeded and the follow-up read errors
+- **WHEN** the tool result is produced
+- **THEN** it reports the applied operations and notes that the stored inputs
+  could not be verified
+
 ### Requirement: Rate-limit, audit, and attribute tool calls
 
 The system SHALL rate-limit tool calls, audit every call (tool, org, outcome,
