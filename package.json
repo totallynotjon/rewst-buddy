@@ -494,10 +494,6 @@
 					"when": "rewst-buddy.anyActiveSessions"
 				},
 				{
-					"command": "rewst-buddy.prefix.RemoveSession",
-					"when": "rewst-buddy.anyActiveSessions"
-				},
-				{
 					"command": "rewst-buddy.RemoveSession",
 					"when": "false"
 				},

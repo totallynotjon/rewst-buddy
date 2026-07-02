@@ -124,6 +124,24 @@ export default class Session {
 		return valid;
 	}
 
+	/**
+	 * Validates the session, attempting one refresh if the check fails, so a
+	 * merely stale (but still logged-in) cookie recovers instead of being
+	 * treated as dead. Used by org resolution, where skipping a session over
+	 * an unattempted refresh would wrongly report the org unreachable.
+	 */
+	public async ensureValid(): Promise<boolean> {
+		if (await this.validate()) return true;
+
+		try {
+			await this.refreshToken();
+		} catch {
+			return false;
+		}
+
+		return this.validate();
+	}
+
 	public async refreshToken() {
 		log.trace('refreshToken: starting', { label: this.profile.label, orgId: this.profile.org.id });
 

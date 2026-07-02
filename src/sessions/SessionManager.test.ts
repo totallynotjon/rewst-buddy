@@ -187,6 +187,59 @@ suite('Unit: SessionManager', () => {
 
 			await assert.rejects(SessionManager.getSessionForOrg('org-all-stale'));
 		});
+
+		test('recovers a stale-but-refreshable session via refresh instead of skipping or failing it', async () => {
+			const orgId = 'org-recovers-via-refresh';
+			// Answers a GET (refreshToken's login request) with a fresh cookie, and
+			// a POST (the User() query re-validating the refreshed SDK) with a user.
+			const server = createServer((request, response) => {
+				if (request.method === 'GET') {
+					response.writeHead(200, { 'set-cookie': 'appSession=refreshed-cookie' });
+					response.end();
+					return;
+				}
+				let body = '';
+				request.on('data', chunk => {
+					body += String(chunk);
+				});
+				request.on('end', () => {
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(JSON.stringify({ data: { user: { id: 'user-recovers' } } }));
+				});
+			});
+			const port = await listen(server);
+
+			try {
+				await context.secrets.store(orgId, 'appSession=stale-cookie');
+				const profile: SessionProfile = {
+					region: {
+						name: 'Local Test',
+						cookieName: 'appSession',
+						graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+						loginUrl: `http://127.0.0.1:${port}`,
+					},
+					org: { id: orgId, name: 'Recovers Via Refresh' },
+					allManagedOrgs: [{ id: orgId, name: 'Recovers Via Refresh' }],
+					label: 'Recovers Via Refresh Session',
+					user: { id: 'user-recovers' } as SessionProfile['user'],
+				};
+				// No sdk yet: validate() fails immediately, exactly like a session
+				// whose cached User() query previously failed.
+				const session = new Session(undefined, profile);
+				SessionManager._setSessionsForTesting([session]);
+
+				const resolved = await SessionManager.getSessionForOrg(orgId);
+
+				assert.strictEqual(
+					resolved,
+					session,
+					'the same session recovers rather than being reported unreachable',
+				);
+				assert.notStrictEqual(session.sdk, undefined, 'refresh should have replaced the in-memory SDK');
+			} finally {
+				await close(server);
+			}
+		});
 	});
 
 	// Contract from openspec/specs/session-auth "Manage multiple organizations

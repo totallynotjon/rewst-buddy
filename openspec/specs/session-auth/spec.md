@@ -155,6 +155,16 @@ favor of the next capable session.
 - **AND** resolution falls through to the next still-valid capable session, or
   fails when none remains
 
+#### Scenario: A stale-but-refreshable session recovers instead of being skipped
+
+- **GIVEN** an active session that can manage the requested org id
+- **AND** that session's cached validation has failed, but its cookie still
+  logs in
+- **WHEN** a session is resolved for that org without a base URL or region
+- **THEN** the extension refreshes the session's credentials
+- **AND** the refreshed session is returned rather than being treated as
+  unreachable or skipped in favor of a worse fallback
+
 #### Scenario: URL targets a managed sub-org in the session region
 
 - **GIVEN** a Rewst URL whose base URL identifies the European region

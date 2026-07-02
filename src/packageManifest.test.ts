@@ -28,6 +28,9 @@ interface PackageManifest {
 		};
 		commands: { command: string; title: string }[];
 		keybindings?: { command: string; key: string; mac?: string }[];
+		menus?: {
+			commandPalette?: { command: string; when?: string }[];
+		};
 	};
 }
 
@@ -115,5 +118,21 @@ suite('Unit: package manifest', () => {
 		const ids = manifest.contributes.commands.map(entry => entry.command);
 		assert.ok(ids.includes('rewst-buddy.SetWorkingScope'));
 		assert.ok(ids.includes('rewst-buddy.ClearWorkingScope'));
+	});
+
+	test('Remove Session is contributed and reachable from the palette without an active session', () => {
+		const ids = manifest.contributes.commands.map(entry => entry.command);
+		assert.ok(ids.includes('rewst-buddy.prefix.RemoveSession'));
+		assert.ok(ids.includes('rewst-buddy.RemoveSession'));
+
+		// A known-only (previously authenticated, no longer active) session must
+		// still be removable, so the palette entry must not be gated on
+		// anyActiveSessions the way ClearSessions is.
+		const paletteEntries = manifest.contributes.menus?.commandPalette ?? [];
+		const gated = paletteEntries.find(entry => entry.command === 'rewst-buddy.prefix.RemoveSession');
+		assert.ok(
+			gated === undefined || gated.when === undefined || !gated.when.includes('anyActiveSessions'),
+			'Remove Session must stay reachable when only known/inactive sessions exist',
+		);
 	});
 });

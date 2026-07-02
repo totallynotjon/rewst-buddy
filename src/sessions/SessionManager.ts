@@ -448,7 +448,10 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	public async getSessionForOrg(orgId: string): Promise<Session> {
 		log.trace('getSessionForOrg: looking for', orgId);
 		for (const session of this.orgSessionIndex.get(orgId) ?? []) {
-			if (await session.validate()) {
+			// ensureValid (not validate) so a stale-but-refreshable session
+			// recovers here rather than being skipped in favor of a worse
+			// fallback, or a false "no session manages this org".
+			if (await session.ensureValid()) {
 				log.trace('getSessionForOrg: found', { label: session.profile.label });
 				return session;
 			}

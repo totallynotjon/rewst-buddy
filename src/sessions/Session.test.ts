@@ -210,6 +210,75 @@ suite('Unit: Session', () => {
 		});
 	});
 
+	suite('ensureValid()', () => {
+		test('returns true without refreshing when the session already validates', async () => {
+			const { session, wrapper } = createMockSession();
+
+			const result = await session.ensureValid();
+
+			assert.strictEqual(result, true);
+			assert.strictEqual(wrapper.getCallsFor('User').length, 1);
+		});
+
+		function refreshProfile(orgId: string, port: number): SessionProfile {
+			return {
+				region: {
+					name: 'Local Test',
+					cookieName: 'appSession',
+					graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+					loginUrl: `http://127.0.0.1:${port}`,
+				},
+				org: { id: orgId, name: 'Ensure Valid Org' },
+				allManagedOrgs: [{ id: orgId, name: 'Ensure Valid Org' }],
+				label: 'Ensure Valid Session',
+				user: { id: 'user-1' } as SessionProfile['user'],
+			};
+		}
+
+		test('recovers via refresh when the session is initially invalid but the cookie still logs in', async () => {
+			const orgId = 'org-ensure-valid-recovers';
+			const server = createServer((request, response) => {
+				if (request.method === 'GET') {
+					response.writeHead(200, { 'set-cookie': 'appSession=refreshed-cookie' });
+					response.end();
+					return;
+				}
+				let body = '';
+				request.on('data', chunk => {
+					body += String(chunk);
+				});
+				request.on('end', () => {
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(JSON.stringify({ data: { user: { id: 'user-1' } } }));
+				});
+			});
+			servers.push(server);
+			const port = await listen(server);
+
+			const context = initTestEnvironment();
+			await context.secrets.store(orgId, 'appSession=stale-cookie');
+			// No sdk yet, so validate() fails immediately without a network call,
+			// exactly like a session whose cached User() query previously failed.
+			const session = new Session(undefined, refreshProfile(orgId, port));
+
+			const result = await session.ensureValid();
+
+			assert.strictEqual(result, true);
+			assert.notStrictEqual(session.sdk, undefined, 'refresh should have replaced the in-memory SDK');
+		});
+
+		test('returns false when the session is invalid and the refresh attempt also fails', async () => {
+			const orgId = 'org-ensure-valid-dead';
+			// No secret stored for this org, so refreshToken's getCookies() throws
+			// before any network call — the session cannot be recovered.
+			const session = new Session(undefined, refreshProfile(orgId, 0));
+
+			const result = await session.ensureValid();
+
+			assert.strictEqual(result, false);
+		});
+	});
+
 	suite('refreshToken()', () => {
 		test('replaces the stored secret and the in-memory session with the refreshed cookie', async () => {
 			const orgId = 'org-refresh';
