@@ -10,6 +10,7 @@ import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
+	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 } from '../ui/chat/tools/workflowTools';
 import { McpError, _resetMcpThrottleForTesting, callTool, listResources, listTools, readResource } from './McpActions';
@@ -506,6 +507,123 @@ suite('Unit: McpActions', () => {
 				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
 			);
 			assert.strictEqual(validated, 0, 'no authenticated session I/O happens for an out-of-scope request');
+		});
+
+		/** Active sessions whose task-log reads are stubbed per org, for execution-log scope tests. */
+		function useTaskLogSessions(rowsByOrg: Record<string, unknown[]>) {
+			const calls: Record<string, number> = {};
+			const sessions = Object.keys(rowsByOrg).map(orgId => {
+				calls[orgId] = 0;
+				const { session } = createMockSession({ profile: { org: { id: orgId, name: orgId } } });
+				(session as { rawGraphql: Session['rawGraphql'] }).rawGraphql = (async query => {
+					calls[orgId]++;
+					if (query.includes('RewstBuddyExecutions')) {
+						return { data: { workflowExecutions: [{ id: 'exec-1', orgId }] } };
+					}
+					return { data: { taskLogs: rowsByOrg[orgId] } };
+				}) as Session['rawGraphql'];
+				return session;
+			});
+			SessionManager._setSessionsForTesting(sessions);
+			return { calls };
+		}
+
+		const OTHER_ORG_ROW = { originalWorkflowTaskName: 'other_org_task', status: 'succeeded' };
+
+		test('buddy_execution_logs with an out-of-scope orgId is rejected under strict scope', async () => {
+			const { calls } = useTaskLogSessions({ 'org-1': [], 'org-2': [OTHER_ORG_ROW] });
+			WorkingScopeManager.setOrgs(['org-1']);
+
+			await assert.rejects(
+				callTool(
+					{
+						name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+						arguments: { executionId: 'exec-1', orgId: 'org-2' },
+					},
+					settings(),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
+			);
+			assert.strictEqual(calls['org-2'], 0, 'no authenticated traffic reaches the out-of-scope org');
+		});
+
+		test('buddy_execution_logs rejects a top-level out-of-scope orgId under strict scope', async () => {
+			const { calls } = useTaskLogSessions({ 'org-1': [], 'org-2': [OTHER_ORG_ROW] });
+			WorkingScopeManager.setOrgs(['org-1']);
+
+			await assert.rejects(
+				callTool(
+					{
+						name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+						orgId: 'org-2',
+						arguments: { executionId: 'exec-1' },
+					},
+					settings(),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
+			);
+			assert.strictEqual(calls['org-2'], 0, 'top-level orgId is checked before authenticated traffic');
+		});
+
+		test('the buddy_execution_logs sweep skips sessions outside the working scope under strict scope', async () => {
+			const { calls } = useTaskLogSessions({ 'org-1': [], 'org-2': [OTHER_ORG_ROW] });
+			WorkingScopeManager.setOrgs(['org-1']);
+
+			const result = await callTool(
+				{ name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, arguments: { executionId: 'exec-1' } },
+				settings(),
+			);
+
+			assert.ok(!result.isError);
+			assert.strictEqual(calls['org-2'], 0, 'the out-of-scope session is never queried');
+			assert.ok(!result.text.includes('other_org_task'), 'no out-of-scope rows leak into the result');
+		});
+
+		test('buddy_execution_logs does not leak an out-of-scope execution from the same multi-org session', async () => {
+			let taskLogReads = 0;
+			const { session } = createMockSession({
+				profile: {
+					org: { id: 'org-1', name: 'Allowed' },
+					allManagedOrgs: [
+						{ id: 'org-1', name: 'Allowed' },
+						{ id: 'org-2', name: 'Blocked' },
+					],
+				},
+			});
+			(session as { rawGraphql: Session['rawGraphql'] }).rawGraphql = (async query => {
+				if (query.includes('RewstBuddyExecutions')) {
+					return { data: { workflowExecutions: [] } };
+				}
+				if (query.includes('RewstBuddyTaskLogs')) {
+					taskLogReads++;
+					return { data: { taskLogs: [OTHER_ORG_ROW] } };
+				}
+				return { data: {} };
+			}) as Session['rawGraphql'];
+			SessionManager._setSessionsForTesting([session]);
+			WorkingScopeManager.setOrgs(['org-1']);
+
+			const result = await callTool(
+				{ name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, arguments: { executionId: 'exec-1' } },
+				settings(),
+			);
+
+			assert.match(result.text, /Execution exec-1.*org org-1/i, 'ownership failure is surfaced to the caller');
+			assert.ok(!result.text.includes('other_org_task'), 'the blocked org task row is not returned');
+			assert.strictEqual(taskLogReads, 0, 'task logs are not queried until execution ownership is proven');
+		});
+
+		test('the buddy_execution_logs sweep stays cross-session when no working org is pinned', async () => {
+			const { calls } = useTaskLogSessions({ 'org-1': [], 'org-2': [OTHER_ORG_ROW] });
+
+			const result = await callTool(
+				{ name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, arguments: { executionId: 'exec-1' } },
+				settings(),
+			);
+
+			assert.ok(result.text.includes('other_org_task'), 'the alternate session recovers the logs');
+			assert.match(result.text, /found via another active session/);
+			assert.ok(calls['org-2'] > 0, 'the sweep reaches the other session');
 		});
 
 		test('buddy_graphql_mutate against an out-of-scope workflow is rejected via scopeId', async () => {
@@ -1022,6 +1140,33 @@ suite('Unit: MCP audit logging', () => {
 		assert.ok(!combined.includes('AuditSecret'));
 		assert.ok(!combined.includes('secretField'));
 		assert.ok(!combined.includes('audit-secret-password'));
+	});
+
+	test('scoped optional-org reads log their requested orgId', async () => {
+		const { session } = useSession('org-1');
+		(session as { rawGraphql: Session['rawGraphql'] }).rawGraphql = (async query => {
+			if (query.includes('RewstBuddyExecutions')) {
+				return { data: { workflowExecutions: [{ id: 'exec-1', orgId: 'org-1' }] } };
+			}
+			if (query.includes('RewstBuddyTaskLogs')) {
+				return { data: { taskLogs: [] } };
+			}
+			return { data: {} };
+		}) as Session['rawGraphql'];
+		const capture = captureInfoLogs();
+		try {
+			await callTool(
+				{ name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, arguments: { executionId: 'exec-1', orgId: 'org-1' } },
+				settings(),
+			);
+		} finally {
+			capture.restore();
+		}
+
+		const lines = auditLines(capture.messages);
+		assert.strictEqual(lines.length, 1);
+		assert.ok(lines[0].includes(`tool=${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}`));
+		assert.ok(lines[0].includes('orgId=org-1'));
 	});
 
 	test('approval_required structured results log approval_required outcome', async () => {

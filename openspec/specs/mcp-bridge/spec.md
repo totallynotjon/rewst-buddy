@@ -265,12 +265,14 @@ SHALL explicitly carry forward its existing advanced settings
 (`transitionMode`, `join`, `publishResultAs`, `timeout`, `humanSecondsSaved`,
 `isMocked`, `mockInput`, `runAsOrgId`, `retry`, `with`, `metadata`,
 `packOverrides`) so that an edit unrelated to those fields does not reset them.
-Top-level workflow fields the tool does not read or write (such as `output`,
-`tags`, `notes`, `triggers`, and the workflow's own `humanSecondsSaved`) SHALL
-be left untouched by the mutation rather than reset, since `updateWorkflow`
-only replaces fields actually present in its input — unlike the per-task
-`tasks` array, the top level of the mutation behaves as a patch, not a full
-replace. A `buddy_workflow_edit` operation that sets a task's `input` or
+Top-level workflow fields the tool does not write (such as `tags`, `notes`,
+`triggers`, and the workflow's own `humanSecondsSaved`) SHALL be left
+untouched by the mutation rather than reset, since `updateWorkflow` only
+replaces fields actually present in its input — unlike the per-task `tasks`
+array, the top level of the mutation behaves as a patch, not a full replace.
+The workflow's `output` list SHALL follow the same rule: it is sent only when
+a `set_output` operation provides it, so an unrelated edit never resends or
+resets it. A `buddy_workflow_edit` operation that sets a task's `input` or
 `with` object SHALL accept that value as a JSON-encoded string and parse it
 back into an object rather than storing the literal string. A `set_transition`
 operation that omits both `to` and `transitionId` SHALL resolve to the task's
@@ -297,8 +299,8 @@ caller to disambiguate with `to` or `transitionId` otherwise.
 - **GIVEN** a workflow has tags, notes, triggers, and output configured
   directly in Rewst
 - **WHEN** `buddy_workflow_edit` saves an unrelated task change
-- **THEN** the mutation input does not include `tags`, `notes`, `triggers`, or
-  the workflow-level `humanSecondsSaved`
+- **THEN** the mutation input does not include `tags`, `notes`, `triggers`,
+  `output`, or the workflow-level `humanSecondsSaved`
 - **AND** those fields remain whatever they were before the edit
 
 #### Scenario: A JSON-string task input is parsed
@@ -318,19 +320,65 @@ caller to disambiguate with `to` or `transitionId` otherwise.
 - **AND** if the task has more than one outgoing transition instead, the
   operation errors asking for `to` or `transitionId`
 
+### Requirement: Expose the sub-workflow output contract
+
+The system SHALL let a caller define a workflow's outputs — the caller-visible
+values another workflow reads as `RESULT.<name>` when it runs this workflow as
+a sub-workflow task — via a `set_output` operation on `buddy_workflow_edit`,
+and SHALL surface the existing outputs in `buddy_workflow_get` as name/value
+pairs in the workflow header. `set_output` SHALL accept a `{name: "<jinja>"}`
+object or a `[{name, value}]` array, store the result in the API's ordered
+single-key-object list form, wrap raw boolean/number values as Jinja
+expressions, treat an empty array as clearing the outputs, and error when
+`outputs` is missing. The `buddy_workflow_edit` tool description SHALL
+recommend sub-workflow composition — defining a reusable sequence as its own
+workflow with `set_inputs`/`set_output` and calling it via `add_task` with
+`subWorkflowId` — over growing a single large canvas.
+
+#### Scenario: set_output writes the ordered output list
+
+- **GIVEN** a `set_output` operation with
+  `outputs: {success: "{{ CTX.success|d(false) }}"}`
+- **WHEN** `buddy_workflow_edit` applies it
+- **THEN** the mutation input's `output` is
+  `[{"success": "{{ CTX.success|d(false) }}"}]`
+
+#### Scenario: Outputs are visible to a prospective caller
+
+- **GIVEN** a workflow whose `output` list is non-empty
+- **WHEN** `buddy_workflow_get` reads it (either detail level)
+- **THEN** the workflow header lists each output as a `{name, value}` pair
+
+#### Scenario: Raw scalars become Jinja expressions
+
+- **GIVEN** a `set_output` entry whose value is the boolean `true`
+- **WHEN** `buddy_workflow_edit` applies it
+- **THEN** the stored value is the Jinja expression string `{{ true }}`
+
 ### Requirement: Scope reads per configuration
 
 The system SHALL scope reads to the effective allowed set only when
 `rewst-buddy.mcp.workingOrgScope` is `strict` and a working org is pinned. Under
 `writes`, reads may target any organization the session manages. Organization-
 discovery tools (those not requiring an org, e.g. `buddy_list_orgs`,
-`buddy_get_working_scope`) SHALL never be scoped.
+`buddy_get_working_scope`) SHALL never be scoped. A tool that does not require
+an org but reads organization-owned data by a globally unique id
+(`buddy_execution_logs`) is not a discovery tool: under strict scope with a
+working org pinned, an explicitly supplied `orgId` outside the effective
+allowed set SHALL be rejected with `org_out_of_scope`.
 
 #### Scenario: Strict read scoping
 
 - **GIVEN** `workingOrgScope` is `strict` and a working org is pinned
 - **WHEN** a read tool targets a different org
 - **THEN** it is rejected as out of scope
+
+#### Scenario: Explicit orgId on an org-optional read under strict scope
+
+- **GIVEN** `workingOrgScope` is `strict` and a working org is pinned
+- **WHEN** `buddy_execution_logs` is called with an `orgId` outside the
+  effective allowed set
+- **THEN** it is rejected with `org_out_of_scope` before any authenticated I/O
 
 #### Scenario: Discovery tool is never gated
 
@@ -376,6 +424,53 @@ clamped numbers, enum checks) rather than trusting the schema.
 - **THEN** the capability clamps it to the allowed maximum rather than honoring
   the raw value
 
+### Requirement: Verify saved task inputs after a workflow edit
+
+Because the Rewst API filters a task's `input` against the action's
+`inputSchema` — dropping unknown keys and coercing mistyped values (a string in
+an object-typed field becomes `{}`) while the save still reports success — the
+system SHALL, after a `buddy_workflow_edit` save whose operations supplied a
+task `input` or `with`, re-read the workflow and compare each such task's
+stored `input`/`with` against what was sent, appending a warning to the tool
+result naming each divergent dotted path. The comparison SHALL be
+one-directional (extra stored keys the server added are not divergences) and
+SHALL tolerate textual-equal scalar coercion (`1` vs `"1"`). The tasks to
+verify SHALL be tracked by task id while the operations are applied, so a
+rename — in the same operation or later in the batch — cannot detach a task
+from verification; a task deleted later in the batch SHALL NOT be verified.
+Edits whose operations carry no `input` or `with` SHALL NOT incur the
+verification read. A failed verification read SHALL append a note advising a
+manual re-read, not fail the edit.
+
+#### Scenario: A dropped nested key is reported
+
+- **GIVEN** an `update_task` operation whose `input` contains a key the
+  action's schema does not accept
+- **WHEN** the save succeeds but the server strips that key
+- **THEN** the tool result contains a warning naming the task and the dotted
+  path of the dropped key
+
+#### Scenario: A rename in the same batch still verifies
+
+- **GIVEN** operations that supply a task's `input` and rename that task —
+  whether in one `update_task` or across the batch
+- **WHEN** the save succeeds but the server drops a sent key
+- **THEN** the tool result contains a warning naming the task and the dropped
+  path
+
+#### Scenario: Graph-only edits stay a single read
+
+- **GIVEN** an edit whose operations only connect or reposition tasks
+- **WHEN** the edit saves
+- **THEN** no verification read is issued
+
+#### Scenario: Verification read failure does not fail the edit
+
+- **GIVEN** the save succeeded and the follow-up read errors
+- **WHEN** the tool result is produced
+- **THEN** it reports the applied operations and notes that the stored inputs
+  could not be verified
+
 ### Requirement: Rate-limit, audit, and attribute tool calls
 
 The system SHALL rate-limit tool calls, audit every call (tool, org, outcome,
@@ -394,6 +489,45 @@ duration), and tag the approval origin so that approval prompts name the caller.
 - **WHEN** the bridge writes the audit record
 - **THEN** the audit line contains the tool, resolved org, outcome, and duration
 - **AND** the log does not include tool arguments or embedded line separators
+
+### Requirement: Resolve execution logs across all active sessions
+
+Because a Rewst session only sees its own org hierarchy and
+`buddy_execution_logs` resolves an execution by its globally unique id without
+requiring an org, the system SHALL NOT report an execution as having no task
+logs based on the first active session alone: when the primary session returns
+zero rows, it SHALL query each other active session (skipping ones that error)
+and use the first non-empty result, noting that the logs came from another
+session. The tool SHALL accept an optional `orgId` that routes the primary
+lookup to the session managing that org, falling back to the default session
+when no session manages it. When no session has rows, the result SHALL say
+that none of the active sessions can see the execution rather than implying
+the execution has no logs. Under strict scope with a working org pinned (see
+`Scope reads per configuration`), the primary lookup and the sweep SHALL be
+confined to sessions managing an org in the effective allowed set.
+
+#### Scenario: Execution owned by another signed-in account
+
+- **GIVEN** two active sessions and an execution in the second session's org
+  hierarchy
+- **WHEN** `buddy_execution_logs` runs without an `orgId`
+- **THEN** the first session's empty result triggers a sweep and the second
+  session's task logs are returned, noting the alternate source
+
+#### Scenario: No session can see the execution
+
+- **GIVEN** an execution id no active session has access to
+- **WHEN** `buddy_execution_logs` runs
+- **THEN** the result states that none of the active sessions can see task
+  logs for it
+
+#### Scenario: Strict scope confines the sweep
+
+- **GIVEN** `workingOrgScope` is `strict`, a working org is pinned, and the
+  execution is visible only to a session managing no in-scope org
+- **WHEN** `buddy_execution_logs` runs without an `orgId`
+- **THEN** the out-of-scope session is never queried and its rows do not
+  appear in the result
 
 ### Requirement: Page oversized tool results
 
@@ -416,6 +550,31 @@ evicted or was never cached.
 - **WHEN** `buddy_result_read` is called with that id and an offset
 - **THEN** the bridge returns the requested character slice without re-running the
   original Rewst API call
+
+### Requirement: Render Jinja against a merged execution context
+
+Because an execution's stored context snapshots are per-publish deltas — each
+frame holds only the keys that publish wrote, so the last frame is not the
+most complete view — `buddy_render_jinja` SHALL, when given an `executionId`
+and no `contextIndex`, merge all snapshots in order into one cumulative
+context (later writes to a key win) and use that as `CTX`. A `contextIndex`
+SHALL select that single raw snapshot without merging. Keys mode SHALL report
+how many snapshots the listed context was merged from.
+
+#### Scenario: Early-frame keys stay visible by default
+
+- **GIVEN** an execution whose first snapshot holds the run inputs and whose
+  later snapshots each hold only newly published keys
+- **WHEN** `buddy_render_jinja` renders `{{ CTX.<run input> }}` with no
+  `contextIndex`
+- **THEN** the value renders from the merged context rather than being
+  undefined
+
+#### Scenario: contextIndex inspects one raw delta
+
+- **GIVEN** an execution with several snapshots
+- **WHEN** `buddy_render_jinja` is called with `contextIndex: 0`
+- **THEN** the render context is exactly that snapshot, unmerged
 
 ### Requirement: Derive the Jinja docs engine host and cache only successful fetches
 

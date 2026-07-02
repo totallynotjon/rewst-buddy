@@ -56,6 +56,15 @@ export interface Capability {
 	 * org-scoped (true) when omitted.
 	 */
 	requiresOrg?: boolean;
+	/**
+	 * Only meaningful with requiresOrg:false. Marks a capability that reads
+	 * org-owned data by a globally unique id (e.g. buddy_execution_logs) rather
+	 * than discovering orgs. Under strict working-org scope with a working org
+	 * pinned, the MCP boundary narrows `ctx.sessions` to sessions managing an org
+	 * in the effective allowed set and rejects an explicitly supplied `orgId`
+	 * outside that set — discovery tools stay unscoped.
+	 */
+	scopedSessions?: boolean;
 	/** Runs the operation and returns text for the caller. */
 	run(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string>;
 }

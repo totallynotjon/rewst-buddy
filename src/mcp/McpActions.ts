@@ -86,7 +86,19 @@ function assertScopeAllowed(
 	args: Record<string, unknown>,
 	settings: McpSettings,
 ): void {
-	if (capability.requiresOrg === false) return;
+	if (capability.requiresOrg === false) {
+		// An org-optional read that reaches into org data by a globally unique id
+		// (scopedSessions, e.g. buddy_execution_logs) still honours strict read
+		// scope when the caller names an org; discovery tools stay ungated.
+		const requested = asString(args, 'orgId');
+		if (capability.scopedSessions && requested && strictReadScopeActive(settings)) {
+			const effective = effectiveAllowedOrgs(settings);
+			if (!effective.has(requested)) {
+				throw new McpError('org_out_of_scope', readOutOfScopeMessage(requested, effective));
+			}
+		}
+		return;
+	}
 	const effective = effectiveAllowedOrgs(settings);
 	const workingOrgs = WorkingScopeManager.getOrgs();
 
@@ -115,12 +127,20 @@ function assertScopeAllowed(
 	}
 
 	if (settings.workingOrgScope === 'strict' && workingOrgs.length > 0 && !effective.has(orgId)) {
-		throw new McpError(
-			'org_out_of_scope',
-			`Reads are scoped to the working orgs (${[...effective].join(', ')}); org "${orgId}" is not one of them. ` +
-				'Change the working scope in VS Code (Rewst Buddy: Set Working Scope), or set rewst-buddy.mcp.workingOrgScope to "writes" to read across orgs.',
-		);
+		throw new McpError('org_out_of_scope', readOutOfScopeMessage(orgId, effective));
 	}
+}
+
+/** Whether strict read scoping is in force: strict mode with a working org pinned. */
+function strictReadScopeActive(settings: McpSettings): boolean {
+	return settings.workingOrgScope === 'strict' && WorkingScopeManager.getOrgs().length > 0;
+}
+
+function readOutOfScopeMessage(orgId: string, effective: Set<string>): string {
+	return (
+		`Reads are scoped to the working orgs (${[...effective].join(', ')}); org "${orgId}" is not one of them. ` +
+		'Change the working scope in VS Code (Rewst Buddy: Set Working Scope), or set rewst-buddy.mcp.workingOrgScope to "writes" to read across orgs.'
+	);
 }
 
 function writeOutOfScopeMessage(orgId: string, effective: Set<string>): string {
@@ -218,8 +238,28 @@ function resolveOrgId(
 	capability: Capability,
 	args: Record<string, unknown>,
 	requestOrgId: string | undefined,
+	settings: McpSettings,
 ): string | undefined {
-	if (capability.requiresOrg === false) return undefined;
+	if (capability.requiresOrg === false) {
+		if (!capability.scopedSessions) return undefined;
+		const requested = asString(args, 'orgId') ?? requestOrgId;
+		if (requested) {
+			args.orgId = requested;
+			return requested;
+		}
+		if (strictReadScopeActive(settings)) {
+			const workingOrgs = WorkingScopeManager.getOrgs();
+			if (workingOrgs.length === 1) {
+				args.orgId = workingOrgs[0];
+				return workingOrgs[0];
+			}
+			throw new McpError(
+				'org_required',
+				'This tool reads org-owned execution data by id and requires "orgId" when strict working-org scope has multiple orgs pinned.',
+			);
+		}
+		return undefined;
+	}
 	// When the org is omitted and exactly one working org is pinned, target it —
 	// the model never has to name it and so cannot misname it.
 	const workingOrgs = WorkingScopeManager.getOrgs();
@@ -248,6 +288,7 @@ async function resolveContext(
 	capability: Capability,
 	args: Record<string, unknown>,
 	orgId: string | undefined,
+	settings: McpSettings,
 ): Promise<CapabilityContext> {
 	const sessions = SessionManager.getActiveSessions();
 	if (sessions.length === 0) {
@@ -257,7 +298,14 @@ async function resolveContext(
 		);
 	}
 	if (capability.requiresOrg === false) {
-		return { session: sessions[0], orgId: sessions[0].profile.org.id, sessions };
+		const scoped = scopedSessionsFor(capability, sessions, settings);
+		if (scoped.length === 0) {
+			throw new McpError(
+				'no_session',
+				'No active session manages an org in the working scope. Sign in to that account in VS Code, or change the working scope (Rewst Buddy: Set Working Scope).',
+			);
+		}
+		return { session: scoped[0], orgId: scoped[0].profile.org.id, sessions: scoped };
 	}
 	// orgId is guaranteed defined here: resolveOrgId already threw org_required
 	// otherwise, for every capability whose requiresOrg is not false.
@@ -271,6 +319,22 @@ async function resolveContext(
 		);
 	}
 	return { session, orgId: orgId as string, sessions };
+}
+
+/**
+ * The sessions a requiresOrg:false capability may touch: all of them, except
+ * that a scopedSessions capability (org data read by globally unique id) under
+ * strict read scope is narrowed to sessions managing an org in the effective
+ * allowed set — otherwise its cross-session sweep would let a scoped caller
+ * probe data in orgs the working scope excludes.
+ */
+function scopedSessionsFor(capability: Capability, sessions: Session[], settings: McpSettings): Session[] {
+	if (!capability.scopedSessions || !strictReadScopeActive(settings)) return sessions;
+	const effective = effectiveAllowedOrgs(settings);
+	return sessions.filter(
+		session =>
+			effective.has(session.profile.org.id) || session.profile.allManagedOrgs.some(org => effective.has(org.id)),
+	);
 }
 
 function describeTool(capability: Capability): McpToolDescriptor {
@@ -320,14 +384,15 @@ export async function callTool(
 		}
 
 		const args = params.arguments ?? {};
-		const orgId = resolveOrgId(capability, args, params.orgId);
-		auditOrgId = capability.requiresOrg === false ? '—' : orgId || '—';
+		const orgId = resolveOrgId(capability, args, params.orgId, settings);
+		auditOrgId =
+			capability.requiresOrg === false ? (capability.scopedSessions && orgId ? orgId : '—') : orgId || '—';
 		// Reject an out-of-scope call before the capability runs (and before any
 		// approval modal, which may never surface to an external MCP client), and
 		// before resolving a session for it — an out-of-scope orgId must never
 		// trigger authenticated Rewst traffic.
 		assertScopeAllowed(capability, orgId ?? '', args, settings);
-		const ctx = await resolveContext(capability, args, orgId);
+		const ctx = await resolveContext(capability, args, orgId, settings);
 		// Validate/refresh the session only after the scope gate passes, so an
 		// out-of-scope request triggers no authenticated Rewst traffic.
 		if (capability.requiresOrg !== false) await ensureValidSession(ctx.session);
@@ -417,12 +482,12 @@ export async function readResource(uri: string, settings: McpSettings = readMcpS
 
 	const args: Record<string, unknown> = { orgId: parsed.orgId };
 	if (parsed.id) args[parsed.collection === 'templates' ? 'templateId' : 'workflowId'] = parsed.id;
-	const orgId = resolveOrgId(capability, args, parsed.orgId);
+	const orgId = resolveOrgId(capability, args, parsed.orgId, settings);
 	// Resources run read capabilities directly, so honour the working scope here too,
 	// and before resolving a session — an out-of-scope orgId must never trigger
 	// authenticated Rewst traffic.
 	assertScopeAllowed(capability, orgId ?? '', args, settings);
-	const ctx = await resolveContext(capability, args, orgId);
+	const ctx = await resolveContext(capability, args, orgId, settings);
 	await ensureValidSession(ctx.session);
 	const text = formatMcpOutput(toolName, await capability.run(args, ctx));
 	log.info(`MCP readResource: ${uri}`);

@@ -16,6 +16,7 @@ import {
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_TOOL_SPECS,
 	_resetWorkflowIndexForTesting,
+	sentValueDivergences,
 	workflowEditConfirmation,
 	workflowEditScope,
 	workflowToInput,
@@ -68,6 +69,7 @@ function sampleWorkflow() {
 			},
 		},
 		updatedAt: '1000',
+		output: [{ user_found: '{{ CTX.user_found|d(false) }}' }],
 		tasks: sampleTasks(),
 	};
 }
@@ -108,6 +110,40 @@ suite('Unit: workflowTools', () => {
 		assert.match(spec.description, /does not expose parallel task controls/i);
 	});
 
+	test('buddy_workflow_edit spec teaches sub-workflow composition through set_output', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.match(spec.description, /set_output \{outputs/, 'set_output is listed as an operation');
+		assert.match(spec.description, /RESULT\.<name>/, 'ties a sub-workflow call result to the set_output contract');
+		assert.match(spec.description, /prefer composition/i, 'recommends composing over one giant canvas');
+		assert.match(
+			spec.description,
+			/sign to split/i,
+			'names the smell that should push a build toward sub-workflows',
+		);
+	});
+
+	test('buddy_workflow_edit spec states transition, publish, and loop semantics', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.match(
+			spec.description,
+			/at most one outgoing transition.*first.*listed order/i,
+			'documents first-match transition evaluation',
+		);
+		assert.match(
+			spec.description,
+			/publish entries apply whenever that transition is taken, including on \{\{ FAILED \}\}/i,
+			'documents publish firing on failure edges',
+		);
+		assert.match(spec.description, /\{\{ item\(\) \}\}/, 'documents the with.items current-element callable');
+		assert.match(
+			spec.description,
+			/update_task \{id\|name, set:\{name\?, input\?, action\? or subWorkflowId\?, publishResultAs\?, timeout\?, description\?, with\?\}\}/,
+			'enumerates the update_task settable fields',
+		);
+	});
+
 	suite('normalizePublish()', () => {
 		test('keeps {key,value} array form', () => {
 			assert.deepStrictEqual(normalizePublish([{ key: 'a', value: '1' }]), [{ key: 'a', value: '1' }]);
@@ -123,6 +159,44 @@ suite('Unit: workflowTools', () => {
 		});
 		test('null yields empty', () => {
 			assert.deepStrictEqual(normalizePublish(null), []);
+		});
+	});
+
+	suite('sentValueDivergences()', () => {
+		test('flags a nested key the server dropped, with its path', () => {
+			const lines = sentValueDivergences(
+				{ json_body: { status: { name: 'In Progress' } } },
+				{ json_body: { status: {} } },
+				'input',
+			);
+			assert.strictEqual(lines.length, 1);
+			assert.match(lines[0], /^input\.json_body\.status\.name: sent/);
+			assert.match(lines[0], /not stored/);
+		});
+
+		test('flags a string the server coerced into an empty object', () => {
+			const lines = sentValueDivergences({ json_body: '{{ CTX.body }}' }, { json_body: {} }, 'input');
+			assert.strictEqual(lines.length, 1);
+			assert.match(lines[0], /^input\.json_body: sent/);
+		});
+
+		test('ignores extra keys the server added', () => {
+			assert.deepStrictEqual(sentValueDivergences({ a: 1 }, { a: 1, server_default: true }, 'input'), []);
+		});
+
+		test('deep-equal values, including arrays, produce no divergence', () => {
+			const value = { list: [1, { x: 'y' }], flag: false };
+			assert.deepStrictEqual(sentValueDivergences(value, { ...value, extra: 1 }, 'input'), []);
+		});
+
+		test('tolerates harmless primitive coercion (1 vs "1")', () => {
+			assert.deepStrictEqual(sentValueDivergences({ concurrency: 1 }, { concurrency: '1' }, 'with'), []);
+		});
+
+		test('flags an array the server truncated', () => {
+			const lines = sentValueDivergences({ ids: ['a', 'b'] }, { ids: ['a'] }, 'input');
+			assert.strictEqual(lines.length, 1);
+			assert.match(lines[0], /^input\.ids: sent/);
 		});
 	});
 
@@ -145,6 +219,19 @@ suite('Unit: workflowTools', () => {
 			const w = sampleWorkflow();
 			const input = workflowToInput(w as never, w.tasks as never);
 			assert.deepStrictEqual(input.parameters, w.action.parameters, 'parameters preserved');
+		});
+
+		test('output is sent only when a set_output override provides it', () => {
+			// The top level of updateWorkflow behaves as a patch: omitting output
+			// leaves it untouched server-side, so an unrelated edit must not resend
+			// the read-back value — only set_output writes it.
+			const w = sampleWorkflow();
+			const without = workflowToInput(w as never, w.tasks as never);
+			assert.ok(!('output' in without), 'read-back output is not resent on unrelated edits');
+			const withOverride = workflowToInput(w as never, w.tasks as never, {
+				output: [{ done: '{{ true }}' }],
+			});
+			assert.deepStrictEqual(withOverride.output, [{ done: '{{ true }}' }], 'set_output override wins');
 		});
 
 		test('resends a task pack override (integration override) so an edit does not drop it', () => {
@@ -315,6 +402,66 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(params.drop.default, '{{ false }}', 'raw boolean default is Jinja-wrapped');
 			assert.strictEqual(schema.properties.drop.default, '{{ false }}', 'inputSchema default is wrapped too');
 			assert.ok(!('varsSchema' in workflow), 'varsSchema is never touched by set_inputs');
+		});
+
+		test('set_output builds the ordered single-key output list from an object map', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'set_output',
+					outputs: { success: '{{ CTX.success|d(false) }}', data: '{{ CTX.data|d(None) }}' },
+				},
+			];
+			const { workflow, applied } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(
+				workflow.output,
+				[{ success: '{{ CTX.success|d(false) }}' }, { data: '{{ CTX.data|d(None) }}' }],
+				'stored as the API\'s ordered [{name: "<jinja>"}] list',
+			);
+			assert.match(applied[0], /set_output \(2: success, data\)/);
+		});
+
+		test('set_output accepts a {name, value} array and wraps raw scalars as Jinja', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'set_output',
+					outputs: [
+						{ name: 'enabled', value: true },
+						{ name: 'count', value: 3 },
+						{ name: 'log', value: '{{ CTX.automation_log|d([]) }}' },
+					],
+				},
+			];
+			const { workflow } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(workflow.output, [
+				{ enabled: '{{ true }}' },
+				{ count: '{{ 3 }}' },
+				{ log: '{{ CTX.automation_log|d([]) }}' },
+			]);
+		});
+
+		test('set_output with an empty array clears the outputs', () => {
+			const ops: WorkflowOperation[] = [{ op: 'set_output', outputs: [] }];
+			const { workflow } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(workflow.output, []);
+		});
+
+		test('set_output without outputs throws instead of clearing', () => {
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, [{ op: 'set_output' }], NO_ACTIONS),
+				/set_output requires "outputs"/,
+			);
+		});
+
+		test('set_output rejects malformed name/value entries instead of misreading them as output keys', () => {
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[{ op: 'set_output', outputs: [{ name: 'success' }] } as WorkflowOperation],
+						NO_ACTIONS,
+					),
+				/set_output.*name.*value/i,
+			);
 		});
 
 		test('a new task defaults to FOLLOW_FIRST + join 1 and gets a terminal transition', () => {
@@ -888,8 +1035,10 @@ suite('Unit: workflowTools', () => {
 				pollStatus: string;
 				pollError: string;
 				renderResult: unknown;
+				contexts: Record<string, unknown>[];
 				taskLogs: unknown[];
 				executions: unknown[];
+				executionOwnerOrgId: string;
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
 			}> = {},
 		) {
@@ -912,7 +1061,9 @@ suite('Unit: workflowTools', () => {
 					return updateResults[Math.min(updateIndex++, updateResults.length - 1)];
 				}
 				if (query.includes('RewstBuddyExecutionContexts')) {
-					return { data: { workflowExecutionContexts: [{ proceed: false }, { proceed: true }] } };
+					return {
+						data: { workflowExecutionContexts: over.contexts ?? [{ proceed: false }, { proceed: true }] },
+					};
 				}
 				if (query.includes('RewstBuddyRenderJinja')) {
 					// Echo the context value the tool passed, to prove it rendered against it.
@@ -923,12 +1074,23 @@ suite('Unit: workflowTools', () => {
 					return { data: { testWorkflow: { executionId: 'exec-new' } } };
 				}
 				if (query.includes('RewstBuddyExecutions')) {
-					const where = (variables?.where ?? {}) as { id?: string; workflowId?: string };
+					const where = (variables?.where ?? {}) as { id?: string; workflowId?: string; orgId?: string };
 					// where.id => run-and-wait poll for a single execution's status.
 					if (where.id) {
+						if (where.orgId && over.executionOwnerOrgId && where.orgId !== over.executionOwnerOrgId) {
+							return { data: { workflowExecutions: [] } };
+						}
 						if (over.pollError) return { errors: [{ message: over.pollError }] };
 						return {
-							data: { workflowExecutions: [{ id: where.id, status: over.pollStatus ?? 'failed' }] },
+							data: {
+								workflowExecutions: [
+									{
+										id: where.id,
+										status: over.pollStatus ?? 'failed',
+										orgId: over.executionOwnerOrgId ?? where.orgId,
+									},
+								],
+							},
 						};
 					}
 					return {
@@ -1002,6 +1164,23 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(parsed.edges[0].to, ['end (bb02)'], 'targets carry the id in full view');
 		});
 
+		test('buddy_workflow_get surfaces workflow outputs, the sub-workflow return contract', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
+				deps,
+			);
+			const getCall = calls.find(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.ok(getCall && /\boutput\b/.test(getCall.query), 'the read query selects the output field');
+			const parsed = JSON.parse(output);
+			assert.deepStrictEqual(
+				parsed.workflow.outputs,
+				[{ name: 'user_found', value: '{{ CTX.user_found|d(false) }}' }],
+				'outputs are surfaced as name/value pairs in the workflow header',
+			);
+			assert.match(parsed.note, /set_output/, 'the note points at set_output for changing the contract');
+		});
+
 		test('buddy_workflow_get hides task mode and join criteria', async () => {
 			const task = (over: Record<string, unknown>) => ({
 				id: String(over.name),
@@ -1066,7 +1245,7 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(calls.length, 0, 'short-circuits without hitting the API');
 		});
 
-		test('buddy_render_jinja renders against an execution (last snapshot) and returns only the result', async () => {
+		test('buddy_render_jinja renders against an execution (merged snapshots) and returns only the result', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
 				{
@@ -1075,7 +1254,7 @@ suite('Unit: workflowTools', () => {
 				},
 				deps,
 			);
-			// Mock has snapshots [{proceed:false},{proceed:true}]; default uses the last.
+			// Mock has snapshots [{proceed:false},{proceed:true}]; the merge keeps the latest value.
 			assert.match(output, /Rendered: true \(type boolean\)/);
 			assert.ok(
 				calls.some(c => c.query.includes('RewstBuddyExecutionContexts')),
@@ -1083,8 +1262,52 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('buddy_render_jinja honors contextIndex', async () => {
-			const { deps } = makeDeps();
+		test('buddy_render_jinja verifies the execution belongs to the requested org before reading context', async () => {
+			const { deps, calls } = makeDeps({ executionOwnerOrgId: 'org-2' });
+
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{
+							tool: 'buddy_render_jinja',
+							args: { orgId: 'org-1', executionId: 'exec-1', template: '{{ CTX.proceed }}' },
+						},
+						deps,
+					),
+				/execution exec-1.*org org-1/i,
+			);
+			assert.ok(
+				!calls.some(c => c.query.includes('RewstBuddyExecutionContexts')),
+				'context is not fetched until ownership is proven',
+			);
+		});
+
+		test('buddy_render_jinja merges all delta snapshots by default', async () => {
+			// Execution context snapshots are per-publish DELTAS: the initial frame
+			// holds the run inputs, later frames only the keys each publish wrote.
+			// The default context must be the in-order merge of all of them.
+			const { deps, calls } = makeDeps({
+				contexts: [{ user_upn: 'a@b.c', mode: 'review' }, { ticket_id: '43' }, { automation_log: ['x'] }],
+			});
+			await runWorkflowTool(
+				{
+					tool: 'buddy_render_jinja',
+					args: { orgId: 'org-1', executionId: 'exec-1', template: '{{ CTX.user_upn }}' },
+				},
+				deps,
+			);
+			const render = calls.find(c => c.query.includes('RewstBuddyRenderJinja'))!;
+			assert.deepStrictEqual(
+				render.variables!.vars,
+				{ user_upn: 'a@b.c', mode: 'review', ticket_id: '43', automation_log: ['x'] },
+				'the render context is the cumulative merge, so early-frame keys stay visible',
+			);
+		});
+
+		test('buddy_render_jinja honors contextIndex as one raw delta, without merging', async () => {
+			const { deps, calls } = makeDeps({
+				contexts: [{ proceed: false, initial: true }, { proceed: true }],
+			});
 			const output = await runWorkflowTool(
 				{
 					tool: 'buddy_render_jinja',
@@ -1093,6 +1316,36 @@ suite('Unit: workflowTools', () => {
 				deps,
 			);
 			assert.match(output, /Rendered: false/);
+			const render = calls.find(c => c.query.includes('RewstBuddyRenderJinja'))!;
+			assert.deepStrictEqual(
+				render.variables!.vars,
+				{ proceed: false, initial: true },
+				'contextIndex selects the raw snapshot as-is',
+			);
+		});
+
+		test('buddy_render_jinja keys mode reports how many snapshots were merged', async () => {
+			const { deps } = makeDeps({
+				contexts: [{ a: 1 }, { b: 2 }, { a: 3 }],
+			});
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_render_jinja', args: { orgId: 'org-1', executionId: 'exec-1', keys: true } },
+				deps,
+			);
+			assert.match(output, /Context top-level keys \(2\): a, b/);
+			assert.match(output, /merged from 3 snapshot/i);
+		});
+
+		test('buddy_render_jinja spec describes snapshots as merged deltas', () => {
+			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === 'buddy_render_jinja');
+			assert.ok(spec, 'buddy_render_jinja spec exists');
+			assert.match(spec.description, /per-publish deltas/i);
+			assert.match(spec.description, /merges/i);
+			assert.doesNotMatch(spec.description, /the last context snapshot of the run is used/i);
+			const contextIndex = (spec.inputSchema as { properties: { contextIndex: { description: string } } })
+				.properties.contextIndex;
+			assert.match(contextIndex.description, /raw|single/i);
+			assert.doesNotMatch(contextIndex.description, /most-complete/i);
 		});
 
 		test('buddy_render_jinja renders ad-hoc vars without an execution', async () => {
@@ -1156,6 +1409,216 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /2000/);
 			const update = calls.find(c => c.query.includes('RewstBuddyWorkflowUpdate'))!;
 			assert.strictEqual(update.variables!.openedAt, '1000', 'openedAt is the updatedAt read at fetch');
+		});
+
+		test('buddy_workflow_edit warns when the server did not store an input as sent', async () => {
+			// The Rewst API filters task input against the action's inputSchema and
+			// reports success anyway; the tool must catch the drop by re-reading.
+			let gets = 0;
+			const calls: { query: string }[] = [];
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				calls.push({ query });
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					gets += 1;
+					const w = sampleWorkflow();
+					if (gets > 1) {
+						// The verification read: the nested key was silently stripped.
+						(w.tasks[0] as Record<string, unknown>).input = { json_body: { status: {} } };
+					}
+					return { data: { workflow: w } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: '2000' } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{
+								op: 'update_task',
+								name: 'start',
+								set: { input: { json_body: { status: { name: 'In Progress' } } } },
+							},
+						],
+					},
+				},
+				deps,
+			);
+			assert.strictEqual(gets, 2, 'the save is verified with a re-read');
+			assert.match(output, /Applied 1 operation/, 'the edit still reports what was applied');
+			assert.match(output, /WARNING — the server did not store/i);
+			assert.match(output, /task "start": input\.json_body\.status\.name/);
+			assert.match(output, /inputSchema/, 'explains why the server dropped the key');
+		});
+
+		test('buddy_workflow_edit skips the verification read when no operation carries input', async () => {
+			const { deps, calls } = makeDeps();
+			await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [{ op: 'connect', from: 'end', to: 'start' }],
+					},
+				},
+				deps,
+			);
+			const gets = calls.filter(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.strictEqual(gets.length, 1, 'no verification read for a graph-only edit');
+		});
+
+		test('buddy_workflow_edit notes a failed verification read without failing the edit', async () => {
+			let gets = 0;
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					gets += 1;
+					if (gets > 1) return { errors: [{ message: 'read timed out' }] };
+					return { data: { workflow: sampleWorkflow() } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: '2000' } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [{ op: 'update_task', name: 'start', set: { input: { params: { text: 'x' } } } }],
+					},
+				},
+				deps,
+			);
+			assert.match(output, /Applied 1 operation/, 'the edit itself succeeded');
+			assert.match(output, /could not verify/i);
+		});
+
+		test('buddy_workflow_edit verifies inputs when the same operation renames the task', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{
+								op: 'update_task',
+								name: 'start',
+								set: { name: 'renamed', input: { params: { text: 'x' } } },
+							},
+						],
+					},
+				},
+				deps,
+			);
+			const gets = calls.filter(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.strictEqual(gets.length, 2, 'the save is verified with a re-read despite the rename');
+			assert.match(output, /WARNING — the server did not store/i);
+			assert.match(output, /task "renamed": input\.params/);
+		});
+
+		test('buddy_workflow_edit verifies inputs when a later operation renames the task', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{ op: 'update_task', name: 'start', set: { input: { params: { text: 'x' } } } },
+							{ op: 'update_task', name: 'start', set: { name: 'renamed' } },
+						],
+					},
+				},
+				deps,
+			);
+			const gets = calls.filter(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.strictEqual(gets.length, 2, 'the touched task is still verified after the rename');
+			assert.match(output, /task "renamed": input\.params/);
+		});
+
+		test('buddy_workflow_edit does not verify a task deleted later in the batch', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{ op: 'update_task', name: 'start', set: { input: { params: { text: 'x' } } } },
+							{ op: 'delete_task', name: 'start' },
+						],
+					},
+				},
+				deps,
+			);
+			const gets = calls.filter(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.strictEqual(gets.length, 1, 'no verification read when the touched task was deleted');
+			assert.doesNotMatch(output, /WARNING/);
+		});
+
+		test('buddy_workflow_edit warns when an explicit input clear leaves stored keys behind', async () => {
+			const calls: { query: string; variables?: Record<string, unknown> }[] = [];
+			let getCount = 0;
+			const workflowWithInput = (input: Record<string, unknown>) => ({
+				...sampleWorkflow(),
+				tasks: sampleTasks().map(task => (task.name === 'start' ? { ...task, input } : task)),
+			});
+			const execute: GraphqlToolDeps['execute'] = async (query, variables) => {
+				calls.push({ query, variables });
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					getCount++;
+					return { data: { workflow: workflowWithInput({ stale: true }) } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: '2000' } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [{ op: 'update_task', name: 'start', set: { input: null } }],
+					},
+				},
+				deps,
+			);
+
+			assert.strictEqual(getCount, 2, 'the explicit clear is verified with a re-read');
+			assert.match(output, /WARNING — the server did not store/i);
+			assert.match(output, /task "start": input\.stale/);
 		});
 
 		test('buddy_workflow_edit retries once on a version conflict with the fresh token', async () => {
@@ -1423,6 +1886,123 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /input:/, 'failed task shows the input it received');
 			assert.match(output, /start: succeeded/);
 			assert.ok(!output.includes('"ok":true'), "succeeded task's result is hidden by default");
+		});
+
+		test('buddy_execution_logs verifies an explicit orgId owns the execution before reading task logs', async () => {
+			const { deps, calls } = makeDeps({
+				executionOwnerOrgId: 'org-2',
+				taskLogs: [{ originalWorkflowTaskName: 'other_org_task', status: 'succeeded' }],
+			});
+
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', orgId: 'org-1' } },
+						deps,
+					),
+				/execution exec-1.*org org-1/i,
+			);
+			assert.ok(
+				!calls.some(c => c.query.includes('RewstBuddyTaskLogs')),
+				'task logs are not fetched until ownership is proven',
+			);
+		});
+
+		test('buddy_execution_logs tries alternates when the primary session errors', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyExecutions')) {
+						return { data: { workflowExecutions: [{ id: (variables?.where as { id: string }).id }] } };
+					}
+					if (query.includes('RewstBuddyTaskLogs')) throw new Error('primary stale');
+					return { data: {} };
+				},
+			};
+			deps.alternates = [
+				{
+					isEnabled: () => true,
+					confirmMutation: async () => true,
+					execute: async (query, variables) => {
+						if (query.includes('RewstBuddyExecutions')) {
+							return { data: { workflowExecutions: [{ id: (variables?.where as { id: string }).id }] } };
+						}
+						if (query.includes('RewstBuddyTaskLogs')) {
+							return {
+								data: { taskLogs: [{ originalWorkflowTaskName: 'do_thing', status: 'succeeded' }] },
+							};
+						}
+						return { data: {} };
+					},
+				},
+			];
+
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+
+			assert.match(output, /do_thing: succeeded/);
+			assert.match(output, /another active session/i);
+		});
+
+		test('buddy_execution_logs sweeps alternate sessions when the primary sees no rows', async () => {
+			// An execution in another account's org hierarchy returns zero rows on
+			// the primary session; the tool must try the other active sessions
+			// (issue #116). The first alternate here errors and must be skipped.
+			const depsFor = (taskLogs: unknown): GraphqlToolDeps => ({
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async query =>
+					query.includes('RewstBuddyTaskLogs')
+						? (taskLogs as { data?: unknown; errors?: unknown })
+						: { data: {} },
+			});
+			const deps = depsFor({ data: { taskLogs: [] } });
+			deps.alternates = [
+				depsFor({ errors: [{ message: 'no access' }] }),
+				depsFor({
+					data: { taskLogs: [{ originalWorkflowTaskName: 'do_thing', status: 'succeeded' }] },
+				}),
+			];
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-9' } },
+				deps,
+			);
+			assert.match(output, /1 task\(s\), 0 failed/);
+			assert.match(output, /do_thing: succeeded/);
+			assert.match(output, /another active session/i);
+		});
+
+		test('buddy_execution_logs explains visibility when no session has rows', async () => {
+			const empty = (): GraphqlToolDeps => ({
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async () => ({ data: { taskLogs: [] } }),
+			});
+			const deps = empty();
+			deps.alternates = [empty()];
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-9' } },
+				deps,
+			);
+			assert.match(output, /0 task\(s\)/);
+			assert.match(output, /none of the \d+ active session/i);
+		});
+
+		test('buddy_execution_logs spec accepts an optional orgId for session routing', () => {
+			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME);
+			assert.ok(spec, 'buddy_execution_logs spec exists');
+			assert.match(spec.args, /"orgId"\?/);
+			const orgId = (spec.inputSchema as { properties: Record<string, { description?: string }> }).properties
+				.orgId;
+			assert.ok(orgId, 'inputSchema declares orgId');
+			assert.match(orgId.description ?? '', /session|account/i);
+			assert.ok(
+				!(spec.inputSchema as { required?: string[] }).required?.includes('orgId'),
+				'orgId stays optional',
+			);
 		});
 
 		test('buddy_execution_logs failedOnly lists only failed tasks', async () => {

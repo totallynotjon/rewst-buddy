@@ -108,7 +108,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, with?, x?, y?}; update_task {id|name, set:{...}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. It does not expose parallel task controls: new tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, with?, x?, y?}; update_task {id|name, set:{name?, input?, action? or subWorkflowId?, publishResultAs?, timeout?, description?, with?}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you); set_output {outputs: {name: "<jinja>"} object or [{name, value}] array} (replace the workflow\'s caller-visible outputs; raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. PREFER COMPOSITION over one giant canvas: give a chunky reusable sequence (ticket lifecycle, user lookup, license handling) its own workflow with set_inputs for its run inputs and set_output for its return values, then call it with add_task subWorkflowId — the calling task reads RESULT.<name> for exactly the names set_output declared (or CTX.<publishResultAs>.<name> when it sets publishResultAs). A single canvas growing past roughly 15-20 tasks with distinct concerns is a sign to split. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. At runtime a task follows at most one outgoing transition — the first, in listed order, whose condition holds — so a custom-condition edge followed by the "{{ SUCCEEDED }}" catch-all forms a clean two-way branch. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. A transition\'s publish entries apply whenever that transition is taken, including on {{ FAILED }} edges, and entries on one transition evaluate in order (a later entry can read an earlier one from CTX); transition publish is the only place to compute context variables — tasks have no publish of their own, only publishResultAs for their raw result. Inside a with.items loop task, reference the current element as the callable {{ item() }} (not CTX.item); when such a task sets publishResultAs, the published value is a list with one wrapper per item, each holding that item\'s result. It does not expose parallel task controls: new tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -195,13 +195,18 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	},
 	{
 		name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
-		args: '{"executionId": string, "failedOnly"?: boolean, "includeResult"?: boolean}',
+		args: '{"executionId": string, "orgId"?: string, "failedOnly"?: boolean, "includeResult"?: boolean}',
 		description:
-			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }).",
+			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }). Each signed-in Rewst session only sees its own org hierarchy: if the first session has no rows for the execution, the other active sessions are checked automatically; pass orgId (the org that owns the execution) to query the right session directly.",
 		inputSchema: {
 			type: 'object',
 			properties: {
 				executionId: { type: 'string', description: 'The workflow execution id to inspect.' },
+				orgId: {
+					type: 'string',
+					description:
+						'Optional: the org that owns the execution — routes the lookup to the session managing that org (useful with several signed-in accounts).',
+				},
 				failedOnly: { type: 'boolean', description: 'List only failed tasks (default false).' },
 				includeResult: {
 					type: 'boolean',
@@ -215,7 +220,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: 'buddy_render_jinja',
 		args: '{"orgId": string, "template"?: string, "executionId"?: string, "vars"?: object, "contextIndex"?: number, "keys"?: boolean}',
 		description:
-			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. By default the last context snapshot of the run is used; contextIndex picks another. Returns the rendered value, or the Jinja error if it fails.",
+			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. An execution's stored snapshots are per-publish deltas (each holds only the keys that publish wrote), so by default the tool merges them all, in order, into one cumulative context — the closest view of the run's final CTX; pass contextIndex to inspect one raw delta instead. Returns the rendered value, or the Jinja error if it fails.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -236,7 +241,8 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 				},
 				contextIndex: {
 					type: 'number',
-					description: 'Which context snapshot of the execution to use (default: the last/most-complete).',
+					description:
+						'Inspect a single raw snapshot (a per-publish delta) by index instead of the default merged context.',
 				},
 				keys: {
 					type: 'boolean',
@@ -319,6 +325,9 @@ interface RawWorkflow {
 	action?: { parameters?: Record<string, unknown> | null } | null;
 	updatedAt?: string | null;
 	input?: string[] | null;
+	// The caller-visible return contract: an ordered [{name: "<jinja>"}] list a
+	// sub-workflow renders at end of run — what its caller reads as RESULT.<name>.
+	output?: unknown;
 	inputSchema?: unknown;
 	outputSchema?: unknown;
 	varsSchema?: unknown;
@@ -332,7 +341,7 @@ const WORKFLOW_GET_QUERY = `query RewstBuddyWorkflowGet($where: WorkflowWhereInp
 		id name description type schemaVersion version orgId updatedAt
 		organization { id name }
 		action { parameters }
-		input inputSchema outputSchema varsSchema metadata timeout
+		input output inputSchema outputSchema varsSchema metadata timeout
 		tasks {
 			id name actionId description input metadata
 			transitionMode publishResultAs join timeout humanSecondsSaved
@@ -385,6 +394,11 @@ interface PublishEntry {
 	value: unknown;
 }
 
+interface TaskVerifyFields {
+	input?: boolean;
+	with?: boolean;
+}
+
 export function normalizePublish(input: unknown): PublishEntry[] {
 	if (input == null) return [];
 	const entries: PublishEntry[] = [];
@@ -403,6 +417,25 @@ export function normalizePublish(input: unknown): PublishEntry[] {
 		for (const [key, value] of Object.entries(input as Record<string, unknown>)) entries.push({ key, value });
 	}
 	return entries;
+}
+
+function normalizeOutputEntries(input: object): PublishEntry[] {
+	if (Array.isArray(input)) {
+		return input.map(entry => {
+			if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+				throw new Error('set_output array entries must be objects shaped as {name, value}.');
+			}
+			const record = entry as Record<string, unknown>;
+			if (typeof record.name !== 'string' || record.name.trim() === '' || !('value' in record)) {
+				throw new Error('set_output array entries must include non-empty "name" and present "value".');
+			}
+			return { key: record.name, value: record.value };
+		});
+	}
+	return Object.entries(input as Record<string, unknown>).map(([key, value]) => {
+		if (key.trim() === '') throw new Error('set_output object output names must be non-empty.');
+		return { key, value };
+	});
 }
 
 // ---------------------------------------------------------------------------
@@ -887,14 +920,22 @@ function droppedParallelControlsNote(source: Record<string, unknown>): string {
 
 /**
  * Applies operations to a copy of the task list. Action refs in add/update ops
- * are resolved to ids beforehand via actionIdByRef. Returns the new task list
- * and a human-readable summary of what changed. Pure — no network.
+ * are resolved to ids beforehand via actionIdByRef. Returns the new task list,
+ * a human-readable summary of what changed, and the ids of tasks whose
+ * input/with an operation supplied (recorded while applying, so a rename in the
+ * same batch cannot detach them from the post-save verification). Pure — no
+ * network.
  */
 export function applyOperations(
 	tasks: RawTask[],
 	operations: WorkflowOperation[],
 	actionIdByRef: Map<string, string>,
-): { tasks: RawTask[]; applied: string[]; workflow: Record<string, unknown> } {
+): {
+	tasks: RawTask[];
+	applied: string[];
+	workflow: Record<string, unknown>;
+	verifyFields: Map<string, TaskVerifyFields>;
+} {
 	const next: RawTask[] = tasks.map(t => ({
 		...t,
 		next: (t.next ?? []).map(n => ({ ...n, do: [...(n.do ?? [])] })),
@@ -903,6 +944,15 @@ export function applyOperations(
 	// Workflow-level field changes (e.g. set_inputs) collected here, applied over
 	// the read-back workflow when it is converted to WorkflowInput.
 	const workflow: Record<string, unknown> = {};
+	// Tasks worth verifying after the save: those an operation supplied an input
+	// or with for. Graph-only edits (connect, reposition, autolayout…) record
+	// nothing, so they stay one read.
+	const verifyFields = new Map<string, TaskVerifyFields>();
+	const markVerify = (id: string, field: keyof TaskVerifyFields) => {
+		const fields = verifyFields.get(id) ?? {};
+		fields[field] = true;
+		verifyFields.set(id, fields);
+	};
 
 	const resolveActionId = (action: string): string => {
 		if (isActionIdShape(action)) return action;
@@ -947,6 +997,8 @@ export function applyOperations(
 					setPosition(task, operation.x, operation.y);
 				}
 				next.push(task);
+				if ('input' in operation) markVerify(id, 'input');
+				if ('with' in operation) markVerify(id, 'with');
 				applied.push(
 					`add_task ${name} (${id}) ${subWorkflowId ? `subWorkflow=${subWorkflowId}` : `action=${action}`}${droppedParallelControlsNote(operation)}`,
 				);
@@ -965,6 +1017,8 @@ export function applyOperations(
 				if ('timeout' in set) task.timeout = coerceTaskNumber(set.timeout, 'timeout');
 				if ('description' in set) task.description = set.description as string;
 				if ('with' in set) task.with = coerceObjectField(set.with, 'task "with"') as RawTask['with'];
+				if ('input' in set) markVerify(task.id, 'input');
+				if ('with' in set) markVerify(task.id, 'with');
 				applied.push(`update_task ${task.name} (${task.id})${droppedParallelControlsNote(set)}`);
 				break;
 			}
@@ -983,6 +1037,7 @@ export function applyOperations(
 						return !(hadTargets && transition.do.length === 0);
 					});
 				}
+				verifyFields.delete(task.id);
 				applied.push(`delete_task ${task.name} (${task.id})`);
 				break;
 			}
@@ -1119,6 +1174,29 @@ export function applyOperations(
 				applied.push(`set_inputs (${names.length}: ${names.join(', ') || 'none'})`);
 				break;
 			}
+			case 'set_output': {
+				// The workflow's outputs are its return contract to callers: when
+				// another workflow runs this one as a sub-workflow task, RESULT.<name>
+				// (or CTX.<publishResultAs>.<name>) is exactly these entries, rendered
+				// at end of run. Stored as the API's ordered [{name: "<jinja>"}] list.
+				const raw = operation.outputs;
+				if (raw == null || typeof raw !== 'object') {
+					throw new Error(
+						'set_output requires "outputs": a {name: "<jinja>"} object or [{name, value}] array (an empty array clears the outputs).',
+					);
+				}
+				const entries = normalizeOutputEntries(raw);
+				// Output values are Jinja expression strings; wrap raw scalars the same
+				// way set_inputs wraps defaults so a literal true/3 still renders.
+				workflow.output = entries.map(entry => ({
+					[entry.key]:
+						typeof entry.value === 'boolean' || typeof entry.value === 'number'
+							? `{{ ${entry.value} }}`
+							: entry.value,
+				}));
+				applied.push(`set_output (${entries.length}: ${entries.map(entry => entry.key).join(', ') || 'none'})`);
+				break;
+			}
 			default:
 				throw new Error(`Unknown operation "${op}".`);
 		}
@@ -1128,7 +1206,7 @@ export function applyOperations(
 	orderTransitionsByCondition(next);
 	ensureTaskDefaults(next);
 	layoutNewTasks(next);
-	return { tasks: next, applied, workflow };
+	return { tasks: next, applied, workflow, verifyFields };
 }
 
 /**
@@ -1412,11 +1490,17 @@ function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary
 		type: w.type ?? undefined,
 		inputs,
 	};
+	// Outputs are the caller-visible return contract ([{name: "<jinja>"}] on the
+	// API); shown as name/value pairs so a caller knows what RESULT.<name> holds.
+	const outputEntries = normalizePublish(Array.isArray(w.output) ? w.output : []);
+	if (outputEntries.length > 0) {
+		workflow.outputs = outputEntries.map(entry => ({ name: entry.key, value: entry.value }));
+	}
 	if (full) workflow.versionToken = w.updatedAt;
 
 	const note = full
-		? 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). When troubleshooting a condition or expression, render it against a recent execution with buddy_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").'
-		: 'Analysis view: task ids, transition ids, canvas positions, and the version token are omitted, and tasks/edges are referenced by NAME — which is exactly what buddy_workflow_edit operations use, so you can edit straight from this view. Call buddy_workflow_get again with detail:"full" only to reposition a task or target one specific transition by its id. To edit or run, pass workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). Before changing a condition or expression, confirm it with buddy_render_jinja against a recent execution (types matter: a boolean is not the string "true").';
+		? 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). "workflow.outputs" are the return contract a caller reads from this workflow as RESULT.<name>; change them with the set_output operation. When troubleshooting a condition or expression, render it against a recent execution with buddy_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").'
+		: 'Analysis view: task ids, transition ids, canvas positions, and the version token are omitted, and tasks/edges are referenced by NAME — which is exactly what buddy_workflow_edit operations use, so you can edit straight from this view. Call buddy_workflow_get again with detail:"full" only to reposition a task or target one specific transition by its id. To edit or run, pass workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). "workflow.outputs" are the return contract a caller reads from this workflow as RESULT.<name>; change them with the set_output operation. Before changing a condition or expression, confirm it with buddy_render_jinja against a recent execution (types matter: a boolean is not the string "true").';
 
 	return formatWorkflowOutput(JSON.stringify({ workflow, nodes, edges, note }, null, 1));
 }
@@ -1495,18 +1579,28 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	// Resolve the render context (CTX). An executionId is fetched server-side so the
 	// (large) run context never enters the chat; vars is an inline alternative.
 	let vars = request.args.vars && typeof request.args.vars === 'object' ? (request.args.vars as object) : undefined;
+	let contextNote = '';
 	const executionId = asStringArg(request.args, 'executionId');
 	if (executionId) {
+		await assertExecutionBelongsToOrg(deps, executionId, orgId);
 		const result = await deps.execute(EXECUTION_CONTEXTS_QUERY, { id: executionId });
 		const error = firstErrorMessage(result);
 		if (error) throw new Error(`Failed to read execution context: ${error}`);
 		const raw = (result.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts;
 		const snapshots = Array.isArray(raw) ? raw : raw ? [raw] : [];
 		if (snapshots.length === 0) throw new Error(`Execution ${executionId} has no context to render against.`);
-		const requested =
-			typeof request.args.contextIndex === 'number' ? request.args.contextIndex : snapshots.length - 1;
-		const index = Math.max(0, Math.min(snapshots.length - 1, requested));
-		vars = snapshots[index] as object;
+		if (typeof request.args.contextIndex === 'number') {
+			const index = Math.max(0, Math.min(snapshots.length - 1, request.args.contextIndex));
+			vars = snapshots[index] as object;
+			contextNote = ` (snapshot ${index} of ${snapshots.length}, unmerged)`;
+		} else {
+			// The stored snapshots are per-publish DELTAS, not cumulative states —
+			// the last one holds only the keys of the run's final publish. Merge
+			// them in order so the default context is the closest view of the
+			// run's final CTX (later writes to a key win).
+			vars = Object.assign({}, ...snapshots.filter(isPlainObject)) as object;
+			contextNote = ` (merged from ${snapshots.length} snapshot(s))`;
+		}
 	}
 	if (!vars) {
 		throw new Error(
@@ -1517,7 +1611,7 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 	if (keysMode) {
 		const keys = Object.keys(vars as Record<string, unknown>).sort();
 		return formatWorkflowOutput(
-			`Context top-level keys (${keys.length}): ${keys.join(', ') || '(none)'}\n\nDrill in with {{ CTX.<key> }}. System vars: execution id = CTX.execution_id, org id = CTX.organization.id, this workflow's id = CTX.trigger_instance.trigger.workflow_id.`,
+			`Context top-level keys (${keys.length}): ${keys.join(', ') || '(none)'}${contextNote}\n\nDrill in with {{ CTX.<key> }}. System vars: execution id = CTX.execution_id, org id = CTX.organization.id, this workflow's id = CTX.trigger_instance.trigger.workflow_id.`,
 		);
 	}
 
@@ -1543,6 +1637,98 @@ function requireScopeFields(toolName: string, args: Record<string, unknown>): { 
 	return { workflowId: asStringArg(args, 'workflowId')!, orgId: asStringArg(args, 'orgId')! };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * One-directional deep match: everything we sent must be present deep-equal in
+ * what the server stored; extra stored keys (server defaults) are fine. One
+ * deliberate looseness: two non-object values with the same textual value
+ * (1 vs "1") match, because the server round-trips scalars through its own
+ * typing and that is not data loss.
+ */
+function storedValueMatches(sent: unknown, stored: unknown): boolean {
+	if (sent === stored) return true;
+	if (isPlainObject(sent) && isPlainObject(stored)) {
+		return Object.entries(sent).every(([key, value]) => key in stored && storedValueMatches(value, stored[key]));
+	}
+	if (Array.isArray(sent) && Array.isArray(stored)) {
+		return sent.length === stored.length && sent.every((value, i) => storedValueMatches(value, stored[i]));
+	}
+	if (sent != null && stored != null && typeof sent !== 'object' && typeof stored !== 'object') {
+		return String(sent) === String(stored);
+	}
+	return false;
+}
+
+/**
+ * Lines describing where a stored value diverges from what was sent, each
+ * prefixed with the dotted path. The Rewst API filters a task's input against
+ * the action's inputSchema and reports success anyway — dropped keys and
+ * coerced values are only visible by re-reading and comparing.
+ */
+export function sentValueDivergences(sent: unknown, stored: unknown, path: string): string[] {
+	if (isPlainObject(sent) && isPlainObject(stored)) {
+		if (Object.keys(sent).length === 0 && Object.keys(stored).length > 0) {
+			return Object.entries(stored).map(
+				([key, value]) => `${path}.${key}: sent (none), stored ${briefValue(value)}`,
+			);
+		}
+		const lines: string[] = [];
+		for (const [key, value] of Object.entries(sent)) {
+			const childPath = `${path}.${key}`;
+			if (!(key in stored)) {
+				lines.push(`${childPath}: sent ${briefValue(value)}, not stored`);
+			} else {
+				lines.push(...sentValueDivergences(value, stored[key], childPath));
+			}
+		}
+		return lines;
+	}
+	return storedValueMatches(sent, stored) ? [] : [`${path}: sent ${briefValue(sent)}, stored ${briefValue(stored)}`];
+}
+
+/**
+ * Best-effort post-save check: re-read the workflow and compare each verified
+ * task's stored input/with against what was sent. Returns a suffix for the
+ * tool result — a WARNING listing divergences, a note when the verification
+ * read failed, or an empty string when everything matches.
+ */
+async function verifySavedTaskValues(
+	deps: GraphqlToolDeps,
+	workflowId: string,
+	orgId: string,
+	toVerify: { task: RawTask; fields: TaskVerifyFields }[],
+): Promise<string> {
+	try {
+		const saved = await fetchWorkflow(deps, workflowId, orgId);
+		const storedById = new Map(saved.tasks.map(t => [t.id, t]));
+		const problems: string[] = [];
+		for (const { task: sent, fields } of toVerify) {
+			const stored = storedById.get(sent.id);
+			if (!stored) {
+				problems.push(`- task "${sent.name}": not present in the saved workflow`);
+				continue;
+			}
+			const lines = [
+				...(fields.input ? sentValueDivergences(sent.input ?? {}, stored.input ?? {}, 'input') : []),
+				...(fields.with ? sentValueDivergences(sent.with ?? {}, stored.with ?? {}, 'with') : []),
+			];
+			problems.push(...lines.map(line => `- task "${sent.name}": ${line}`));
+		}
+		if (problems.length === 0) return '';
+		return (
+			`\n\nWARNING — the server did not store some task values as sent. Rewst filters a task's input against its action's inputSchema: unknown keys are dropped and mistyped values coerced (a string in an object-typed field becomes {}), while the save still reports success.\n` +
+			`${problems.join('\n')}\n` +
+			`Check the action's accepted parameters with buddy_action_search describe mode, then re-apply with matching keys and types.`
+		);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return `\n\nNote: the edit saved, but the tool could not verify the stored task inputs (${message}); re-read with buddy_workflow_get to confirm.`;
+	}
+}
+
 /**
  * The shared workflow write pipeline: resolve any action refs, read the current
  * workflow, apply the operations to the whole graph, and save with the correct
@@ -1561,7 +1747,7 @@ async function applyWorkflowMutation(
 	const apply = (source: RawWorkflow) => applyOperations(source.tasks, operations, actionIdByRef);
 
 	const workflow = await fetchWorkflow(deps, workflowId, orgId);
-	let { tasks, applied, workflow: overrides } = apply(workflow);
+	let { tasks, applied, workflow: overrides, verifyFields } = apply(workflow);
 	// Final gate before writing. In production this is already true (the user
 	// approved at prepareInvocation), but a direct/fallback caller can decline.
 	if (!(await deps.confirmMutation(`update workflow "${workflow.name}" (${applied.length} operation(s))`))) {
@@ -1576,7 +1762,7 @@ async function applyWorkflowMutation(
 	let error = firstErrorMessage(result);
 	if (error && /newer version/i.test(error)) {
 		const fresh = await fetchWorkflow(deps, workflowId, orgId);
-		({ tasks, applied, workflow: overrides } = apply(fresh));
+		({ tasks, applied, workflow: overrides, verifyFields } = apply(fresh));
 		result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
 			workflow: workflowToInput(fresh, tasks, overrides),
 			openedAt: fresh.updatedAt,
@@ -1588,7 +1774,15 @@ async function applyWorkflowMutation(
 
 	const updated = (result.data as { updateWorkflow?: { name?: string; updatedAt?: string } } | undefined)
 		?.updateWorkflow;
-	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.`;
+	// The server can accept the save yet silently drop or coerce task input
+	// keys (schema filtering). Re-read and compare what this batch sent, so a
+	// "success" that lost data comes back as an explicit warning instead.
+	const toVerify = tasks.flatMap(task => {
+		const fields = verifyFields.get(task.id);
+		return fields ? [{ task, fields }] : [];
+	});
+	const verification = toVerify.length > 0 ? await verifySavedTaskValues(deps, workflowId, orgId, toVerify) : '';
+	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.${verification}`;
 }
 
 async function runWorkflowEdit(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
@@ -1647,6 +1841,30 @@ async function fetchTaskLogs(deps: GraphqlToolDeps, executionId: string): Promis
 	);
 }
 
+async function assertExecutionBelongsToOrg(deps: GraphqlToolDeps, executionId: string, orgId: string): Promise<void> {
+	const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, {
+		where: { id: executionId, orgId },
+		limit: 1,
+	});
+	const error = firstErrorMessage(result);
+	if (error) throw new Error(`Failed to verify execution ${executionId} in org ${orgId}: ${error}`);
+	const row = (
+		(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
+	).find((entry): entry is ExecutionRow => !!entry);
+	if (!row) {
+		throw new Error(`Execution ${executionId} was not found in org ${orgId}.`);
+	}
+}
+
+async function fetchTaskLogsForVisibleExecution(
+	deps: GraphqlToolDeps,
+	executionId: string,
+	orgId: string | undefined,
+): Promise<TaskLogRow[]> {
+	if (orgId) await assertExecutionBelongsToOrg(deps, executionId, orgId);
+	return fetchTaskLogs(deps, executionId);
+}
+
 function formatTaskLogs(rows: TaskLogRow[], opts: { failedOnly?: boolean; includeResult?: boolean }): string {
 	const visible = opts.failedOnly ? rows.filter(r => isFailedStatus(r.status)) : rows;
 	if (visible.length === 0) {
@@ -1672,12 +1890,50 @@ function formatTaskLogs(rows: TaskLogRow[], opts: { failedOnly?: boolean; includ
 async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const executionId = asStringArg(request.args, 'executionId');
 	if (!executionId) throw new Error('buddy_execution_logs requires "executionId".');
+	const orgId = asStringArg(request.args, 'orgId');
 	const failedOnly = request.args.failedOnly === true;
 	const includeResult = request.args.includeResult === true;
-	const rows = await fetchTaskLogs(deps, executionId);
+	let rows: TaskLogRow[] = [];
+	let sourceNote = '';
+	let firstError: unknown;
+	let hadVisibleSession = false;
+	const readFrom = async (candidate: GraphqlToolDeps): Promise<TaskLogRow[] | undefined> => {
+		try {
+			const found = await fetchTaskLogsForVisibleExecution(candidate, executionId, orgId);
+			hadVisibleSession = true;
+			return found;
+		} catch (error) {
+			firstError ??= error;
+			return undefined;
+		}
+	};
+	rows = (await readFrom(deps)) ?? [];
+	// A Rewst session only sees its own org hierarchy, so an execution owned by
+	// another signed-in account legitimately yields zero rows here (#116). The
+	// execution id is globally unique — sweep the other sessions before
+	// concluding the execution has no logs.
+	const alternates = deps.alternates ?? [];
+	if (rows.length === 0) {
+		for (const alternate of alternates) {
+			const alternateRows = await readFrom(alternate);
+			if (!alternateRows) continue;
+			rows = alternateRows;
+			if (rows.length > 0) {
+				sourceNote = ' (found via another active session)';
+				break;
+			}
+		}
+	}
+	if (rows.length === 0 && !hadVisibleSession && firstError) {
+		throw firstError instanceof Error ? firstError : new Error(String(firstError));
+	}
 	const failed = rows.filter(r => isFailedStatus(r.status)).length;
-	const header = `Execution ${executionId}: ${rows.length} task(s), ${failed} failed.`;
-	return formatWorkflowOutput(`${header}\n${formatTaskLogs(rows, { failedOnly, includeResult })}`);
+	const header = `Execution ${executionId}: ${rows.length} task(s), ${failed} failed.${sourceNote}`;
+	const emptyHint =
+		rows.length === 0 && alternates.length > 0
+			? `\nNone of the ${alternates.length + 1} active session(s) can see task logs for this execution — check the execution id, or sign in to the Rewst account whose org owns it.`
+			: '';
+	return formatWorkflowOutput(`${header}${emptyHint}\n${formatTaskLogs(rows, { failedOnly, includeResult })}`);
 }
 
 // ---------------------------------------------------------------------------
