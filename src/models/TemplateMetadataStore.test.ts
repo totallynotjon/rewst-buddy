@@ -505,6 +505,48 @@ suite('Unit: TemplateMetadataStore', () => {
 				"the surviving session's org metadata stays available",
 			);
 		});
+
+		test('should not let an in-flight load re-insert metadata for a session removed mid-load', async () => {
+			const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
+			const org2 = Fixtures.orgModel({ id: 'org-2', name: 'Org 2' });
+
+			const { session: session1, wrapper: wrapper1 } = createMockSession({
+				profile: { user: Fixtures.userFragment({ id: 'user-1' }), org: org1, allManagedOrgs: [org1] },
+			});
+			// Slow response: still in flight when the session is removed below.
+			wrapper1.when('listTemplates', {
+				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-org1', name: 'T1', orgId: org1.id })]),
+				delay: 150,
+			});
+			const { session: session2, wrapper: wrapper2 } = createMockSession({
+				profile: { user: Fixtures.userFragment({ id: 'user-2' }), org: org2, allManagedOrgs: [org2] },
+			});
+			wrapper2.when('listTemplates', {
+				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-org2', name: 'T2', orgId: org2.id })]),
+			});
+
+			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
+			LinkManager.addLink(makeTemplateLink(org2.id, org2.name, 'link-org2'));
+			SessionManager._setSessionsForTesting([session1, session2]);
+
+			TemplateMetadataStore.init();
+			// Remove while org 1's listTemplates response is still pending.
+			await new Promise(resolve => setTimeout(resolve, 50));
+			await SessionManager.removeSession('user-1');
+
+			// Let the delayed response land and any pending reload settle.
+			await new Promise(resolve => setTimeout(resolve, 300));
+
+			assert.strictEqual(
+				TemplateMetadataStore.getTemplateMetadata('t-org1'),
+				undefined,
+				'a load already in flight when the session was removed must not re-insert its metadata',
+			);
+			assert.ok(
+				TemplateMetadataStore.getTemplateMetadata('t-org2'),
+				"the surviving session's org metadata stays available",
+			);
+		});
 	});
 
 	suite('dispose()', () => {

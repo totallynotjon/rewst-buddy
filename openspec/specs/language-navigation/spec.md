@@ -66,6 +66,8 @@ cached metadata entry — and SHALL indicate when the template is unknown.
 - **THEN** those orgs' cached entries are dropped, so hovers and navigation do
   not offer templates whose session is gone
 - **AND** metadata for orgs a remaining session manages stays available
+- **AND** a metadata load already in flight at removal cannot re-insert the
+  dropped entries
 
 ### Requirement: Navigate to the referenced template
 
