@@ -1023,6 +1023,7 @@ suite('Unit: workflowTools', () => {
 				pollStatus: string;
 				pollError: string;
 				renderResult: unknown;
+				contexts: Record<string, unknown>[];
 				taskLogs: unknown[];
 				executions: unknown[];
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
@@ -1047,7 +1048,9 @@ suite('Unit: workflowTools', () => {
 					return updateResults[Math.min(updateIndex++, updateResults.length - 1)];
 				}
 				if (query.includes('RewstBuddyExecutionContexts')) {
-					return { data: { workflowExecutionContexts: [{ proceed: false }, { proceed: true }] } };
+					return {
+						data: { workflowExecutionContexts: over.contexts ?? [{ proceed: false }, { proceed: true }] },
+					};
 				}
 				if (query.includes('RewstBuddyRenderJinja')) {
 					// Echo the context value the tool passed, to prove it rendered against it.
@@ -1218,7 +1221,7 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(calls.length, 0, 'short-circuits without hitting the API');
 		});
 
-		test('buddy_render_jinja renders against an execution (last snapshot) and returns only the result', async () => {
+		test('buddy_render_jinja renders against an execution (merged snapshots) and returns only the result', async () => {
 			const { deps, calls } = makeDeps();
 			const output = await runWorkflowTool(
 				{
@@ -1227,7 +1230,7 @@ suite('Unit: workflowTools', () => {
 				},
 				deps,
 			);
-			// Mock has snapshots [{proceed:false},{proceed:true}]; default uses the last.
+			// Mock has snapshots [{proceed:false},{proceed:true}]; the merge keeps the latest value.
 			assert.match(output, /Rendered: true \(type boolean\)/);
 			assert.ok(
 				calls.some(c => c.query.includes('RewstBuddyExecutionContexts')),
@@ -1235,8 +1238,32 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
-		test('buddy_render_jinja honors contextIndex', async () => {
-			const { deps } = makeDeps();
+		test('buddy_render_jinja merges all delta snapshots by default', async () => {
+			// Execution context snapshots are per-publish DELTAS: the initial frame
+			// holds the run inputs, later frames only the keys each publish wrote.
+			// The default context must be the in-order merge of all of them.
+			const { deps, calls } = makeDeps({
+				contexts: [{ user_upn: 'a@b.c', mode: 'review' }, { ticket_id: '43' }, { automation_log: ['x'] }],
+			});
+			await runWorkflowTool(
+				{
+					tool: 'buddy_render_jinja',
+					args: { orgId: 'org-1', executionId: 'exec-1', template: '{{ CTX.user_upn }}' },
+				},
+				deps,
+			);
+			const render = calls.find(c => c.query.includes('RewstBuddyRenderJinja'))!;
+			assert.deepStrictEqual(
+				render.variables!.vars,
+				{ user_upn: 'a@b.c', mode: 'review', ticket_id: '43', automation_log: ['x'] },
+				'the render context is the cumulative merge, so early-frame keys stay visible',
+			);
+		});
+
+		test('buddy_render_jinja honors contextIndex as one raw delta, without merging', async () => {
+			const { deps, calls } = makeDeps({
+				contexts: [{ proceed: false, initial: true }, { proceed: true }],
+			});
 			const output = await runWorkflowTool(
 				{
 					tool: 'buddy_render_jinja',
@@ -1245,6 +1272,36 @@ suite('Unit: workflowTools', () => {
 				deps,
 			);
 			assert.match(output, /Rendered: false/);
+			const render = calls.find(c => c.query.includes('RewstBuddyRenderJinja'))!;
+			assert.deepStrictEqual(
+				render.variables!.vars,
+				{ proceed: false, initial: true },
+				'contextIndex selects the raw snapshot as-is',
+			);
+		});
+
+		test('buddy_render_jinja keys mode reports how many snapshots were merged', async () => {
+			const { deps } = makeDeps({
+				contexts: [{ a: 1 }, { b: 2 }, { a: 3 }],
+			});
+			const output = await runWorkflowTool(
+				{ tool: 'buddy_render_jinja', args: { orgId: 'org-1', executionId: 'exec-1', keys: true } },
+				deps,
+			);
+			assert.match(output, /Context top-level keys \(2\): a, b/);
+			assert.match(output, /merged from 3 snapshot/i);
+		});
+
+		test('buddy_render_jinja spec describes snapshots as merged deltas', () => {
+			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === 'buddy_render_jinja');
+			assert.ok(spec, 'buddy_render_jinja spec exists');
+			assert.match(spec.description, /per-publish deltas/i);
+			assert.match(spec.description, /merges/i);
+			assert.doesNotMatch(spec.description, /the last context snapshot of the run is used/i);
+			const contextIndex = (spec.inputSchema as { properties: { contextIndex: { description: string } } })
+				.properties.contextIndex;
+			assert.match(contextIndex.description, /raw|single/i);
+			assert.doesNotMatch(contextIndex.description, /most-complete/i);
 		});
 
 		test('buddy_render_jinja renders ad-hoc vars without an execution', async () => {
