@@ -77,6 +77,10 @@ function sampleWorkflow() {
 const NO_ACTIONS = new Map<string, string>();
 const NOOP_REF = new Map([['core.noop', 'noop-id']]);
 
+async function flushMicrotasks(turns = 5): Promise<void> {
+	for (let i = 0; i < turns; i++) await Promise.resolve();
+}
+
 suite('Unit: workflowTools', () => {
 	setup(() => {
 		initTestEnvironment();
@@ -110,6 +114,21 @@ suite('Unit: workflowTools', () => {
 		assert.match(spec.description, /does not expose parallel task controls/i);
 	});
 
+	test('buddy_workflow_edit spec lists advanced task fields and loop concurrency', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.match(spec.description, /runAsOrgId/, 'documents task org override edits');
+		assert.match(spec.description, /packOverrides/, 'documents integration override edits');
+		assert.match(spec.description, /isMocked/, 'documents task mocking edits');
+		assert.match(spec.description, /mockInput/, 'documents mock input edits');
+		assert.match(spec.description, /with:\s*\{items, concurrency\}/, 'documents loop concurrency shape');
+		assert.match(
+			spec.description,
+			/add_task \{name, action \(ref or id\) OR subWorkflowId, input\?, publishResultAs\?, description\?, with\?, runAsOrgId\?, packOverrides\?, isMocked\?, mockInput\?, retry\?, x\?, y\?\}/,
+			'enumerates the add_task fields including description',
+		);
+	});
+
 	test('buddy_workflow_edit spec teaches sub-workflow composition through set_output', () => {
 		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
 		assert.ok(spec, 'buddy_workflow_edit spec exists');
@@ -139,9 +158,18 @@ suite('Unit: workflowTools', () => {
 		assert.match(spec.description, /\{\{ item\(\) \}\}/, 'documents the with.items current-element callable');
 		assert.match(
 			spec.description,
-			/update_task \{id\|name, set:\{name\?, input\?, action\? or subWorkflowId\?, publishResultAs\?, timeout\?, description\?, with\?\}\}/,
+			/update_task \{id\|name, set:\{name\?, input\?, action\? or subWorkflowId\?, publishResultAs\?, timeout\?, description\?, with\?, runAsOrgId\?, packOverrides\?, isMocked\?, mockInput\?, retry\?\}\}/,
 			'enumerates the update_task settable fields',
 		);
+	});
+
+	test('buddy_render_jinja spec documents key ordering and backreference escaping gotchas', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === 'buddy_render_jinja');
+		assert.ok(spec, 'buddy_render_jinja spec exists');
+		assert.match(spec.description, /alphabetizes dict keys/i);
+		assert.match(spec.description, /regex_replace/i);
+		assert.match(spec.description, /\\\\\\\\1/, 'shows the doubled escaping needed for backreferences');
+		assert.match(spec.description, /control character/i);
 	});
 
 	suite('normalizePublish()', () => {
@@ -573,6 +601,184 @@ suite('Unit: workflowTools', () => {
 			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { input: { msg: 'hi' } } }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
 			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.input, { msg: 'hi' });
+		});
+
+		test('update_task sets advanced task execution fields instead of silently dropping them', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'update_task',
+					name: 'start',
+					set: {
+						runAsOrgId: '{{ CTX.org_id }}',
+						packOverrides: [
+							{ packId: 'pack-1', packConfigId: 'cfg-1', configSelectionMode: 'USE_SELECTED_ID' },
+						],
+						isMocked: true,
+						mockInput: { id: 'mocked' },
+						retry: { count: '3', delay: '5', when: '{{ FAILED }}' },
+					},
+				},
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			const start = tasks.find(t => t.name === 'start')!;
+			assert.strictEqual(start.runAsOrgId, '{{ CTX.org_id }}');
+			assert.deepStrictEqual(start.packOverrides, [
+				{ packId: 'pack-1', packConfigId: 'cfg-1', configSelectionMode: 'USE_SELECTED_ID' },
+			]);
+			assert.strictEqual(start.isMocked, true);
+			assert.deepStrictEqual(start.mockInput, { id: 'mocked' });
+			assert.deepStrictEqual(start.retry, { count: '3', delay: '5', when: '{{ FAILED }}' });
+		});
+
+		test('add_task accepts advanced task execution fields', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'add_task',
+					name: 'notify',
+					action: 'core.noop',
+					runAsOrgId: '{{ CTX.org_id }}',
+					packOverrides: [{ packId: 'pack-1', configSelectionMode: 'USE_DEFAULT' }],
+					isMocked: true,
+					mockInput: { ok: true },
+					retry: { count: '2' },
+				},
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			const notify = tasks.find(t => t.name === 'notify')!;
+			assert.strictEqual(notify.runAsOrgId, '{{ CTX.org_id }}');
+			assert.deepStrictEqual(notify.packOverrides, [{ packId: 'pack-1', configSelectionMode: 'USE_DEFAULT' }]);
+			assert.strictEqual(notify.isMocked, true);
+			assert.deepStrictEqual(notify.mockInput, { ok: true });
+			assert.deepStrictEqual(notify.retry, { count: '2' });
+		});
+
+		test('add_task rejects unsupported fields so agents do not trust silent drops', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'notify', action: 'core.noop', definitelyWrong: true },
+			];
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, ops, NOOP_REF),
+				/Unsupported add_task field "definitelyWrong"/,
+			);
+		});
+
+		test('advanced task fields reject unsupported nested fields', () => {
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[
+							{
+								op: 'add_task',
+								name: 'notify',
+								action: 'core.noop',
+								packOverrides: [{ packId: 'pack-1', configSelectionMode: 'USE_DEFAULT', extra: true }],
+							},
+						],
+						NOOP_REF,
+					),
+				/Unsupported packOverrides\[0\] field "extra"/,
+			);
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[
+							{
+								op: 'update_task',
+								name: 'start',
+								set: { retry: { count: '2', delay: '5', extra: true } },
+							},
+						],
+						NO_ACTIONS,
+					),
+				/Unsupported retry field "extra"/,
+			);
+		});
+
+		test('packOverrides rejects unknown config mode values before save', () => {
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[
+							{
+								op: 'add_task',
+								name: 'notify',
+								action: 'core.noop',
+								packOverrides: [{ packId: 'pack-1', configSelectionMode: 'USE_SELCTED_ID' }],
+							},
+						],
+						NOOP_REF,
+					),
+				/packOverrides\[0\]\.configSelectionMode.*USE_SELCTED_ID/,
+			);
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[
+							{
+								op: 'update_task',
+								name: 'start',
+								set: { packOverrides: [{ packId: 'pack-1', configFallbackMode: 'USE_DEFAUT' }] },
+							},
+						],
+						NO_ACTIONS,
+					),
+				/packOverrides\[0\]\.configFallbackMode.*USE_DEFAUT/,
+			);
+		});
+
+		test('update_task rejects unsupported set fields so agents do not trust silent drops', () => {
+			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { definitelyWrong: true } }];
+			assert.throws(
+				() => applyOperations(sampleTasks() as never, ops, NO_ACTIONS),
+				/Unsupported update_task\.set field "definitelyWrong"/,
+			);
+		});
+
+		test('add_task accepts a description like update_task does', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'notify', action: 'core.noop', description: 'Sends the alert' },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			assert.strictEqual(tasks.find(t => t.name === 'notify')!.description, 'Sends the alert');
+		});
+
+		test('mockInput parses a JSON-string payload back to an object (not a char-indexed blob)', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'add_task',
+					name: 'notify',
+					action: 'core.noop',
+					isMocked: true,
+					mockInput: '{"ok": true}',
+				},
+				{ op: 'update_task', name: 'start', set: { isMocked: true, mockInput: '{"id": "mocked"}' } },
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'notify')!.mockInput, { ok: true });
+			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.mockInput, { id: 'mocked' });
+		});
+
+		test('retry.count rejects non-scalar values instead of stringifying garbage', () => {
+			for (const count of [{ value: 3 }, [3], true]) {
+				assert.throws(
+					() =>
+						applyOperations(
+							sampleTasks() as never,
+							[{ op: 'update_task', name: 'start', set: { retry: { count } } }],
+							NO_ACTIONS,
+						),
+					/retry\.count must be a string or number/,
+				);
+			}
+		});
+
+		test('update_task.set x/y error points at the reposition op', () => {
+			const ops: WorkflowOperation[] = [{ op: 'update_task', name: 'start', set: { x: 100, y: 400 } }];
+			assert.throws(() => applyOperations(sampleTasks() as never, ops, NO_ACTIONS), /reposition \{task, x, y\}/);
 		});
 
 		test('update_task parses a JSON-string input back to an object (not a char-indexed blob)', () => {
@@ -1037,6 +1243,9 @@ suite('Unit: workflowTools', () => {
 				renderResult: unknown;
 				contexts: Record<string, unknown>[];
 				taskLogs: unknown[];
+				taskLogsByExecution: Record<string, unknown[]>;
+				childExecutions: unknown[];
+				childExecutionsError: string;
 				executions: unknown[];
 				executionOwnerOrgId: string;
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
@@ -1103,7 +1312,18 @@ suite('Unit: workflowTools', () => {
 					};
 				}
 				if (query.includes('RewstBuddyTaskLogs')) {
+					const where = (variables?.where ?? {}) as { workflowExecutionId?: string };
+					const byExecution = over.taskLogsByExecution ?? {};
+					if (where.workflowExecutionId && where.workflowExecutionId in byExecution) {
+						return { data: { taskLogs: byExecution[where.workflowExecutionId] } };
+					}
 					return { data: { taskLogs: over.taskLogs ?? [] } };
+				}
+				if (query.includes('RewstBuddyChildExecutions')) {
+					if (over.childExecutionsError) return { errors: [{ message: over.childExecutionsError }] };
+					return {
+						data: { workflowExecution: { id: 'exec-1', childExecutions: over.childExecutions ?? [] } },
+					};
 				}
 				if (query.includes('RewstBuddyWorkflowsIndex')) {
 					const all = over.indexWorkflows ?? [
@@ -1181,7 +1401,7 @@ suite('Unit: workflowTools', () => {
 			assert.match(parsed.note, /set_output/, 'the note points at set_output for changing the contract');
 		});
 
-		test('buddy_workflow_get hides task mode and join criteria', async () => {
+		test('buddy_workflow_get surfaces non-default advanced task fields only when behavior changes', async () => {
 			const task = (over: Record<string, unknown>) => ({
 				id: String(over.name),
 				actionId: 'x',
@@ -1202,9 +1422,23 @@ suite('Unit: workflowTools', () => {
 								action: { parameters: {} },
 								updatedAt: '1000',
 								tasks: [
-									task({ name: 'fanout', transitionMode: 'FOLLOW_ALL', join: 1 }),
+									task({
+										name: 'fanout',
+										transitionMode: 'FOLLOW_ALL',
+										join: 1,
+										runAsOrgId: '{{ CTX.org_id }}',
+										isMocked: true,
+										mockInput: { sample: 'value' },
+										retry: { count: '3', delay: '5', when: '{{ FAILED }}' },
+									}),
 									task({ name: 'merge', transitionMode: 'FOLLOW_FIRST', join: 0 }),
-									task({ name: 'plain', transitionMode: 'FOLLOW_FIRST', join: 1 }),
+									task({
+										name: 'plain',
+										transitionMode: 'FOLLOW_FIRST',
+										join: 1,
+										isMocked: false,
+										mockInput: { stale: true },
+									}),
 								],
 							},
 						},
@@ -1220,10 +1454,72 @@ suite('Unit: workflowTools', () => {
 				),
 			);
 			const byName = (n: string) => parsed.nodes.find((x: { name: string }) => x.name === n);
-			for (const name of ['fanout', 'merge', 'plain']) {
-				assert.ok(!('transitionMode' in byName(name)), `${name} hides transitionMode`);
-				assert.ok(!('join' in byName(name)), `${name} hides join`);
-			}
+			assert.strictEqual(byName('fanout').transitionMode, 'FOLLOW_ALL');
+			assert.ok(!('join' in byName('fanout')), 'default join is omitted');
+			assert.strictEqual(byName('fanout').runAsOrgId, '{{ CTX.org_id }}');
+			assert.strictEqual(byName('fanout').isMocked, true);
+			assert.deepStrictEqual(byName('fanout').mockInput, { sample: 'value' });
+			assert.deepStrictEqual(byName('fanout').retry, { count: '3', delay: '5', when: '{{ FAILED }}' });
+			assert.strictEqual(byName('merge').join, 0);
+			assert.ok(!('transitionMode' in byName('merge')), 'default mode is omitted');
+			assert.ok(!('isMocked' in byName('plain')), 'false mocked state is omitted');
+			assert.ok(!('mockInput' in byName('plain')), 'disabled mock payload is omitted');
+		});
+
+		test('buddy_workflow_get replaces a large mockInput with a size note in summary but keeps it in full', async () => {
+			const bigPayload = { blob: 'x'.repeat(2000) };
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					return {
+						data: {
+							workflow: {
+								id: 'wf-1',
+								name: 'Sample',
+								orgId: 'org-1',
+								organization: { id: 'org-1', name: 'Test Org' },
+								input: [],
+								action: { parameters: {} },
+								updatedAt: '1000',
+								tasks: [
+									{
+										id: 'mocked',
+										name: 'mocked',
+										actionId: 'x',
+										action: { ref: 'core.noop' },
+										next: [],
+										isMocked: true,
+										mockInput: bigPayload,
+									},
+								],
+							},
+						},
+					};
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			const summary = JSON.parse(
+				await runWorkflowTool(
+					{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1' } },
+					deps,
+				),
+			);
+			const summaryNode = summary.nodes[0];
+			assert.strictEqual(summaryNode.isMocked, true);
+			assert.strictEqual(
+				typeof summaryNode.mockInput,
+				'string',
+				'summary carries a placeholder, not the payload',
+			);
+			assert.match(summaryNode.mockInput, /detail:"full"/);
+			assert.ok(!JSON.stringify(summary).includes('xxxxxxxxxx'), 'payload does not leak into the summary');
+			const full = JSON.parse(
+				await runWorkflowTool(
+					{ tool: 'buddy_workflow_get', args: { workflowId: 'wf-1', orgId: 'org-1', detail: 'full' } },
+					deps,
+				),
+			);
+			assert.deepStrictEqual(full.nodes[0].mockInput, bigPayload, 'full detail keeps the verbatim payload');
 		});
 
 		test('buddy_action_search returns ranked matches', async () => {
@@ -1378,6 +1674,33 @@ suite('Unit: workflowTools', () => {
 			assert.doesNotMatch(output, /output truncated/);
 		});
 
+		test('buddy_render_jinja warns when the rendered value contains control characters', async () => {
+			const { deps } = makeDeps({ renderResult: '\u0001' });
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_render_jinja',
+					args: { orgId: 'org-1', vars: {}, template: "{{ 'x' | regex_replace('x', '\\\\1') }}" },
+				},
+				deps,
+			);
+			assert.match(output, /Rendered:/);
+			assert.match(output, /WARNING.*control character/i);
+			assert.match(output, /regex_replace.*\\\\\\\\1/i);
+		});
+
+		test('buddy_render_jinja does not warn about ordinary multiline or tabbed output', async () => {
+			const { deps } = makeDeps({ renderResult: 'line1\nline2\tcolumn\r\nend' });
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_render_jinja',
+					args: { orgId: 'org-1', vars: {}, template: "{{ items | join('\\n') }}" },
+				},
+				deps,
+			);
+			assert.match(output, /Rendered:/);
+			assert.doesNotMatch(output, /WARNING/, 'newlines, tabs, and carriage returns are legitimate output');
+		});
+
 		test('buddy_render_jinja requires an execution or vars', async () => {
 			const { deps } = makeDeps();
 			await assert.rejects(
@@ -1457,6 +1780,74 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /WARNING — the server did not store/i);
 			assert.match(output, /task "start": input\.json_body\.status\.name/);
 			assert.match(output, /inputSchema/, 'explains why the server dropped the key');
+		});
+
+		test('buddy_workflow_edit warns when the server did not store advanced task fields as sent', async () => {
+			let gets = 0;
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					gets += 1;
+					const workflow = sampleWorkflow();
+					if (gets > 1) {
+						workflow.tasks = sampleTasks().map(task =>
+							task.name === 'start'
+								? {
+										...task,
+										runAsOrgId: null,
+										packOverrides: [
+											{
+												packId: 'pack-1',
+												packConfigId: 'cfg-other',
+												configSelectionMode: 'USE_SELECTED_ID',
+											},
+										],
+									}
+								: task,
+						);
+					}
+					return { data: { workflow } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: '2000' } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{
+								op: 'update_task',
+								name: 'start',
+								set: {
+									runAsOrgId: '{{ CTX.org_id }}',
+									packOverrides: [
+										{
+											packId: 'pack-1',
+											packConfigId: 'cfg-1',
+											configSelectionMode: 'USE_SELECTED_ID',
+										},
+									],
+								},
+							},
+						],
+					},
+				},
+				deps,
+			);
+
+			assert.strictEqual(gets, 2, 'advanced task fields are verified with a re-read');
+			assert.match(output, /WARNING — the server did not store/i);
+			assert.match(output, /task "start": runAsOrgId/);
+			assert.match(output, /task "start": packOverrides\.0\.packConfigId/);
+			assert.match(output, /advanced configuration or field mapping/i);
 		});
 
 		test('buddy_workflow_edit skips the verification read when no operation carries input', async () => {
@@ -1848,6 +2239,29 @@ suite('Unit: workflowTools', () => {
 			assert.ok(!calls.some(c => c.query.includes('RewstBuddyTaskLogs')), 'no log fetch on success');
 		});
 
+		test('buddy_workflow_run timeout preserves execution id and last known status', async () => {
+			const originalNow = Date.now;
+			let now = 0;
+			Date.now = () => {
+				now += 50_000;
+				return now;
+			};
+			try {
+				const { deps } = makeDeps({ pollStatus: 'running' });
+				const output = await runWorkflowTool(
+					{
+						tool: WORKFLOW_RUN_TOOL_NAME,
+						args: { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' },
+					},
+					deps,
+				);
+				assert.match(output, /exec-new/, 'execution id is preserved');
+				assert.match(output, /Still running/i, 'last known status is preserved');
+			} finally {
+				Date.now = originalNow;
+			}
+		});
+
 		test('buddy_workflow_run surfaces a polling error instead of looping to the timeout', async () => {
 			const { deps } = makeDeps({ pollError: 'permission denied' });
 			await assert.rejects(
@@ -2040,6 +2454,405 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
+		test('buddy_execution_logs marks tasks that spawned sub-workflow executions', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [
+					{ originalWorkflowTaskName: 'call_sub', status: 'succeeded', taskExecutionId: 'te-1' },
+					{ originalWorkflowTaskName: 'plain', status: 'succeeded', taskExecutionId: 'te-2' },
+				],
+				childExecutions: [
+					{
+						id: 'exec-child',
+						status: 'succeeded',
+						createdAt: '1500',
+						parentTaskExecutionId: 'te-1',
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /call_sub: succeeded/);
+			assert.match(
+				output,
+				/sub-execution: Sub Flow \(exec-child, succeeded\)/,
+				'the spawning task names its child execution',
+			);
+			const annotations = output.split('\n').filter(line => line.startsWith('    sub-execution:'));
+			assert.strictEqual(annotations.length, 1, 'only the spawning task is marked, not plain tasks');
+			assert.match(output, /1 sub-workflow execution\(s\)/, 'the summary counts spawned children');
+			assert.match(output, /includeSubExecutions/, 'the summary names the drill-down option');
+		});
+
+		test('buddy_execution_logs lists sub-executions it cannot tie to a task', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'start', status: 'succeeded' }],
+				childExecutions: [
+					{
+						id: 'exec-orphan',
+						status: 'running',
+						createdAt: '1500',
+						parentTaskExecutionId: null,
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /Sub Flow \(exec-orphan, running\)/, 'unmatched children are still listed');
+		});
+
+		test('buddy_execution_logs keeps task logs when the sub-execution lookup fails', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'start', status: 'succeeded' }],
+				childExecutionsError: 'resolver broke',
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /start: succeeded/, 'the primary task logs still come back');
+			assert.match(output, /[Ss]ub-workflow executions could not be checked/);
+		});
+
+		test('buddy_execution_logs includeSubExecutions inlines child task logs', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'call_sub', status: 'succeeded', taskExecutionId: 'te-1' }],
+				childExecutions: [
+					{
+						id: 'exec-child',
+						status: 'failed',
+						createdAt: '1500',
+						parentTaskExecutionId: 'te-1',
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+				taskLogsByExecution: {
+					'exec-child': [
+						{
+							originalWorkflowTaskName: 'inner_task',
+							status: 'failed',
+							message: 'inner boom',
+							input: {},
+							result: {},
+						},
+					],
+				},
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: true },
+				},
+				deps,
+			);
+			assert.match(output, /Sub-execution Sub Flow \(exec-child, failed\):/);
+			assert.match(output, /inner_task: failed/);
+			assert.match(output, /inner boom/);
+		});
+
+		test('buddy_execution_logs failedOnly still surfaces sub-execution ids for hidden tasks', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [
+					{ originalWorkflowTaskName: 'call_sub', status: 'succeeded', taskExecutionId: 'te-1' },
+					{ originalWorkflowTaskName: 'broken', status: 'failed', message: 'boom', input: {}, result: {} },
+				],
+				childExecutions: [
+					{
+						id: 'exec-child',
+						status: 'failed',
+						createdAt: '1500',
+						parentTaskExecutionId: 'te-1',
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', failedOnly: true } },
+				deps,
+			);
+			assert.ok(!output.includes('call_sub:'), 'the succeeded spawning task itself stays hidden');
+			assert.match(
+				output,
+				/Sub Flow \(exec-child, failed\)/,
+				"a hidden task's child execution id is still listed in the footer",
+			);
+		});
+
+		test('buddy_execution_logs accepts includeSubExecutions as the string "true"', async () => {
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'call_sub', status: 'succeeded', taskExecutionId: 'te-1' }],
+				childExecutions: [
+					{
+						id: 'exec-child',
+						status: 'succeeded',
+						createdAt: '1500',
+						parentTaskExecutionId: 'te-1',
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+				taskLogsByExecution: {
+					'exec-child': [{ originalWorkflowTaskName: 'inner_task', status: 'succeeded' }],
+				},
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: 'true' },
+				},
+				deps,
+			);
+			assert.match(output, /Sub-execution Sub Flow \(exec-child, succeeded\):/, 'string flags are coerced');
+		});
+
+		test('buddy_execution_logs fetches sub-executions from the session that saw the rows', async () => {
+			const primaryCalls: string[] = [];
+			const primary: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async query => {
+					primaryCalls.push(query);
+					if (query.includes('RewstBuddyTaskLogs')) return { data: { taskLogs: [] } };
+					return { data: {} };
+				},
+			};
+			const alternateCalls: string[] = [];
+			const alternate: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async query => {
+					alternateCalls.push(query);
+					if (query.includes('RewstBuddyTaskLogs')) {
+						return {
+							data: {
+								taskLogs: [
+									{
+										originalWorkflowTaskName: 'call_sub',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						return {
+							data: {
+								workflowExecution: {
+									id: 'exec-1',
+									childExecutions: [
+										{
+											id: 'exec-child',
+											status: 'succeeded',
+											parentTaskExecutionId: 'te-1',
+											workflow: { id: 'wf-sub', name: 'Sub Flow' },
+										},
+									],
+								},
+							},
+						};
+					}
+					return { data: {} };
+				},
+			};
+			primary.alternates = [alternate];
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } },
+				primary,
+			);
+			assert.match(output, /sub-execution: Sub Flow \(exec-child, succeeded\)/);
+			assert.ok(
+				!primaryCalls.some(q => q.includes('RewstBuddyChildExecutions')),
+				'the primary session is not asked for children it cannot see',
+			);
+			assert.ok(
+				alternateCalls.some(q => q.includes('RewstBuddyChildExecutions')),
+				'children come from the session that produced the rows',
+			);
+		});
+
+		test('buddy_execution_logs caps how many sub-executions it inlines', async () => {
+			const children = Array.from({ length: 6 }, (_, i) => ({
+				id: `exec-c${i}`,
+				status: 'succeeded',
+				parentTaskExecutionId: null,
+				workflow: { id: 'wf-sub', name: `Sub ${i}` },
+			}));
+			const { deps } = makeDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'start', status: 'succeeded' }],
+				childExecutions: children,
+				taskLogsByExecution: Object.fromEntries(
+					children.map(c => [c.id, [{ originalWorkflowTaskName: 'inner', status: 'succeeded' }]]),
+				),
+			});
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: true },
+				},
+				deps,
+			);
+			const inlined = output.split('\n').filter(line => /^Sub-execution Sub \d/.test(line)).length;
+			assert.strictEqual(inlined, 5, 'only the first five children are inlined');
+			assert.match(output, /1 more sub-execution\(s\) not inlined/);
+		});
+
+		test('buddy_execution_logs starts inline sub-execution task-log reads in parallel', async () => {
+			const started: string[] = [];
+			const resolvers: ((rows: unknown[]) => void)[] = [];
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						const where = (variables?.where ?? {}) as { workflowExecutionId?: string };
+						if (where.workflowExecutionId === 'exec-1') {
+							return {
+								data: {
+									taskLogs: [
+										{
+											originalWorkflowTaskName: 'call_sub',
+											status: 'succeeded',
+											taskExecutionId: 'te-1',
+										},
+									],
+								},
+							};
+						}
+						started.push(where.workflowExecutionId ?? '');
+						return new Promise(resolve => {
+							resolvers.push((rows: unknown[]) => resolve({ data: { taskLogs: rows } }));
+						});
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						return {
+							data: {
+								workflowExecution: {
+									id: 'exec-1',
+									childExecutions: [
+										{
+											id: 'exec-a',
+											status: 'succeeded',
+											parentTaskExecutionId: 'te-1',
+											workflow: { id: 'wf-a', name: 'Sub A' },
+										},
+										{
+											id: 'exec-b',
+											status: 'succeeded',
+											parentTaskExecutionId: 'te-1',
+											workflow: { id: 'wf-b', name: 'Sub B' },
+										},
+									],
+								},
+							},
+						};
+					}
+					return { data: {} };
+				},
+			};
+
+			const outputPromise = runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: true },
+				},
+				deps,
+			);
+			await flushMicrotasks();
+
+			let startupFailure: unknown;
+			try {
+				assert.deepStrictEqual(
+					started,
+					['exec-a', 'exec-b'],
+					'both child log reads start before either child response resolves',
+				);
+			} catch (error) {
+				startupFailure = error;
+			}
+
+			resolvers
+				.splice(0)
+				.forEach((resolve, index) =>
+					resolve([{ originalWorkflowTaskName: index === 0 ? 'inner_a' : 'inner_b', status: 'succeeded' }]),
+				);
+			await flushMicrotasks();
+			resolvers
+				.splice(0)
+				.forEach(resolve => resolve([{ originalWorkflowTaskName: 'inner_b', status: 'succeeded' }]));
+			const output = await outputPromise;
+			if (startupFailure) throw startupFailure;
+
+			assert.ok(output.indexOf('Sub-execution Sub A') < output.indexOf('Sub-execution Sub B'));
+			assert.match(output, /inner_a: succeeded/);
+			assert.match(output, /inner_b: succeeded/);
+		});
+
+		test('buddy_execution_logs notes a child whose task logs cannot be read', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						const where = (variables?.where ?? {}) as { workflowExecutionId?: string };
+						if (where.workflowExecutionId === 'exec-child') throw new Error('child hidden');
+						return {
+							data: {
+								taskLogs: [
+									{
+										originalWorkflowTaskName: 'call_sub',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						return {
+							data: {
+								workflowExecution: {
+									id: 'exec-1',
+									childExecutions: [
+										{
+											id: 'exec-child',
+											status: 'succeeded',
+											parentTaskExecutionId: 'te-1',
+											workflow: { id: 'wf-sub', name: 'Sub Flow' },
+										},
+									],
+								},
+							},
+						};
+					}
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: true },
+				},
+				deps,
+			);
+			assert.match(output, /call_sub: succeeded/, 'parent logs survive the child read failure');
+			assert.match(output, /task logs could not be read \(child hidden\)/);
+		});
+
+		test('buddy_execution_logs spec documents sub-execution visibility and includeSubExecutions', () => {
+			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME);
+			assert.ok(spec, 'buddy_execution_logs spec exists');
+			assert.match(spec.args, /"includeSubExecutions"\?/);
+			assert.match(spec.description, /sub-workflow/i, 'description explains sub-workflow visibility');
+			assert.match(spec.description, /includeSubExecutions/);
+			const props = (spec.inputSchema as { properties: Record<string, unknown> }).properties;
+			assert.ok('includeSubExecutions' in props, 'inputSchema declares includeSubExecutions');
+		});
+
 		test('buddy_workflow_search indexes every accessible org and shows the org name', async () => {
 			const { deps } = makeDeps();
 			const out = await runWorkflowTool({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'onboarding' } }, deps);
@@ -2047,6 +2860,22 @@ suite('Unit: workflowTools', () => {
 			assert.match(out, /Acme Onboarding {2}\(id: wf-ccc\) {2}org: Acme Corp \(org-2\)/);
 			assert.ok(!out.includes('Offboarding'), 'only the matching workflows are listed');
 			assert.match(out, /across 2 org/, 'reports how many orgs were indexed');
+			assert.match(out, /orgs with indexed workflows: Primary Org \(org-1\), Acme Corp \(org-2\)/);
+		});
+
+		test('buddy_workflow_search names a requested org that has no workflows in the index', async () => {
+			const { deps } = makeDeps();
+			const out = await runWorkflowTool(
+				{ tool: WORKFLOW_SEARCH_TOOL_NAME, args: { query: 'onboarding', orgId: 'org-empty' } },
+				deps,
+			);
+			assert.match(out, /No matches/);
+			assert.match(
+				out,
+				/org-empty has no workflows in the index/,
+				'a zero-match against an absent org is explained, not left ambiguous',
+			);
+			assert.match(out, /no workflows.*or this session cannot see it/i);
 		});
 
 		test('buddy_workflow_search ranks an exact name match first', async () => {

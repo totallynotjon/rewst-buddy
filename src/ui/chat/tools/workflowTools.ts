@@ -108,7 +108,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: WORKFLOW_EDIT_TOOL_NAME,
 		args: '{"workflowId": string, "workflowName": string, "orgId": string, "orgName": string, "operations": object[], "comment"?: string}',
 		description:
-			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, with?, x?, y?}; update_task {id|name, set:{name?, input?, action? or subWorkflowId?, publishResultAs?, timeout?, description?, with?}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you); set_output {outputs: {name: "<jinja>"} object or [{name, value}] array} (replace the workflow\'s caller-visible outputs; raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. PREFER COMPOSITION over one giant canvas: give a chunky reusable sequence (ticket lifecycle, user lookup, license handling) its own workflow with set_inputs for its run inputs and set_output for its return values, then call it with add_task subWorkflowId — the calling task reads RESULT.<name> for exactly the names set_output declared (or CTX.<publishResultAs>.<name> when it sets publishResultAs). A single canvas growing past roughly 15-20 tasks with distinct concerns is a sign to split. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. At runtime a task follows at most one outgoing transition — the first, in listed order, whose condition holds — so a custom-condition edge followed by the "{{ SUCCEEDED }}" catch-all forms a clean two-way branch. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. A transition\'s publish entries apply whenever that transition is taken, including on {{ FAILED }} edges, and entries on one transition evaluate in order (a later entry can read an earlier one from CTX); transition publish is the only place to compute context variables — tasks have no publish of their own, only publishResultAs for their raw result. Inside a with.items loop task, reference the current element as the callable {{ item() }} (not CTX.item); when such a task sets publishResultAs, the published value is a list with one wrapper per item, each holding that item\'s result. It does not expose parallel task controls: new tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
+			'Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations (each an object with an "op" field): add_task {name, action (ref or id) OR subWorkflowId, input?, publishResultAs?, description?, with?, runAsOrgId?, packOverrides?, isMocked?, mockInput?, retry?, x?, y?}; update_task {id|name, set:{name?, input?, action? or subWorkflowId?, publishResultAs?, timeout?, description?, with?, runAsOrgId?, packOverrides?, isMocked?, mockInput?, retry?}}; delete_task {id|name} (also removes edges pointing at it); connect {from, to, when?, label?, publish?} (from/to are task names or ids); disconnect {from, to?|transitionId?}; set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}; reposition {task, x, y} (move a task to canvas coordinates); set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you); set_output {outputs: {name: "<jinja>"} object or [{name, value}] array} (replace the workflow\'s caller-visible outputs; raw booleans/numbers are wrapped for you). Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow\'s id — a workflow\'s id is its action id; there is no separate run-workflow action. PREFER COMPOSITION over one giant canvas: give a chunky reusable sequence (ticket lifecycle, user lookup, license handling) its own workflow with set_inputs for its run inputs and set_output for its return values, then call it with add_task subWorkflowId — the calling task reads RESULT.<name> for exactly the names set_output declared (or CTX.<publishResultAs>.<name> when it sets publishResultAs). A single canvas growing past roughly 15-20 tasks with distinct concerns is a sign to split. To branch on what a task returned, read RESULT.<field> in that task\'s own outgoing transition conditions, or CTX.<alias>.<field> when the task sets publishResultAs to <alias>; a task\'s or sub-workflow\'s internally published variables are NOT in this workflow\'s CTX. At runtime a task follows at most one outgoing transition — the first, in listed order, whose condition holds — so a custom-condition edge followed by the "{{ SUCCEEDED }}" catch-all forms a clean two-way branch. when defaults to "{{ SUCCEEDED }}"; the tool automatically orders each task\'s transitions so custom conditions come before the success catch-all. A transition\'s publish entries apply whenever that transition is taken, including on {{ FAILED }} edges, and entries on one transition evaluate in order (a later entry can read an earlier one from CTX); transition publish is the only place to compute context variables — tasks have no publish of their own, only publishResultAs for their raw result. with is with: {items, concurrency}; concurrency is a string. Inside a with.items loop task, reference the current element as the callable {{ item() }} (not CTX.item); when such a task sets publishResultAs, the published value is a list with one wrapper per item, each holding that item\'s result. It does not expose parallel task controls: new tasks use sequential graph defaults, and any `with.items` value is only per-action loop concurrency inside that one task. A new task is positioned on the canvas below the action it is connected from (leaving a gap) unless you pass x/y; x is canvas right, y is down, in free pixels. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -195,9 +195,9 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 	},
 	{
 		name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
-		args: '{"executionId": string, "orgId"?: string, "failedOnly"?: boolean, "includeResult"?: boolean}',
+		args: '{"executionId": string, "orgId"?: string, "failedOnly"?: boolean, "includeResult"?: boolean, "includeSubExecutions"?: boolean}',
 		description:
-			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }). Each signed-in Rewst session only sees its own org hierarchy: if the first session has no rows for the execution, the other active sessions are checked automatically; pass orgId (the org that owns the execution) to query the right session directly.",
+			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task that called a sub-workflow is marked with the sub-execution it spawned (workflow name, execution id, status) — a sub-workflow's own tasks are NOT in the parent's logs, so drill into a sub-execution by calling this tool again with its execution id, or pass includeSubExecutions:true to inline the task logs of the first few sub-executions. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }). Each signed-in Rewst session only sees its own org hierarchy: if the first session has no rows for the execution, the other active sessions are checked automatically; pass orgId (the org that owns the execution) to query the right session directly.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -212,6 +212,11 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 					type: 'boolean',
 					description: "Include every task's result, not just failed tasks' (default false).",
 				},
+				includeSubExecutions: {
+					type: 'boolean',
+					description:
+						'Also inline the task logs of the first few sub-workflow executions this run spawned (default false).',
+				},
 			},
 			required: ['executionId'],
 		},
@@ -220,7 +225,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = [
 		name: 'buddy_render_jinja',
 		args: '{"orgId": string, "template"?: string, "executionId"?: string, "vars"?: object, "contextIndex"?: number, "keys"?: boolean}',
 		description:
-			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. An execution's stored snapshots are per-publish deltas (each holds only the keys that publish wrote), so by default the tool merges them all, in order, into one cumulative context — the closest view of the run's final CTX; pass contextIndex to inspect one raw delta instead. Returns the rendered value, or the Jinja error if it fails.",
+			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. An execution's stored snapshots are per-publish deltas (each holds only the keys that publish wrote), so by default the tool merges them all, in order, into one cumulative context — the closest view of the run's final CTX; pass contextIndex to inspect one raw delta instead. Rewst context storage alphabetizes dict keys, so key order from dict.keys() may not match authoring order. For regex_replace backreferences, write '\\\\\\\\1' rather than '\\\\1'; an unexpected non-whitespace control character in the result usually means an escaping mistake. Returns the rendered value, or the Jinja error if it fails.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -397,6 +402,11 @@ interface PublishEntry {
 interface TaskVerifyFields {
 	input?: boolean;
 	with?: boolean;
+	runAsOrgId?: boolean;
+	packOverrides?: boolean;
+	isMocked?: boolean;
+	mockInput?: boolean;
+	retry?: boolean;
 }
 
 export function normalizePublish(input: unknown): PublishEntry[] {
@@ -882,6 +892,170 @@ function coerceTaskInput(value: unknown): Record<string, unknown> {
 	return coerceObjectField(value, 'task "input"');
 }
 
+function coerceNullableString(value: unknown, label: string): string | null {
+	if (value === null) return null;
+	if (typeof value === 'string') return value;
+	throw new Error(`${label} must be a string or null.`);
+}
+
+function coerceBoolean(value: unknown, label: string): boolean {
+	if (typeof value === 'boolean') return value;
+	throw new Error(`${label} must be a boolean.`);
+}
+
+const PACK_OVERRIDE_FIELDS = new Set([
+	'packId',
+	'packConfigId',
+	'configSelectionMode',
+	'configFallbackMode',
+	'searchInput',
+]);
+const PACK_CONFIG_SELECTION_MODES = new Set(['USE_DEFAULT', 'USE_NAME_SEARCH', 'USE_ORG_MAPPING', 'USE_SELECTED_ID']);
+const PACK_CONFIG_FALLBACK_MODES = new Set(['FAIL_ACTION', 'FAIL_WORKFLOW', 'USE_DEFAULT']);
+const RETRY_FIELDS = new Set(['count', 'delay', 'when']);
+
+function coercePackOverrides(value: unknown): PackOverride[] {
+	let raw = value;
+	if (typeof raw === 'string') {
+		try {
+			raw = JSON.parse(raw);
+		} catch {
+			throw new Error('packOverrides must be a JSON array; received a string that is not valid JSON.');
+		}
+	}
+	if (!Array.isArray(raw)) throw new Error('packOverrides must be an array of objects.');
+	return raw.map((entry, index) => {
+		if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+			throw new Error(`packOverrides[${index}] must be an object.`);
+		}
+		const record = entry as Record<string, unknown>;
+		rejectUnsupportedFields(record, PACK_OVERRIDE_FIELDS, `packOverrides[${index}]`);
+		const packId = str(record.packId);
+		if (!packId) throw new Error(`packOverrides[${index}].packId must be a non-empty string.`);
+		const out: PackOverride = { packId };
+		for (const key of ['packConfigId', 'configSelectionMode', 'configFallbackMode', 'searchInput'] as const) {
+			if (!(key in record)) continue;
+			const value = record[key];
+			if (value !== null && typeof value !== 'string') {
+				throw new Error(`packOverrides[${index}].${key} must be a string or null.`);
+			}
+			if (key === 'configSelectionMode' && typeof value === 'string' && !PACK_CONFIG_SELECTION_MODES.has(value)) {
+				throw new Error(
+					`packOverrides[${index}].configSelectionMode "${value}" is not supported; use one of ${[
+						...PACK_CONFIG_SELECTION_MODES,
+					].join(', ')}.`,
+				);
+			}
+			if (key === 'configFallbackMode' && typeof value === 'string' && !PACK_CONFIG_FALLBACK_MODES.has(value)) {
+				throw new Error(
+					`packOverrides[${index}].configFallbackMode "${value}" is not supported; use one of ${[
+						...PACK_CONFIG_FALLBACK_MODES,
+					].join(', ')}.`,
+				);
+			}
+			out[key] = value;
+		}
+		return out;
+	});
+}
+
+function coerceRetry(value: unknown): RawTask['retry'] {
+	if (value === null) return null;
+	const record = coerceObjectField(value, 'task "retry"');
+	rejectUnsupportedFields(record, RETRY_FIELDS, 'retry');
+	const count = record.count;
+	if (count === undefined || count === null || count === '') {
+		throw new Error('retry.count must be present.');
+	}
+	if (typeof count !== 'string' && typeof count !== 'number') {
+		throw new Error('retry.count must be a string or number.');
+	}
+	const out: NonNullable<RawTask['retry']> = { count: String(count) };
+	for (const key of ['delay', 'when'] as const) {
+		if (!(key in record)) continue;
+		const field = record[key];
+		if (field === null) out[key] = null;
+		else if (typeof field === 'string' || typeof field === 'number') out[key] = String(field);
+		else throw new Error(`retry.${key} must be a string, number, or null.`);
+	}
+	return out;
+}
+
+const ADD_TASK_FIELDS = new Set([
+	'op',
+	'id',
+	'name',
+	'action',
+	'subWorkflowId',
+	'input',
+	'publishResultAs',
+	'timeout',
+	'description',
+	'with',
+	'runAsOrgId',
+	'packOverrides',
+	'isMocked',
+	'mockInput',
+	'retry',
+	'x',
+	'y',
+	// Accepted only so we can report the existing ignored-controls note.
+	'transitionMode',
+	'join',
+]);
+
+const UPDATE_TASK_SET_FIELDS = new Set([
+	'name',
+	'input',
+	'action',
+	'subWorkflowId',
+	'publishResultAs',
+	'timeout',
+	'description',
+	'with',
+	'runAsOrgId',
+	'packOverrides',
+	'isMocked',
+	'mockInput',
+	'retry',
+	// Accepted only so we can report the existing ignored-controls note.
+	'transitionMode',
+	'join',
+]);
+
+function rejectUnsupportedFields(record: Record<string, unknown>, allowed: Set<string>, label: string): void {
+	for (const key of Object.keys(record)) {
+		if (!allowed.has(key)) throw new Error(`Unsupported ${label} field "${key}".`);
+	}
+}
+
+function setAdvancedTaskFields(
+	task: RawTask,
+	source: Record<string, unknown>,
+	mark?: (field: keyof TaskVerifyFields) => void,
+): void {
+	if ('runAsOrgId' in source) {
+		task.runAsOrgId = coerceNullableString(source.runAsOrgId, 'runAsOrgId');
+		mark?.('runAsOrgId');
+	}
+	if ('packOverrides' in source) {
+		task.packOverrides = coercePackOverrides(source.packOverrides);
+		mark?.('packOverrides');
+	}
+	if ('isMocked' in source) {
+		task.isMocked = coerceBoolean(source.isMocked, 'isMocked');
+		mark?.('isMocked');
+	}
+	if ('mockInput' in source) {
+		task.mockInput = source.mockInput == null ? null : coerceObjectField(source.mockInput, 'task "mockInput"');
+		mark?.('mockInput');
+	}
+	if ('retry' in source) {
+		task.retry = coerceRetry(source.retry);
+		mark?.('retry');
+	}
+}
+
 /**
  * Numeric task settings are typed Int on the wire, so a float fails at the
  * mutation boundary just as a blind-cast string would. Coerce a numeric string
@@ -965,6 +1139,7 @@ export function applyOperations(
 		const op = operation.op;
 		switch (op) {
 			case 'add_task': {
+				rejectUnsupportedFields(operation, ADD_TASK_FIELDS, 'add_task');
 				const name = str(operation.name);
 				const action = str(operation.action);
 				// A sub-workflow call is a task whose action is the target workflow's id
@@ -990,8 +1165,10 @@ export function applyOperations(
 				};
 				if (str(operation.publishResultAs) != null) task.publishResultAs = str(operation.publishResultAs);
 				if (operation.timeout != null) task.timeout = coerceTaskNumber(operation.timeout, 'timeout');
+				if ('description' in operation) task.description = operation.description as string;
 				if (operation.with != null)
 					task.with = coerceObjectField(operation.with, 'task "with"') as RawTask['with'];
+				setAdvancedTaskFields(task, operation, field => markVerify(id, field));
 				// Explicit position wins; otherwise layoutNewTasks places it below its parent.
 				if (typeof operation.x === 'number' && typeof operation.y === 'number') {
 					setPosition(task, operation.x, operation.y);
@@ -1009,6 +1186,10 @@ export function applyOperations(
 				if (!ref) throw new Error('update_task requires "id" or "name".');
 				const task = resolveTask(next, ref);
 				const set = asObject(operation.set);
+				if ('x' in set || 'y' in set) {
+					throw new Error('update_task.set does not move tasks — use reposition {task, x, y} instead.');
+				}
+				rejectUnsupportedFields(set, UPDATE_TASK_SET_FIELDS, 'update_task.set');
 				if (str(set.name)) task.name = str(set.name)!;
 				if ('input' in set) task.input = coerceTaskInput(set.input);
 				if (str(set.subWorkflowId)) task.actionId = str(set.subWorkflowId)!;
@@ -1017,6 +1198,7 @@ export function applyOperations(
 				if ('timeout' in set) task.timeout = coerceTaskNumber(set.timeout, 'timeout');
 				if ('description' in set) task.description = set.description as string;
 				if ('with' in set) task.with = coerceObjectField(set.with, 'task "with"') as RawTask['with'];
+				setAdvancedTaskFields(task, set, field => markVerify(task.id, field));
 				if ('input' in set) markVerify(task.id, 'input');
 				if ('with' in set) markVerify(task.id, 'with');
 				applied.push(`update_task ${task.name} (${task.id})${droppedParallelControlsNote(set)}`);
@@ -1355,7 +1537,19 @@ const WORKFLOW_EXECUTIONS_QUERY = `query RewstBuddyExecutions($where: WorkflowEx
 
 const TASK_LOGS_QUERY = `query RewstBuddyTaskLogs($where: TaskLogWhereInput) {
 	taskLogs(where: $where, order: [["createdAt", "ASC"]]) {
-		id originalWorkflowTaskName status message input result createdAt
+		id originalWorkflowTaskName status message input result createdAt taskExecutionId
+	}
+}`;
+
+// A sub-workflow call spawns a child execution whose parentTaskExecutionId
+// points back at the spawning task's taskExecutionId — the only linkage between
+// a parent's task logs and its sub-workflow runs. WorkflowExecutionWhereInput
+// has no parentExecutionId filter, so children are read via the parent's
+// childExecutions traversal.
+const CHILD_EXECUTIONS_QUERY = `query RewstBuddyChildExecutions($where: WorkflowExecutionWhereInput) {
+	workflowExecution(where: $where) {
+		id
+		childExecutions { id status createdAt parentTaskExecutionId workflow { id name } }
 	}
 }`;
 
@@ -1421,6 +1615,9 @@ function formatWorkflowOutput(text: string): string {
 	return text;
 }
 
+// Largest mock payload (as JSON) shown verbatim in the summary graph view.
+const MOCK_INPUT_SUMMARY_CHARS = 400;
+
 function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary'): string {
 	const full = detail === 'full';
 	const nameById = new Map(w.tasks.map(t => [t.id, t.name]));
@@ -1440,6 +1637,22 @@ function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = 'summary
 		}
 		if (t.publishResultAs) node.publishResultAs = t.publishResultAs;
 		if (t.with && (t.with.items || t.with.concurrency)) node.with = t.with;
+		if (t.transitionMode && t.transitionMode !== 'FOLLOW_FIRST') node.transitionMode = t.transitionMode;
+		if (t.join != null && t.join !== 1) node.join = t.join;
+		if (t.runAsOrgId) node.runAsOrgId = t.runAsOrgId;
+		if (t.isMocked === true) {
+			node.isMocked = true;
+			if (t.mockInput != null) {
+				// A mock payload is often a captured API response; keep the summary
+				// view small and defer the verbatim payload to detail:"full".
+				const json = JSON.stringify(t.mockInput);
+				node.mockInput =
+					full || json.length <= MOCK_INPUT_SUMMARY_CHARS
+						? t.mockInput
+						: `(mockInput ${json.length} chars — call buddy_workflow_get with detail:"full" to view)`;
+			}
+		}
+		if (t.retry != null) node.retry = t.retry;
 		if (full) {
 			const position = positionOf(t);
 			if (position) node.position = position;
@@ -1623,7 +1836,12 @@ async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps): Prom
 		return `Jinja error: ${typeof rendered.error === 'string' ? rendered.error : JSON.stringify(rendered.error)}`;
 	}
 	const value = rendered && typeof rendered === 'object' && 'result' in rendered ? rendered.result : rendered;
-	return formatWorkflowOutput(`Rendered: ${JSON.stringify(value)} (type ${value === null ? 'null' : typeof value})`);
+	const warning = containsControlCharacter(value)
+		? "\n\nWARNING — rendered result contains a control character. If this came from regex_replace backreference escaping, use '\\\\\\\\1' instead of '\\\\1'."
+		: '';
+	return formatWorkflowOutput(
+		`Rendered: ${JSON.stringify(value)} (type ${value === null ? 'null' : typeof value})${warning}`,
+	);
 }
 
 /** Validates the four scope fields a workflow mutation must carry. */
@@ -1639,6 +1857,22 @@ function requireScopeFields(toolName: string, args: Record<string, unknown>): { 
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function containsControlCharacter(value: unknown): boolean {
+	if (typeof value === 'string') {
+		for (let i = 0; i < value.length; i++) {
+			const code = value.charCodeAt(i);
+			// Ordinary whitespace (\t \n \r) is legitimate rendered output, not
+			// an escaping mistake; only the rest of the C0 range and DEL warn.
+			if (code === 9 || code === 10 || code === 13) continue;
+			if (code <= 31 || code === 127) return true;
+		}
+		return false;
+	}
+	if (Array.isArray(value)) return value.some(containsControlCharacter);
+	if (isPlainObject(value)) return Object.values(value).some(containsControlCharacter);
+	return false;
 }
 
 /**
@@ -1686,6 +1920,9 @@ export function sentValueDivergences(sent: unknown, stored: unknown, path: strin
 		}
 		return lines;
 	}
+	if (Array.isArray(sent) && Array.isArray(stored) && sent.length === stored.length) {
+		return sent.flatMap((value, index) => sentValueDivergences(value, stored[index], `${path}.${index}`));
+	}
 	return storedValueMatches(sent, stored) ? [] : [`${path}: sent ${briefValue(sent)}, stored ${briefValue(stored)}`];
 }
 
@@ -1714,14 +1951,27 @@ async function verifySavedTaskValues(
 			const lines = [
 				...(fields.input ? sentValueDivergences(sent.input ?? {}, stored.input ?? {}, 'input') : []),
 				...(fields.with ? sentValueDivergences(sent.with ?? {}, stored.with ?? {}, 'with') : []),
+				...(fields.runAsOrgId
+					? sentValueDivergences(sent.runAsOrgId ?? null, stored.runAsOrgId ?? null, 'runAsOrgId')
+					: []),
+				...(fields.packOverrides
+					? sentValueDivergences(sent.packOverrides ?? [], stored.packOverrides ?? [], 'packOverrides')
+					: []),
+				...(fields.isMocked
+					? sentValueDivergences(sent.isMocked ?? null, stored.isMocked ?? null, 'isMocked')
+					: []),
+				...(fields.mockInput
+					? sentValueDivergences(sent.mockInput ?? null, stored.mockInput ?? null, 'mockInput')
+					: []),
+				...(fields.retry ? sentValueDivergences(sent.retry ?? null, stored.retry ?? null, 'retry') : []),
 			];
 			problems.push(...lines.map(line => `- task "${sent.name}": ${line}`));
 		}
 		if (problems.length === 0) return '';
 		return (
-			`\n\nWARNING — the server did not store some task values as sent. Rewst filters a task's input against its action's inputSchema: unknown keys are dropped and mistyped values coerced (a string in an object-typed field becomes {}), while the save still reports success.\n` +
+			`\n\nWARNING — the server did not store some task values as sent. Rewst may filter task input against the action's inputSchema or normalize advanced task configuration such as org overrides, integration overrides, mocking, and retry settings, while the save still reports success.\n` +
 			`${problems.join('\n')}\n` +
-			`Check the action's accepted parameters with buddy_action_search describe mode, then re-apply with matching keys and types.`
+			`Check the action's accepted parameters, advanced configuration or field mapping with buddy_action_search describe mode, then re-apply with matching keys, types, and supported configuration values.`
 		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -1816,9 +2066,21 @@ interface TaskLogRow {
 	input?: unknown;
 	result?: unknown;
 	createdAt?: string | null;
+	taskExecutionId?: string | null;
+}
+
+interface ChildExecutionRow {
+	id?: string | null;
+	status?: string | null;
+	createdAt?: string | null;
+	parentTaskExecutionId?: string | null;
+	workflow?: { id?: string | null; name?: string | null } | null;
 }
 
 const TASK_VALUE_CHARS = 600;
+// includeSubExecutions inlines one extra task-log read per child; cap it so a
+// wide fan-out (a loop task spawning dozens of runs) cannot flood the output.
+const MAX_INLINE_SUB_EXECUTIONS = 5;
 
 /** A failed/errored status, for both task and execution status strings. */
 function isFailedStatus(status: string | null | undefined): boolean {
@@ -1839,6 +2101,31 @@ async function fetchTaskLogs(deps: GraphqlToolDeps, executionId: string): Promis
 	return ((result.data as { taskLogs?: (TaskLogRow | null)[] } | undefined)?.taskLogs ?? []).filter(
 		(r): r is TaskLogRow => !!r,
 	);
+}
+
+/**
+ * Direct child executions (sub-workflow runs) of one execution. Non-fatal by
+ * design: the primary task logs must still come back if this traversal errors,
+ * so failures are returned as a note, never thrown.
+ */
+async function fetchChildExecutions(
+	deps: GraphqlToolDeps,
+	executionId: string,
+): Promise<{ children: ChildExecutionRow[]; error?: string }> {
+	try {
+		const result = await deps.execute(CHILD_EXECUTIONS_QUERY, { where: { id: executionId } });
+		const error = firstErrorMessage(result);
+		if (error) return { children: [], error };
+		const parent = (result.data as { workflowExecution?: { childExecutions?: (ChildExecutionRow | null)[] } })
+			?.workflowExecution;
+		return { children: (parent?.childExecutions ?? []).filter((row): row is ChildExecutionRow => !!row) };
+	} catch (error) {
+		return { children: [], error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+function describeChildExecution(child: ChildExecutionRow): string {
+	return `${child.workflow?.name ?? '(unknown workflow)'} (${child.id ?? '?'}, ${child.status ?? '?'})`;
 }
 
 async function assertExecutionBelongsToOrg(deps: GraphqlToolDeps, executionId: string, orgId: string): Promise<void> {
@@ -1865,7 +2152,11 @@ async function fetchTaskLogsForVisibleExecution(
 	return fetchTaskLogs(deps, executionId);
 }
 
-function formatTaskLogs(rows: TaskLogRow[], opts: { failedOnly?: boolean; includeResult?: boolean }): string {
+function formatTaskLogs(
+	rows: TaskLogRow[],
+	opts: { failedOnly?: boolean; includeResult?: boolean },
+	childrenByTask?: Map<string, ChildExecutionRow[]>,
+): string {
 	const visible = opts.failedOnly ? rows.filter(r => isFailedStatus(r.status)) : rows;
 	if (visible.length === 0) {
 		return opts.failedOnly ? 'No failed tasks in this execution.' : 'This execution has no task logs yet.';
@@ -1875,6 +2166,9 @@ function formatTaskLogs(rows: TaskLogRow[], opts: { failedOnly?: boolean; includ
 			const name = row.originalWorkflowTaskName ?? '(unnamed task)';
 			const failed = isFailedStatus(row.status);
 			const parts = [`- ${name}: ${row.status ?? '?'}`];
+			for (const child of (row.taskExecutionId && childrenByTask?.get(row.taskExecutionId)) || []) {
+				parts.push(`    sub-execution: ${describeChildExecution(child)}`);
+			}
 			if (failed) {
 				if (row.message) parts.push(`    message: ${briefValue(row.message)}`);
 				parts.push(`    input: ${briefValue(row.input)}`);
@@ -1891,9 +2185,11 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 	const executionId = asStringArg(request.args, 'executionId');
 	if (!executionId) throw new Error('buddy_execution_logs requires "executionId".');
 	const orgId = asStringArg(request.args, 'orgId');
-	const failedOnly = request.args.failedOnly === true;
-	const includeResult = request.args.includeResult === true;
+	const failedOnly = asBooleanArg(request.args, 'failedOnly') ?? false;
+	const includeResult = asBooleanArg(request.args, 'includeResult') ?? false;
+	const includeSubExecutions = asBooleanArg(request.args, 'includeSubExecutions') ?? false;
 	let rows: TaskLogRow[] = [];
+	let sourceDeps = deps;
 	let sourceNote = '';
 	let firstError: unknown;
 	let hadVisibleSession = false;
@@ -1901,6 +2197,7 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 		try {
 			const found = await fetchTaskLogsForVisibleExecution(candidate, executionId, orgId);
 			hadVisibleSession = true;
+			sourceDeps = candidate;
 			return found;
 		} catch (error) {
 			firstError ??= error;
@@ -1933,7 +2230,70 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 		rows.length === 0 && alternates.length > 0
 			? `\nNone of the ${alternates.length + 1} active session(s) can see task logs for this execution — check the execution id, or sign in to the Rewst account whose org owns it.`
 			: '';
-	return formatWorkflowOutput(`${header}${emptyHint}\n${formatTaskLogs(rows, { failedOnly, includeResult })}`);
+
+	// Sub-workflow calls look like one opaque task in the parent's logs (#127);
+	// surface the child executions they spawned so the run tree is visible.
+	let children: ChildExecutionRow[] = [];
+	let childLookupError: string | undefined;
+	if (rows.length > 0) {
+		({ children, error: childLookupError } = await fetchChildExecutions(sourceDeps, executionId));
+	}
+	const childrenByTask = new Map<string, ChildExecutionRow[]>();
+	const unshownChildren: ChildExecutionRow[] = [];
+	// Match against the rows the caller will actually see: a failedOnly view
+	// hides succeeded tasks, and a child annotated onto a hidden row would
+	// vanish with it — its id must fall through to the footer instead.
+	const shownRows = failedOnly ? rows.filter(row => isFailedStatus(row.status)) : rows;
+	const shownTaskExecutionIds = new Set(
+		shownRows.map(row => row.taskExecutionId).filter((id): id is string => !!id),
+	);
+	for (const child of children) {
+		const parentTask = child.parentTaskExecutionId;
+		if (parentTask && shownTaskExecutionIds.has(parentTask)) {
+			childrenByTask.set(parentTask, [...(childrenByTask.get(parentTask) ?? []), child]);
+		} else {
+			unshownChildren.push(child);
+		}
+	}
+
+	const footer: string[] = [];
+	if (childLookupError) {
+		footer.push(`Sub-workflow executions could not be checked: ${childLookupError}`);
+	}
+	if (children.length > 0) {
+		footer.push(
+			`Spawned ${children.length} sub-workflow execution(s). Drill into one with buddy_execution_logs {"executionId": "<sub-execution id>"}${includeSubExecutions ? '' : ', or pass includeSubExecutions:true to inline their task logs'}.`,
+		);
+	}
+	if (unshownChildren.length > 0) {
+		footer.push(
+			`Sub-execution(s) not shown with a task above: ${unshownChildren.map(describeChildExecution).join(', ')}`,
+		);
+	}
+	if (includeSubExecutions) {
+		const inlineSections = await Promise.all(
+			children.slice(0, MAX_INLINE_SUB_EXECUTIONS).map(async child => {
+				if (!child.id) return undefined;
+				try {
+					const childRows = await fetchTaskLogs(sourceDeps, child.id);
+					return `Sub-execution ${describeChildExecution(child)}:\n${formatTaskLogs(childRows, { failedOnly, includeResult })}`;
+				} catch (error) {
+					return `Sub-execution ${describeChildExecution(child)}: task logs could not be read (${error instanceof Error ? error.message : String(error)})`;
+				}
+			}),
+		);
+		footer.push(...inlineSections.filter((section): section is string => !!section));
+		if (children.length > MAX_INLINE_SUB_EXECUTIONS) {
+			footer.push(
+				`(${children.length - MAX_INLINE_SUB_EXECUTIONS} more sub-execution(s) not inlined — drill into them individually.)`,
+			);
+		}
+	}
+
+	const footerText = footer.length > 0 ? `\n${footer.join('\n')}` : '';
+	return formatWorkflowOutput(
+		`${header}${emptyHint}\n${formatTaskLogs(rows, { failedOnly, includeResult }, childrenByTask)}${footerText}`,
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -2068,6 +2428,12 @@ interface WorkflowIndexEntry {
 
 interface WorkflowIndex {
 	entries: WorkflowIndexEntry[];
+	// Orgs that contributed at least one entry. The index is built from one
+	// unscoped workflows query, so an org with zero workflows is unknowable
+	// here — callers must treat absence as "no indexed workflows", not
+	// "not indexed".
+	orgs: Map<string, string>;
+	orgSummary: string;
 	orgCount: number;
 	builtAt: number;
 	truncated: boolean;
@@ -2093,7 +2459,7 @@ interface RawIndexWorkflow {
 
 async function buildWorkflowIndex(deps: GraphqlToolDeps): Promise<WorkflowIndex> {
 	const entries: WorkflowIndexEntry[] = [];
-	const orgIds = new Set<string>();
+	const orgs = new Map<string, string>();
 	let truncated = false;
 	for (let page = 0; page < WORKFLOW_INDEX_MAX_PAGES; page++) {
 		const result = await deps.execute(WORKFLOWS_INDEX_QUERY, {
@@ -2109,19 +2475,27 @@ async function buildWorkflowIndex(deps: GraphqlToolDeps): Promise<WorkflowIndex>
 		for (const w of rows) {
 			if (!w?.id) continue;
 			const orgId = w.orgId ?? w.organization?.id ?? '';
-			orgIds.add(orgId);
+			const orgName = w.organization?.name ?? (orgId || '(unknown org)');
+			if (!orgs.has(orgId)) orgs.set(orgId, orgName);
 			entries.push({
 				id: w.id,
 				name: w.name ?? '(unnamed)',
 				orgId,
-				orgName: w.organization?.name ?? orgId ?? '(unknown org)',
+				orgName,
 			});
 		}
 		if (rows.length < WORKFLOW_INDEX_PAGE_SIZE) break;
 		if (page === WORKFLOW_INDEX_MAX_PAGES - 1) truncated = true;
 	}
 	entries.sort((a, b) => a.name.localeCompare(b.name));
-	return { entries, orgCount: orgIds.size, builtAt: Date.now(), truncated };
+	return {
+		entries,
+		orgs,
+		orgSummary: summarizeIndexedOrgs(orgs),
+		orgCount: orgs.size,
+		builtAt: Date.now(),
+		truncated,
+	};
 }
 
 function ageString(ms: number): string {
@@ -2188,6 +2562,16 @@ function setCachedWorkflowIndex(cacheKey: string, index: WorkflowIndex): void {
 	}
 }
 
+// Computed once at index build time (the index is cached across searches).
+function summarizeIndexedOrgs(orgs: Map<string, string>): string {
+	const shown = [...orgs.entries()]
+		.sort(([a], [b]) => a.localeCompare(b))
+		.slice(0, 8)
+		.map(([id, name]) => `${name} (${id})`);
+	const remaining = orgs.size - shown.length;
+	return `${shown.join(', ')}${remaining > 0 ? `, and ${remaining} more` : ''}`;
+}
+
 async function runWorkflowSearch(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const refresh = request.args.refresh === true;
 	const cacheKey = workflowSearchCacheKey(request, deps);
@@ -2230,9 +2614,15 @@ async function runWorkflowSearch(request: ToolRequest, deps: GraphqlToolDeps): P
 	const total = nameHits.length + orgOnly.length;
 	const header =
 		`${total} workflow(s)${rawQuery ? ` matching "${rawQuery}"` : ''}` +
-		` (index: ${index.entries.length} workflows across ${index.orgCount} org(s)${index.truncated ? ', truncated at the page cap' : ''}, built ${ageString(index.builtAt)}; refresh:true to rebuild).`;
+		` (index: ${index.entries.length} workflows across ${index.orgCount} org(s)${index.truncated ? ', truncated at the page cap' : ''}, built ${ageString(index.builtAt)}; orgs with indexed workflows: ${index.orgSummary || '(none)'}; refresh:true to rebuild).`;
 	if (total === 0) {
-		return `${header}\nNo matches. Try fewer/looser words, drop orgId, or refresh:true if the workflow is new.`;
+		// The index only knows orgs that contributed a workflow, so an absent
+		// requested org must be explained rather than left looking un-indexed.
+		const missingOrgNote =
+			orgId && !index.orgs.has(orgId)
+				? ` Requested orgId ${orgId} has no workflows in the index: the org may have no workflows, or this session cannot see it.`
+				: '';
+		return `${header}\nNo matches.${missingOrgNote} Try fewer/looser words, drop orgId, or refresh:true if the workflow is new.`;
 	}
 
 	const parts = [header];

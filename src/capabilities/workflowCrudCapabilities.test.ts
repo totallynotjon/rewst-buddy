@@ -72,6 +72,12 @@ suite('Unit: workflowCrudCapabilities', () => {
 			assert.strictEqual(c.mcp, true);
 			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
+			const schema = c.spec.inputSchema as {
+				properties: { description: { description: string; maxLength: number } };
+			};
+			assert.match(c.spec.description, /255/);
+			assert.match(schema.properties.description.description, /255/);
+			assert.strictEqual(schema.properties.description.maxLength, 255);
 		});
 
 		test('creates an empty workflow when approved', async () => {
@@ -99,6 +105,26 @@ suite('Unit: workflowCrudCapabilities', () => {
 
 			const wf = (callsFor(calls, 'create')[0].variables as { workflow: Record<string, unknown> }).workflow;
 			assert.strictEqual(wf.description, 'does things');
+		});
+
+		test('rejects a description longer than 255 characters before approval or GraphQL', async () => {
+			const { ctx, calls } = makeCtx({});
+			let approverCalled = false;
+			setMcpMutationApprover(async () => {
+				approverCalled = true;
+				return true;
+			});
+
+			await assert.rejects(
+				() =>
+					cap('buddy_create_workflow').run(
+						{ orgId: 'org-sandbox', name: 'Wf', description: 'x'.repeat(256) },
+						ctx,
+					),
+				/description.*255/i,
+			);
+			assert.strictEqual(approverCalled, false);
+			assert.strictEqual(calls.length, 0);
 		});
 
 		test('rejects a missing name', async () => {
