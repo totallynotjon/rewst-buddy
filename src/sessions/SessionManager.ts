@@ -412,17 +412,11 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	private handleSessionExpired(session: Session): void {
-		let removed = false;
-		for (const [userId, activeSession] of this.sessionMap) {
-			if (activeSession !== session) continue;
-			this.unindexSession(session);
-			this.sessionMap.delete(userId);
-			removed = true;
-			break;
-		}
+		const userId = session.profile.user.id;
+		if (!userId || this.sessionMap.get(userId) !== session) return;
 
-		if (!removed) return;
-
+		this.unindexSession(session);
+		this.sessionMap.delete(userId);
 		this.setAnyActiveSessions(this.sessionMap.size > 0);
 		this.sessionChangeEmitter.fire({
 			type: 'saved',

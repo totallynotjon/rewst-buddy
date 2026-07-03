@@ -1,9 +1,9 @@
-import * as assert from 'assert';
-import { suite, test } from '../test/tdd';
-import { buildTemplateLink, orgFromTemplate } from './templateLinkFactory';
-import { getHash } from '../utils/getHash';
-import { findAllTemplateReferences } from '../providers/templatePatternUtils';
 import type { TemplateFragment } from '@sessions';
+import * as assert from 'assert';
+import { findAllTemplateReferences } from '../providers/templatePatternUtils';
+import { suite, test } from '../test/tdd';
+import { getHash } from '../utils/getHash';
+import { buildTemplateLink, orgFromTemplate } from './templateLinkFactory';
 
 interface TemplateStubOverrides {
 	id?: string;
@@ -23,9 +23,8 @@ function makeTemplate(overrides: TemplateStubOverrides = {}): TemplateFragment &
 		language: 'jinja',
 		createdAt: '2024-01-01T00:00:00Z',
 		updatedAt: '2024-01-01T00:00:00Z',
-		organization: overrides.organization !== undefined
-			? (overrides.organization as TemplateFragment['organization'])
-			: null,
+		organization:
+			overrides.organization !== undefined ? (overrides.organization as TemplateFragment['organization']) : null,
 		tags: [],
 	} as unknown as TemplateFragment & { orgId: string };
 }
@@ -105,10 +104,7 @@ suite('Unit: buildTemplateLink()', () => {
 	test('referencedTemplateIds matches findAllTemplateReferences(body)', () => {
 		const body = '{{ RWT.render_template("tmpl-aaa") }} {{ RWT.render_template("tmpl-bbb") }}';
 		const link = buildTemplateLink(makeTemplate({}), body, URI);
-		assert.deepStrictEqual(
-			link.referencedTemplateIds,
-			findAllTemplateReferences(body),
-		);
+		assert.deepStrictEqual(link.referencedTemplateIds, findAllTemplateReferences(body));
 	});
 
 	test('referencedTemplateIds is empty for a body with no references', () => {

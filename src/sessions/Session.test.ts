@@ -1,18 +1,19 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { createServer, type Server } from 'http';
-import vscode from 'vscode';
 import { SessionManager } from '@sessions';
 import {
-	initTestEnvironment,
-	createMockSession,
-	listen,
 	close,
+	createMockSession,
 	createRefreshableSessionServer,
+	initTestEnvironment,
+	listen,
 	refreshableSessionProfile,
+	stub,
 } from '@test';
-import SessionProfile from './SessionProfile';
+import * as assert from 'assert';
+import { createServer, type Server } from 'http';
+import * as Mocha from 'mocha';
+import vscode from 'vscode';
 import Session from './Session';
+import SessionProfile from './SessionProfile';
 
 const { suite, test, setup, teardown } = Mocha;
 
@@ -31,12 +32,6 @@ suite('Unit: Session', () => {
 		SessionManager._resetForTesting();
 		await Promise.all(servers.map(server => close(server)));
 	});
-
-	function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): void {
-		const original = obj[key];
-		Object.defineProperty(obj, key, { value: impl, configurable: true, writable: true });
-		restores.push(() => Object.defineProperty(obj, key, { value: original, configurable: true, writable: true }));
-	}
 
 	test('rawGraphql sends the session cookie stored in extension secrets', async () => {
 		const orgId = 'org-raw-graphql';
@@ -473,14 +468,18 @@ suite('Unit: Session', () => {
 
 			let notificationCount = 0;
 			let focusSidebarCount = 0;
-			stub(vscode.window, 'showErrorMessage', (async (_message: string, ..._items: string[]) => {
-				notificationCount++;
-				return 'Re-authenticate';
-			}) as unknown as typeof vscode.window.showErrorMessage);
-			stub(vscode.commands, 'executeCommand', (async (command: string) => {
-				if (command === 'rewst-buddy.FocusSidebar') focusSidebarCount++;
-				return undefined;
-			}) as unknown as typeof vscode.commands.executeCommand);
+			restores.push(
+				stub(vscode.window, 'showErrorMessage', (async (_message: string, ..._items: string[]) => {
+					notificationCount++;
+					return 'Re-authenticate';
+				}) as unknown as typeof vscode.window.showErrorMessage),
+			);
+			restores.push(
+				stub(vscode.commands, 'executeCommand', (async (command: string) => {
+					if (command === 'rewst-buddy.FocusSidebar') focusSidebarCount++;
+					return undefined;
+				}) as unknown as typeof vscode.commands.executeCommand),
+			);
 
 			const session = new Session(undefined, refreshProfile(orgId, port));
 
@@ -534,10 +533,12 @@ suite('Unit: Session', () => {
 
 			const context = initTestEnvironment();
 			await context.secrets.store(orgId, 'appSession=dead-cookie');
-			stub(
-				vscode.window,
-				'showErrorMessage',
-				(async () => undefined) as unknown as typeof vscode.window.showErrorMessage,
+			restores.push(
+				stub(
+					vscode.window,
+					'showErrorMessage',
+					(async () => undefined) as unknown as typeof vscode.window.showErrorMessage,
+				),
 			);
 
 			const session = new Session(undefined, refreshProfile(orgId, port));

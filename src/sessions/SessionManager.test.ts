@@ -1,18 +1,18 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { createServer, type Server } from 'http';
-import vscode from 'vscode';
 import { context } from '@global';
-import { SessionManager, Session } from '@sessions';
+import { Session, SessionManager } from '@sessions';
 import {
-	initTestEnvironment,
-	createMockSession,
-	Fixtures,
-	listen,
 	close,
+	createMockSession,
 	createRefreshableSessionServer,
+	Fixtures,
+	initTestEnvironment,
+	listen,
 	refreshableSessionProfile,
 } from '@test';
+import * as assert from 'assert';
+import { createServer, type Server } from 'http';
+import * as Mocha from 'mocha';
+import vscode from 'vscode';
 import SessionProfile from './SessionProfile';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -772,60 +772,60 @@ suite('Unit: SessionManager', () => {
 		});
 	});
 
-        suite('expiration listener teardown', () => {
-                test('disposes the onExpired listener when _resetForTesting is called', () => {
-                        const { session } = createMockSession({
-                                profile: { user: Fixtures.userFragment({ id: 'user-expiry' }) },
-                        });
+	suite('expiration listener teardown', () => {
+		test('disposes the onExpired listener when _resetForTesting is called', () => {
+			const { session } = createMockSession({
+				profile: { user: Fixtures.userFragment({ id: 'user-expiry' }) },
+			});
 
-                        // Track the disposable that onExpired hands back.
-                        let disposeCalled = false;
-                        const originalOnExpired = session.onExpired.bind(session);
-                        Object.defineProperty(session, 'onExpired', {
-                                value: (listener: Parameters<typeof session.onExpired>[0]) => {
-                                        const real = originalOnExpired(listener);
-                                        return {
-                                                dispose() {
-                                                        disposeCalled = true;
-                                                        real.dispose();
-                                                },
-                                        };
-                                },
-                                configurable: true,
-                        });
+			// Track the disposable that onExpired hands back.
+			let disposeCalled = false;
+			const originalOnExpired = session.onExpired.bind(session);
+			Object.defineProperty(session, 'onExpired', {
+				value: (listener: Parameters<typeof session.onExpired>[0]) => {
+					const real = originalOnExpired(listener);
+					return {
+						dispose() {
+							disposeCalled = true;
+							real.dispose();
+						},
+					};
+				},
+				configurable: true,
+			});
 
-                        SessionManager._setSessionsForTesting([session]);
-                        assert.strictEqual(disposeCalled, false, 'listener should not be disposed yet');
+			SessionManager._setSessionsForTesting([session]);
+			assert.strictEqual(disposeCalled, false, 'listener should not be disposed yet');
 
-                        SessionManager._resetForTesting();
-                        assert.strictEqual(disposeCalled, true, 'listener should be disposed after reset');
-                });
+			SessionManager._resetForTesting();
+			assert.strictEqual(disposeCalled, true, 'listener should be disposed after reset');
+		});
 
-                test('disposes the onExpired listener when removeSession is called', async () => {
-                        const { session } = createMockSession({
-                                profile: { user: Fixtures.userFragment({ id: 'user-expiry-remove' }) },
-                        });
+		test('disposes the onExpired listener when removeSession is called', async () => {
+			const { session } = createMockSession({
+				profile: { user: Fixtures.userFragment({ id: 'user-expiry-remove' }) },
+			});
 
-                        let disposeCalled = false;
-                        const originalOnExpired = session.onExpired.bind(session);
-                        Object.defineProperty(session, 'onExpired', {
-                                value: (listener: Parameters<typeof session.onExpired>[0]) => {
-                                        const real = originalOnExpired(listener);
-                                        return {
-                                                dispose() {
-                                                        disposeCalled = true;
-                                                        real.dispose();
-                                                },
-                                        };
-                                },
-                                configurable: true,
-                        });
+			let disposeCalled = false;
+			const originalOnExpired = session.onExpired.bind(session);
+			Object.defineProperty(session, 'onExpired', {
+				value: (listener: Parameters<typeof session.onExpired>[0]) => {
+					const real = originalOnExpired(listener);
+					return {
+						dispose() {
+							disposeCalled = true;
+							real.dispose();
+						},
+					};
+				},
+				configurable: true,
+			});
 
-                        SessionManager._setSessionsForTesting([session]);
-                        assert.strictEqual(disposeCalled, false, 'listener should not be disposed yet');
+			SessionManager._setSessionsForTesting([session]);
+			assert.strictEqual(disposeCalled, false, 'listener should not be disposed yet');
 
-                        await SessionManager.removeSession('user-expiry-remove');
-                        assert.strictEqual(disposeCalled, true, 'listener should be disposed after removeSession');
-                });
-        });
+			await SessionManager.removeSession('user-expiry-remove');
+			assert.strictEqual(disposeCalled, true, 'listener should be disposed after removeSession');
+		});
+	});
 });

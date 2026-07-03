@@ -14,7 +14,7 @@ export type SyncDecision =
 	| { action: 'update-metadata' }
 	| { action: 'download-remote' }
 	| { action: 'upload-local' }
-	| { action: 'conflict'; changed: 'local' | 'remote' | 'both' };
+	| { action: 'conflict'; changed: 'both' };
 
 /**
  * Input parameters for determining sync action.

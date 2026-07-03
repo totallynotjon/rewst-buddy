@@ -60,9 +60,7 @@ suite('Guard: vitest suites ↔ tdd importers are in sync', () => {
 	const allTestFiles = collectTestFiles(srcDir);
 
 	// Normalise vitestSuites to absolute paths for comparison.
-	const suiteAbsPaths = new Set<string>(
-		vitestSuites.map(s => path.join(ROOT, s)),
-	);
+	const suiteAbsPaths = new Set<string>(vitestSuites.map(s => path.join(ROOT, s)));
 
 	test('every file that imports tdd is listed in vitestSuites', () => {
 		const tddImporters = allTestFiles.filter(importsTdd);
@@ -75,9 +73,7 @@ suite('Guard: vitest suites ↔ tdd importers are in sync', () => {
 	});
 
 	test('every vitestSuites entry imports tdd', () => {
-		const notImportingTdd = [...suiteAbsPaths].filter(
-			f => fs.existsSync(f) && !importsTdd(f),
-		);
+		const notImportingTdd = [...suiteAbsPaths].filter(f => fs.existsSync(f) && !importsTdd(f));
 		assert.deepStrictEqual(
 			notImportingTdd.map(f => path.relative(ROOT, f)),
 			[],

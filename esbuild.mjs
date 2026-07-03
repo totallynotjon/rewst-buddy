@@ -71,7 +71,7 @@ async function buildTestIndex() {
 	const unitTests = glob.sync('src/**/*.test.ts', {
 		ignore: ['src/test/helpers/**', 'src/test/integration/**', ...vitestSuites],
 	});
-	const integrationTests = glob.sync('src/test/integration/*.test.ts');
+	const integrationTests = glob.sync('src/test/integration/**/*.test.ts');
 	const files = [...unitTests, ...integrationTests].sort();
 	return files.map(file => `import './${path.relative('src', file).replace(/\\/g, '/')}';`).join('\n');
 }
@@ -92,11 +92,15 @@ async function testOptions() {
 }
 
 async function main() {
-	// The test bundle is regenerated from the current glob results; drop stale
-	// output from previous layouts (webpack used to emit one bundle per file).
-	fs.rmSync(path.join(rootDir, 'dist/test'), { recursive: true, force: true });
+	const buildOptions = [extensionOptions];
+	if (!production) {
+		// The test bundle is regenerated from the current glob results; drop
+		// stale output from previous layouts (webpack emitted one bundle/file).
+		fs.rmSync(path.join(rootDir, 'dist/test'), { recursive: true, force: true });
+		buildOptions.push(await testOptions());
+	}
 
-	const contexts = await Promise.all([esbuild.context(extensionOptions), esbuild.context(await testOptions())]);
+	const contexts = await Promise.all(buildOptions.map(opts => esbuild.context(opts)));
 
 	if (watch) {
 		await Promise.all(contexts.map(ctx => ctx.watch()));

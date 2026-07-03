@@ -6,7 +6,7 @@ import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { determineSyncAction, type SyncDecision } from './syncDecision';
-import { buildTemplateLink, orgFromTemplate } from './templateLinkFactory';
+import { buildTemplateLink } from './templateLinkFactory';
 import { nonEmptyString } from './types';
 
 export { orgFromTemplate } from './templateLinkFactory';
@@ -404,15 +404,8 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	private describeConflict(changed: Extract<SyncDecision, { action: 'conflict' }>['changed']): string {
-		switch (changed) {
-			case 'local':
-				return 'The local template changed since the last sync.';
-			case 'remote':
-				return 'The Rewst template changed since the last sync.';
-			case 'both':
-				return 'The local file and Rewst template both changed since the last sync.';
-		}
+	private describeConflict(_changed: Extract<SyncDecision, { action: 'conflict' }>['changed']): string {
+		return 'The local file and Rewst template both changed since the last sync.';
 	}
 
 	async applyTemplateToDocument(doc: vscode.TextDocument, _session: Session, remoteTemplate: FullTemplateFragment) {
