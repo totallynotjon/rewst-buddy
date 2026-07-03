@@ -9,9 +9,11 @@
  * host). Everything else stays on the electron runner.
  */
 export const vitestSuites = [
-	'src/models/syncDecision.test.ts',
-	'src/providers/templatePatternUtils.test.ts',
-	'src/utils/getHash.test.ts',
-	'src/capabilities/inputHelpers.test.ts',
-	'src/sessions/conversation/conversationEvents.test.ts',
+        'src/models/syncDecision.test.ts',
+        'src/models/templateLinkFactory.test.ts',
+        'src/providers/templatePatternUtils.test.ts',
+        'src/utils/getHash.test.ts',
+        'src/capabilities/inputHelpers.test.ts',
+        'src/sessions/conversation/conversationEvents.test.ts',
+        'src/test/tdd.test.ts'
 ];
