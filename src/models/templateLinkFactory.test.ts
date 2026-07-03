@@ -5,12 +5,12 @@ import { getHash } from '../utils/getHash';
 import { findAllTemplateReferences } from '../providers/templatePatternUtils';
 import type { TemplateFragment } from '@sessions';
 
-type TemplateStubOverrides = {
+interface TemplateStubOverrides {
 	id?: string;
 	orgId?: string;
 	name?: string;
 	organization?: { id?: string | null; name?: string | null } | null;
-};
+}
 
 // Minimal TemplateFragment-compatible stub — only the fields the factory reads.
 // Cast via unknown to avoid spelling out every optional GraphQL field.
