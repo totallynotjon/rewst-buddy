@@ -72,9 +72,12 @@ suite('Unit: workflowCrudCapabilities', () => {
 			assert.strictEqual(c.mcp, true);
 			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
-			const schema = c.spec.inputSchema as { properties: { description: { description: string } } };
+			const schema = c.spec.inputSchema as {
+				properties: { description: { description: string; maxLength: number } };
+			};
 			assert.match(c.spec.description, /255/);
 			assert.match(schema.properties.description.description, /255/);
+			assert.strictEqual(schema.properties.description.maxLength, 255);
 		});
 
 		test('creates an empty workflow when approved', async () => {

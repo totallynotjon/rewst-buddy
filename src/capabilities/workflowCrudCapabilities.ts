@@ -51,14 +51,17 @@ async function requireWorkflowInOrg(ctx: CapabilityContext, workflowId: string, 
 const createWorkflowSpec: ToolSpec = {
 	name: 'buddy_create_workflow',
 	args: '{"orgId": string, "name": string, "description"?: string}',
-	description:
-		'Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to 255 characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code.',
+	description: `Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code.`,
 	inputSchema: {
 		type: 'object',
 		properties: {
 			...ORG_ID_PROP,
 			name: { type: 'string', description: 'Name for the new workflow.' },
-			description: { type: 'string', description: 'Optional workflow description, up to 255 characters.' },
+			description: {
+				type: 'string',
+				maxLength: WORKFLOW_DESCRIPTION_MAX_LENGTH,
+				description: `Optional workflow description, up to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters.`,
+			},
 		},
 		required: ['orgId', 'name'],
 	},

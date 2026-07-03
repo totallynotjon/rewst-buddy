@@ -903,7 +903,15 @@ function coerceBoolean(value: unknown, label: string): boolean {
 	throw new Error(`${label} must be a boolean.`);
 }
 
-const PACK_OVERRIDE_FIELDS = new Set(['packId', 'packConfigId', 'configSelectionMode', 'configFallbackMode', 'searchInput']);
+const PACK_OVERRIDE_FIELDS = new Set([
+	'packId',
+	'packConfigId',
+	'configSelectionMode',
+	'configFallbackMode',
+	'searchInput',
+]);
+const PACK_CONFIG_SELECTION_MODES = new Set(['USE_DEFAULT', 'USE_NAME_SEARCH', 'USE_ORG_MAPPING', 'USE_SELECTED_ID']);
+const PACK_CONFIG_FALLBACK_MODES = new Set(['FAIL_ACTION', 'FAIL_WORKFLOW', 'USE_DEFAULT']);
 const RETRY_FIELDS = new Set(['count', 'delay', 'when']);
 
 function coercePackOverrides(value: unknown): PackOverride[] {
@@ -930,6 +938,20 @@ function coercePackOverrides(value: unknown): PackOverride[] {
 			const value = record[key];
 			if (value !== null && typeof value !== 'string') {
 				throw new Error(`packOverrides[${index}].${key} must be a string or null.`);
+			}
+			if (key === 'configSelectionMode' && typeof value === 'string' && !PACK_CONFIG_SELECTION_MODES.has(value)) {
+				throw new Error(
+					`packOverrides[${index}].configSelectionMode "${value}" is not supported; use one of ${[
+						...PACK_CONFIG_SELECTION_MODES,
+					].join(', ')}.`,
+				);
+			}
+			if (key === 'configFallbackMode' && typeof value === 'string' && !PACK_CONFIG_FALLBACK_MODES.has(value)) {
+				throw new Error(
+					`packOverrides[${index}].configFallbackMode "${value}" is not supported; use one of ${[
+						...PACK_CONFIG_FALLBACK_MODES,
+					].join(', ')}.`,
+				);
 			}
 			out[key] = value;
 		}
@@ -1898,6 +1920,9 @@ export function sentValueDivergences(sent: unknown, stored: unknown, path: strin
 		}
 		return lines;
 	}
+	if (Array.isArray(sent) && Array.isArray(stored) && sent.length === stored.length) {
+		return sent.flatMap((value, index) => sentValueDivergences(value, stored[index], `${path}.${index}`));
+	}
 	return storedValueMatches(sent, stored) ? [] : [`${path}: sent ${briefValue(sent)}, stored ${briefValue(stored)}`];
 }
 
@@ -1944,9 +1969,9 @@ async function verifySavedTaskValues(
 		}
 		if (problems.length === 0) return '';
 		return (
-			`\n\nWARNING — the server did not store some task values as sent. Rewst filters a task's input against its action's inputSchema: unknown keys are dropped and mistyped values coerced (a string in an object-typed field becomes {}), while the save still reports success.\n` +
+			`\n\nWARNING — the server did not store some task values as sent. Rewst may filter task input against the action's inputSchema or normalize advanced task configuration such as org overrides, integration overrides, mocking, and retry settings, while the save still reports success.\n` +
 			`${problems.join('\n')}\n` +
-			`Check the action's accepted parameters with buddy_action_search describe mode, then re-apply with matching keys and types.`
+			`Check the action's accepted parameters, advanced configuration or field mapping with buddy_action_search describe mode, then re-apply with matching keys, types, and supported configuration values.`
 		);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -2246,19 +2271,18 @@ async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Pr
 		);
 	}
 	if (includeSubExecutions) {
-		for (const child of children.slice(0, MAX_INLINE_SUB_EXECUTIONS)) {
-			if (!child.id) continue;
-			try {
-				const childRows = await fetchTaskLogs(sourceDeps, child.id);
-				footer.push(
-					`Sub-execution ${describeChildExecution(child)}:\n${formatTaskLogs(childRows, { failedOnly, includeResult })}`,
-				);
-			} catch (error) {
-				footer.push(
-					`Sub-execution ${describeChildExecution(child)}: task logs could not be read (${error instanceof Error ? error.message : String(error)})`,
-				);
-			}
-		}
+		const inlineSections = await Promise.all(
+			children.slice(0, MAX_INLINE_SUB_EXECUTIONS).map(async child => {
+				if (!child.id) return undefined;
+				try {
+					const childRows = await fetchTaskLogs(sourceDeps, child.id);
+					return `Sub-execution ${describeChildExecution(child)}:\n${formatTaskLogs(childRows, { failedOnly, includeResult })}`;
+				} catch (error) {
+					return `Sub-execution ${describeChildExecution(child)}: task logs could not be read (${error instanceof Error ? error.message : String(error)})`;
+				}
+			}),
+		);
+		footer.push(...inlineSections.filter((section): section is string => !!section));
 		if (children.length > MAX_INLINE_SUB_EXECUTIONS) {
 			footer.push(
 				`(${children.length - MAX_INLINE_SUB_EXECUTIONS} more sub-execution(s) not inlined — drill into them individually.)`,
