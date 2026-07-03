@@ -1,8 +1,9 @@
-import { approveMutationScope, isMutationScopeApproved, type MutationScope } from '../ui/chat/tools/graphqlTool';
+import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
-import { requestMcpMutationApproval } from './graphqlMutateCapability';
+import { writeCapability } from './capabilityFactories';
 import { ORG_ID_PROP, requireString } from './inputHelpers';
+import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
  * Template write capabilities. Every mutation here is org-scoped: the MCP
@@ -13,27 +14,6 @@ import { ORG_ID_PROP, requireString } from './inputHelpers';
  * every mutation is gated by the same per-call VS Code approval the other write
  * tools use. Exposure is additionally gated by rewst-buddy.mcp.enableWriteTools.
  */
-
-function approvalRequiredResult(): string {
-	return JSON.stringify({
-		status: 'approval_required',
-		message:
-			'The mutation was not run; it needs approval in the VS Code window running Rewst Buddy. Focus that window to respond to the prompt, then retry. The prompt does not appear in the MCP client and cannot be approved if no VS Code window is open.',
-	});
-}
-
-/**
- * The name of the org being mutated, resolved against the requested orgId rather
- * than the session's primary org (a session can manage several orgs, so
- * profile.org is not necessarily the requested one). Used only for the approval
- * modal text; org scoping itself is by the authoritative orgId.
- */
-function orgDisplayName(ctx: CapabilityContext): string {
-	const { profile } = ctx.session;
-	if (profile.org.id === ctx.orgId) return profile.org.name;
-	const managed = profile.allManagedOrgs.find(org => org.id === ctx.orgId);
-	return managed?.name ?? ctx.orgId;
-}
 
 /** Requires a string argument that may be empty (e.g. a blank template body). */
 function requireStringAllowEmpty(input: Record<string, unknown>, key: string): string {
@@ -65,21 +45,6 @@ async function requireTemplateInOrg(
 	return { name: typeof name === 'string' && name.length > 0 ? name : '(unnamed)' };
 }
 
-/** Runs a mutation behind the shared per-call approval flow. */
-async function withTemplateApproval(
-	scope: MutationScope,
-	operationSummary: string,
-	run: () => Promise<string>,
-): Promise<string> {
-	if (!isMutationScopeApproved(scope)) {
-		if (!(await requestMcpMutationApproval(scope, operationSummary))) {
-			return approvalRequiredResult();
-		}
-		approveMutationScope(scope);
-	}
-	return run();
-}
-
 const createTemplateSpec: ToolSpec = {
 	name: 'buddy_create_template',
 	args: '{"orgId": string, "name": string, "body": string}',
@@ -108,7 +73,7 @@ async function runCreateTemplate(input: Record<string, unknown>, ctx: Capability
 	// first create in an org prompts and later creates reuse that session approval.
 	const scope: MutationScope = { scopeId: orgId, scopeName: `new template "${name}"`, orgId, orgName };
 	const summary = `Create template "${name}" in org "${orgName}" (${orgId})`;
-	return withTemplateApproval(scope, summary, async () => {
+	return withMutationApproval(scope, summary, async () => {
 		const response = await ctx.session.sdk?.createTemplateMinimal({ name, orgId, body });
 		const template = response?.template;
 		if (!template?.id) {
@@ -144,7 +109,7 @@ async function runUpdateTemplateBody(input: Record<string, unknown>, ctx: Capabi
 	const { name } = await requireTemplateInOrg(ctx, templateId, orgId);
 	const scope: MutationScope = { scopeId: templateId, scopeName: name, orgId, orgName };
 	const summary = `Replace body of template "${name}" (${templateId}) in org "${orgName}" (${orgId})`;
-	return withTemplateApproval(scope, summary, async () => {
+	return withMutationApproval(scope, summary, async () => {
 		const response = await ctx.session.sdk?.updateTemplateBody({ id: templateId, body });
 		const template = response?.template;
 		if (!template?.id) {
@@ -178,7 +143,7 @@ async function runRenameTemplate(input: Record<string, unknown>, ctx: Capability
 	const { name: currentName } = await requireTemplateInOrg(ctx, templateId, orgId);
 	const scope: MutationScope = { scopeId: templateId, scopeName: currentName, orgId, orgName };
 	const summary = `Rename template "${currentName}" (${templateId}) to "${name}" in org "${orgName}" (${orgId})`;
-	return withTemplateApproval(scope, summary, async () => {
+	return withMutationApproval(scope, summary, async () => {
 		const response = await ctx.session.sdk?.updateTemplateName({ id: templateId, name });
 		const template = response?.template;
 		if (!template?.id) {
@@ -210,7 +175,7 @@ async function runDeleteTemplate(input: Record<string, unknown>, ctx: Capability
 	const { name } = await requireTemplateInOrg(ctx, templateId, orgId);
 	const scope: MutationScope = { scopeId: templateId, scopeName: name, orgId, orgName };
 	const summary = `Delete template "${name}" (${templateId}) in org "${orgName}" (${orgId})`;
-	return withTemplateApproval(scope, summary, async () => {
+	return withMutationApproval(scope, summary, async () => {
 		const response = await ctx.session.sdk?.deleteTemplate({ id: templateId });
 		const deletedId = response?.deleteTemplate;
 		if (!deletedId) {
@@ -221,8 +186,8 @@ async function runDeleteTemplate(input: Record<string, unknown>, ctx: Capability
 }
 
 export const TEMPLATE_MUTATE_CAPABILITIES: Capability[] = [
-	{ spec: createTemplateSpec, access: 'write', chat: false, mcp: true, run: runCreateTemplate },
-	{ spec: updateTemplateBodySpec, access: 'write', chat: false, mcp: true, run: runUpdateTemplateBody },
-	{ spec: renameTemplateSpec, access: 'write', chat: false, mcp: true, run: runRenameTemplate },
-	{ spec: deleteTemplateSpec, access: 'write', chat: false, mcp: true, run: runDeleteTemplate },
+	writeCapability(createTemplateSpec, runCreateTemplate),
+	writeCapability(updateTemplateBodySpec, runUpdateTemplateBody),
+	writeCapability(renameTemplateSpec, runRenameTemplate),
+	writeCapability(deleteTemplateSpec, runDeleteTemplate),
 ];

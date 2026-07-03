@@ -1,6 +1,6 @@
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
-import { asString, requireString, asPositiveInt, ORG_ID_PROP } from './inputHelpers';
+import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -70,10 +70,7 @@ async function runSearchTemplates(input: Record<string, unknown>, ctx: Capabilit
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_LIMIT, MAX_LIMIT);
 	const variables: Record<string, unknown> = { orgId, limit };
 	if (search) variables.search = { name: { _ilike: `%${search}%` } };
-	const { data, errors } = await ctx.session.rawGraphql(SEARCH_TEMPLATES_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, SEARCH_TEMPLATES_QUERY, variables);
 	const templates = ((data as { templates?: unknown[] } | undefined)?.templates ?? []) as {
 		id?: string | null;
 		name?: string | null;
@@ -100,10 +97,7 @@ async function runListPages(input: Record<string, unknown>, ctx: CapabilityConte
 	const orgId = requireString(input, 'orgId');
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_LIMIT, MAX_LIMIT);
 	const variables = { orgId, limit };
-	const { data, errors } = await ctx.session.rawGraphql(LIST_PAGES_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, LIST_PAGES_QUERY, variables);
 	const pages = ((data as { pages?: unknown[] } | undefined)?.pages ?? []) as {
 		id?: string | null;
 		name?: string | null;
@@ -122,10 +116,7 @@ async function runListPages(input: Record<string, unknown>, ctx: CapabilityConte
 async function runListSites(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	const orgId = requireString(input, 'orgId');
 	const variables = { orgId };
-	const { data, errors } = await ctx.session.rawGraphql(LIST_SITES_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, LIST_SITES_QUERY, variables);
 	const sites = ((data as { sites?: unknown[] } | undefined)?.sites ?? []) as {
 		id?: string | null;
 		name?: string | null;
@@ -147,10 +138,7 @@ async function runListJinjaFilters(input: Record<string, unknown>, ctx: Capabili
 	const search = asString(input, 'search');
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_LIMIT, MAX_LIMIT);
 	const variables = {};
-	const { data, errors } = await ctx.session.rawGraphql(LIST_JINJA_FILTERS_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, LIST_JINJA_FILTERS_QUERY, variables);
 	const filters = ((data as { jinjaFiltersDocumentation?: unknown[] } | undefined)?.jinjaFiltersDocumentation ??
 		[]) as {
 		name?: string | null;
@@ -171,8 +159,8 @@ async function runListJinjaFilters(input: Record<string, unknown>, ctx: Capabili
 }
 
 export const PAGE_TEMPLATE_CAPABILITIES: Capability[] = [
-	{ spec: searchTemplatesSpec, access: 'read', chat: false, mcp: true, run: runSearchTemplates },
-	{ spec: listPagesSpec, access: 'read', chat: false, mcp: true, run: runListPages },
-	{ spec: listSitesSpec, access: 'read', chat: false, mcp: true, run: runListSites },
-	{ spec: listJinjaFiltersSpec, access: 'read', chat: false, mcp: true, run: runListJinjaFilters },
+	{ spec: searchTemplatesSpec, access: 'read', run: runSearchTemplates },
+	{ spec: listPagesSpec, access: 'read', run: runListPages },
+	{ spec: listSitesSpec, access: 'read', run: runListSites },
+	{ spec: listJinjaFiltersSpec, access: 'read', run: runListJinjaFilters },
 ];

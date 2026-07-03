@@ -1,9 +1,4 @@
-import {
-	approveMutationScope,
-	createGraphqlDeps,
-	isMutationScopeApproved,
-	type MutationScope,
-} from '../ui/chat/tools/graphqlTool';
+import { createGraphqlDeps, type MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
@@ -13,15 +8,7 @@ import {
 	workflowToolAlwaysPrompts,
 } from '../ui/chat/tools/workflowTools';
 import type { CapabilityContext } from './Capability';
-import { requestMcpMutationApproval } from './graphqlMutateCapability';
-
-function approvalRequiredResult(): string {
-	return JSON.stringify({
-		status: 'approval_required',
-		message:
-			'The mutation was not run; it needs approval in the VS Code window running Rewst Buddy. Focus that window to respond to the prompt, then retry. The prompt does not appear in the MCP client and cannot be approved if no VS Code window is open.',
-	});
-}
+import { withMutationApproval } from './mutationApproval';
 
 function missingScopeResult(toolName: string): string {
 	return JSON.stringify({
@@ -49,13 +36,10 @@ export async function runWorkflowMutationWithApproval(
 	const scope = workflowEditScope(spec.name, input);
 	if (!scope) return missingScopeResult(spec.name);
 
-	const alwaysPrompt = workflowToolAlwaysPrompts(spec.name);
-	if (alwaysPrompt || !isMutationScopeApproved(scope)) {
-		if (!(await requestMcpMutationApproval(scope, operationSummary(spec.name, scope)))) {
-			return approvalRequiredResult();
-		}
-		if (!alwaysPrompt) approveMutationScope(scope);
-	}
-
-	return runWorkflowTool({ tool: spec.name, args: input }, createGraphqlDeps(ctx.session));
+	return withMutationApproval(
+		scope,
+		operationSummary(spec.name, scope),
+		() => runWorkflowTool({ tool: spec.name, args: input }, createGraphqlDeps(ctx.session)),
+		{ alwaysPrompt: workflowToolAlwaysPrompts(spec.name) },
+	);
 }

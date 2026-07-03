@@ -14,22 +14,22 @@
  * See epic issue #129 (D1) for the full split rationale.
  */
 
-import { type GraphqlToolDeps, type MutationScope, isMutationScopeApproved } from './graphqlTool';
-import { asObject, str } from '../../../workflow/types';
 import { type WorkflowOperation } from '../../../workflow/graphMutations';
+import { asObject, str } from '../../../workflow/types';
+import { type GraphqlToolDeps, type MutationScope, isMutationScopeApproved } from './graphqlTool';
 import { type ToolRequest } from './toolProtocol';
 
 // ---------------------------------------------------------------------------
 // Re-exports: specs
 // ---------------------------------------------------------------------------
 export {
-	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
-	WORKFLOW_RUN_TOOL_NAME,
+	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
-	WORKFLOW_TOOL_SPECS,
 	WORKFLOW_TOOL_NAMES,
+	WORKFLOW_TOOL_SPECS,
 	isWorkflowTool,
 	workflowToolAlwaysPrompts,
 } from '../../../workflow/specs';
@@ -38,12 +38,12 @@ export {
 // Re-exports: edit engine
 // ---------------------------------------------------------------------------
 export {
-	type WorkflowOperation,
 	applyOperations,
-	workflowToInput,
-	sentValueDivergences,
 	applyWorkflowMutation,
 	requireScopeFields,
+	sentValueDivergences,
+	workflowToInput,
+	type WorkflowOperation,
 } from '../../../workflow/graphMutations';
 export { normalizePublish } from '../../../workflow/types';
 
@@ -61,20 +61,20 @@ export { _resetWorkflowIndexForTesting } from '../../../workflow/searchIndex';
 // Re-exports: executions
 // ---------------------------------------------------------------------------
 export {
-	runRenderJinja,
-	runExecutionLogs,
-	runWorkflowRun,
-	runWorkflowExecutions,
-	isFailedStatus,
+	assertExecutionBelongsToOrg,
 	fetchTaskLogs,
 	formatTaskLogs,
-	assertExecutionBelongsToOrg,
+	isFailedStatus,
+	runExecutionLogs,
+	runRenderJinja,
+	runWorkflowExecutions,
+	runWorkflowRun,
 } from '../../../workflow/executions';
 
 // ---------------------------------------------------------------------------
 // Re-exports: adapter (workflow_get + action_search)
 // ---------------------------------------------------------------------------
-export { summarizeWorkflow, runWorkflowGet, runActionSearch } from '../../../workflow/workflowAdapter';
+export { runActionSearch, runWorkflowGet, summarizeWorkflow } from '../../../workflow/workflowAdapter';
 
 // ---------------------------------------------------------------------------
 // workflowEditScope — approval scope extractor (stays here as it uses
@@ -133,17 +133,17 @@ export function workflowEditConfirmation(name: string, input: unknown): Workflow
 // runWorkflowTool — single dispatch entry point
 // ---------------------------------------------------------------------------
 
+import { runExecutionLogs, runRenderJinja, runWorkflowExecutions, runWorkflowRun } from '../../../workflow/executions';
+import { applyWorkflowMutation, requireScopeFields } from '../../../workflow/graphMutations';
+import { runWorkflowSearch } from '../../../workflow/searchIndex';
 import {
-	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
-	WORKFLOW_RUN_TOOL_NAME,
+	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
 } from '../../../workflow/specs';
-import { applyWorkflowMutation, requireScopeFields } from '../../../workflow/graphMutations';
-import { runRenderJinja, runExecutionLogs, runWorkflowRun, runWorkflowExecutions } from '../../../workflow/executions';
-import { runWorkflowSearch } from '../../../workflow/searchIndex';
-import { runWorkflowGet, runActionSearch } from '../../../workflow/workflowAdapter';
+import { runActionSearch, runWorkflowGet } from '../../../workflow/workflowAdapter';
 import { asStringArg } from './toolProtocol';
 
 function requireDeps(deps: GraphqlToolDeps | undefined): GraphqlToolDeps {

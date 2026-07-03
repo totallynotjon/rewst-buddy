@@ -72,8 +72,6 @@ suite('Unit: triggerMutateCapabilities', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
 			const c = cap('buddy_set_trigger_enabled');
 			assert.strictEqual(c.access, 'write');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
 		});
 

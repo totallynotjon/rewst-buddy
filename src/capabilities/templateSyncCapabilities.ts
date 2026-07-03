@@ -12,6 +12,7 @@ import vscode from 'vscode';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { readCapability, writeCapability } from './capabilityFactories';
 import { ORG_ID_PROP, requireString } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
@@ -404,14 +405,6 @@ const syncSpec: ToolSpec = {
 };
 
 export const TEMPLATE_SYNC_CAPABILITIES: Capability[] = [
-	{
-		spec: syncStatusSpec,
-		group: 'workspace',
-		access: 'read',
-		chat: false,
-		mcp: true,
-		requiresOrg: false,
-		run: (input, ctx) => runSyncStatus(input, ctx),
-	},
-	{ spec: syncSpec, access: 'write', chat: false, mcp: true, run: (input, ctx) => runSync(input, ctx) },
+	readCapability(syncStatusSpec, (input, ctx) => runSyncStatus(input, ctx), { requiresOrg: false }),
+	writeCapability(syncSpec, (input, ctx) => runSync(input, ctx)),
 ];

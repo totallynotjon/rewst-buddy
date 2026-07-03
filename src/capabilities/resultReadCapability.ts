@@ -118,10 +118,7 @@ const resultReadSpec: ToolSpec = {
 
 export const resultReadCapability: Capability = {
 	spec: resultReadSpec,
-	group: 'result',
 	access: 'read',
-	chat: false,
-	mcp: true,
 	requiresOrg: false,
 	async run(input: Record<string, unknown>, _ctx): Promise<string> {
 		const id = asString(input, 'id');

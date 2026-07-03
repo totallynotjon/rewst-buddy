@@ -1,8 +1,9 @@
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
-import { ORG_ID_PROP, requireString } from './inputHelpers';
-import { orgDisplayName, throwOnGraphqlErrors, withMutationApproval } from './mutationApproval';
+import { writeCapability } from './capabilityFactories';
+import { ORG_ID_PROP, rawGraphqlOrThrow, requireResourceInOrg, requireString } from './inputHelpers';
+import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
  * Trigger write capabilities. buddy_set_trigger_enabled toggles a workflow trigger on
@@ -39,12 +40,18 @@ function requireBoolean(input: Record<string, unknown>, key: string): boolean {
  * org. Returns the current name for the approval scope.
  */
 async function requireTriggerInOrg(ctx: CapabilityContext, triggerId: string, orgId: string): Promise<TriggerRow> {
-	const { data, errors } = await ctx.session.rawGraphql(TRIGGER_BY_ID, { orgId, id: triggerId });
-	throwOnGraphqlErrors(errors);
-	const rows = ((data as { triggers?: TriggerRow[] } | undefined)?.triggers ?? []) as TriggerRow[];
-	const row = rows.find(r => r.id === triggerId);
-	if (!row) throw new Error(`Trigger ${triggerId} is not in org ${orgId}.`);
-	return row;
+	return requireResourceInOrg({
+		label: 'Trigger',
+		id: triggerId,
+		orgId,
+		fetch: async () => {
+			const data = await rawGraphqlOrThrow(ctx.session, TRIGGER_BY_ID, { orgId, id: triggerId });
+			const rows = ((data as { triggers?: TriggerRow[] } | undefined)?.triggers ?? []) as TriggerRow[];
+			return rows.find(r => r.id === triggerId);
+		},
+		// The query is already org-filtered, so a returned row is in-org by construction.
+		inOrg: () => true,
+	});
 }
 
 const setTriggerEnabledSpec: ToolSpec = {
@@ -74,10 +81,9 @@ async function runSetTriggerEnabled(input: Record<string, unknown>, ctx: Capabil
 	const scope: MutationScope = { scopeId: triggerId, scopeName: name, orgId, orgName };
 	const summary = `${verb} trigger "${name}" (${triggerId}) in org "${orgName}" (${orgId})`;
 	return withMutationApproval(scope, summary, async () => {
-		const { data, errors } = await ctx.session.rawGraphql(SET_TRIGGER_ENABLED, {
+		const data = await rawGraphqlOrThrow(ctx.session, SET_TRIGGER_ENABLED, {
 			trigger: { id: triggerId, enabled },
 		});
-		throwOnGraphqlErrors(errors);
 		const updated = (data as { updateTrigger?: TriggerRow } | undefined)?.updateTrigger;
 		if (!updated?.id) throw new Error('updateTrigger returned no trigger; the mutation may have failed.');
 		return JSON.stringify(
@@ -89,5 +95,5 @@ async function runSetTriggerEnabled(input: Record<string, unknown>, ctx: Capabil
 }
 
 export const TRIGGER_MUTATE_CAPABILITIES: Capability[] = [
-	{ spec: setTriggerEnabledSpec, access: 'write', chat: false, mcp: true, run: runSetTriggerEnabled },
+	writeCapability(setTriggerEnabledSpec, runSetTriggerEnabled),
 ];

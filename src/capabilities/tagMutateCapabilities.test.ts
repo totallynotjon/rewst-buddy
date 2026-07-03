@@ -70,8 +70,6 @@ suite('Unit: tagMutateCapabilities', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
 			const c = cap('buddy_create_tag');
 			assert.strictEqual(c.access, 'write');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
 		});
 

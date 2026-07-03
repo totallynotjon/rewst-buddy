@@ -69,8 +69,6 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
 			const c = cap('buddy_create_org_variable');
 			assert.strictEqual(c.access, 'write');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
 		});
 

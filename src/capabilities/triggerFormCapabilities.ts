@@ -1,6 +1,6 @@
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
-import { asString, requireString, asPositiveInt, ORG_ID_PROP } from './inputHelpers';
+import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
 
 const DEFAULT_TRIGGER_LIMIT = 50;
 const MAX_TRIGGER_LIMIT = 200;
@@ -119,10 +119,7 @@ async function runListTriggers(input: Record<string, unknown>, ctx: CapabilityCo
 	const orgId = requireString(input, 'orgId');
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_TRIGGER_LIMIT, MAX_TRIGGER_LIMIT);
 	const variables = { orgId, limit };
-	const { data, errors } = await ctx.session.rawGraphql(LIST_TRIGGERS_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, LIST_TRIGGERS_QUERY, variables);
 	const triggers = ((data as { triggers?: unknown[] } | undefined)?.triggers ?? []) as {
 		id?: string;
 		name?: string;
@@ -146,10 +143,7 @@ async function runListForms(input: Record<string, unknown>, ctx: CapabilityConte
 	const orgId = requireString(input, 'orgId');
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_FORM_LIMIT, MAX_FORM_LIMIT);
 	const variables = { orgId, limit };
-	const { data, errors } = await ctx.session.rawGraphql(LIST_FORMS_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, LIST_FORMS_QUERY, variables);
 	const forms = ((data as { forms?: unknown[] } | undefined)?.forms ?? []) as {
 		id?: string;
 		name?: string;
@@ -163,10 +157,7 @@ async function runListTags(input: Record<string, unknown>, ctx: CapabilityContex
 	const orgId = requireString(input, 'orgId');
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_TAG_LIMIT, MAX_TAG_LIMIT);
 	const variables = { orgId, limit };
-	const { data, errors } = await ctx.session.rawGraphql(LIST_TAGS_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, LIST_TAGS_QUERY, variables);
 	const tags = ((data as { tags?: unknown[] } | undefined)?.tags ?? []) as {
 		id?: string;
 		name?: string;
@@ -183,10 +174,7 @@ async function runListOrgTriggerInstances(input: Record<string, unknown>, ctx: C
 		MAX_ORG_TRIGGER_INSTANCE_LIMIT,
 	);
 	const variables = { orgId, limit };
-	const { data, errors } = await ctx.session.rawGraphql(LIST_ORG_TRIGGER_INSTANCES_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, LIST_ORG_TRIGGER_INSTANCES_QUERY, variables);
 	const instances = ((data as { orgTriggerInstances?: unknown[] } | undefined)?.orgTriggerInstances ?? []) as {
 		id?: string;
 		triggerId?: string;
@@ -210,10 +198,7 @@ async function runGetTriggerErrorStatus(input: Record<string, unknown>, ctx: Cap
 	requireString(input, 'orgId');
 	const triggerIds = requireStringArray(input, 'triggerIds');
 	const variables = { triggerIds };
-	const { data, errors } = await ctx.session.rawGraphql(GET_TRIGGER_ERROR_STATUS_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, GET_TRIGGER_ERROR_STATUS_QUERY, variables);
 	const statuses = ((data as { getTriggerErrorStatus?: Record<string, boolean> } | undefined)
 		?.getTriggerErrorStatus ?? {}) as Record<string, boolean>;
 	return triggerIds
@@ -225,9 +210,9 @@ async function runGetTriggerErrorStatus(input: Record<string, unknown>, ctx: Cap
 }
 
 export const TRIGGER_FORM_CAPABILITIES: Capability[] = [
-	{ spec: listTriggersSpec, access: 'read', chat: false, mcp: true, run: runListTriggers },
-	{ spec: listFormsSpec, access: 'read', chat: false, mcp: true, run: runListForms },
-	{ spec: listTagsSpec, access: 'read', chat: false, mcp: true, run: runListTags },
-	{ spec: listOrgTriggerInstancesSpec, access: 'read', chat: false, mcp: true, run: runListOrgTriggerInstances },
-	{ spec: getTriggerErrorStatusSpec, access: 'read', chat: false, mcp: true, run: runGetTriggerErrorStatus },
+	{ spec: listTriggersSpec, access: 'read', run: runListTriggers },
+	{ spec: listFormsSpec, access: 'read', run: runListForms },
+	{ spec: listTagsSpec, access: 'read', run: runListTags },
+	{ spec: listOrgTriggerInstancesSpec, access: 'read', run: runListOrgTriggerInstances },
+	{ spec: getTriggerErrorStatusSpec, access: 'read', run: runGetTriggerErrorStatus },
 ];

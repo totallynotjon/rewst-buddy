@@ -1,9 +1,9 @@
 import {
-	approveMutationScope,
-	detectOperationType,
-	isMutationScopeApproved,
-	runMutationGraphql,
-	type MutationScope,
+    approveMutationScope,
+    detectOperationType,
+    isMutationScopeApproved,
+    runMutationGraphql,
+    type MutationScope,
 } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import { currentApprovalOrigin, type ApprovalOrigin } from './approvalOrigin';
@@ -116,8 +116,6 @@ export const graphqlMutateCapability: Capability = {
 	spec: graphqlMutateSpec,
 	access: 'write',
 	dangerous: true,
-	chat: false,
-	mcp: true,
 	requiresOrg: true,
 	run: runGraphqlMutate,
 };

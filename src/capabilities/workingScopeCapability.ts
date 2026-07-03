@@ -198,8 +198,6 @@ async function runSetWorkingScope(input: Record<string, unknown>, ctx: Capabilit
 export const getWorkingScopeCapability: Capability = {
 	spec: getWorkingScopeSpec,
 	access: 'read',
-	chat: false,
-	mcp: true,
 	requiresOrg: false,
 	run: runGetWorkingScope,
 };
@@ -209,8 +207,6 @@ export const setWorkingScopeCapability: Capability = {
 	// Read access: changing scope is not a Rewst write, so it bypasses the write
 	// gate (it cannot require an org already in scope) and stays always-available.
 	access: 'read',
-	chat: false,
-	mcp: true,
 	requiresOrg: false,
 	run: runSetWorkingScope,
 };

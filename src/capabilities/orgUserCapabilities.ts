@@ -1,6 +1,6 @@
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
-import { asString, requireString, asPositiveInt, ORG_ID_PROP } from './inputHelpers';
+import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
 
 const SEARCH_ORGANIZATIONS_QUERY =
 	'query($search: String, $limit: Int){ searchManagedOrgs(input:{ search:$search, limit:$limit }){ id name isEnabled } }';
@@ -53,10 +53,7 @@ async function runSearchOrganizations(input: Record<string, unknown>, ctx: Capab
 	const search = asString(input, 'search');
 	const variables: Record<string, unknown> = { limit };
 	if (search) variables.search = search;
-	const { data, errors } = await ctx.session.rawGraphql(SEARCH_ORGANIZATIONS_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, SEARCH_ORGANIZATIONS_QUERY, variables);
 	const organizations = ((data as { searchManagedOrgs?: unknown[] } | undefined)?.searchManagedOrgs ?? []) as {
 		id?: string;
 		name?: string;
@@ -74,10 +71,7 @@ async function runListUsers(input: Record<string, unknown>, ctx: CapabilityConte
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? 50, 200);
 	const variables: Record<string, unknown> = { orgId, limit };
 	if (search) variables.search = { username: { _ilike: `%${search}%` } };
-	const { data, errors } = await ctx.session.rawGraphql(LIST_USERS_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, LIST_USERS_QUERY, variables);
 	const users = ((data as { users?: unknown[] } | undefined)?.users ?? []) as {
 		id?: string;
 		username?: string;
@@ -98,10 +92,7 @@ async function runListUsers(input: Record<string, unknown>, ctx: CapabilityConte
 async function runListRoles(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	const orgId = requireString(input, 'orgId');
 	const variables: Record<string, unknown> = { orgId };
-	const { data, errors } = await ctx.session.rawGraphql(LIST_ROLES_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, LIST_ROLES_QUERY, variables);
 	const roles = ((data as { roles?: unknown[] } | undefined)?.roles ?? []) as {
 		id?: string;
 		name?: string;
@@ -114,7 +105,7 @@ async function runListRoles(input: Record<string, unknown>, ctx: CapabilityConte
 }
 
 export const ORG_USER_CAPABILITIES: Capability[] = [
-	{ spec: searchOrganizationsSpec, access: 'read', chat: false, mcp: true, run: runSearchOrganizations },
-	{ spec: listUsersSpec, access: 'read', chat: false, mcp: true, run: runListUsers },
-	{ spec: listRolesSpec, access: 'read', chat: false, mcp: true, run: runListRoles },
+	{ spec: searchOrganizationsSpec, access: 'read', run: runSearchOrganizations },
+	{ spec: listUsersSpec, access: 'read', run: runListUsers },
+	{ spec: listRolesSpec, access: 'read', run: runListRoles },
 ];

@@ -7,8 +7,8 @@
 
 import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asBooleanArg, asStringArg, type ToolRequest } from '../ui/chat/tools/toolProtocol';
-import { type ExecResult, firstErrorMessage, formatWorkflowOutput, isPlainObject } from './types';
 import { fetchWorkflow } from './graphMutations';
+import { type ExecResult, firstErrorMessage, formatWorkflowOutput, isPlainObject } from './types';
 
 // ---------------------------------------------------------------------------
 // GraphQL

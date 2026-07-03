@@ -207,7 +207,7 @@ async function runDeleteOrgVariable(input: Record<string, unknown>, ctx: Capabil
 }
 
 export const ORG_VARIABLE_MUTATE_CAPABILITIES: Capability[] = [
-	{ spec: createOrgVariableSpec, access: 'write', chat: false, mcp: true, run: runCreateOrgVariable },
-	{ spec: updateOrgVariableSpec, access: 'write', chat: false, mcp: true, run: runUpdateOrgVariable },
-	{ spec: deleteOrgVariableSpec, access: 'write', chat: false, mcp: true, run: runDeleteOrgVariable },
+	{ spec: createOrgVariableSpec, access: 'write', run: runCreateOrgVariable },
+	{ spec: updateOrgVariableSpec, access: 'write', run: runUpdateOrgVariable },
+	{ spec: deleteOrgVariableSpec, access: 'write', run: runDeleteOrgVariable },
 ];

@@ -1,7 +1,7 @@
 /**
- * Shared input-coercion helpers for read capabilities. Mirrors the private
- * helpers in rewstReadCapabilities.ts so additional capability modules can share
- * one consistent argument-parsing contract.
+ * Shared input-coercion and GraphQL plumbing helpers for capabilities, so every
+ * capability module shares one consistent argument-parsing and error-handling
+ * contract.
  */
 
 import type { FullTemplateFragment, Session } from '@sessions';
@@ -9,6 +9,44 @@ import type { FullTemplateFragment, Session } from '@sessions';
 /** Pretty-prints a value as the JSON string capabilities return to callers. */
 export function json(value: unknown): string {
 	return JSON.stringify(value, null, 2);
+}
+
+/**
+ * Runs a raw GraphQL operation and throws with the serialized errors when the
+ * response carries any, so a failure is never silently treated as empty data.
+ */
+export async function rawGraphqlOrThrow(
+	session: Session,
+	query: string,
+	variables?: Record<string, unknown>,
+): Promise<unknown> {
+	const { data, errors } = await session.rawGraphql(query, variables);
+	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
+		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
+	}
+	return data;
+}
+
+/**
+ * Fetches a resource by id and fails closed unless it belongs to the requested
+ * org. A session can manage several orgs and by-id mutations target the resource
+ * alone, so this re-verification is what actually confines a by-id write to the
+ * requested org. `fetch` returns the resource row (or undefined when the id is
+ * unknown); `inOrg` overrides the default `row.orgId === orgId` membership check.
+ */
+export async function requireResourceInOrg<T>(opts: {
+	label: string;
+	id: string;
+	orgId: string;
+	fetch: () => Promise<T | undefined>;
+	inOrg?: (row: T) => boolean;
+}): Promise<T> {
+	const row = await opts.fetch();
+	const inOrg = opts.inOrg ?? ((candidate: T) => (candidate as { orgId?: unknown }).orgId === opts.orgId);
+	if (row === undefined || !inOrg(row)) {
+		throw new Error(`${opts.label} ${opts.id} is not in org ${opts.orgId}.`);
+	}
+	return row;
 }
 
 /**

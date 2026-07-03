@@ -140,7 +140,6 @@ suite('Unit: jinjaDocsCapabilities', () => {
 		test('is a read-only, MCP-exposed, org-agnostic capability', () => {
 			const capability = cap('buddy_get_jinja_filter_docs');
 			assert.strictEqual(capability.access, 'read');
-			assert.strictEqual(capability.mcp, true);
 			assert.strictEqual(capability.requiresOrg, false);
 		});
 

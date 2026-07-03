@@ -121,6 +121,6 @@ async function runDeleteWorkflow(input: Record<string, unknown>, ctx: Capability
 }
 
 export const WORKFLOW_CRUD_CAPABILITIES: Capability[] = [
-	{ spec: createWorkflowSpec, access: 'write', chat: false, mcp: true, run: runCreateWorkflow },
-	{ spec: deleteWorkflowSpec, access: 'write', chat: false, mcp: true, run: runDeleteWorkflow },
+	{ spec: createWorkflowSpec, access: 'write', run: runCreateWorkflow },
+	{ spec: deleteWorkflowSpec, access: 'write', run: runDeleteWorkflow },
 ];

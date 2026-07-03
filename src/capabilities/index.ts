@@ -1,12 +1,7 @@
 export type { Capability, CapabilityAccess, CapabilityContext } from './Capability';
 export { currentApprovalOrigin, runWithApprovalOrigin, type ApprovalOrigin } from './approvalOrigin';
-export {
-	CAPABILITY_REGISTRY,
-	chatCapabilities,
-	enabledMcpCapabilities,
-	getCapability,
-	mcpCapabilities,
-} from './registry';
+export { CAPABILITY_REGISTRY, getCapability, mcpCapabilities } from './registry';
+export { readCapability, writeCapability, type CapabilityOptions } from './capabilityFactories';
 export {
 	_resetMcpMutationApproverForTesting,
 	graphqlMutateCapability,

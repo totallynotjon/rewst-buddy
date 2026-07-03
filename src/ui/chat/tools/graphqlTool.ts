@@ -4,22 +4,13 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
 /**
  * Rewst GraphQL helpers run against the user's own Rewst instance,
  * authenticated with their session cookie. The combined buddy_graphql tool is
- * retired from the VS Code chat LM surface; MCP exposes dedicated
- * buddy_graphql_query and buddy_graphql_mutate primitives, while
- * buddy_graphql_schema remains available for schema inspection.
- *
- *   - The MCP boundary decides whether these tools are exposed.
- *   - Queries run directly once enabled; mutations always require explicit
- *     approval through the MCP mutation approver before execution.
- *   - Every mutation MUST carry four scope fields the assistant supplies:
- *     scopeId + scopeName (id and name of the single resource it changes, e.g. a
- *     workflow's id and name) and orgId + orgName. Approval is remembered for the
- *     session by the ids only (org + resource); the names are shown in the prompt
- *     so the user can recognize what is changing. Confirming one change to a
- *     resource lets further mutations to that same org+resource run without
- *     re-asking, while a different resource is gated again. A mutation missing any
- *     of the four fields is refused.
- *   - Subscriptions are rejected (the tool protocol is request/response).
+ * retired; MCP exposes dedicated buddy_graphql_query and buddy_graphql_mutate
+ * primitives, while buddy_graphql_schema remains available for schema
+ * inspection. This module also owns the session-lifetime mutation-scope
+ * approval memory shared by every write surface: approval is remembered by ids
+ * only (org + resource), so confirming one change to a resource lets further
+ * mutations to that same org+resource run without re-asking, while a different
+ * resource is gated again.
  */
 
 export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
@@ -35,39 +26,6 @@ export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
 				search: { type: 'string', description: 'Find matching type names and root operation fields.' },
 				includeDeprecated: { type: 'boolean', description: 'Include deprecated fields/values.' },
 			},
-		},
-	},
-	{
-		name: 'buddy_graphql',
-		args: '{"query": string, "variables"?: object, "scopeId"?: string, "scopeName"?: string, "orgId"?: string, "orgName"?: string}',
-		description:
-			"Run a GraphQL operation against the user's Rewst instance with their session. Prefer buddy_graphql_schema first when you are unsure about field names or arguments. Queries run directly and return JSON data. Mutations require the user's approval and MUST include four identifying fields: scopeId and scopeName (the id and human-readable name of the single resource the mutation changes, e.g. a workflow's id and name) plus orgId and orgName (the id and name of the org it runs in). A mutation missing any of them is refused. Reuse the exact same scopeId and orgId for every change to that same object — approval is remembered per resource for the session, so approving one mutation lets later mutations to that same resource run without re-asking, while a different resource is confirmed separately. The names are shown to the user in the approval prompt so they can recognize what is changing; only the ids are used to remember approval. Subscriptions are not supported.",
-		inputSchema: {
-			type: 'object',
-			properties: {
-				query: { type: 'string', description: 'GraphQL operation text.' },
-				variables: { type: 'object', description: 'Operation variables.' },
-				scopeId: {
-					type: 'string',
-					description:
-						'Required for mutations: a stable id of the resource being changed (e.g. the workflow id). Approval is remembered per resource for the session; reuse the same id for repeated edits to the same object.',
-				},
-				scopeName: {
-					type: 'string',
-					description:
-						"Required for mutations: the resource's human-readable name (e.g. the workflow name), shown to the user in the approval prompt.",
-				},
-				orgId: {
-					type: 'string',
-					description: 'Required for mutations: the id of the org the mutation runs in.',
-				},
-				orgName: {
-					type: 'string',
-					description:
-						'Required for mutations: the name of the org the mutation runs in, shown in the approval prompt.',
-				},
-			},
-			required: ['query'],
 		},
 	},
 ];
@@ -262,9 +220,6 @@ export interface MutationScope {
 	orgName: string;
 }
 
-/** Names of the four scope fields a mutation must carry, for error messages. */
-export const MUTATION_SCOPE_FIELDS = ['scopeId', 'scopeName', 'orgId', 'orgName'] as const;
-
 // Approval is remembered only by the ids (org + resource), so a friendlier or
 // differently-cased name can't widen what was approved. A JSON tuple keeps the
 // two ids distinct so no pair can collide with another.
@@ -290,88 +245,6 @@ export function approveMutationScope(scope: MutationScope): void {
 /** Clears all session approvals (tests). */
 export function _resetApprovedMutationScopes(): void {
 	approvedMutationScopes.clear();
-}
-
-interface ParsedMutation {
-	query: string;
-	variables?: Record<string, unknown>;
-	/** Present only when all four scope fields are supplied and non-empty. */
-	scope?: MutationScope;
-}
-
-function trimmedString(value: unknown): string | undefined {
-	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-/** Parses a `buddy_graphql` request as a mutation, or undefined if it isn't one. */
-function parseMutation(name: string, input: unknown): ParsedMutation | undefined {
-	if (name !== 'buddy_graphql') return undefined;
-	const args = (typeof input === 'object' && input !== null ? input : {}) as Record<string, unknown>;
-	const query = typeof args.query === 'string' ? args.query.trim() : '';
-	if (query.length === 0 || detectOperationType(query) !== 'mutation') return undefined;
-	const variables =
-		args.variables && typeof args.variables === 'object' && !Array.isArray(args.variables)
-			? (args.variables as Record<string, unknown>)
-			: undefined;
-	const scopeId = trimmedString(args.scopeId);
-	const scopeName = trimmedString(args.scopeName);
-	const orgId = trimmedString(args.orgId);
-	const orgName = trimmedString(args.orgName);
-	const scope = scopeId && scopeName && orgId && orgName ? { scopeId, scopeName, orgId, orgName } : undefined;
-	return { query, variables, scope };
-}
-
-/**
- * The declared scope for a `buddy_graphql` mutation request, or undefined when
- * the request is not a mutation or is missing any scope field.
- */
-export function graphqlMutationScope(name: string, input: unknown): MutationScope | undefined {
-	return parseMutation(name, input)?.scope;
-}
-
-/**
- * Wraps content in a fenced code block whose backtick run is one longer than any
- * run inside the content, so a model-supplied query or variables value
- * containing ``` cannot close the fence early and distort the approval prompt.
- */
-function fencedBlock(language: string, content: string): string {
-	const longestRun = Math.max(0, ...[...content.matchAll(/`+/g)].map(match => match[0].length));
-	const fence = '`'.repeat(Math.max(3, longestRun + 1));
-	return `${fence}${language}\n${content}\n${fence}`;
-}
-
-/** Confirmation copy the chat surface renders inline for a mutation. */
-export interface GraphqlMutationConfirmation {
-	title: string;
-	/** Markdown body: the prompt plus the full operation in fenced blocks. */
-	message: string;
-}
-
-/**
- * The inline mutation confirmation for a tool request, or undefined when no
- * prompt is needed: anything but a `buddy_graphql` mutation (queries, schema
- * reads, other tools), a mutation whose org+resource scope is already approved
- * this session, or a mutation missing any scope field (it is refused downstream
- * in runGraphqlTool, so there is nothing to approve). Kept for the low-level
- * GraphQL runner tests and any future surface that wants this confirmation copy.
- */
-export function graphqlMutationConfirmation(name: string, input: unknown): GraphqlMutationConfirmation | undefined {
-	const mutation = parseMutation(name, input);
-	if (!mutation?.scope || isMutationScopeApproved(mutation.scope)) return undefined;
-	const { scopeName, scopeId, orgName, orgId } = mutation.scope;
-
-	const lines = [
-		`Run this mutation against **${scopeName}** (\`${scopeId}\`) in org **${orgName}** (\`${orgId}\`)? Approving also lets further changes to this same resource run for the rest of this session without asking again.`,
-		'',
-		fencedBlock('graphql', mutation.query),
-	];
-	if (mutation.variables) {
-		lines.push('', 'Variables:', fencedBlock('json', JSON.stringify(mutation.variables, null, 2)));
-	}
-	return {
-		title: 'Cage-Free Rewsty wants to change a Rewst resource',
-		message: lines.join('\n'),
-	};
 }
 
 /**
@@ -595,50 +468,8 @@ export async function runMutationGraphql(
 
 export async function runGraphqlTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
 	if (!deps) throw new Error('GraphQL dependencies are unavailable.');
-
 	if (request.tool === 'buddy_graphql_schema') {
 		return runSchemaTool(request, deps);
 	}
-
-	const query = request.args.query;
-	if (typeof query !== 'string' || query.trim().length === 0) {
-		throw new Error('buddy_graphql requires a "query" argument containing a GraphQL document.');
-	}
-	const rawVariables = request.args.variables;
-	if (
-		rawVariables !== undefined &&
-		(typeof rawVariables !== 'object' || rawVariables === null || Array.isArray(rawVariables))
-	) {
-		throw new Error('buddy_graphql "variables" must be a JSON object when provided.');
-	}
-	const variables = rawVariables as Record<string, unknown> | undefined;
-
-	const kind = detectOperationType(query);
-	if (kind === 'subscription') {
-		throw new Error('buddy_graphql does not support subscriptions; use a query or mutation.');
-	}
-	if (kind === 'mutation') {
-		const missing = MUTATION_SCOPE_FIELDS.filter(field => {
-			const value = request.args[field];
-			return typeof value !== 'string' || value.trim().length === 0;
-		});
-		if (missing.length > 0) {
-			throw new Error(
-				`buddy_graphql mutations require non-empty ${MUTATION_SCOPE_FIELDS.join(', ')} (the id and name of the resource being changed plus its org id and name). Missing: ${missing.join(', ')}. Add them and retry.`,
-			);
-		}
-		const scopeId = (request.args.scopeId as string).trim();
-		const scopeName = (request.args.scopeName as string).trim();
-		const orgId = (request.args.orgId as string).trim();
-		const orgName = (request.args.orgName as string).trim();
-		const operation = variables
-			? `${query.trim()}\n\nVariables:\n${JSON.stringify(variables, null, 2)}`
-			: query.trim();
-		const summary = `${scopeName} (${scopeId}) in org ${orgName} (${orgId})\n\n${operation}`;
-		if (!(await deps.confirmMutation(summary))) {
-			throw new Error('The user declined this mutation. Do not retry it; ask what they would prefer.');
-		}
-	}
-
-	return formatResult(await deps.execute(query, variables));
+	throw new Error(`Unknown GraphQL tool "${request.tool}".`);
 }

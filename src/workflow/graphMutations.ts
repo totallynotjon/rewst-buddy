@@ -10,8 +10,10 @@
 import { randomUUID } from 'crypto';
 import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asStringArg } from '../ui/chat/tools/toolProtocol';
+import { autoLayout, layoutNewTasks, setPosition } from './layout';
 import {
 	type ExecResult,
+	MUTATION_SCOPE_KEYS,
 	type PackOverride,
 	type PublishEntry,
 	type RawTask,
@@ -20,13 +22,11 @@ import {
 	asObject,
 	firstErrorMessage,
 	isPlainObject,
-	normalizePublish,
-	str,
-	MUTATION_SCOPE_KEYS,
 	isSuccessCondition,
+	normalizePublish,
 	orderTransitionsByCondition,
+	str,
 } from './types';
-import { autoLayout, layoutNewTasks, setPosition } from './layout';
 
 // ---------------------------------------------------------------------------
 // GraphQL queries and mutations

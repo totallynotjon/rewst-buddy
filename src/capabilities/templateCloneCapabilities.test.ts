@@ -129,8 +129,6 @@ suite('Unit: templateCloneCapabilities', () => {
 			const c = TEMPLATE_CLONE_CAPABILITIES.find(x => x.spec.name === 'buddy_template_bundle_clone');
 			assert.ok(c);
 			assert.strictEqual(c.access, 'write');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
 		});
 	});

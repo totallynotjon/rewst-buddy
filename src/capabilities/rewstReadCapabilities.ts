@@ -1,7 +1,15 @@
 import { runReadonlyGraphql } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
-import { mapWithConcurrency } from './inputHelpers';
+import { readCapability } from './capabilityFactories';
+import {
+	asString,
+	requireString,
+	asPositiveInt,
+	mapWithConcurrency,
+	rawGraphqlOrThrow,
+	ORG_ID_PROP,
+} from './inputHelpers';
 
 /**
  * Read-only Rewst capabilities exposed over the MCP server. Each operates on the
@@ -46,27 +54,6 @@ const LOCAL_REFERENCE_MODELS = [
 	'Site',
 	'Page',
 ] as const;
-
-function asString(input: Record<string, unknown>, key: string): string | undefined {
-	const value = input[key];
-	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-function requireString(input: Record<string, unknown>, key: string): string {
-	const value = asString(input, key);
-	if (!value) throw new Error(`Missing required string argument "${key}".`);
-	return value;
-}
-
-function asPositiveInt(input: Record<string, unknown>, key: string): number | undefined {
-	const value = input[key];
-	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
-	return Math.floor(value);
-}
-
-const ORG_ID_PROP = {
-	orgId: { type: 'string', description: 'Rewst organization id the operation runs against (from buddy_list_orgs).' },
-} as const;
 
 /** Lists every org reachable through the active sessions; needs no org id. */
 const listOrgsSpec: ToolSpec = {
@@ -534,10 +521,7 @@ async function runListWorkflows(input: Record<string, unknown>, ctx: CapabilityC
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_WORKFLOW_LIMIT, MAX_WORKFLOW_LIMIT);
 	const variables: Record<string, unknown> = { orgId, limit };
 	if (search) variables.search = { name: { _ilike: `%${search}%` } };
-	const { data, errors } = await ctx.session.rawGraphql(WORKFLOWS_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOWS_QUERY, variables);
 	const workflows = ((data as { workflows?: unknown[] } | undefined)?.workflows ?? []) as {
 		id?: string;
 		name?: string;
@@ -558,10 +542,7 @@ async function runListOrgVariables(input: Record<string, unknown>, ctx: Capabili
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_ORG_VARIABLE_LIMIT, MAX_ORG_VARIABLE_LIMIT);
 	const variables: Record<string, unknown> = { orgId, limit };
 	if (search) variables.search = { name: { _ilike: `%${search}%` } };
-	const { data, errors } = await ctx.session.rawGraphql(ORG_VARIABLES_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, ORG_VARIABLES_QUERY, variables);
 	const orgVariables = ((data as { orgVariables?: unknown[] } | undefined)?.orgVariables ?? []) as {
 		name?: string;
 		value?: unknown;
@@ -583,10 +564,7 @@ async function runListWorkflowExecutions(input: Record<string, unknown>, ctx: Ca
 	const status = asString(input, 'status');
 	const variables: Record<string, unknown> = { orgId, limit };
 	if (status) variables.search = { status: { _eq: status } };
-	const { data, errors } = await ctx.session.rawGraphql(WORKFLOW_EXECUTIONS_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_EXECUTIONS_QUERY, variables);
 	const executions = ((data as { workflowExecutions?: unknown[] } | undefined)?.workflowExecutions ?? []) as {
 		id?: string;
 		status?: string;
@@ -656,10 +634,7 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 	const kind: ExecutionVariableKind = rawKind === 'output' || rawKind === 'context' ? rawKind : 'input';
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_EXECUTION_LIMIT, MAX_EXECUTION_LIMIT);
 
-	const { data, errors } = await ctx.session.rawGraphql(EXECUTIONS_WITH_IO_QUERY, { orgId, workflowId, limit });
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, EXECUTIONS_WITH_IO_QUERY, { orgId, workflowId, limit });
 	const executions = ((data as { workflowExecutions?: unknown[] } | undefined)?.workflowExecutions ?? []) as {
 		id?: string;
 		status?: string;
@@ -717,10 +692,7 @@ async function runListWorkflowTasks(input: Record<string, unknown>, ctx: Capabil
 	requireString(input, 'orgId');
 	const workflowId = requireString(input, 'workflowId');
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_TASK_LIMIT, MAX_TASK_LIMIT);
-	const { data, errors } = await ctx.session.rawGraphql(WORKFLOW_TASKS_QUERY, { workflowId, limit });
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_TASKS_QUERY, { workflowId, limit });
 	const workflowTasks = ((data as { workflowTasks?: unknown[] } | undefined)?.workflowTasks ?? []) as {
 		id?: string;
 		name?: string;
@@ -746,10 +718,7 @@ async function runListWorkflowPatches(input: Record<string, unknown>, ctx: Capab
 	requireString(input, 'orgId');
 	const workflowId = requireString(input, 'workflowId');
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_PATCH_LIMIT, MAX_PATCH_LIMIT);
-	const { data, errors } = await ctx.session.rawGraphql(WORKFLOW_PATCHES_QUERY, { workflowId, limit });
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_PATCHES_QUERY, { workflowId, limit });
 	const workflowPatches = ((data as { workflowPatches?: unknown[] } | undefined)?.workflowPatches ?? []) as {
 		id?: string;
 		patchType?: string;
@@ -773,10 +742,7 @@ async function runListWorkflowPatches(input: Record<string, unknown>, ctx: Capab
 async function runGetWorkflowPatch(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	requireString(input, 'orgId');
 	const patchId = requireString(input, 'patchId');
-	const { data, errors } = await ctx.session.rawGraphql(WORKFLOW_PATCH_QUERY, { id: patchId });
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_PATCH_QUERY, { id: patchId });
 	const workflowPatch = (data as { workflowPatch?: unknown | null } | undefined)?.workflowPatch;
 	if (!workflowPatch) return `No workflow patch found for patch id ${patchId}.`;
 	return JSON.stringify(workflowPatch, null, 2);
@@ -788,10 +754,7 @@ async function runLatestWorkflowExecution(input: Record<string, unknown>, ctx: C
 	const status = asString(input, 'status');
 	const variables: Record<string, unknown> = { orgId, workflowId };
 	if (status) variables.status = status;
-	const { data, errors } = await ctx.session.rawGraphql(LATEST_WORKFLOW_EXECUTION_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, LATEST_WORKFLOW_EXECUTION_QUERY, variables);
 	const execution = (
 		data as
 			| {
@@ -818,10 +781,7 @@ async function runGetWorkflowExecutionStats(input: Record<string, unknown>, ctx:
 		throw new Error('createdSince must be an ISO-8601 date string; epoch milliseconds are not supported.');
 	}
 	const variables = { orgId, createdSince };
-	const { data, errors } = await ctx.session.rawGraphql(WORKFLOW_EXECUTION_STATS_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_EXECUTION_STATS_QUERY, variables);
 	const stats = (
 		data as
 			| {
@@ -855,10 +815,7 @@ async function runFindAction(input: Record<string, unknown>, ctx: CapabilityCont
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_ACTION_LIMIT, MAX_ACTION_LIMIT);
 	const variables: Record<string, unknown> = { orgId };
 	if (filter) variables.filter = filter;
-	const { data, errors } = await ctx.session.rawGraphql(FIND_ACTION_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, FIND_ACTION_QUERY, variables);
 	const packs = ((data as { searchInstalledPackActions?: unknown[] } | undefined)?.searchInstalledPackActions ??
 		[]) as {
 		id?: string;
@@ -909,10 +866,7 @@ async function runResolveReference(input: Record<string, unknown>, ctx: Capabili
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_REFERENCE_LIMIT, MAX_REFERENCE_LIMIT);
 	const variables: Record<string, unknown> = { orgId, modelName: modelType, limit };
 	if (search) variables.search = search;
-	const { data, errors } = await ctx.session.rawGraphql(RESOLVE_REFERENCE_QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, RESOLVE_REFERENCE_QUERY, variables);
 	const options = ((data as { localReferenceOptions?: unknown[] } | undefined)?.localReferenceOptions ?? []) as {
 		label?: string;
 		value?: string;
@@ -926,10 +880,7 @@ async function runResolveReference(input: Record<string, unknown>, ctx: Capabili
 async function runGetWorkflow(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	const orgId = requireString(input, 'orgId');
 	const workflowId = requireString(input, 'workflowId');
-	const { data, errors } = await ctx.session.rawGraphql(WORKFLOW_QUERY, { id: workflowId });
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_QUERY, { id: workflowId });
 	const workflow = (data as { workflow?: { orgId?: unknown } } | undefined)?.workflow;
 	if (!workflow) throw new Error(`Workflow not found: ${workflowId}`);
 	// workflow(where:{id}) ignores org, so enforce the requested orgId here.
@@ -961,33 +912,20 @@ async function runGraphqlQuery(input: Record<string, unknown>, ctx: CapabilityCo
 }
 
 export const READ_CAPABILITIES: Capability[] = [
-	{
-		spec: listOrgsSpec,
-		access: 'read',
-		chat: false,
-		mcp: true,
-		requiresOrg: false,
-		run: runListOrgs,
-	},
-	{ spec: listTemplatesSpec, access: 'read', chat: false, mcp: true, run: runListTemplates },
-	{ spec: getTemplateSpec, access: 'read', chat: false, mcp: true, run: runGetTemplate },
-	{ spec: listWorkflowsSpec, access: 'read', chat: false, mcp: true, run: runListWorkflows },
-	{ spec: listOrgVariablesSpec, access: 'read', chat: false, mcp: true, run: runListOrgVariables },
-	{ spec: listWorkflowExecutionsSpec, access: 'read', chat: false, mcp: true, run: runListWorkflowExecutions },
-	{ spec: findExecutionsByVariableSpec, access: 'read', chat: false, mcp: true, run: runFindExecutionsByVariable },
-	{ spec: listWorkflowTasksSpec, access: 'read', chat: false, mcp: true, run: runListWorkflowTasks },
-	{ spec: listWorkflowPatchesSpec, access: 'read', chat: false, mcp: true, run: runListWorkflowPatches },
-	{ spec: getWorkflowPatchSpec, access: 'read', chat: false, mcp: true, run: runGetWorkflowPatch },
-	{ spec: latestWorkflowExecutionSpec, access: 'read', chat: false, mcp: true, run: runLatestWorkflowExecution },
-	{ spec: getWorkflowExecutionStatsSpec, access: 'read', chat: false, mcp: true, run: runGetWorkflowExecutionStats },
-	{ spec: findActionSpec, access: 'read', chat: false, mcp: true, run: runFindAction },
-	{ spec: resolveReferenceSpec, access: 'read', chat: false, mcp: true, run: runResolveReference },
-	{ spec: getWorkflowSpec, access: 'read', chat: false, mcp: true, run: runGetWorkflow },
-	{
-		spec: graphqlQuerySpec,
-		access: 'read',
-		chat: false,
-		mcp: true,
-		run: runGraphqlQuery,
-	},
+	readCapability(listOrgsSpec, runListOrgs, { requiresOrg: false }),
+	readCapability(listTemplatesSpec, runListTemplates),
+	readCapability(getTemplateSpec, runGetTemplate),
+	readCapability(listWorkflowsSpec, runListWorkflows),
+	readCapability(listOrgVariablesSpec, runListOrgVariables),
+	readCapability(listWorkflowExecutionsSpec, runListWorkflowExecutions),
+	readCapability(findExecutionsByVariableSpec, runFindExecutionsByVariable),
+	readCapability(listWorkflowTasksSpec, runListWorkflowTasks),
+	readCapability(listWorkflowPatchesSpec, runListWorkflowPatches),
+	readCapability(getWorkflowPatchSpec, runGetWorkflowPatch),
+	readCapability(latestWorkflowExecutionSpec, runLatestWorkflowExecution),
+	readCapability(getWorkflowExecutionStatsSpec, runGetWorkflowExecutionStats),
+	readCapability(findActionSpec, runFindAction),
+	readCapability(resolveReferenceSpec, runResolveReference),
+	readCapability(getWorkflowSpec, runGetWorkflow),
+	readCapability(graphqlQuerySpec, runGraphqlQuery),
 ];

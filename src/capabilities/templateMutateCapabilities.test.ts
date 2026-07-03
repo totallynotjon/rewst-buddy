@@ -41,8 +41,6 @@ suite('Unit: templateMutateCapabilities', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
 			const c = cap('buddy_create_template');
 			assert.strictEqual(c.access, 'write');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
 		});
 
@@ -133,8 +131,6 @@ suite('Unit: templateMutateCapabilities', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
 			const c = cap('buddy_update_template_body');
 			assert.strictEqual(c.access, 'write');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
 		});
 
@@ -239,8 +235,6 @@ suite('Unit: templateMutateCapabilities', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
 			const c = cap('buddy_rename_template');
 			assert.strictEqual(c.access, 'write');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
 		});
 
@@ -328,8 +322,6 @@ suite('Unit: templateMutateCapabilities', () => {
 		test('is a write capability gated by approval, mcp-only', () => {
 			const c = cap('buddy_delete_template');
 			assert.strictEqual(c.access, 'write');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
 		});
 

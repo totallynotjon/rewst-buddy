@@ -1,8 +1,9 @@
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
-import { ORG_ID_PROP, asString, requireString } from './inputHelpers';
-import { orgDisplayName, throwOnGraphqlErrors, withMutationApproval } from './mutationApproval';
+import { writeCapability } from './capabilityFactories';
+import { ORG_ID_PROP, asString, rawGraphqlOrThrow, requireResourceInOrg, requireString } from './inputHelpers';
+import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
  * Tag write capabilities. createTag carries orgId in its input so it is natively
@@ -41,12 +42,18 @@ interface TagRow {
  * Returns the current fields so an update can preserve those it is not changing.
  */
 async function requireTagInOrg(ctx: CapabilityContext, tagId: string, orgId: string): Promise<TagRow> {
-	const { data, errors } = await ctx.session.rawGraphql(TAG_BY_ID, { orgId, id: tagId });
-	throwOnGraphqlErrors(errors);
-	const rows = ((data as { tags?: TagRow[] } | undefined)?.tags ?? []) as TagRow[];
-	const row = rows.find(r => r.id === tagId);
-	if (!row) throw new Error(`Tag ${tagId} is not in org ${orgId}.`);
-	return row;
+	return requireResourceInOrg({
+		label: 'Tag',
+		id: tagId,
+		orgId,
+		fetch: async () => {
+			const data = await rawGraphqlOrThrow(ctx.session, TAG_BY_ID, { orgId, id: tagId });
+			const rows = ((data as { tags?: TagRow[] } | undefined)?.tags ?? []) as TagRow[];
+			return rows.find(r => r.id === tagId);
+		},
+		// The query is already org-filtered, so a returned row is in-org by construction.
+		inOrg: () => true,
+	});
 }
 
 const createTagSpec: ToolSpec = {
@@ -78,8 +85,7 @@ async function runCreateTag(input: Record<string, unknown>, ctx: CapabilityConte
 		const tag: Record<string, unknown> = { orgId, name };
 		if (color !== undefined) tag.color = color;
 		if (description !== undefined) tag.description = description;
-		const { data, errors } = await ctx.session.rawGraphql(CREATE_TAG, { tag });
-		throwOnGraphqlErrors(errors);
+		const data = await rawGraphqlOrThrow(ctx.session, CREATE_TAG, { tag });
 		const created = (data as { createTag?: TagRow } | undefined)?.createTag;
 		if (!created?.id) throw new Error('createTag returned no tag; the mutation may have failed.');
 		return JSON.stringify({ status: 'created', id: created.id, name: created.name ?? name }, null, 2);
@@ -122,8 +128,7 @@ async function runUpdateTag(input: Record<string, unknown>, ctx: CapabilityConte
 		const description = descriptionOverride ?? current.description;
 		if (color !== undefined) tag.color = color;
 		if (description !== undefined) tag.description = description;
-		const { data, errors } = await ctx.session.rawGraphql(UPDATE_TAG, { tag });
-		throwOnGraphqlErrors(errors);
+		const data = await rawGraphqlOrThrow(ctx.session, UPDATE_TAG, { tag });
 		const updated = (data as { updateTag?: TagRow } | undefined)?.updateTag;
 		if (!updated?.id) throw new Error('updateTag returned no tag; the mutation may have failed.');
 		return JSON.stringify({ status: 'updated', id: updated.id, name: updated.name ?? name }, null, 2);
@@ -154,8 +159,7 @@ async function runDeleteTag(input: Record<string, unknown>, ctx: CapabilityConte
 	const scope: MutationScope = { scopeId: tagId, scopeName: name, orgId, orgName };
 	const summary = `Delete tag "${name}" (${tagId}) in org "${orgName}" (${orgId})`;
 	return withMutationApproval(scope, summary, async () => {
-		const { data, errors } = await ctx.session.rawGraphql(DELETE_TAG, { id: tagId });
-		throwOnGraphqlErrors(errors);
+		const data = await rawGraphqlOrThrow(ctx.session, DELETE_TAG, { id: tagId });
 		const deletedId = (data as { deleteTag?: string | null } | undefined)?.deleteTag;
 		if (!deletedId) throw new Error('deleteTag returned no id; the mutation may have failed.');
 		return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);
@@ -163,7 +167,7 @@ async function runDeleteTag(input: Record<string, unknown>, ctx: CapabilityConte
 }
 
 export const TAG_MUTATE_CAPABILITIES: Capability[] = [
-	{ spec: createTagSpec, access: 'write', chat: false, mcp: true, run: runCreateTag },
-	{ spec: updateTagSpec, access: 'write', chat: false, mcp: true, run: runUpdateTag },
-	{ spec: deleteTagSpec, access: 'write', chat: false, mcp: true, run: runDeleteTag },
+	writeCapability(createTagSpec, runCreateTag),
+	writeCapability(updateTagSpec, runUpdateTag),
+	writeCapability(deleteTagSpec, runDeleteTag),
 ];

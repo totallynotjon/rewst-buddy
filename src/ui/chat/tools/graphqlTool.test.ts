@@ -1,17 +1,15 @@
+import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
 import {
-	_resetApprovedMutationScopes,
-	approveMutationScope,
-	detectOperationType,
-	graphqlMutationConfirmation,
-	graphqlMutationScope,
-	isGraphqlTool,
-	isMutationScopeApproved,
-	runGraphqlTool,
-	type GraphqlToolDeps,
-	type MutationScope,
+    _resetApprovedMutationScopes,
+    approveMutationScope,
+    detectOperationType,
+    isGraphqlTool,
+    isMutationScopeApproved,
+    runGraphqlTool,
+    type GraphqlToolDeps,
+    type MutationScope,
 } from './graphqlTool';
 
 const { suite, test, setup } = Mocha;
@@ -69,106 +67,7 @@ suite('Unit: graphqlTool', () => {
 		});
 	});
 
-	suite('graphqlMutationConfirmation()', () => {
-		test('names the resource and org and shows the operation and variables', () => {
-			const confirmation = graphqlMutationConfirmation(
-				'buddy_graphql',
-				scopedMutation({
-					query: 'mutation U($id: ID!) { updateTemplate(id: $id) { id } }',
-					variables: { id: 't-1' },
-				}),
-			);
-			assert.ok(confirmation, 'an unapproved mutation needs confirmation');
-			assert.match(confirmation.message, /My Workflow/);
-			assert.match(confirmation.message, /wf-1/);
-			assert.match(confirmation.message, /Acme/);
-			assert.match(confirmation.message, /org-1/);
-			assert.match(confirmation.message, /```graphql/);
-			assert.match(confirmation.message, /mutation U/);
-			assert.match(confirmation.message, /Variables:/);
-			assert.match(confirmation.message, /"id": "t-1"/);
-		});
-
-		test('omits the variables block when there are none', () => {
-			const confirmation = graphqlMutationConfirmation(
-				'buddy_graphql',
-				scopedMutation({ query: 'mutation D { deleteTemplate { id } }' }),
-			);
-			assert.ok(confirmation);
-			assert.doesNotMatch(confirmation.message, /Variables:/);
-		});
-
-		test('widens the fence so backticks in the operation cannot close it early', () => {
-			const confirmation = graphqlMutationConfirmation(
-				'buddy_graphql',
-				scopedMutation({ query: 'mutation M { x(body: "```danger```") { id } }' }),
-			);
-			assert.ok(confirmation);
-			// The inner ``` run forces a 4-backtick fence around the operation.
-			assert.match(confirmation.message, /````graphql\n/);
-			assert.match(confirmation.message, /\n````/);
-		});
-
-		test('returns undefined for queries and schema reads', () => {
-			assert.strictEqual(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation({ query: '{ user { id } }' })),
-				undefined,
-			);
-			assert.strictEqual(graphqlMutationConfirmation('buddy_graphql_schema', {}), undefined);
-		});
-
-		test('returns undefined for other tools, bad queries, and a mutation missing any scope field', () => {
-			assert.strictEqual(
-				graphqlMutationConfirmation('read_file', scopedMutation({ query: 'mutation D { x }' })),
-				undefined,
-			);
-			assert.strictEqual(graphqlMutationConfirmation('buddy_graphql', {}), undefined);
-			assert.strictEqual(graphqlMutationConfirmation('buddy_graphql', { query: '   ' }), undefined);
-			assert.strictEqual(graphqlMutationConfirmation('buddy_graphql', undefined), undefined);
-			// A mutation missing any scope field is refused in runGraphqlTool, so
-			// there is nothing to approve here.
-			for (const field of ['scopeId', 'scopeName', 'orgId', 'orgName']) {
-				assert.strictEqual(
-					graphqlMutationConfirmation('buddy_graphql', scopedMutation({ [field]: undefined })),
-					undefined,
-					`missing ${field}`,
-				);
-			}
-		});
-
-		test('an already-approved scope needs no further confirmation, a new resource does', () => {
-			assert.ok(graphqlMutationConfirmation('buddy_graphql', scopedMutation()), 'first time prompts');
-
-			approveMutationScope(SCOPE);
-			assert.strictEqual(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation()),
-				undefined,
-				'same resource no longer prompts',
-			);
-			assert.ok(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation({ scopeId: 'wf-2' })),
-				'a different resource still prompts',
-			);
-			assert.ok(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation({ orgId: 'org-2' })),
-				'the same resource id in another org still prompts',
-			);
-		});
-	});
-
-	suite('graphqlMutationScope() + scope approval', () => {
-		test('reports the full scope only for a complete scoped mutation', () => {
-			assert.deepStrictEqual(graphqlMutationScope('buddy_graphql', scopedMutation()), SCOPE);
-			assert.strictEqual(
-				graphqlMutationScope('buddy_graphql', scopedMutation({ scopeName: undefined })),
-				undefined,
-			);
-			assert.strictEqual(
-				graphqlMutationScope('buddy_graphql', scopedMutation({ query: '{ user { id } }' })),
-				undefined,
-			);
-		});
-
+	suite('scope approval', () => {
 		test('approval is keyed on org + resource ids, not names', () => {
 			assert.strictEqual(isMutationScopeApproved(SCOPE), false);
 			approveMutationScope(SCOPE);

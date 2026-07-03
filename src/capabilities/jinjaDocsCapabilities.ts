@@ -212,8 +212,6 @@ export const JINJA_DOCS_CAPABILITIES: Capability[] = [
 	{
 		spec: getJinjaFilterDocsSpec,
 		access: 'read',
-		chat: false,
-		mcp: true,
 		requiresOrg: false,
 		run: runGetJinjaFilterDocs,
 	},

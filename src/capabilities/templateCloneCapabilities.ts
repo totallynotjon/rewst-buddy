@@ -4,6 +4,7 @@ import { TEMPLATE_PATTERN } from '../providers/templatePatternUtils';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { writeCapability } from './capabilityFactories';
 import { asPositiveInt, asString, getTemplateFromAnySession, json, ORG_ID_PROP, requireString } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
@@ -306,13 +307,6 @@ const bundleCloneSpec: ToolSpec = {
 };
 
 export const TEMPLATE_CLONE_CAPABILITIES: Capability[] = [
-	{
-		spec: bundleCloneSpec,
-		access: 'write',
-		chat: false,
-		mcp: true,
-		// Explicit: a write tool is org-scoped (the allowlist needs a concrete orgId).
-		requiresOrg: true,
-		run: (input, ctx) => runBundleClone(input, ctx),
-	},
+	// Explicit: a write tool is org-scoped (the allowlist needs a concrete orgId).
+	writeCapability(bundleCloneSpec, (input, ctx) => runBundleClone(input, ctx), { requiresOrg: true }),
 ];
