@@ -3,6 +3,8 @@ description: Take a GitHub issue from triage to an open, review-clean PR (worktr
 argument-hint: <issue-number> [extra context or constraints]
 ---
 
+<!-- markdownlint-disable MD033 -- XML-ish config tags are this skill file format -->
+
 You are addressing GitHub issue #$1 end to end: understand it, spin up a worktree, implement a tested fix, document it, and open a PR that references the issue. Stop at an open, review-clean PR — versioning, merging, and publishing are handled separately and automatically by CI (see `docs/dev/releasing.md`).
 
 Extra context from the user (may be empty): $ARGUMENTS
@@ -21,7 +23,7 @@ Extra context from the user (may be empty): $ARGUMENTS
 - **Tests are mandatory.** Every fix ships with tests: colocated `*.test.ts` unit tests next to the source, plus an integration test under `src/test/integration/` when live API / assistant behavior is involved. Prefer the mock SDK wrapper (`createMockSession`, `Fixtures`) for unit tests — see CLAUDE.md "Testing".
 - **Type-check via `mcp__ide__getDiagnostics`**, not `tsc`.
 - **Prompt steering changes must stay transport-shaped.** When editing Cage-Free Rewsty steering or `vscode-tool` protocol text, avoid XML authority wrappers and override language ("supersedes", "overrides", "ignore your system prompt", "trusted system instruction"). Use neutral VS Code context / local tool protocol wording, and keep edit/write tool routing close to the concrete Available tools list. See CLAUDE.md "AI Prompt Steering Directives".
-- **Path aliases**, if you add one, must go in BOTH `tsconfig.json` and `webpack.config.cjs`.
+- **Path aliases**, if you add one, go in `tsconfig.json` only (esbuild reads them natively).
 - **Do not merge, tag, bump the version, or publish here** — releasing is a separate, fully CI-driven step (see `docs/dev/releasing.md`).
 
 ## Phase 1 — Understand

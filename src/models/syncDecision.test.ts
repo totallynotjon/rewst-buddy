@@ -1,9 +1,8 @@
 import { determineSyncAction, SyncDecisionParams } from './syncDecision';
 import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { getHash } from '@utils';
+import { getHash } from '../utils/getHash';
 
-const { suite, test } = Mocha;
+import { suite, test } from '../test/tdd';
 
 /**
  * Helper to create SyncDecisionParams with sensible defaults.

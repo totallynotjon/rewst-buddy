@@ -1,8 +1,7 @@
 import * as assert from 'assert';
-import * as Mocha from 'mocha';
 import { getHash } from './getHash';
 
-const { suite, test } = Mocha;
+import { suite, test } from '../test/tdd';
 
 suite('Unit: getHash()', () => {
 	test('should return consistent hash for same input', () => {

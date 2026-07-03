@@ -68,7 +68,7 @@ surfaces it on every enabled surface automatically.
 ### Phase 0 — Capability registry refactor (foundation, no user-visible change)
 
 - New `src/capabilities/` (+ `@capabilities` alias in **both** `tsconfig.json`
-  and `webpack.config.cjs`).
+  — tsconfig only; esbuild reads paths natively).
 - `Capability { spec: ToolSpec; access: 'read'|'write'; enabled(settings); run(input, ctx) }`
   with `CapabilityContext { session: Session; orgId: string }` — session injected, never secrets.
 - Migrate read paths of `GRAPHQL_TOOL_SPECS` into capabilities; `lmTools` derives

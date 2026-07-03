@@ -1,8 +1,7 @@
 import * as assert from 'assert';
-import * as Mocha from 'mocha';
 import { findAllTemplateReferences, findTemplateAtPosition, TEMPLATE_PATTERN } from './templatePatternUtils';
 
-const { suite, test } = Mocha;
+import { suite, test } from '../test/tdd';
 
 suite('Unit: TEMPLATE_PATTERN', () => {
 	test('should match valid template() calls with double quotes', () => {

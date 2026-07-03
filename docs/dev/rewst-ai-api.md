@@ -249,10 +249,10 @@ Notes:
 ## Implementation requirements for the extension
 
 1. **Dependencies**: declare `graphql-ws` and `ws` in `devDependencies`
-   (consistent with `graphql-request` — webpack bundles everything except `vscode`,
+   (consistent with `graphql-request` — esbuild bundles everything except `vscode`,
    so devDependencies is correct; both were already importable as transitive deps).
-   Add `bufferutil` and `utf-8-validate` to webpack `externals` — `ws` optionally
-   requires these native addons in a try/catch and webpack must leave them unresolved.
+   Add `bufferutil` and `utf-8-validate` to esbuild `external` — `ws` optionally
+   requires these native addons in a try/catch and the bundler must leave them unresolved.
 2. **Region config**: extend `RegionConfig` with the subscriptions URL
    (NA default `wss://api.rewst.io/subscriptions`).
 3. **Client**: a `ConversationClient` beside `Session` wrapping

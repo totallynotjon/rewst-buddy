@@ -5,7 +5,7 @@
 	"tasks": [
 		{
 			"label": "watch",
-			"dependsOn": ["npm: watch:tsc", "npm: watch:webpack"],
+			"dependsOn": ["npm: watch:tsc", "npm: watch:esbuild"],
 			"presentation": {
 				"reveal": "never"
 			},
@@ -16,27 +16,13 @@
 		},
 		{
 			"type": "npm",
-			"script": "watch:webpack",
+			"script": "watch:esbuild",
 			"group": "build",
-			"problemMatcher": {
-				"owner": "webpack",
-				"pattern": [
-					{
-						"regexp": "ERROR in (.*) (\\d+):(\\d+)",
-						"file": 1,
-						"line": 2,
-						"column": 3,
-						"message": 0
-					}
-				],
-				"background": {
-					"activeOnStart": true,
-					"beginsPattern": ".*",
-					"endsPattern": "compiled successfully|Compilation complete"
-				}
-			},
+			// From the connor4312.esbuild-problem-matchers extension; pairs with
+			// the [watch] build started/finished lines esbuild.mjs emits.
+			"problemMatcher": "$esbuild-watch",
 			"isBackground": true,
-			"label": "npm: watch:webpack",
+			"label": "npm: watch:esbuild",
 			"presentation": {
 				"group": "watch",
 				"reveal": "never"
