@@ -44,10 +44,15 @@ function collectTestFiles(dir: string): string[] {
 	return results;
 }
 
-/** Return true if the file's source text imports from the tdd module. */
+/** Return true if the file has a real import statement that imports from the tdd module.
+ * Strips block comments first so JSDoc references to the path don't count.
+ */
 function importsTdd(filePath: string): boolean {
-	const src = fs.readFileSync(filePath, 'utf8');
-	return /from\s+['"].*\/test\/tdd['"]/u.test(src);
+	// Remove block comments (/** ... */ and /* ... */) before testing so that
+	// documentation references to the tdd path don't produce false positives.
+	const src = fs.readFileSync(filePath, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+	// Matches both sibling imports ("./tdd", "../tdd") and path imports ("../test/tdd", "../../test/tdd").
+	return /^\s*import\b[^;]+from\s+['"](?:\.{1,2}\/)*(?:test\/)?tdd['"]/mu.test(src);
 }
 
 suite('Guard: vitest suites ↔ tdd importers are in sync', () => {
