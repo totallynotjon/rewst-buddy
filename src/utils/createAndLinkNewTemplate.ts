@@ -1,8 +1,6 @@
-import { LinkManager, TemplateLink } from '@models';
-import { findAllTemplateReferences } from '../providers/templatePatternUtils';
+import { buildTemplateLink, LinkManager } from '@models';
 import { FullTemplateFragment } from '@sessions';
 import vscode from 'vscode';
-import { getHash } from './getHash';
 
 /**
  * Creates a new untitled document from template content,
@@ -28,17 +26,7 @@ export async function createAndLinkNewTemplate(template: FullTemplateFragment): 
 		return false;
 	}
 
-	const templateLink: TemplateLink = {
-		type: 'Template',
-		template: template,
-		bodyHash: getHash(content),
-		referencedTemplateIds: findAllTemplateReferences(content),
-		uriString: resultUri.toString(),
-		org: {
-			id: template.orgId,
-			name: template.organization.name,
-		},
-	};
+	const templateLink = buildTemplateLink(template, content, resultUri.toString());
 
 	await LinkManager.addLink(templateLink);
 	return true;

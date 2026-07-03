@@ -55,7 +55,14 @@ const config = {
 			{
 				test: /\.ts$/,
 				exclude: /node_modules/,
-				use: ['ts-loader'],
+				use: [
+					{
+						loader: 'ts-loader',
+						options: {
+							transpileOnly: true,
+						},
+					},
+				],
 			},
 		],
 	},
@@ -76,26 +83,17 @@ const config = {
  * Integration tests: centralized in src/test/integration/
  */
 function getTestEntries() {
-	const entries = {};
-
 	// Unit tests: colocated throughout src/ (exclude helpers and integration)
 	const unitTests = glob.sync('src/**/*.test.ts', {
 		ignore: ['src/test/helpers/**', 'src/test/integration/**'],
 	});
 
-	for (const file of unitTests) {
-		const key = `unit/${file.replace('src/', '').replace('.ts', '')}`;
-		entries[key] = './' + file;
-	}
-
 	// Integration tests: centralized
 	const integrationTests = glob.sync('src/test/integration/*.test.ts');
-	for (const file of integrationTests) {
-		const key = `integration/${path.basename(file, '.ts')}`;
-		entries[key] = './' + file;
-	}
 
-	return entries;
+	return {
+		'index.test': [...unitTests, ...integrationTests].sort().map(file => './' + file),
+	};
 }
 
 /**@type {import('webpack').Configuration}*/
@@ -107,6 +105,7 @@ const testConfig = {
 		filename: '[name].js',
 		libraryTarget: 'commonjs2',
 		devtoolModuleFilenameTemplate: '../../[resource-path]',
+		clean: true,
 	},
 	externals: {
 		...config.externals,

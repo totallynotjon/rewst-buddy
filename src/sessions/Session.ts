@@ -9,9 +9,14 @@ import SessionProfile from './SessionProfile';
 import { createRetryWrapper } from './retryWrapper';
 
 export default class Session {
+	private static readonly MAX_REFRESH_FAILURES = 3;
 	private secrets: vscode.SecretStorage;
 	private lastValidated = 0;
 	private refreshPromise: Promise<void> | undefined;
+	private consecutiveRefreshFailures = 0;
+	private expired = false;
+	private readonly expiredEmitter = new vscode.EventEmitter<Session>();
+	readonly onExpired = this.expiredEmitter.event;
 
 	public constructor(
 		public sdk: Sdk | undefined,
@@ -104,6 +109,11 @@ export default class Session {
 	public async validate(): Promise<boolean> {
 		log.trace('validate: checking session', this.profile.org.id);
 
+		if (this.expired) {
+			log.debug('validate: session is expired');
+			return false;
+		}
+
 		if (this.sdk === undefined) {
 			log.debug('validate: no SDK present');
 			return false;
@@ -163,12 +173,16 @@ export default class Session {
 		}
 	}
 
+	public isExpired(): boolean {
+		return this.expired;
+	}
+
 	private async performRefresh(): Promise<void> {
 		log.trace('refreshToken: starting', { label: this.profile.label, orgId: this.profile.org.id });
 
 		const config = this.profile.region;
 		try {
-			const oldCookies = await this.getCookies();
+			const oldCookies = await this.getCookiesForRefresh();
 
 			log.trace('refreshToken: fetching new token from', config.loginUrl);
 			const response = await fetch(config.loginUrl, {
@@ -181,29 +195,83 @@ export default class Session {
 			log.debug('refreshToken: response status', response.status);
 
 			if (!response.ok) {
-				throw log.notifyError(`refreshToken: failed with status ${response.status}`);
+				throw log.error(`refreshToken: failed with status ${response.status}`);
 			}
 
 			const cookieString = response.headers.get('set-cookie');
 			if (!cookieString) {
-				throw log.notifyError('refreshToken: missing set-cookie header');
+				throw log.error('refreshToken: missing set-cookie header');
 			}
 
 			log.trace('refreshToken: validating new SDK');
 			const sdk = Session.newSdkAtRegion(new CookieString(cookieString), config);
 			if (!(await Session.validateSdk(sdk))) {
-				throw log.notifyError('refreshToken: new SDK validation failed');
+				throw log.error('refreshToken: new SDK validation failed');
 			}
 
 			log.trace('refreshToken: storing new cookie');
 			await this.secrets.store(this.profile.org.id, cookieString);
 			this.sdk = sdk;
 			this.lastValidated = Date.now();
+			this.consecutiveRefreshFailures = 0;
+			this.expired = false;
 			log.info(`refreshToken: success for ${this.profile.label}`);
 		} catch (error) {
-			log.notifyError(`refreshToken: failed for ${this.profile.label}: ${error}`);
+			this.recordRefreshFailure(error);
 			throw error;
 		}
+	}
+
+	private async getCookiesForRefresh(): Promise<string> {
+		log.trace('refreshToken: retrieving stored cookie for org', this.profile.org.id);
+		const token = await this.secrets.get(this.profile.org.id);
+
+		if (typeof token !== 'string') {
+			throw log.error(`refreshToken: no token found for ${this.profile.org.id}`);
+		}
+
+		return token;
+	}
+
+	private recordRefreshFailure(error: unknown): void {
+		this.lastValidated = 0;
+
+		if (this.expired) {
+			log.debug(`refreshToken: expired session refresh failed for ${this.profile.label}: ${error}`);
+			return;
+		}
+
+		this.consecutiveRefreshFailures++;
+		if (this.consecutiveRefreshFailures < Session.MAX_REFRESH_FAILURES) {
+			log.debug('refreshToken: failed', {
+				label: this.profile.label,
+				consecutiveFailures: this.consecutiveRefreshFailures,
+				error,
+			});
+			return;
+		}
+
+		this.expired = true;
+		log.warn('refreshToken: session expired after repeated refresh failures', {
+			label: this.profile.label,
+			consecutiveFailures: this.consecutiveRefreshFailures,
+			error,
+		});
+		this.showExpiredNotification();
+		this.expiredEmitter.fire(this);
+	}
+
+	private showExpiredNotification(): void {
+		void vscode.window
+			.showErrorMessage(
+				`Rewst Buddy session "${this.profile.label}" has expired. Re-authenticate to continue syncing.`,
+				'Re-authenticate',
+			)
+			.then(choice => {
+				if (choice === 'Re-authenticate') {
+					void vscode.commands.executeCommand('rewst-buddy.FocusSidebar');
+				}
+			});
 	}
 
 	public static async getCookies(orgId: string): Promise<string> {

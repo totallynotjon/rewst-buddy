@@ -1,6 +1,6 @@
-import { LinkManager, SyncOnSaveManager, orgForTemplateLink, type TemplateLink } from '@models';
+import { buildTemplateLink, LinkManager, SyncOnSaveManager, orgForTemplateLink } from '@models';
 import type { FullTemplateFragment, Session } from '@sessions';
-import { findAllTemplateReferences, getHash, uriExists } from '@utils';
+import { uriExists } from '@utils';
 import vscode from 'vscode';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
@@ -120,22 +120,13 @@ export async function runLink(
 	}
 
 	const body = await deps.readBody(uri);
-	const referencedTemplateIds = findAllTemplateReferences(body);
-	const bodyHash = getHash(body);
-	const orgName = template.organization?.name ?? template.orgId;
 	// Mirror LinkTemplateInteractive: store the sentinel updatedAt '0' (not the
 	// real remote timestamp) and an empty body so the first sync reconciles
 	// instead of appearing already in-sync. The bodyHash is of the LOCAL file.
 	template.updatedAt = '0';
 	template.body = '';
-	const templateLink: TemplateLink = {
-		type: 'Template',
-		uriString: uri.toString(),
-		org: { id: template.orgId, name: orgName },
-		template,
-		bodyHash,
-		referencedTemplateIds,
-	};
+	const templateLink = buildTemplateLink(template, body, uri.toString());
+	const orgName = templateLink.org.name;
 	LinkManager.addLink(templateLink);
 	// addLink only schedules a debounced persist; flush so the link survives
 	// before this MCP call returns.
@@ -149,7 +140,7 @@ export async function runLink(
 		templateName: template.name,
 		orgId: template.orgId,
 		orgName,
-		referencedTemplateIds,
+		referencedTemplateIds: templateLink.referencedTemplateIds,
 		message:
 			'Linked. The link starts out-of-sync (updatedAt sentinel); call buddy_template_sync_status to compare, or buddy_template_sync with a direction to reconcile.',
 	});

@@ -384,7 +384,7 @@ npm run test:grep -- "Unit: toolProtocol"  # Run a targeted unit grep
 npm run test:grep:integration -- "an explicit insert edit tool request"  # Run a targeted live integration grep
 ```
 
-Use `vscode-test --grep`, not `vscode-test -- --grep`. The extra `--` prevents the VS Code test CLI from applying Mocha's grep and can accidentally run the full suite. For targeted live integration tests whose grep does not include the word `Integration`, use `test:grep:integration`; it sets `REWST_TEST_INTEGRATION=1` so `.vscode-test.mjs` loads `.env` / `REWST_TEST_TOKEN`.
+Use `vscode-test --grep`, not `vscode-test -- --grep`. The extra `--` prevents the VS Code test CLI from applying Mocha's grep and can accidentally run the full suite. `.vscode-test.mjs` defines labeled configs: `unit` and `integration` carry a config-level `mocha.grep` (which silently wins over CLI `--grep`), so the targeted scripts run the grep-dedicated labels instead — `test:grep` uses `--label grep` (offline, no `.env`) and `test:grep:integration` uses `--label grep-integration` (loads `.env` / `REWST_TEST_TOKEN` for live runs). Never run the grep labels without a `--grep` pattern.
 
 ### Test Structure
 

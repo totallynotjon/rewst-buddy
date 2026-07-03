@@ -121,6 +121,55 @@ stored cookie with the refreshed one.
 - **THEN** the extension obtains a new cookie from the login response, validates
   it, and updates both the in-memory session and the stored secret
 
+### Requirement: Back off dead session cookies
+
+The system SHALL invalidate any cached successful validation after a failed
+credential refresh. After three consecutive refresh failures for the same
+session, the system SHALL mark that session expired, publish a session-change
+event so session UI refreshes, and show exactly one error notification with a
+`Re-authenticate` action that focuses the Rewst Buddy sidebar. Further refresh
+failures for that expired session SHALL be logged at debug level without more
+user-facing notifications until the user re-authenticates or the extension is
+reloaded. A successful refresh SHALL reset the consecutive-failure counter.
+
+#### Scenario: Refresh failures expire a session once
+
+- **GIVEN** an active session whose cookie can no longer be refreshed
+- **WHEN** three consecutive refresh attempts fail
+- **THEN** the session is marked expired
+- **AND** session-change subscribers receive an event whose active profiles no
+  longer include that session
+- **AND** the user sees one error notification offering `Re-authenticate`
+
+#### Scenario: Re-auth action opens the sidebar
+
+- **GIVEN** a session has just transitioned to expired after repeated refresh
+  failures
+- **WHEN** the user chooses `Re-authenticate` from the error notification
+- **THEN** the extension executes `rewst-buddy.FocusSidebar`
+
+#### Scenario: Expired sessions stop notifying
+
+- **GIVEN** a session has already transitioned to expired
+- **WHEN** later refresh attempts for that same session fail
+- **THEN** the failures are logged for debugging
+- **AND** no additional user-facing refresh-failure notifications are shown
+
+#### Scenario: Successful refresh resets backoff
+
+- **GIVEN** a session has one or two consecutive refresh failures
+- **WHEN** a later refresh attempt succeeds
+- **THEN** the consecutive-failure counter is reset
+- **AND** the next one or two failures do not mark the session expired
+
+#### Scenario: Failed refresh invalidates validation cache
+
+- **GIVEN** a session validated successfully within the 24-hour cache window
+- **WHEN** a credential refresh attempt fails
+- **THEN** the cached validation success is discarded immediately
+- **AND** the next validation re-queries the API instead of using the stale
+  cache
+
 ### Requirement: Manage multiple organizations per session
 
 The system SHALL treat one login as managing a primary organization plus all of

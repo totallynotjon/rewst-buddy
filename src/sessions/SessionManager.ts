@@ -12,12 +12,14 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 	dispose(): void {
 		this.stopRefreshInterval();
+		this.detachAllSessionExpirationListeners();
 		vscode.commands.executeCommand('setContext', `${extPrefix}.anyActiveSessions`, false);
 	}
 
 	sessionMap: Map<string, Session> = new Map<string, Session>();
 	private knownProfileOrgIndex = new Map<string, SessionProfile>();
 	private orgSessionIndex = new Map<string, Session[]>();
+	private sessionExpiredDisposables = new Map<Session, vscode.Disposable>();
 	private knownProfilesCache: SessionProfile[] | undefined;
 	private suppressProfileSaves = false;
 	// User ids removed while loadSessions was in flight; the load reconciles
@@ -348,10 +350,19 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	private indexSession(session: Session): void {
+		this.attachSessionExpirationListener(session);
 		this.addToOrgIndex(session.profile.org.id, session);
 		for (const org of session.profile.allManagedOrgs) {
 			this.addToOrgIndex(org.id, session);
 		}
+	}
+
+	private attachSessionExpirationListener(session: Session): void {
+		if (this.sessionExpiredDisposables.has(session)) return;
+		this.sessionExpiredDisposables.set(
+			session,
+			session.onExpired(expiredSession => this.handleSessionExpired(expiredSession)),
+		);
 	}
 
 	// Several active sessions can legitimately manage the same org id (see
@@ -367,10 +378,58 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	}
 
 	private unindexSession(session: Session): void {
+		this.detachSessionExpirationListener(session);
 		this.removeFromOrgIndex(session.profile.org.id, session);
 		for (const org of session.profile.allManagedOrgs) {
 			this.removeFromOrgIndex(org.id, session);
 		}
+	}
+
+	private detachSessionExpirationListener(session: Session): void {
+		this.sessionExpiredDisposables.get(session)?.dispose();
+		this.sessionExpiredDisposables.delete(session);
+	}
+
+	private detachAllSessionExpirationListeners(): void {
+		for (const disposable of this.sessionExpiredDisposables.values()) {
+			disposable.dispose();
+		}
+		this.sessionExpiredDisposables.clear();
+	}
+
+	private profilesForSessionChange(extraProfiles: SessionProfile[] = []): SessionProfile[] {
+		const profiles = [
+			...this.getAllKnownProfiles(),
+			...this.getSavedProfiles(),
+			...this.getActiveSessions().map(s => s.profile),
+			...extraProfiles,
+		];
+		const byUser = new Map<string, SessionProfile>();
+		for (const profile of profiles) {
+			byUser.set(profile.user.id ?? profile.org.id, profile);
+		}
+		return Array.from(byUser.values());
+	}
+
+	private handleSessionExpired(session: Session): void {
+		let removed = false;
+		for (const [userId, activeSession] of this.sessionMap) {
+			if (activeSession !== session) continue;
+			this.unindexSession(session);
+			this.sessionMap.delete(userId);
+			removed = true;
+			break;
+		}
+
+		if (!removed) return;
+
+		this.setAnyActiveSessions(this.sessionMap.size > 0);
+		this.sessionChangeEmitter.fire({
+			type: 'saved',
+			session,
+			allProfiles: this.profilesForSessionChange([session.profile]),
+			activeProfiles: this.getActiveSessions().map(s => s.profile),
+		});
 	}
 
 	private removeFromOrgIndex(orgId: string, session: Session): void {
@@ -412,6 +471,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 		await context.globalState.update('SessionProfiles', []);
 		await context.globalState.update('RewstAllKnownProfiles', []);
+		this.detachAllSessionExpirationListeners();
 		this.sessionMap.clear();
 		this.orgSessionIndex.clear();
 		this.knownProfilesCache = undefined;
@@ -568,6 +628,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	 * FOR TESTING ONLY: Reset SessionManager to initial state
 	 */
 	_resetForTesting(): void {
+		this.detachAllSessionExpirationListeners();
 		this.sessionMap.clear();
 		this.knownProfileOrgIndex.clear();
 		this.orgSessionIndex.clear();

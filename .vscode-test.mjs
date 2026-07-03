@@ -38,26 +38,48 @@ function loadDotEnv() {
 	return env;
 }
 
-/**
- * Only feed the .env token to integration runs. `test:unit` must stay offline
- * and fast: without a token the integration suites skip themselves, so unit runs
- * never make network calls regardless of how mocha's --grep filter is applied.
- */
-function wantsIntegration() {
-	if (process.env.npm_lifecycle_event === 'test:integration') return true;
-	if (process.env.REWST_TEST_INTEGRATION === '1') return true;
-	return process.argv.some(arg => arg.includes('Integration'));
-}
-
-export default defineConfig({
+const baseConfig = {
 	files: 'dist/test/**/*.test.js',
 	version: 'stable',
 	launchArgs: ['--disable-chromium-sandbox', '--no-sandbox'],
-	// Forwarded to the extension host as extensionTestsEnv, merged over process.env.
-	env: wantsIntegration() ? loadDotEnv() : {},
 	mocha: {
 		ui: 'bdd',
 		timeout: 60000,
 		color: true,
 	},
-});
+};
+
+export default defineConfig([
+	{
+		...baseConfig,
+		label: 'unit',
+		env: {},
+		mocha: {
+			...baseConfig.mocha,
+			grep: 'Unit:',
+		},
+	},
+	{
+		...baseConfig,
+		label: 'integration',
+		// Forwarded to the extension host as extensionTestsEnv, merged over process.env.
+		env: loadDotEnv(),
+		mocha: {
+			...baseConfig.mocha,
+			grep: 'Integration:',
+		},
+	},
+	// Grep-dedicated labels: a config-level mocha.grep silently wins over the
+	// CLI --grep flag, so targeted runs (test:grep / test:grep:integration) need
+	// configs that leave grep unset. Never run these labels without --grep.
+	{
+		...baseConfig,
+		label: 'grep',
+		env: {},
+	},
+	{
+		...baseConfig,
+		label: 'grep-integration',
+		env: loadDotEnv(),
+	},
+]);

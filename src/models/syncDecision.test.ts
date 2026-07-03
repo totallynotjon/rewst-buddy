@@ -1,6 +1,7 @@
 import { determineSyncAction, SyncDecisionParams } from './syncDecision';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { getHash } from '@utils';
 
 const { suite, test } = Mocha;
 
@@ -10,11 +11,13 @@ const { suite, test } = Mocha;
  */
 function createParams(overrides: Partial<SyncDecisionParams> = {}): SyncDecisionParams {
 	const localBody = overrides.localBody ?? '// local content';
+	const remoteBody = overrides.remoteBody ?? '// remote content';
 	return {
 		localUpdatedAt: '2024-01-01T00:00:00Z',
 		remoteUpdatedAt: '2024-01-01T00:00:00Z', // Default: timestamps match
 		localBody,
-		remoteBody: '// remote content',
+		remoteBody,
+		lastSyncedBodyHash: getHash(remoteBody),
 		...overrides,
 	};
 }
@@ -94,6 +97,19 @@ suite('Unit: determineSyncAction()', () => {
 			assert.deepStrictEqual(result, { action: 'upload-local' });
 		});
 
+		test('should compare timestamps as parsed instants rather than exact strings', () => {
+			const result = determineSyncAction(
+				createParams({
+					localUpdatedAt: '2024-01-01T00:00:00.000Z',
+					remoteUpdatedAt: '2023-12-31T19:00:00.000-05:00',
+					localBody: '// local changed',
+					remoteBody: '// remote changed',
+					lastSyncedBodyHash: getHash('// original synced body'),
+				}),
+			);
+			assert.deepStrictEqual(result, { action: 'upload-local' });
+		});
+
 		test('should return upload-local for whitespace-only local changes', () => {
 			const localBody = '// code\n\n\n'; // Has trailing newlines
 			const result = determineSyncAction(
@@ -109,7 +125,7 @@ suite('Unit: determineSyncAction()', () => {
 	});
 
 	suite('conflict: remote changed (timestamps differ)', () => {
-		test('should return conflict when remote timestamp is newer', () => {
+		test('should return conflict with changed side when local and remote both changed', () => {
 			const localBody = '// local version';
 			const result = determineSyncAction(
 				createParams({
@@ -117,12 +133,13 @@ suite('Unit: determineSyncAction()', () => {
 					remoteUpdatedAt: '2024-01-02T00:00:00Z', // Remote is newer
 					localBody,
 					remoteBody: '// remote version',
+					lastSyncedBodyHash: getHash('// original version'),
 				}),
 			);
-			assert.deepStrictEqual(result, { action: 'conflict' });
+			assert.deepStrictEqual(result, { action: 'conflict', changed: 'both' });
 		});
 
-		test('should return conflict when remote timestamp is older (rollback scenario)', () => {
+		test('should return conflict with changed side when remote timestamp is older and both bodies changed', () => {
 			const localBody = '// local version';
 			const result = determineSyncAction(
 				createParams({
@@ -130,9 +147,57 @@ suite('Unit: determineSyncAction()', () => {
 					remoteUpdatedAt: '2024-01-01T00:00:00Z', // Remote is older (someone rolled back)
 					localBody,
 					remoteBody: '// rolled back version',
+					lastSyncedBodyHash: getHash('// original version'),
 				}),
 			);
-			assert.deepStrictEqual(result, { action: 'conflict' });
+			assert.deepStrictEqual(result, { action: 'conflict', changed: 'both' });
+		});
+	});
+
+	suite('hash-aware timestamp mismatch matrix', () => {
+		const syncedBody = '// last synced body';
+		const syncedHash = getHash(syncedBody);
+
+		test('uploads local changes when only remote metadata drifted', () => {
+			const result = determineSyncAction(
+				createParams({
+					localUpdatedAt: '2024-01-01T00:00:00Z',
+					remoteUpdatedAt: '2024-01-02T00:00:00Z',
+					localBody: '// local changed',
+					remoteBody: syncedBody,
+					lastSyncedBodyHash: syncedHash,
+				}),
+			);
+
+			assert.deepStrictEqual(result, { action: 'upload-local' });
+		});
+
+		test('downloads remote changes when the local file still matches the last sync', () => {
+			const result = determineSyncAction(
+				createParams({
+					localUpdatedAt: '2024-01-01T00:00:00Z',
+					remoteUpdatedAt: '2024-01-02T00:00:00Z',
+					localBody: syncedBody,
+					remoteBody: '// remote changed',
+					lastSyncedBodyHash: syncedHash,
+				}),
+			);
+
+			assert.deepStrictEqual(result, { action: 'download-remote' });
+		});
+
+		test('reports a genuine conflict when local and remote bodies both changed', () => {
+			const result = determineSyncAction(
+				createParams({
+					localUpdatedAt: '2024-01-01T00:00:00Z',
+					remoteUpdatedAt: '2024-01-02T00:00:00Z',
+					localBody: '// local changed',
+					remoteBody: '// remote changed',
+					lastSyncedBodyHash: syncedHash,
+				}),
+			);
+
+			assert.deepStrictEqual(result, { action: 'conflict', changed: 'both' });
 		});
 	});
 
@@ -186,10 +251,11 @@ suite('Unit: determineSyncAction()', () => {
 					remoteUpdatedAt: '2024-01-01T00:00:00.001Z', // 1ms difference
 					localBody,
 					remoteBody: '// remote',
+					lastSyncedBodyHash: getHash('// original'),
 				}),
 			);
-			// Timestamps don't match exactly, so conflict
-			assert.deepStrictEqual(result, { action: 'conflict' });
+			// Timestamps represent different instants and both bodies changed, so conflict
+			assert.deepStrictEqual(result, { action: 'conflict', changed: 'both' });
 		});
 	});
 
@@ -202,6 +268,7 @@ suite('Unit: determineSyncAction()', () => {
 				remoteUpdatedAt: '2024-06-15T00:00:00Z', // Different
 				localBody: body,
 				remoteBody: body, // Same!
+				lastSyncedBodyHash: getHash('// previous'),
 			});
 			assert.deepStrictEqual(result, { action: 'update-metadata' });
 		});
@@ -213,6 +280,7 @@ suite('Unit: determineSyncAction()', () => {
 				remoteUpdatedAt: '2024-01-01T00:00:00Z', // Same timestamp
 				localBody: '',
 				remoteBody: '// content',
+				lastSyncedBodyHash: getHash('// previous'),
 			});
 			assert.deepStrictEqual(result, { action: 'download-remote' });
 		});

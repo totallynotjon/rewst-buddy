@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { createServer, type Server } from 'http';
 import vscode from 'vscode';
+import { SessionManager } from '@sessions';
 import {
 	initTestEnvironment,
 	createMockSession,
@@ -17,15 +18,25 @@ const { suite, test, setup, teardown } = Mocha;
 
 suite('Unit: Session', () => {
 	let servers: Server[] = [];
+	const restores: (() => void)[] = [];
 
 	setup(() => {
 		initTestEnvironment();
+		SessionManager._resetForTesting();
 		servers = [];
 	});
 
 	teardown(async () => {
+		while (restores.length) restores.pop()!();
+		SessionManager._resetForTesting();
 		await Promise.all(servers.map(server => close(server)));
 	});
+
+	function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): void {
+		const original = obj[key];
+		Object.defineProperty(obj, key, { value: impl, configurable: true, writable: true });
+		restores.push(() => Object.defineProperty(obj, key, { value: original, configurable: true, writable: true }));
+	}
 
 	test('rawGraphql sends the session cookie stored in extension secrets', async () => {
 		const orgId = 'org-raw-graphql';
@@ -197,6 +208,26 @@ suite('Unit: Session', () => {
 			const second = await session.validate();
 			assert.strictEqual(second, false);
 			assert.strictEqual(wrapper.getCallsFor('User').length, 2, 'a failed validation is re-run, not cached');
+		});
+
+		test('revalidates after a failed refresh invalidates a previous success cache', async () => {
+			const { session, wrapper } = createMockSession();
+
+			const cached = await session.validate();
+			assert.strictEqual(cached, true);
+			assert.strictEqual(wrapper.getCallsFor('User').length, 1);
+
+			await assert.rejects(() => session.refreshToken(), /no token found/);
+			wrapper.when('User', { data: { user: null } });
+
+			const result = await session.validate();
+
+			assert.strictEqual(result, false);
+			assert.strictEqual(
+				wrapper.getCallsFor('User').length,
+				2,
+				'validate should not reuse a cache after refresh fails',
+			);
 		});
 	});
 
@@ -403,6 +434,133 @@ suite('Unit: Session', () => {
 				'concurrent refreshToken() callers should share one login/validate attempt',
 			);
 			assert.notStrictEqual(session.sdk, undefined);
+		});
+
+		function sequencedRefreshServer(statuses: number[]): { server: Server; getCount: () => number } {
+			let getCount = 0;
+			const server = createServer((request, response) => {
+				if (request.method === 'GET') {
+					const status = statuses[Math.min(getCount, statuses.length - 1)] ?? 500;
+					getCount++;
+					if (status >= 200 && status < 300) {
+						response.writeHead(status, { 'set-cookie': `appSession=refreshed-${getCount}` });
+					} else {
+						response.writeHead(status);
+					}
+					response.end();
+					return;
+				}
+
+				let body = '';
+				request.on('data', chunk => {
+					body += String(chunk);
+				});
+				request.on('end', () => {
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(JSON.stringify({ data: { user: { id: 'user-1' } } }));
+				});
+			});
+			return { server, getCount: () => getCount };
+		}
+
+		test('expires after three consecutive refresh failures and fires one re-auth prompt', async () => {
+			const orgId = 'org-refresh-expiry';
+			const { server } = sequencedRefreshServer([500]);
+			servers.push(server);
+			const port = await listen(server);
+			const context = initTestEnvironment();
+			await context.secrets.store(orgId, 'appSession=dead-cookie');
+
+			let notificationCount = 0;
+			let focusSidebarCount = 0;
+			stub(vscode.window, 'showErrorMessage', (async (_message: string, ..._items: string[]) => {
+				notificationCount++;
+				return 'Re-authenticate';
+			}) as unknown as typeof vscode.window.showErrorMessage);
+			stub(vscode.commands, 'executeCommand', (async (command: string) => {
+				if (command === 'rewst-buddy.FocusSidebar') focusSidebarCount++;
+				return undefined;
+			}) as unknown as typeof vscode.commands.executeCommand);
+
+			const session = new Session(undefined, refreshProfile(orgId, port));
+
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+			assert.strictEqual(session.isExpired(), false);
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+			assert.strictEqual(session.isExpired(), false);
+
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+			await new Promise(resolve => setImmediate(resolve));
+
+			assert.strictEqual(session.isExpired(), true);
+			assert.strictEqual(notificationCount, 1);
+			assert.strictEqual(focusSidebarCount, 1);
+
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+			await new Promise(resolve => setImmediate(resolve));
+			assert.strictEqual(notificationCount, 1, 'expired sessions should not keep notifying on later failures');
+		});
+
+		test('resets the consecutive failure counter after a successful refresh', async () => {
+			const orgId = 'org-refresh-counter-reset';
+			const { server } = sequencedRefreshServer([500, 500, 200, 500, 500]);
+			servers.push(server);
+			const port = await listen(server);
+
+			const context = initTestEnvironment();
+			await context.secrets.store(orgId, 'appSession=stale-cookie');
+			const session = new Session(undefined, refreshProfile(orgId, port));
+
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+			await session.refreshToken();
+			assert.strictEqual(session.isExpired(), false);
+
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+
+			assert.strictEqual(
+				session.isExpired(),
+				false,
+				'two failures after a success should not expire the session',
+			);
+		});
+
+		test('notifies session-change subscribers when the session transitions to expired', async () => {
+			const orgId = 'org-refresh-expiry-event';
+			const { server } = sequencedRefreshServer([500]);
+			servers.push(server);
+			const port = await listen(server);
+
+			const context = initTestEnvironment();
+			await context.secrets.store(orgId, 'appSession=dead-cookie');
+			stub(
+				vscode.window,
+				'showErrorMessage',
+				(async () => undefined) as unknown as typeof vscode.window.showErrorMessage,
+			);
+
+			const session = new Session(undefined, refreshProfile(orgId, port));
+			SessionManager._setSessionsForTesting([session]);
+
+			const events: { activeCount: number; activeOrgIds: string[] }[] = [];
+			const disposable = SessionManager.onSessionChange(event => {
+				events.push({
+					activeCount: event.activeProfiles.length,
+					activeOrgIds: event.activeProfiles.map(profile => profile.org.id),
+				});
+			});
+			restores.push(() => disposable.dispose());
+
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+			await assert.rejects(() => session.refreshToken(), /status 500/);
+
+			assert.strictEqual(session.isExpired(), true);
+			assert.ok(
+				events.some(event => event.activeCount === 0 && !event.activeOrgIds.includes(orgId)),
+				'expiry should publish an event that removes the session from active profiles',
+			);
 		});
 	});
 });
