@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+
+# Husky pre-push hook for rewst-buddy-vscode
+#
+# Why this exists:
+# The unit suite spans TWO runners — vitest (fast, pure suites) and the
+# vscode-test / mocha extension host. CI runs BOTH. Running only vitest
+# locally silently skips the mocha half, which is how a stale assertion can
+# look green locally yet fail CI. Run the full suite here so a push mirrors CI.
+#
+# Headless: .vscode-test.mjs launches VS Code with `--ozone-platform=headless`,
+# so the extension-host tests render offscreen — no display and no xvfb needed,
+# and no window pops up (even on a Wayland session).
+#
+# Emergency bypass:  git push --no-verify   (or  HUSKY=0 git push )
+
+echo "pre-push: running unit tests (vitest + vscode-test)…"
+npm run test:unit

@@ -93,6 +93,17 @@ export function requireString(input: Record<string, unknown>, key: string): stri
 	return value;
 }
 
+/**
+ * Like requireString but accepts an empty string as a valid value.
+ * Throws only when the key is absent or the value is not a string.
+ */
+export function requireStringAllowEmpty(input: Record<string, unknown>, key: string): string {
+	if (!(key in input) || typeof input[key] !== 'string') {
+		throw new Error(`Missing required string argument "${key}".`);
+	}
+	return input[key] as string;
+}
+
 export function asPositiveInt(input: Record<string, unknown>, key: string): number | undefined {
 	const value = input[key];
 	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;

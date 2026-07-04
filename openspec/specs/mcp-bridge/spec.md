@@ -10,8 +10,8 @@ external bridge enablement setting. This capability covers enabling the external
 bridge, the localhost token, which tools and resources are exposed, and the
 working-scope rules that bound what a tool may touch.
 
-Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`,
-`McpDefinitionProvider.ts`, `runtime.ts`, `settings.ts`, `throttle.ts`),
+Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`, `mcpServer.ts`,
+`instructions.ts`, `McpDefinitionProvider.ts`, `runtime.ts`, `settings.ts`, `throttle.ts`),
 `src/commands/mcp/`, `src/capabilities/*Capabilities.ts`,
 `src/models/WorkingScopeManager.ts`, `src/ui/chat/tools/graphqlTool.ts`,
 `src/ui/chat/tools/workflowTools.ts`, `src/extension.ts`.
@@ -620,6 +620,58 @@ evicted or was never cached.
 - **WHEN** `buddy_result_read` is called with that id and an offset
 - **THEN** the bridge returns the requested character slice without re-running the
   original Rewst API call
+
+### Requirement: Provide working-method instructions to MCP clients
+
+The system SHALL report a non-empty `instructions` string in the MCP initialize
+handshake, assembled from the same steering fragments the workflow tool specs
+use — summary-before-full detail, name-based edits, sub-workflow composition
+over flat canvases, render-verify before and after edits, and the
+run-and-check-logs loop — so an external MCP client receives the same
+working-method guidance as the in-process chat surface and the wording cannot
+drift between the two.
+
+#### Scenario: Instructions reach the client
+
+- **GIVEN** the MCP server
+- **WHEN** a client completes the initialize handshake
+- **THEN** the client receives instructions that cover summary-first workflow
+  reading, sub-workflow composition, and the run-and-check-logs loop
+
+#### Scenario: Instructions share one source with tool descriptions
+
+- **GIVEN** a shared steering fragment
+- **WHEN** the instructions are generated
+- **THEN** the fragment text appears verbatim in both the instructions and the
+  corresponding workflow tool description
+
+### Requirement: Expose recipe prompts
+
+The system SHALL expose the MCP prompts `debug-execution`, `safe-workflow-edit`,
+and `compose-sub-workflow`, each rendering a user-role text message that walks
+the standard tool sequence for that task and incorporates any provided
+`executionId`/`workflowId`/`goal` arguments. Requesting an unknown prompt name
+SHALL fail with a clear error.
+
+#### Scenario: Prompts are listed
+
+- **GIVEN** the MCP server
+- **WHEN** a client lists prompts
+- **THEN** all three recipe prompts are returned with descriptions and argument
+  declarations
+
+#### Scenario: A prompt renders with its arguments
+
+- **GIVEN** the `debug-execution` prompt
+- **WHEN** a client requests it with an `executionId`
+- **THEN** the rendered user message contains that execution id and the
+  execution-log tool sequence
+
+#### Scenario: Unknown prompt name
+
+- **GIVEN** a prompt name the server does not define
+- **WHEN** a client requests it
+- **THEN** the request fails with an error naming the unknown prompt
 
 ### Requirement: Render Jinja against a merged execution context
 

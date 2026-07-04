@@ -1,15 +1,18 @@
-import { log } from '@utils';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
 	CallToolRequestSchema,
+	GetPromptRequestSchema,
+	ListPromptsRequestSchema,
 	ListResourcesRequestSchema,
 	ListToolsRequestSchema,
 	ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { log } from '@utils';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { formatHostPort, getServerConfig } from '../server/config';
 import { callTool, listResources, listTools, McpError, readResource } from './McpActions';
+import { buildMcpInstructions, MCP_PROMPTS, renderMcpPrompt } from './instructions';
 import { MCP_PROTOCOL_VERSION, parseBearerToken } from './protocol';
 import { isValidMcpToken } from './runtime';
 import { readMcpSettings } from './settings';
@@ -40,7 +43,10 @@ function toObjectSchema(schema: object): { type: 'object' } {
 /** Builds an MCP SDK Server bound to the current settings. */
 export function buildMcpServer(): Server {
 	const settings = readMcpSettings();
-	const server = new Server(SERVER_INFO, { capabilities: { tools: {}, resources: {} } });
+	const server = new Server(SERVER_INFO, {
+		capabilities: { tools: {}, resources: {}, prompts: {} },
+		instructions: buildMcpInstructions(),
+	});
 
 	server.setRequestHandler(ListToolsRequestSchema, () => ({
 		tools: listTools(settings).map(tool => ({
@@ -64,6 +70,27 @@ export function buildMcpServer(): Server {
 			const message =
 				error instanceof McpError ? error.message : error instanceof Error ? error.message : String(error);
 			return { content: [{ type: 'text' as const, text: message }], isError: true };
+		}
+	});
+
+	server.setRequestHandler(ListPromptsRequestSchema, () => ({
+		prompts: MCP_PROMPTS.map(p => ({
+			name: p.name,
+			description: p.description,
+			arguments: p.arguments,
+		})),
+	}));
+
+	server.setRequestHandler(GetPromptRequestSchema, request => {
+		try {
+			const args = (request.params.arguments ?? {}) as Record<string, string>;
+			const text = renderMcpPrompt(request.params.name, args);
+			return {
+				messages: [{ role: 'user' as const, content: { type: 'text' as const, text } }],
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(message);
 		}
 	});
 
