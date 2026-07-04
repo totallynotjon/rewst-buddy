@@ -209,7 +209,7 @@ suite('Unit: workflowTools', () => {
 		assert.ok(spec, 'buddy_render_jinja spec exists');
 		assert.match(spec.description, /alphabetizes dict keys/i);
 		assert.match(spec.description, /regex_replace/i);
-		assert.match(spec.description, /\\\\\\\\1/, 'shows the doubled escaping needed for backreferences');
+		assert.match(spec.description, /\\\\1/, 'shows the doubled escaping needed for backreferences');
 		assert.match(spec.description, /control character/i);
 	});
 
