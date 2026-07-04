@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asStringArg } from '../ui/chat/tools/toolProtocol';
 import { autoLayout, layoutNewTasks, setPosition } from './layout';
+import { ADD_TASK_FIELDS, PACK_OVERRIDE_FIELDS, RETRY_FIELDS, UPDATE_TASK_SET_FIELDS } from './operationGrammar';
 import {
 	type ExecResult,
 	MUTATION_SCOPE_KEYS,
@@ -254,16 +255,8 @@ function coerceBoolean(value: unknown, label: string): boolean {
 	throw new Error(`${label} must be a boolean.`);
 }
 
-const PACK_OVERRIDE_FIELDS = new Set([
-	'packId',
-	'packConfigId',
-	'configSelectionMode',
-	'configFallbackMode',
-	'searchInput',
-]);
 const PACK_CONFIG_SELECTION_MODES = new Set(['USE_DEFAULT', 'USE_NAME_SEARCH', 'USE_ORG_MAPPING', 'USE_SELECTED_ID']);
 const PACK_CONFIG_FALLBACK_MODES = new Set(['FAIL_ACTION', 'FAIL_WORKFLOW', 'USE_DEFAULT']);
-export const RETRY_FIELDS = new Set(['count', 'delay', 'when']);
 
 function coercePackOverrides(value: unknown): PackOverride[] {
 	let raw = value;
@@ -332,78 +325,51 @@ function coerceRetry(value: unknown): RawTask['retry'] {
 	return out;
 }
 
-export const ADD_TASK_FIELDS = new Set([
-	'op',
-	'id',
-	'name',
-	'action',
-	'subWorkflowId',
-	'input',
-	'publishResultAs',
-	'timeout',
-	'description',
-	'with',
-	'runAsOrgId',
-	'packOverrides',
-	'isMocked',
-	'mockInput',
-	'retry',
-	'x',
-	'y',
-	// Accepted only so we can report the existing ignored-controls note.
-	'transitionMode',
-	'join',
-]);
-
-export const UPDATE_TASK_SET_FIELDS = new Set([
-	'name',
-	'input',
-	'action',
-	'subWorkflowId',
-	'publishResultAs',
-	'timeout',
-	'description',
-	'with',
-	'runAsOrgId',
-	'packOverrides',
-	'isMocked',
-	'mockInput',
-	'retry',
-	// Accepted only so we can report the existing ignored-controls note.
-	'transitionMode',
-	'join',
-]);
-
 export function rejectUnsupportedFields(record: Record<string, unknown>, allowed: Set<string>, label: string): void {
 	for (const key of Object.keys(record)) {
 		if (!allowed.has(key)) throw new Error(`Unsupported ${label} field "${key}".`);
 	}
 }
 
+export const ADVANCED_TASK_FIELD_TABLE = {
+	runAsOrgId: {
+		verifyField: 'runAsOrgId',
+		coerce: (value: unknown) => coerceNullableString(value, 'runAsOrgId'),
+	},
+	packOverrides: {
+		verifyField: 'packOverrides',
+		coerce: coercePackOverrides,
+	},
+	isMocked: {
+		verifyField: 'isMocked',
+		coerce: (value: unknown) => coerceBoolean(value, 'isMocked'),
+	},
+	mockInput: {
+		verifyField: 'mockInput',
+		coerce: (value: unknown) => (value == null ? null : coerceObjectField(value, 'task "mockInput"')),
+	},
+	retry: {
+		verifyField: 'retry',
+		coerce: coerceRetry,
+	},
+} satisfies Record<
+	keyof TaskVerifyFields,
+	{
+		verifyField: keyof TaskVerifyFields;
+		coerce(value: unknown): unknown;
+	}
+>;
+
 export function setAdvancedTaskFields(
 	task: RawTask,
 	source: Record<string, unknown>,
 	mark?: (field: keyof TaskVerifyFields) => void,
 ): void {
-	if ('runAsOrgId' in source) {
-		task.runAsOrgId = coerceNullableString(source.runAsOrgId, 'runAsOrgId');
-		mark?.('runAsOrgId');
-	}
-	if ('packOverrides' in source) {
-		task.packOverrides = coercePackOverrides(source.packOverrides);
-		mark?.('packOverrides');
-	}
-	if ('isMocked' in source) {
-		task.isMocked = coerceBoolean(source.isMocked, 'isMocked');
-		mark?.('isMocked');
-	}
-	if ('mockInput' in source) {
-		task.mockInput = source.mockInput == null ? null : coerceObjectField(source.mockInput, 'task "mockInput"');
-		mark?.('mockInput');
-	}
-	if ('retry' in source) {
-		task.retry = coerceRetry(source.retry);
-		mark?.('retry');
+	const writableTask = task as RawTask & Record<string, unknown>;
+	for (const [field, entry] of Object.entries(ADVANCED_TASK_FIELD_TABLE)) {
+		if (!(field in source)) continue;
+		writableTask[field] = entry.coerce(source[field]);
+		mark?.(entry.verifyField);
 	}
 }
 

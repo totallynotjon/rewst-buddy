@@ -1,7 +1,13 @@
 import { LinkManager, orgForTemplateLink, type TemplateLink } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
+import {
+	describeRequest,
+	type ToolRequest,
+	type ToolResult,
+	type ToolSpec,
+	withGeneratedArgsForAll,
+} from './toolProtocol';
 import { GRAPHQL_TOOL_SPECS, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
 import { isWorkflowTool, runWorkflowTool, WORKFLOW_TOOL_SPECS } from './workflowTools';
 
@@ -31,7 +37,7 @@ export const defaultDeps: WorkspaceToolDeps = {
 const SEARCH_DEFAULT_LIMIT = 20;
 const SEARCH_MAX_LIMIT = 50;
 
-export const WORKSPACE_TOOL_SPECS: ToolSpec[] = [
+export const WORKSPACE_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	{
 		name: 'buddy_search_template_links',
 		args: '{"query"?: string, "limit"?: number}',
@@ -52,7 +58,7 @@ export const WORKSPACE_TOOL_SPECS: ToolSpec[] = [
 			},
 		},
 	},
-];
+]);
 
 /** What one tool produced: text for the assistant. */
 interface ToolOutcome {

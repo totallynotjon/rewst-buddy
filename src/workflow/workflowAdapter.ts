@@ -10,7 +10,7 @@ import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asStringArg, type ToolRequest } from '../ui/chat/tools/toolProtocol';
 import { ACTIONS_SEARCH_QUERY, fetchWorkflow, packOverrideToInput } from './graphMutations';
 import { positionOf } from './layout';
-import { formatWorkflowOutput, normalizePublish, type RawWorkflow } from './types';
+import { normalizePublish, type RawWorkflow } from './types';
 
 // ---------------------------------------------------------------------------
 // Action search
@@ -71,7 +71,7 @@ export async function runActionSearch(request: ToolRequest, deps: GraphqlToolDep
 		const result = await deps.execute(ACTION_DESCRIBE_QUERY, { orgId, search });
 		const row = (result.data as { actionsForOrg?: Record<string, unknown>[] } | undefined)?.actionsForOrg?.[0];
 		if (!row) throw new Error(`Action ${ref ?? actionId} not found in org ${orgId}.`);
-		return formatWorkflowOutput(JSON.stringify(row, null, 1));
+		return JSON.stringify(row, null, 1);
 	}
 
 	const query = asStringArg(request.args, 'query');
@@ -94,9 +94,7 @@ export async function runActionSearch(request: ToolRequest, deps: GraphqlToolDep
 		row =>
 			`- ${row.ref} — ${row.name}${row.category ? ` [${row.category}]` : ''}${row.deprecated ? ' (deprecated)' : ''} (id ${row.id})`,
 	);
-	return formatWorkflowOutput(
-		`Actions matching "${query}":\n${lines.join('\n')}\n\nDescribe one with buddy_action_search {"orgId","ref"} to see its input parameters.`,
-	);
+	return `Actions matching "${query}":\n${lines.join('\n')}\n\nDescribe one with buddy_action_search {"orgId","ref"} to see its input parameters.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -193,7 +191,7 @@ export function summarizeWorkflow(w: RawWorkflow, detail: 'summary' | 'full' = '
 		? 'To edit or auto-layout, pass these workflow fields straight through: workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName (use the names, not the ids). The version token is handled for you. node.position is the canvas {x,y} top-left anchor in free pixels (x right, y down); new tasks are auto-placed below the action they connect from unless you pass x/y. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). "workflow.outputs" are the return contract a caller reads from this workflow as RESULT.<name>; change them with the set_output operation. When troubleshooting a condition or expression, render it against a recent execution with buddy_render_jinja before editing — confirm it evaluates as you expect (types matter: a boolean is not the string "true").'
 		: 'Analysis view: task ids, transition ids, canvas positions, and the version token are omitted, and tasks/edges are referenced by NAME — which is exactly what buddy_workflow_edit operations use, so you can edit straight from this view. Call buddy_workflow_get again with detail:"full" only to reposition a task or target one specific transition by its id. To edit or run, pass workflowId=workflow.id, workflowName=workflow.name, orgId=workflow.orgId, orgName=workflow.orgName. To call another workflow, use add_task with subWorkflowId set to that workflow id (there is no run-workflow action). Branch on a task\'s output with RESULT.<field> in that task\'s transitions, or CTX.<publishResultAs>.<field> — not CTX.<field>. "workflow.inputs" are the run/call parameters; change them with the set_inputs operation (do not hand-edit varsSchema). "workflow.outputs" are the return contract a caller reads from this workflow as RESULT.<name>; change them with the set_output operation. Before changing a condition or expression, confirm it with buddy_render_jinja against a recent execution (types matter: a boolean is not the string "true").';
 
-	return formatWorkflowOutput(JSON.stringify({ workflow, nodes, edges, note }, null, 1));
+	return JSON.stringify({ workflow, nodes, edges, note }, null, 1);
 }
 
 export async function runWorkflowGet(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {

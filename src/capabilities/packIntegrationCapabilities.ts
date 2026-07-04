@@ -1,5 +1,6 @@
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { readCapability } from './capabilityFactories';
 import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
 
 const MAX_INTEGRATIONS_LIMIT = 200;
@@ -168,8 +169,8 @@ async function runListIntegrations(input: Record<string, unknown>, ctx: Capabili
 }
 
 export const PACK_INTEGRATION_CAPABILITIES: Capability[] = [
-	{ spec: listInstalledPacksSpec, access: 'read', run: runListInstalledPacks },
-	{ spec: getPackAuthStatusSpec, access: 'read', run: runGetPackAuthStatus },
-	{ spec: listPackConfigsSpec, access: 'read', run: runListPackConfigs },
-	{ spec: listIntegrationsSpec, access: 'read', run: runListIntegrations },
+	readCapability(listInstalledPacksSpec, runListInstalledPacks),
+	readCapability(getPackAuthStatusSpec, runGetPackAuthStatus),
+	readCapability(listPackConfigsSpec, runListPackConfigs),
+	readCapability(listIntegrationsSpec, runListIntegrations),
 ];

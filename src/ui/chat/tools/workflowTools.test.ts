@@ -22,6 +22,12 @@ import {
 	workflowToInput,
 	type WorkflowOperation,
 } from './workflowTools';
+import {
+	ADVANCED_TASK_FIELD_TABLE,
+	ADD_TASK_FIELD_NAMES,
+	UPDATE_TASK_SET_FIELD_NAMES,
+	workflowEditOperationGrammar,
+} from '@workflow';
 
 const { suite, test, setup } = Mocha;
 
@@ -107,7 +113,7 @@ suite('Unit: workflowTools', () => {
 	test('buddy_workflow_get spec reserves full detail for ids and positions, not ordinary edits', () => {
 		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === 'buddy_workflow_get');
 		assert.ok(spec, 'buddy_workflow_get spec exists');
-		assert.match(spec.args, /"summary" \(default\)/);
+		assert.strictEqual(spec.args, JSON.stringify(spec.inputSchema));
 		assert.match(spec.description, /summary.*sufficient.*name-based edits/i);
 		assert.match(spec.description, /full.*task ids, transition ids, or canvas positions/i);
 		assert.doesNotMatch(spec.description, /full" only when you are preparing to make workflow edits/i);
@@ -130,11 +136,38 @@ suite('Unit: workflowTools', () => {
 		assert.match(spec.description, /isMocked/, 'documents task mocking edits');
 		assert.match(spec.description, /mockInput/, 'documents mock input edits');
 		assert.match(spec.description, /with:\s*\{items, concurrency\}/, 'documents loop concurrency shape');
-		assert.match(
-			spec.description,
-			/add_task \{name, action \(ref or id\) OR subWorkflowId, input\?, publishResultAs\?, description\?, with\?, runAsOrgId\?, packOverrides\?, isMocked\?, mockInput\?, retry\?, x\?, y\?\}/,
-			'enumerates the add_task fields including description',
-		);
+		assert.match(spec.description, /add_task \{[^}]*description\?[^}]*runAsOrgId\?/, 'enumerates add_task fields');
+	});
+
+	test('buddy_workflow_edit operation grammar is generated from the edit allowlists', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+
+		const grammar = workflowEditOperationGrammar();
+		for (const field of ADD_TASK_FIELD_NAMES) {
+			if (['op', 'id', 'transitionMode', 'join'].includes(field)) continue;
+			assert.match(grammar, new RegExp(`\\b${field}\\??\\b`), `add_task grammar includes ${field}`);
+		}
+		for (const field of UPDATE_TASK_SET_FIELD_NAMES) {
+			if (['transitionMode', 'join'].includes(field)) continue;
+			assert.match(grammar, new RegExp(`\\b${field}\\??\\b`), `update_task grammar includes ${field}`);
+		}
+		assert.doesNotMatch(grammar, /\btransitionMode\b|\bjoin\b|FOLLOW_ALL|FOLLOW_FIRST/);
+		assert.ok(spec.description.includes(grammar), 'tool description includes the generated grammar verbatim');
+	});
+
+	test('advanced task fields are driven by one coercion/verification table', () => {
+		assert.deepStrictEqual(Object.keys(ADVANCED_TASK_FIELD_TABLE), [
+			'runAsOrgId',
+			'packOverrides',
+			'isMocked',
+			'mockInput',
+			'retry',
+		]);
+		for (const [field, entry] of Object.entries(ADVANCED_TASK_FIELD_TABLE)) {
+			assert.strictEqual(entry.verifyField, field, `${field} marks the same post-save verification field`);
+			assert.strictEqual(typeof entry.coerce, 'function', `${field} carries a coercer`);
+		}
 	});
 
 	test('buddy_workflow_edit spec teaches sub-workflow composition through set_output', () => {
@@ -2416,7 +2449,7 @@ suite('Unit: workflowTools', () => {
 		test('buddy_execution_logs spec accepts an optional orgId for session routing', () => {
 			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME);
 			assert.ok(spec, 'buddy_execution_logs spec exists');
-			assert.match(spec.args, /"orgId"\?/);
+			assert.strictEqual(spec.args, JSON.stringify(spec.inputSchema));
 			const orgId = (spec.inputSchema as { properties: Record<string, { description?: string }> }).properties
 				.orgId;
 			assert.ok(orgId, 'inputSchema declares orgId');
@@ -2854,7 +2887,7 @@ suite('Unit: workflowTools', () => {
 		test('buddy_execution_logs spec documents sub-execution visibility and includeSubExecutions', () => {
 			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME);
 			assert.ok(spec, 'buddy_execution_logs spec exists');
-			assert.match(spec.args, /"includeSubExecutions"\?/);
+			assert.strictEqual(spec.args, JSON.stringify(spec.inputSchema));
 			assert.match(spec.description, /sub-workflow/i, 'description explains sub-workflow visibility');
 			assert.match(spec.description, /includeSubExecutions/);
 			const props = (spec.inputSchema as { properties: Record<string, unknown> }).properties;

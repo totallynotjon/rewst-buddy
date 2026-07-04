@@ -6,7 +6,7 @@ import {
 	runWorkflowTool,
 	workflowEditScope,
 	workflowToolAlwaysPrompts,
-} from '../ui/chat/tools/workflowTools';
+} from '@workflow';
 import type { CapabilityContext } from './Capability';
 import { withMutationApproval } from './mutationApproval';
 

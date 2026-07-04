@@ -1,5 +1,6 @@
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { readCapability } from './capabilityFactories';
 import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
 
 const SEARCH_ORGANIZATIONS_QUERY =
@@ -105,7 +106,7 @@ async function runListRoles(input: Record<string, unknown>, ctx: CapabilityConte
 }
 
 export const ORG_USER_CAPABILITIES: Capability[] = [
-	{ spec: searchOrganizationsSpec, access: 'read', run: runSearchOrganizations },
-	{ spec: listUsersSpec, access: 'read', run: runListUsers },
-	{ spec: listRolesSpec, access: 'read', run: runListRoles },
+	readCapability(searchOrganizationsSpec, runSearchOrganizations),
+	readCapability(listUsersSpec, runListUsers),
+	readCapability(listRolesSpec, runListRoles),
 ];

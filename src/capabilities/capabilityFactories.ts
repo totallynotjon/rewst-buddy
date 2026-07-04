@@ -1,4 +1,4 @@
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import { withGeneratedArgs, type ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 
 /**
@@ -20,9 +20,9 @@ export interface CapabilityOptions {
 }
 
 export function readCapability(spec: ToolSpec, run: CapabilityRun, opts: CapabilityOptions = {}): Capability {
-	return { spec, access: 'read', run, ...opts };
+	return { spec: withGeneratedArgs(spec), access: 'read', run, ...opts };
 }
 
 export function writeCapability(spec: ToolSpec, run: CapabilityRun, opts: CapabilityOptions = {}): Capability {
-	return { spec, access: 'write', run, ...opts };
+	return { spec: withGeneratedArgs(spec), access: 'write', run, ...opts };
 }

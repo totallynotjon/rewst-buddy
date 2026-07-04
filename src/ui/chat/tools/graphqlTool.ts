@@ -1,5 +1,5 @@
 import type { Session } from '@sessions';
-import type { ToolRequest, ToolSpec } from './toolProtocol';
+import { type ToolRequest, type ToolSpec, withGeneratedArgsForAll } from './toolProtocol';
 
 /**
  * Rewst GraphQL helpers run against the user's own Rewst instance,
@@ -13,7 +13,7 @@ import type { ToolRequest, ToolSpec } from './toolProtocol';
  * resource is gated again.
  */
 
-export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
+export const GRAPHQL_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	{
 		name: 'buddy_graphql_schema',
 		args: '{"typeName"?: string, "search"?: string, "includeDeprecated"?: boolean}',
@@ -28,7 +28,7 @@ export const GRAPHQL_TOOL_SPECS: ToolSpec[] = [
 			},
 		},
 	},
-];
+]);
 
 const GRAPHQL_TOOL_NAMES = new Set(GRAPHQL_TOOL_SPECS.map(spec => spec.name));
 
@@ -277,7 +277,7 @@ function formatResult(result: { data?: unknown; errors?: unknown }): string {
 	if (result.data !== undefined && result.data !== null) body.data = result.data;
 	if (Array.isArray(result.errors) ? result.errors.length > 0 : result.errors != null) body.errors = result.errors;
 	const text = Object.keys(body).length > 0 ? JSON.stringify(body, null, 1) : '(empty response)';
-	return formatResultText(text);
+	return text;
 }
 
 function unwrapType(type: GraphqlTypeRef | null | undefined): string {
@@ -402,29 +402,19 @@ async function runSchemaTool(request: ToolRequest, deps: GraphqlToolDeps): Promi
 	}
 
 	if (typeof typeName === 'string') {
-		return formatResultText(
-			formatTypeDetails(
-				typeFromResult(await deps.execute(TYPE_DETAILS_QUERY, { typeName, includeDeprecated })),
-				typeName,
-			),
+		return formatTypeDetails(
+			typeFromResult(await deps.execute(TYPE_DETAILS_QUERY, { typeName, includeDeprecated })),
+			typeName,
 		);
 	}
 	if (typeof search === 'string') {
 		const result = await deps.execute(TYPE_NAMES_QUERY, { includeDeprecated });
-		return formatResultText(
-			formatSchemaSearch(
-				(schemaFromResult(result) ?? {}) as GraphqlRootSchema & { types?: GraphqlTypeDetails[] },
-				search,
-			),
+		return formatSchemaSearch(
+			(schemaFromResult(result) ?? {}) as GraphqlRootSchema & { types?: GraphqlTypeDetails[] },
+			search,
 		);
 	}
-	return formatResultText(
-		formatRootSchema(schemaFromResult(await deps.execute(ROOT_SCHEMA_QUERY, { includeDeprecated })) ?? {}),
-	);
-}
-
-function formatResultText(text: string): string {
-	return text;
+	return formatRootSchema(schemaFromResult(await deps.execute(ROOT_SCHEMA_QUERY, { includeDeprecated })) ?? {});
 }
 
 /**

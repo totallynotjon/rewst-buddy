@@ -9,7 +9,7 @@
 import { createHash } from 'crypto';
 import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asStringArg, type ToolRequest } from '../ui/chat/tools/toolProtocol';
-import { type ExecResult, firstErrorMessage, formatWorkflowOutput } from './types';
+import { type ExecResult, firstErrorMessage } from './types';
 
 // ---------------------------------------------------------------------------
 // GraphQL
@@ -261,5 +261,5 @@ export async function runWorkflowSearch(request: ToolRequest, deps: GraphqlToolD
 			`Plus ${orgOnly.length} workflow(s) in matching org(s), not by name: ${summary}. Pass that orgId to list an org's workflows.`,
 		);
 	}
-	return formatWorkflowOutput(parts.join('\n'));
+	return parts.join('\n');
 }

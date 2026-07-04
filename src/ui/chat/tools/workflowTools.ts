@@ -14,11 +14,11 @@
  * See epic issue #129 (D1) for the full split rationale.
  */
 
+import { workflowEditScope, type WorkflowMutationScope } from '../../../workflow/mutationScope';
 import { type WorkflowOperation } from '../../../workflow/graphMutations';
 import { workflowToolAlwaysPrompts } from '../../../workflow/specs';
 import { asObject, str } from '../../../workflow/types';
-import { type GraphqlToolDeps, type MutationScope, isMutationScopeApproved } from './graphqlTool';
-import { type ToolRequest } from './toolProtocol';
+import { isMutationScopeApproved } from './graphqlTool';
 
 // ---------------------------------------------------------------------------
 // Re-exports: specs
@@ -54,6 +54,11 @@ export { normalizePublish } from '../../../workflow/types';
 export { autoLayout } from '../../../workflow/layout';
 
 // ---------------------------------------------------------------------------
+// Re-exports: mutation scope helpers
+// ---------------------------------------------------------------------------
+export { workflowEditScope } from '../../../workflow/mutationScope';
+
+// ---------------------------------------------------------------------------
 // Re-exports: search index
 // ---------------------------------------------------------------------------
 export { _resetWorkflowIndexForTesting } from '../../../workflow/searchIndex';
@@ -76,30 +81,13 @@ export {
 // Re-exports: adapter (workflow_get + action_search)
 // ---------------------------------------------------------------------------
 export { runActionSearch, runWorkflowGet, summarizeWorkflow } from '../../../workflow/workflowAdapter';
+export { runWorkflowTool } from '../../../workflow/toolRunner';
 
 // ---------------------------------------------------------------------------
-// workflowEditScope — approval scope extractor (stays here as it uses
-// MutationScope from graphqlTool, a UI-layer type)
+// workflowEditConfirmation — approval prompt text for the UI adapter
 // ---------------------------------------------------------------------------
 
-const WORKFLOW_MUTATION_TOOLS = new Set<string>([
-	'buddy_workflow_edit',
-	'buddy_workflow_autolayout',
-	'buddy_workflow_run',
-]);
-
-export function workflowEditScope(name: string, input: unknown): MutationScope | undefined {
-	if (!WORKFLOW_MUTATION_TOOLS.has(name)) return undefined;
-	const args = asObject(input);
-	const workflowId = str(args.workflowId);
-	const workflowName = str(args.workflowName);
-	const orgId = str(args.orgId);
-	const orgName = str(args.orgName);
-	if (!workflowId || !workflowName || !orgId || !orgName) return undefined;
-	return { scopeId: workflowId, scopeName: workflowName, orgId, orgName };
-}
-
-export interface WorkflowConfirmation extends MutationScope {
+export interface WorkflowConfirmation extends WorkflowMutationScope {
 	message: string;
 }
 
@@ -128,64 +116,4 @@ export function workflowEditConfirmation(name: string, input: unknown): Workflow
 		message = `Edit "${scope.scopeName}": ${summary}${more}`;
 	}
 	return { ...scope, message };
-}
-
-// ---------------------------------------------------------------------------
-// runWorkflowTool — single dispatch entry point
-// ---------------------------------------------------------------------------
-
-import { runExecutionLogs, runRenderJinja, runWorkflowExecutions, runWorkflowRun } from '../../../workflow/executions';
-import { applyWorkflowMutation, requireScopeFields } from '../../../workflow/graphMutations';
-import { runWorkflowSearch } from '../../../workflow/searchIndex';
-import {
-	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
-	WORKFLOW_EDIT_TOOL_NAME,
-	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
-	WORKFLOW_RUN_TOOL_NAME,
-	WORKFLOW_SEARCH_TOOL_NAME,
-} from '../../../workflow/specs';
-import { runActionSearch, runWorkflowGet } from '../../../workflow/workflowAdapter';
-import { asStringArg } from './toolProtocol';
-
-function requireDeps(deps: GraphqlToolDeps | undefined): GraphqlToolDeps {
-	if (!deps) {
-		throw new Error('No active Rewst session for the workflow tools. Sign in to Rewst in VS Code and retry.');
-	}
-	return deps;
-}
-
-export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDeps | undefined): Promise<string> {
-	const bound = requireDeps(deps);
-	switch (request.tool) {
-		case 'buddy_workflow_get':
-			return runWorkflowGet(request, bound);
-		case 'buddy_action_search':
-			return runActionSearch(request, bound);
-		case 'buddy_render_jinja':
-			return runRenderJinja(request, bound);
-		case WORKFLOW_EDIT_TOOL_NAME: {
-			const { workflowId, orgId } = requireScopeFields(WORKFLOW_EDIT_TOOL_NAME, request.args);
-			const operations = request.args.operations;
-			if (!Array.isArray(operations) || operations.length === 0) {
-				throw new Error('buddy_workflow_edit requires a non-empty "operations" array.');
-			}
-			const comment = asStringArg(request.args, 'comment') ?? 'Edited by Cage-Free Rewsty';
-			return applyWorkflowMutation(bound, workflowId, orgId, operations as WorkflowOperation[], comment);
-		}
-		case WORKFLOW_AUTOLAYOUT_TOOL_NAME: {
-			const { workflowId, orgId } = requireScopeFields(WORKFLOW_AUTOLAYOUT_TOOL_NAME, request.args);
-			const comment = asStringArg(request.args, 'comment') ?? 'Auto-laid out by Cage-Free Rewsty';
-			return applyWorkflowMutation(bound, workflowId, orgId, [{ op: 'autolayout' }], comment);
-		}
-		case WORKFLOW_RUN_TOOL_NAME:
-			return runWorkflowRun(request, bound);
-		case 'buddy_workflow_executions':
-			return runWorkflowExecutions(request, bound);
-		case WORKFLOW_EXECUTION_LOGS_TOOL_NAME:
-			return runExecutionLogs(request, bound);
-		case WORKFLOW_SEARCH_TOOL_NAME:
-			return runWorkflowSearch(request, bound);
-		default:
-			throw new Error(`Unknown workflow tool "${request.tool}".`);
-	}
 }

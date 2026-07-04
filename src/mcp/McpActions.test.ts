@@ -12,7 +12,7 @@ import {
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
-} from '../ui/chat/tools/workflowTools';
+} from '@workflow';
 import { McpError, _resetMcpThrottleForTesting, callTool, listResources, listTools, readResource } from './McpActions';
 import type { McpSettings } from './settings';
 

@@ -1,6 +1,7 @@
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { writeCapability } from './capabilityFactories';
 import { ORG_ID_PROP, asString, requireString } from './inputHelpers';
 import { orgDisplayName, throwOnGraphqlErrors, withMutationApproval } from './mutationApproval';
 
@@ -121,6 +122,6 @@ async function runDeleteWorkflow(input: Record<string, unknown>, ctx: Capability
 }
 
 export const WORKFLOW_CRUD_CAPABILITIES: Capability[] = [
-	{ spec: createWorkflowSpec, access: 'write', run: runCreateWorkflow },
-	{ spec: deleteWorkflowSpec, access: 'write', run: runDeleteWorkflow },
+	writeCapability(createWorkflowSpec, runCreateWorkflow),
+	writeCapability(deleteWorkflowSpec, runDeleteWorkflow),
 ];

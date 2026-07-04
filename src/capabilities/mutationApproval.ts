@@ -1,6 +1,7 @@
 import { approveMutationScope, isMutationScopeApproved, type MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { CapabilityContext } from './Capability';
 import { requestMcpMutationApproval } from './graphqlMutateCapability';
+export { throwOnGraphqlErrors } from './inputHelpers';
 
 /**
  * Shared plumbing for the org-scoped write capabilities (templates, org
@@ -49,11 +50,4 @@ export async function withMutationApproval(
 		if (!opts.alwaysPrompt) approveMutationScope(scope);
 	}
 	return run();
-}
-
-/** Throws with the serialized GraphQL errors when a rawGraphql call failed. */
-export function throwOnGraphqlErrors(errors: unknown): void {
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
 }

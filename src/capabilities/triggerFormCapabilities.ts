@@ -1,5 +1,6 @@
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { readCapability } from './capabilityFactories';
 import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
 
 const DEFAULT_TRIGGER_LIMIT = 50;
@@ -210,9 +211,9 @@ async function runGetTriggerErrorStatus(input: Record<string, unknown>, ctx: Cap
 }
 
 export const TRIGGER_FORM_CAPABILITIES: Capability[] = [
-	{ spec: listTriggersSpec, access: 'read', run: runListTriggers },
-	{ spec: listFormsSpec, access: 'read', run: runListForms },
-	{ spec: listTagsSpec, access: 'read', run: runListTags },
-	{ spec: listOrgTriggerInstancesSpec, access: 'read', run: runListOrgTriggerInstances },
-	{ spec: getTriggerErrorStatusSpec, access: 'read', run: runGetTriggerErrorStatus },
+	readCapability(listTriggersSpec, runListTriggers),
+	readCapability(listFormsSpec, runListForms),
+	readCapability(listTagsSpec, runListTags),
+	readCapability(listOrgTriggerInstancesSpec, runListOrgTriggerInstances),
+	readCapability(getTriggerErrorStatusSpec, runGetTriggerErrorStatus),
 ];

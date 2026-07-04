@@ -11,6 +11,12 @@ export function json(value: unknown): string {
 	return JSON.stringify(value, null, 2);
 }
 
+export function throwOnGraphqlErrors(errors: unknown): void {
+	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
+		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
+	}
+}
+
 /**
  * Runs a raw GraphQL operation and throws with the serialized errors when the
  * response carries any, so a failure is never silently treated as empty data.
@@ -21,9 +27,7 @@ export async function rawGraphqlOrThrow(
 	variables?: Record<string, unknown>,
 ): Promise<unknown> {
 	const { data, errors } = await session.rawGraphql(query, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	throwOnGraphqlErrors(errors);
 	return data;
 }
 

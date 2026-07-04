@@ -1,5 +1,6 @@
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { readCapability } from './capabilityFactories';
 import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
 
 const DEFAULT_LIMIT = 50;
@@ -159,8 +160,8 @@ async function runListJinjaFilters(input: Record<string, unknown>, ctx: Capabili
 }
 
 export const PAGE_TEMPLATE_CAPABILITIES: Capability[] = [
-	{ spec: searchTemplatesSpec, access: 'read', run: runSearchTemplates },
-	{ spec: listPagesSpec, access: 'read', run: runListPages },
-	{ spec: listSitesSpec, access: 'read', run: runListSites },
-	{ spec: listJinjaFiltersSpec, access: 'read', run: runListJinjaFilters },
+	readCapability(searchTemplatesSpec, runSearchTemplates),
+	readCapability(listPagesSpec, runListPages),
+	readCapability(listSitesSpec, runListSites),
+	readCapability(listJinjaFiltersSpec, runListJinjaFilters),
 ];

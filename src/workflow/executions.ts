@@ -8,7 +8,7 @@
 import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asBooleanArg, asStringArg, type ToolRequest } from '../ui/chat/tools/toolProtocol';
 import { fetchWorkflow } from './graphMutations';
-import { type ExecResult, firstErrorMessage, formatWorkflowOutput, isPlainObject } from './types';
+import { type ExecResult, firstErrorMessage, isPlainObject } from './types';
 
 // ---------------------------------------------------------------------------
 // GraphQL
@@ -242,9 +242,7 @@ export async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps
 
 	if (keysMode) {
 		const keys = Object.keys(vars as Record<string, unknown>).sort();
-		return formatWorkflowOutput(
-			`Context top-level keys (${keys.length}): ${keys.join(', ') || '(none)'}${contextNote}\n\nDrill in with {{ CTX.<key> }}. System vars: execution id = CTX.execution_id, org id = CTX.organization.id, this workflow's id = CTX.trigger_instance.trigger.workflow_id.`,
-		);
+		return `Context top-level keys (${keys.length}): ${keys.join(', ') || '(none)'}${contextNote}\n\nDrill in with {{ CTX.<key> }}. System vars: execution id = CTX.execution_id, org id = CTX.organization.id, this workflow's id = CTX.trigger_instance.trigger.workflow_id.`;
 	}
 
 	const result = await deps.execute(RENDER_JINJA_MUTATION, { orgId, template, vars });
@@ -258,9 +256,7 @@ export async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps
 	const warning = containsControlCharacter(value)
 		? "\n\nWARNING — rendered result contains a control character. If this came from regex_replace backreference escaping, use '\\\\\\\\1' instead of '\\\\1'."
 		: '';
-	return formatWorkflowOutput(
-		`Rendered: ${JSON.stringify(value)} (type ${value === null ? 'null' : typeof value})${warning}`,
-	);
+	return `Rendered: ${JSON.stringify(value)} (type ${value === null ? 'null' : typeof value})${warning}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -366,9 +362,7 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 	}
 
 	const footerText = footer.length > 0 ? `\n${footer.join('\n')}` : '';
-	return formatWorkflowOutput(
-		`${header}${emptyHint}\n${formatTaskLogs(rows, { failedOnly, includeResult }, childrenByTask)}${footerText}`,
-	);
+	return `${header}${emptyHint}\n${formatTaskLogs(rows, { failedOnly, includeResult }, childrenByTask)}${footerText}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -433,9 +427,7 @@ export async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps
 	const head = `Run of "${name}" finished: ${(status ?? 'unknown').toUpperCase()}. executionId: ${executionId}`;
 	if (isFailedStatus(status)) {
 		const rows = await fetchTaskLogs(deps, executionId);
-		return formatWorkflowOutput(
-			`${head}\n\nFailing task(s):\n${formatTaskLogs(rows, { failedOnly: true })}\n\nFull logs: buddy_execution_logs {"executionId": "${executionId}"}.`,
-		);
+		return `${head}\n\nFailing task(s):\n${formatTaskLogs(rows, { failedOnly: true })}\n\nFull logs: buddy_execution_logs {"executionId": "${executionId}"}.`;
 	}
 	return `${head}\n\nInspect what it produced with buddy_execution_logs {"executionId": "${executionId}", "includeResult": true} or buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}. `;
 }
@@ -474,9 +466,7 @@ export async function runWorkflowExecutions(request: ToolRequest, deps: GraphqlT
 			.join('  ');
 		return `- ${e.id}  ${e.status}  ${when}  (${e.numSuccessfulTasks ?? '?'} task(s) ok)${links ? `  ${links}` : ''}`;
 	};
-	return formatWorkflowOutput(
-		`${rows.length} ${status ?? 'recent'} execution(s), newest first:\n${rows.map(fmt).join('\n')}\n\nInspect one with buddy_render_jinja {"executionId": "<id>", "template": "{{ CTX.<field> }}"}. `,
-	);
+	return `${rows.length} ${status ?? 'recent'} execution(s), newest first:\n${rows.map(fmt).join('\n')}\n\nInspect one with buddy_render_jinja {"executionId": "<id>", "template": "{{ CTX.<field> }}"}. `;
 }
 
 // Re-export fetchWorkflow for use by runWorkflowGet in the adapter

@@ -139,11 +139,6 @@ export function asObject(value: unknown): Record<string, unknown> {
 	return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
-/** Identity pass-through — reserved hook for output post-processing. */
-export function formatWorkflowOutput(text: string): string {
-	return text;
-}
-
 /** Identifying fields a workflow-mutation request must carry (org + workflow). */
 export const MUTATION_SCOPE_KEYS = ['workflowId', 'workflowName', 'orgId', 'orgName'] as const;
 

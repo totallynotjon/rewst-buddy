@@ -1,4 +1,9 @@
-import { createGraphqlDeps, runGraphqlTool, GRAPHQL_TOOL_SPECS, type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
+import {
+	createGraphqlDeps,
+	runGraphqlTool,
+	GRAPHQL_TOOL_SPECS,
+	type GraphqlToolDeps,
+} from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
@@ -7,7 +12,7 @@ import {
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_TOOL_SPECS,
-} from '../ui/chat/tools/workflowTools';
+} from '@workflow';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
 import type { Capability, CapabilityAccess, CapabilityContext } from './Capability';
 import { readCapability, writeCapability } from './capabilityFactories';

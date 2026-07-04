@@ -1,5 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { readdirSync, readFileSync } from 'fs';
+import { join } from 'path';
 import { SessionManager } from '@sessions';
 import { initTestEnvironment } from '@test';
 import { CAPABILITY_REGISTRY, getCapability, mcpCapabilities } from './registry';
@@ -11,7 +13,7 @@ import {
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_TOOL_SPECS,
-} from '../ui/chat/tools/workflowTools';
+} from '@workflow';
 import { WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
 
 const { suite, test, setup } = Mocha;
@@ -23,6 +25,7 @@ const WORKFLOW_WRITE_MCP_CAPABILITIES = [
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 ];
+const CAPABILITIES_DIR = join(process.cwd(), 'src/capabilities');
 
 suite('Unit: capability registry', () => {
 	setup(() => {
@@ -46,6 +49,48 @@ suite('Unit: capability registry', () => {
 			assert.ok(['read', 'write'].includes(capability.access), `${capability.spec.name} access is read|write`);
 			assert.ok(capability.spec.inputSchema, `${capability.spec.name} carries an inputSchema`);
 		}
+	});
+
+	test('capability args are generated from inputSchema', () => {
+		for (const capability of CAPABILITY_REGISTRY) {
+			assert.strictEqual(
+				capability.spec.args,
+				JSON.stringify(capability.spec.inputSchema ?? {}),
+				`${capability.spec.name} args mirror inputSchema`,
+			);
+		}
+	});
+
+	test('capability modules use read/write factories instead of raw access literals', () => {
+		const offenders = readdirSync(CAPABILITIES_DIR)
+			.filter(file => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+			.filter(file => {
+				const source = readFileSync(join(CAPABILITIES_DIR, file), 'utf8');
+				return /^\s*access:\s*['"](read|write)['"]/m.test(source);
+			});
+
+		assert.deepStrictEqual(offenders, [], 'capability definitions should use readCapability/writeCapability');
+	});
+
+	test('capability modules import workflow definitions from @workflow, not the UI adapter', () => {
+		const offenders = readdirSync(CAPABILITIES_DIR)
+			.filter(file => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+			.filter(file => {
+				const source = readFileSync(join(CAPABILITIES_DIR, file), 'utf8');
+				return /ui\/chat\/tools\/workflowTools|\.\/workflowTools/.test(source);
+			});
+
+		assert.deepStrictEqual(offenders, [], 'capabilities should depend on @workflow instead of UI workflowTools');
+	});
+
+	test('tool output bounding is centralized at the MCP/Buddy boundary, not identity formatters', () => {
+		const workflowTypes = readFileSync(join(process.cwd(), 'src/workflow/types.ts'), 'utf8');
+		const graphqlTool = readFileSync(join(process.cwd(), 'src/ui/chat/tools/graphqlTool.ts'), 'utf8');
+		const mcpActions = readFileSync(join(process.cwd(), 'src/mcp/McpActions.ts'), 'utf8');
+
+		assert.doesNotMatch(workflowTypes, /function formatWorkflowOutput/);
+		assert.doesNotMatch(graphqlTool, /function formatResultText/);
+		assert.match(mcpActions, /formatMcpOutput\(params\.name, text\)/);
 	});
 
 	test('getCapability resolves by tool name', () => {
