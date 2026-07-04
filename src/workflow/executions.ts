@@ -226,7 +226,10 @@ export async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps
 		const snapshots = Array.isArray(raw) ? raw : raw ? [raw] : [];
 		if (snapshots.length === 0) throw new Error(`Execution ${executionId} has no context to render against.`);
 		if (typeof request.args.contextIndex === 'number') {
-			const index = Math.max(0, Math.min(snapshots.length - 1, request.args.contextIndex));
+			// Coerce to integer before indexing: a non-integer like 2.5 would survive
+			// Math.max/min and produce snapshots[2.5] === undefined, causing a
+			// misleading 'requires executionId or vars' error even with a valid executionId.
+			const index = Math.max(0, Math.min(snapshots.length - 1, Math.trunc(request.args.contextIndex)));
 			vars = snapshots[index] as object;
 			contextNote = ` (snapshot ${index} of ${snapshots.length}, unmerged)`;
 		} else {

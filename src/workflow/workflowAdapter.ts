@@ -10,7 +10,7 @@ import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asStringArg, type ToolRequest } from '../ui/chat/tools/toolProtocol';
 import { ACTIONS_SEARCH_QUERY, fetchWorkflow, packOverrideToInput } from './graphMutations';
 import { positionOf } from './layout';
-import { normalizePublish, type RawWorkflow } from './types';
+import { type ExecResult, firstErrorMessage, normalizePublish, type RawWorkflow } from './types';
 
 // ---------------------------------------------------------------------------
 // Action search
@@ -42,6 +42,8 @@ async function searchActions(
 	const search: Record<string, unknown> = { [field]: { _ilike: `%${term}%` } };
 	if (!includeDeprecated) search.deprecated = { _eq: false };
 	const result = await deps.execute(ACTIONS_SEARCH_QUERY, { orgId, search, limit });
+	const error = firstErrorMessage(result as ExecResult);
+	if (error) throw new Error(`Action search failed: ${error}`);
 	return (result.data as { actionsForOrg?: ActionRow[] } | undefined)?.actionsForOrg ?? [];
 }
 
@@ -69,6 +71,8 @@ export async function runActionSearch(request: ToolRequest, deps: GraphqlToolDep
 	if (ref || actionId) {
 		const search = ref ? { ref: { _eq: ref } } : { id: { _eq: actionId } };
 		const result = await deps.execute(ACTION_DESCRIBE_QUERY, { orgId, search });
+		const describeError = firstErrorMessage(result as ExecResult);
+		if (describeError) throw new Error(`Action describe failed: ${describeError}`);
 		const row = (result.data as { actionsForOrg?: Record<string, unknown>[] } | undefined)?.actionsForOrg?.[0];
 		if (!row) throw new Error(`Action ${ref ?? actionId} not found in org ${orgId}.`);
 		return JSON.stringify(row, null, 1);
