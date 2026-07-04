@@ -353,7 +353,7 @@ export const ADVANCED_TASK_FIELD_TABLE = {
 		coerce: coerceRetry,
 	},
 } satisfies Record<
-	keyof TaskVerifyFields,
+	Exclude<keyof TaskVerifyFields, 'input' | 'with'>,
 	{
 		verifyField: keyof TaskVerifyFields;
 		coerce(value: unknown): unknown;
