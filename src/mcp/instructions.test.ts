@@ -1,6 +1,7 @@
 import {
 	RENDER_VERIFY_STEERING,
 	WORKFLOW_COMPOSITION_STEERING,
+	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SUMMARY_DETAIL_STEERING,
@@ -13,6 +14,12 @@ import { buildMcpInstructions, MCP_PROMPTS, renderMcpPrompt } from './instructio
 const { suite, test } = Mocha;
 
 suite('Unit: mcpInstructions', () => {
+	function renderRegisteredPrompt(name: string, args: Record<string, string>): string {
+		const prompt = MCP_PROMPTS.find(p => p.name === name);
+		assert.ok(prompt, `prompt "${name}" must be registered`);
+		return renderMcpPrompt(prompt.name, args);
+	}
+
 	// -----------------------------------------------------------------------
 	// buildMcpInstructions
 	// -----------------------------------------------------------------------
@@ -125,18 +132,68 @@ suite('Unit: mcpInstructions', () => {
 	// -----------------------------------------------------------------------
 
 	test('debug-execution with executionId includes the id and execution-log tool', () => {
-		const text = renderMcpPrompt('debug-execution', { executionId: 'e-1' });
+		const text = renderRegisteredPrompt('debug-execution', { executionId: 'e-1' });
 		assert.ok(text.includes('e-1'), 'rendered text must include the executionId');
+		assert.ok(
+			text.includes(WORKFLOW_EXECUTION_LOGS_TOOL_NAME),
+			`rendered text must reference ${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}`,
+		);
+		assert.ok(text.includes(WORKFLOW_EDIT_TOOL_NAME), `rendered text must reference ${WORKFLOW_EDIT_TOOL_NAME}`);
+	});
+
+	test('debug-execution without executionId renders the generic execution path', () => {
+		const text = renderRegisteredPrompt('debug-execution', {});
+		assert.ok(text.includes('Debug the execution'), 'rendered text must use the generic execution target');
+		assert.ok(
+			text.includes(`Call \`${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}\``),
+			`rendered text must instruct callers to use ${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}`,
+		);
+		assert.ok(!text.includes('with executionId'), 'generic path must not include a missing executionId clause');
+	});
+
+	test('safe-workflow-edit renders without arguments', () => {
+		assert.doesNotThrow(() => renderMcpPrompt('safe-workflow-edit', {}));
+		const text = renderRegisteredPrompt('safe-workflow-edit', {});
+		assert.ok(text.includes('Safely edit the workflow'), 'rendered text must use the generic workflow target');
+		assert.ok(text.includes(WORKFLOW_EDIT_TOOL_NAME), `rendered text must reference ${WORKFLOW_EDIT_TOOL_NAME}`);
+	});
+
+	test('safe-workflow-edit with workflowId renders the targeted workflow path', () => {
+		const text = renderRegisteredPrompt('safe-workflow-edit', { workflowId: 'wf-1' });
+		assert.ok(text.includes('Safely edit workflow `wf-1`'), 'rendered text must include the workflowId target');
+		assert.ok(text.includes(WORKFLOW_EDIT_TOOL_NAME), `rendered text must reference ${WORKFLOW_EDIT_TOOL_NAME}`);
+		assert.ok(text.includes(WORKFLOW_RUN_TOOL_NAME), `rendered text must reference ${WORKFLOW_RUN_TOOL_NAME}`);
 		assert.ok(
 			text.includes(WORKFLOW_EXECUTION_LOGS_TOOL_NAME),
 			`rendered text must reference ${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}`,
 		);
 	});
 
-	test('safe-workflow-edit renders without arguments', () => {
-		assert.doesNotThrow(() => renderMcpPrompt('safe-workflow-edit', {}));
-		const text = renderMcpPrompt('safe-workflow-edit', {});
-		assert.ok(text.length > 0, 'rendered text must be non-empty');
+	test('compose-sub-workflow with goal renders the goal-specific recipe', () => {
+		const text = renderRegisteredPrompt('compose-sub-workflow', {
+			goal: 'normalize alert payloads for downstream tasks',
+		});
+		assert.ok(
+			text.includes('Compose a sub-workflow to accomplish: normalize alert payloads for downstream tasks'),
+			'rendered text must include the requested composition goal',
+		);
+		assert.ok(text.includes('`set_inputs`'), 'rendered text must mention defining sub-workflow inputs');
+		assert.ok(text.includes('`set_output`'), 'rendered text must mention defining sub-workflow outputs');
+		assert.ok(text.includes('`subWorkflowId`'), 'rendered text must mention the sub-workflow task link');
+		assert.ok(text.includes(WORKFLOW_EDIT_TOOL_NAME), `rendered text must reference ${WORKFLOW_EDIT_TOOL_NAME}`);
+	});
+
+	test('compose-sub-workflow without goal renders the reusable recipe', () => {
+		const text = renderRegisteredPrompt('compose-sub-workflow', {});
+		assert.ok(
+			text.includes('Compose a reusable sub-workflow using the following tool sequence:'),
+			'rendered text must use the generic reusable sub-workflow target',
+		);
+		assert.ok(text.includes('repeated or independently testable sequence'), 'rendered text must guide extraction');
+		assert.ok(text.includes('`set_inputs`'), 'rendered text must mention defining sub-workflow inputs');
+		assert.ok(text.includes('`set_output`'), 'rendered text must mention defining sub-workflow outputs');
+		assert.ok(text.includes('`subWorkflowId`'), 'rendered text must mention the sub-workflow task link');
+		assert.ok(text.includes(WORKFLOW_EDIT_TOOL_NAME), `rendered text must reference ${WORKFLOW_EDIT_TOOL_NAME}`);
 	});
 
 	test('unknown prompt name throws /unknown prompt/i', () => {

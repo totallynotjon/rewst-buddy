@@ -14,6 +14,7 @@
 import {
 	RENDER_VERIFY_STEERING,
 	WORKFLOW_COMPOSITION_STEERING,
+	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SUMMARY_DETAIL_STEERING,
@@ -140,7 +141,7 @@ export function renderMcpPrompt(name: string, args: Record<string, string>): str
 				'3. If a task spawned a sub-execution, call ' +
 					`\`${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}\` again with the sub-execution id.`,
 				'4. Use `buddy_render_jinja` to verify any suspect Jinja expressions against the execution context.',
-				'5. Propose a targeted fix and apply it with `buddy_workflow_edit`.',
+				`5. Propose a targeted fix and apply it with \`${WORKFLOW_EDIT_TOOL_NAME}\`.`,
 			].join('\n');
 		}
 
@@ -152,7 +153,7 @@ export function renderMcpPrompt(name: string, args: Record<string, string>): str
 				'',
 				'1. Call `buddy_workflow_get` with detail "summary" to read the current graph.',
 				'2. Use `buddy_render_jinja` to verify any Jinja expressions you plan to change.',
-				'3. Apply edits with `buddy_workflow_edit`.',
+				`3. Apply edits with \`${WORKFLOW_EDIT_TOOL_NAME}\`.`,
 				`4. Run the workflow with \`${WORKFLOW_RUN_TOOL_NAME}\` (wait:true).`,
 				`5. Inspect the result with \`${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}\`.`,
 				'6. If a task failed, read its message and result, then iterate from step 2.',
@@ -169,7 +170,8 @@ export function renderMcpPrompt(name: string, args: Record<string, string>): str
 				'1. Identify the repeated or independently testable sequence of tasks in the parent workflow.',
 				'2. Create a new workflow (or use an existing one) and define its inputs with `set_inputs`.',
 				'3. Define its return values with `set_output`.',
-				'4. In the parent workflow, replace the inline tasks with a single sub-workflow task ' +
+				`4. In the parent workflow, apply edits with \`${WORKFLOW_EDIT_TOOL_NAME}\` ` +
+					'to replace the inline tasks with a single sub-workflow task ' +
 					'(set `subWorkflowId` to the new workflow id).',
 				'5. Read the sub-workflow result in the parent as `RESULT.<publishResultAs>`.',
 				`6. Run and verify with \`${WORKFLOW_RUN_TOOL_NAME}\` + \`${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}\`.`,
