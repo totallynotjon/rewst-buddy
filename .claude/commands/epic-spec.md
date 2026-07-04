@@ -74,7 +74,10 @@ every applicable one explicitly (skip inapplicable ones silently):
   `category:` (Added/Changed/Fixed) per file, body ≤50 words, user-facing language only;
   internal-only PRs use the `skip-changelog` label instead.
 - **PR mechanics**: branch off main (never commit to main), `gh pr create --draft`, never
-  mark ready, squash-merge model, one PR per cohesive effort.
+  mark ready, squash-merge model, one PR per cohesive effort. Opening the draft is NOT the
+  finish line: after pushing, watch CI with `gh pr checks --watch` (or poll `gh pr checks`)
+  and fix + push until every check is green. Sonnet will declare done at "PR opened" unless
+  the spec says done = draft PR open AND CI green.
 - **Path aliases**: `tsconfig.json` `compilerOptions.paths` is the single source (esbuild and
   vitest both read it). No webpack — it was removed.
 - **Integration tests**: need `REWST_TEST_TOKEN` in `.env`; live probes and any mutation run
@@ -141,6 +144,13 @@ in the reply. If a spec file for the same target already exists, overwrite it.
   `npm run test:grep -- "<targeted pattern>"` · `npm run changelog:check` ·
   `npm run test:integration` only if live API behavior changed ·
   `npm run test:grep -- "Unit: package manifest"` if any tool spec changed.
+  State explicitly that `npm run test:unit` runs BOTH unit runners (vitest, then
+  mocha-in-extension-host) and both must pass — a targeted `test:grep` run is never a
+  substitute for the full `test:unit` pass.
+- Definition of done (spell this out verbatim in the spec): all acceptance commands green
+  locally → commit → push → `gh pr create --draft` → `gh pr checks --watch` until every CI
+  check passes. If CI fails, fix, push, and re-watch; the task is not done until the draft
+  PR exists with all checks green.
 - Blocking questions only. If none, write "none."
 
 If repo context is incomplete, state assumptions explicitly instead of guessing. If output

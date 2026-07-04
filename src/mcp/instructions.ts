@@ -33,6 +33,7 @@ export function buildMcpInstructions(): string {
 		'# Rewst Buddy — working method',
 		'',
 		'## Reading workflows',
+		`Start with \`buddy_workflow_get\` (detail "summary") to read the current graph before making any changes.`,
 		WORKFLOW_SUMMARY_DETAIL_STEERING,
 		'',
 		'## Composing workflows',
