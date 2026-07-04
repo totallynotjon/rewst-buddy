@@ -47,7 +47,7 @@ export async function requireResourceInOrg<T>(opts: {
 }): Promise<T> {
 	const row = await opts.fetch();
 	const inOrg = opts.inOrg ?? ((candidate: T) => (candidate as { orgId?: unknown }).orgId === opts.orgId);
-	if (row === undefined || !inOrg(row)) {
+	if (row == null || !inOrg(row)) {
 		throw new Error(`${opts.label} ${opts.id} is not in org ${opts.orgId}.`);
 	}
 	return row;
