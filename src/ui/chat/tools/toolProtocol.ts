@@ -14,7 +14,7 @@ export interface ToolSpec {
 	name: string;
 	/** What the tool does, shown to the assistant. */
 	description: string;
-	/** Human-readable JSON arg signature, e.g. `{"path": string}`. */
+	/** JSON schema string derived from inputSchema, used in text tool instructions. */
 	args: string;
 	/**
 	 * JSON schema for the args when a surface exposes the spec through a
@@ -22,6 +22,23 @@ export interface ToolSpec {
 	 * chat tools) can omit it; every shipped Rewst spec carries one.
 	 */
 	inputSchema?: object;
+}
+
+export type ToolSpecDefinition = Omit<ToolSpec, 'args'> & { args?: string };
+
+export function argsFromInputSchema(inputSchema?: object): string {
+	return JSON.stringify(inputSchema ?? {});
+}
+
+export function withGeneratedArgs(spec: ToolSpecDefinition): ToolSpec {
+	return {
+		...spec,
+		args: argsFromInputSchema(spec.inputSchema),
+	};
+}
+
+export function withGeneratedArgsForAll(specs: readonly ToolSpecDefinition[]): ToolSpec[] {
+	return specs.map(withGeneratedArgs);
 }
 
 export interface ToolRequest {

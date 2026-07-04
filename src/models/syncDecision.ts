@@ -73,8 +73,9 @@ export function determineSyncAction(params: SyncDecisionParams): SyncDecision {
 		return { action: 'upload-local' };
 	}
 
-	const localMatchesLastSync = getHash(localBody) === lastSyncedBodyHash;
-	const remoteMatchesLastSync = getHash(remoteBody) === lastSyncedBodyHash;
+	const hasTrustedLastSync = localUpdatedAt !== '0';
+	const localMatchesLastSync = hasTrustedLastSync && getHash(localBody) === lastSyncedBodyHash;
+	const remoteMatchesLastSync = hasTrustedLastSync && getHash(remoteBody) === lastSyncedBodyHash;
 
 	if (remoteMatchesLastSync) {
 		return { action: 'upload-local' };

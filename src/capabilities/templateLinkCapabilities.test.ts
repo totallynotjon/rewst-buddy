@@ -122,8 +122,6 @@ suite('Unit: templateLinkCapabilities', () => {
 				const c = TEMPLATE_LINK_CAPABILITIES.find(candidate => candidate.spec.name === name);
 				assert.ok(c, `missing ${name}`);
 				assert.strictEqual(c.access, 'read', `${name} access`);
-				assert.strictEqual(c.mcp, true, `${name} mcp`);
-				assert.strictEqual(c.chat, false, `${name} chat`);
 				assert.strictEqual(c.requiresOrg, false, `${name} requiresOrg`);
 			}
 		});
@@ -358,8 +356,6 @@ suite('Unit: templateLinkCapabilities', () => {
 			const c = TEMPLATE_LINK_CAPABILITIES.find(x => x.spec.name === 'buddy_template_link_status');
 			assert.ok(c, 'capability registered');
 			assert.strictEqual(c.access, 'read');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.strictEqual(c.requiresOrg, false);
 		});
 

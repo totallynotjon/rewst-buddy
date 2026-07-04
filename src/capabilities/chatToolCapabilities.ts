@@ -1,4 +1,9 @@
-import { createGraphqlDeps, type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
+import {
+	createGraphqlDeps,
+	runGraphqlTool,
+	GRAPHQL_TOOL_SPECS,
+	type GraphqlToolDeps,
+} from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
@@ -7,9 +12,10 @@ import {
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_TOOL_SPECS,
-} from '../ui/chat/tools/workflowTools';
+} from '@workflow';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
-import type { Capability, CapabilityAccess, CapabilityContext, CapabilityGroup } from './Capability';
+import type { Capability, CapabilityAccess, CapabilityContext } from './Capability';
+import { readCapability, writeCapability } from './capabilityFactories';
 import { runWorkflowMutationWithApproval } from './workflowMutateCapability';
 
 const workflowAccess: Record<string, CapabilityAccess> = {
@@ -74,45 +80,49 @@ export async function executionLogsDeps(
 	return deps;
 }
 
-function mcpCapability(
-	spec: ToolSpec,
-	access: CapabilityAccess,
-	group: CapabilityGroup,
-	mcp: boolean,
-	run: (input: Record<string, unknown>, ctx: CapabilityContext) => Promise<string> = (input, ctx) =>
-		runViaChatToolPath(spec, input, ctx),
-): Capability {
-	return {
-		spec,
-		group,
-		access,
-		chat: false,
-		mcp,
-		...(doesNotRequireOrg.has(spec.name) ? { requiresOrg: false as const } : {}),
-		run,
-	};
+function orgOptions(spec: ToolSpec): { requiresOrg?: boolean } {
+	return doesNotRequireOrg.has(spec.name) ? { requiresOrg: false } : {};
 }
 
 export const WORKSPACE_CHAT_CAPABILITIES: Capability[] = WORKSPACE_TOOL_SPECS.map(spec =>
-	mcpCapability(spec, 'read', 'workspace', true),
+	readCapability(spec, (input, ctx) => runViaChatToolPath(spec, input, ctx), orgOptions(spec)),
 );
 
 export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(spec => {
 	const access = workflowAccessFor(spec);
 	if (access === 'write') {
-		return mcpCapability(spec, access, 'workflow', true, (input, ctx) =>
-			runWorkflowMutationWithApproval(spec, input, ctx),
-		);
+		return writeCapability(spec, (input, ctx) => runWorkflowMutationWithApproval(spec, input, ctx));
 	}
 	if (spec.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME) {
-		return {
-			...mcpCapability(spec, access, 'workflow', true, async (input, ctx) =>
-				runViaChatToolPath(spec, input, ctx, await executionLogsDeps(input, ctx)),
-			),
+		return readCapability(
+			spec,
+			async (input, ctx) => runViaChatToolPath(spec, input, ctx, await executionLogsDeps(input, ctx)),
 			// Org data read by globally unique id: the MCP boundary narrows its
 			// session sweep to the working scope under strict read scoping.
-			scopedSessions: true,
-		};
+			{ ...orgOptions(spec), scopedSessions: true },
+		);
 	}
-	return mcpCapability(spec, access, 'workflow', true);
+	return readCapability(spec, (input, ctx) => runViaChatToolPath(spec, input, ctx), orgOptions(spec));
 });
+
+function graphqlSchemaSpec(): ToolSpec {
+	const spec = GRAPHQL_TOOL_SPECS.find(entry => entry.name === 'buddy_graphql_schema');
+	if (!spec) throw new Error('chatToolCapabilities: missing tool spec "buddy_graphql_schema"');
+	return spec;
+}
+
+/**
+ * Schema inspection capability exposed over MCP.
+ *
+ * The combined `buddy_graphql` chat tool (which handled both schema inspection
+ * and arbitrary query/mutation execution in one tool) has been retired. MCP
+ * now uses dedicated primitives: this capability covers schema introspection,
+ * while `buddy_graphql_query` and `buddy_graphql_mutate` handle read and write
+ * operations respectively. Splitting the tools gives the approval layer
+ * fine-grained control — mutations can be gated independently of reads.
+ */
+export const graphqlSchemaCapability: Capability = readCapability(
+	graphqlSchemaSpec(),
+	(input, ctx) => runGraphqlTool({ tool: 'buddy_graphql_schema', args: input }, createGraphqlDeps(ctx.session)),
+	{ requiresOrg: false },
+);

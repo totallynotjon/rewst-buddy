@@ -1,11 +1,5 @@
 import vscode from 'vscode';
-import {
-	buildToolInstructions,
-	parseToolRequests,
-	type ToolRequest,
-	type ToolResult,
-	type ToolSpec,
-} from '../tools/toolProtocol';
+import { parseToolRequests, type ToolRequest, type ToolResult, type ToolSpec } from '../tools/toolProtocol';
 
 /**
  * Translates between VS Code's language-model tool-calling contract and
@@ -25,38 +19,7 @@ export function chatToolSpecs(tools: readonly vscode.LanguageModelChatTool[]): T
 	}));
 }
 
-/** Instruction text advertising the given chat tools via the text protocol. */
-export function buildInstructionsForChatTools(tools: readonly vscode.LanguageModelChatTool[]): string {
-	return buildToolInstructions(chatToolSpecs(tools));
-}
-
-export interface TranslatedToolCalls {
-	/** Tool-call parts for permitted requests, in request order. */
-	calls: vscode.LanguageModelToolCallPart[];
-	/** Names the model requested that were not in the permitted set. */
-	rejectedNames: string[];
-}
-
 let callCounter = 0;
-
-/**
- * Converts the vscode-tool requests in a completed answer into tool-call parts.
- * A request whose tool is not in the permitted set is never emitted as a call
- * (VS Code could not invoke it) — it is reported back so the caller can answer
- * with plain text instead of a stalled call.
- */
-export function translateToolRequests(content: string, permittedNames: ReadonlySet<string>): TranslatedToolCalls {
-	const calls: vscode.LanguageModelToolCallPart[] = [];
-	const rejectedNames: string[] = [];
-	for (const request of parseToolRequests(content)) {
-		if (!permittedNames.has(request.tool)) {
-			rejectedNames.push(request.tool);
-			continue;
-		}
-		calls.push(toToolCallPart(request));
-	}
-	return { calls, rejectedNames };
-}
 
 function toToolCallPart(request: ToolRequest): vscode.LanguageModelToolCallPart {
 	const callId = `rewst-${request.tool}-${++callCounter}-${Date.now().toString(36)}`;

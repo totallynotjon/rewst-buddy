@@ -2,14 +2,12 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import {
-	buildInstructionsForChatTools,
-	chatToolSpecs,
-	collectToolCalls,
-	extractTrailingToolResults,
-	formatInProcessToolResults,
-	partitionToolRequests,
-	rejectedToolsNote,
-	translateToolRequests,
+    chatToolSpecs,
+    collectToolCalls,
+    extractTrailingToolResults,
+    formatInProcessToolResults,
+    partitionToolRequests,
+    rejectedToolsNote,
 } from './toolTranslation';
 
 const { suite, test } = Mocha;
@@ -25,22 +23,6 @@ function fence(request: object): string {
 }
 
 suite('Unit: toolTranslation', () => {
-	suite('buildInstructionsForChatTools()', () => {
-		test('advertises built-in tools passed by VS Code without Rewst-only examples', () => {
-			const instructions = buildInstructionsForChatTools([chatTool('read_file', 'read a file')]);
-			assert.ok(instructions.includes('read_file'));
-			assert.ok(instructions.includes('read a file'));
-			assert.ok(!instructions.includes('buddy_search_template_links'));
-			assert.ok(!instructions.includes('buddy_graphql'));
-		});
-
-		test('advertises unknown tools with their schema', () => {
-			const instructions = buildInstructionsForChatTools([chatTool('other_tool', 'does things')]);
-			assert.ok(instructions.includes('other_tool'));
-			assert.ok(instructions.includes('does things'));
-		});
-	});
-
 	suite('chatToolSpecs()', () => {
 		test('maps VS Code tools into tool specs with a JSON arg signature', () => {
 			const [spec] = chatToolSpecs([chatTool('read_file', 'read a file')]);
@@ -119,32 +101,6 @@ suite('Unit: toolTranslation', () => {
 			]);
 			assert.ok(/error/i.test(message));
 			assert.ok(message.includes('org_required'));
-		});
-	});
-
-	suite('translateToolRequests()', () => {
-		test('emits tool-call parts for permitted requests', () => {
-			const content = `Checking.\n${fence({ tool: 'read_file', args: { path: 'a.txt' } })}`;
-			const { calls, rejectedNames } = translateToolRequests(content, new Set(['read_file']));
-			assert.strictEqual(calls.length, 1);
-			assert.strictEqual(calls[0].name, 'read_file');
-			assert.deepStrictEqual(calls[0].input, { path: 'a.txt' });
-			assert.ok(calls[0].callId.length > 0);
-			assert.deepStrictEqual(rejectedNames, []);
-		});
-
-		test('never emits a call outside the permitted set', () => {
-			const content = fence({ tool: 'run_command', args: { command: 'rm -rf /' } });
-			const { calls, rejectedNames } = translateToolRequests(content, new Set(['read_file']));
-			assert.strictEqual(calls.length, 0);
-			assert.deepStrictEqual(rejectedNames, ['run_command']);
-		});
-
-		test('generates unique call ids', () => {
-			const content = `${fence({ tool: 'read_file', args: { path: 'a' } })}\n${fence({ tool: 'read_file', args: { path: 'b' } })}`;
-			const { calls } = translateToolRequests(content, new Set(['read_file']));
-			assert.strictEqual(calls.length, 2);
-			assert.notStrictEqual(calls[0].callId, calls[1].callId);
 		});
 	});
 

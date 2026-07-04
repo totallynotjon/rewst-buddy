@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { log } from '@utils';
 import { getTestSession, getTestToken, hasTestToken, initTestEnvironment } from '@test';
-import { runWorkflowTool } from '../../ui/chat/tools/workflowTools';
+import { runWorkflowTool } from '@workflow';
 import type { GraphqlToolDeps } from '../../ui/chat/tools/graphqlTool';
 
 const { suite, test, suiteSetup } = Mocha;

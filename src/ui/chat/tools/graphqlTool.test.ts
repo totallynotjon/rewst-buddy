@@ -1,15 +1,15 @@
+import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
 import {
 	_resetApprovedMutationScopes,
 	approveMutationScope,
 	detectOperationType,
-	graphqlMutationConfirmation,
-	graphqlMutationScope,
 	isGraphqlTool,
 	isMutationScopeApproved,
+	runMutationGraphql,
 	runGraphqlTool,
+	runReadonlyGraphql,
 	type GraphqlToolDeps,
 	type MutationScope,
 } from './graphqlTool';
@@ -27,19 +27,14 @@ function deps(over: Partial<GraphqlToolDeps> = {}): GraphqlToolDeps {
 
 const SCOPE: MutationScope = { scopeId: 'wf-1', scopeName: 'My Workflow', orgId: 'org-1', orgName: 'Acme' };
 
-/** A scoped mutation request's args: the four scope fields plus a query. */
-function scopedMutation(over: Record<string, unknown> = {}): Record<string, unknown> {
-	return { query: 'mutation U { updateTemplate { id } }', ...SCOPE, ...over };
-}
-
 suite('Unit: graphqlTool', () => {
 	setup(() => {
 		initTestEnvironment();
 		_resetApprovedMutationScopes();
 	});
 
-	test('isGraphqlTool recognizes buddy_graphql', () => {
-		assert.ok(isGraphqlTool('buddy_graphql'));
+	test('isGraphqlTool recognizes only the schema chat tool', () => {
+		assert.ok(!isGraphqlTool('buddy_graphql'));
 		assert.ok(isGraphqlTool('buddy_graphql_schema'));
 		assert.ok(!isGraphqlTool('read_file'));
 	});
@@ -69,106 +64,7 @@ suite('Unit: graphqlTool', () => {
 		});
 	});
 
-	suite('graphqlMutationConfirmation()', () => {
-		test('names the resource and org and shows the operation and variables', () => {
-			const confirmation = graphqlMutationConfirmation(
-				'buddy_graphql',
-				scopedMutation({
-					query: 'mutation U($id: ID!) { updateTemplate(id: $id) { id } }',
-					variables: { id: 't-1' },
-				}),
-			);
-			assert.ok(confirmation, 'an unapproved mutation needs confirmation');
-			assert.match(confirmation.message, /My Workflow/);
-			assert.match(confirmation.message, /wf-1/);
-			assert.match(confirmation.message, /Acme/);
-			assert.match(confirmation.message, /org-1/);
-			assert.match(confirmation.message, /```graphql/);
-			assert.match(confirmation.message, /mutation U/);
-			assert.match(confirmation.message, /Variables:/);
-			assert.match(confirmation.message, /"id": "t-1"/);
-		});
-
-		test('omits the variables block when there are none', () => {
-			const confirmation = graphqlMutationConfirmation(
-				'buddy_graphql',
-				scopedMutation({ query: 'mutation D { deleteTemplate { id } }' }),
-			);
-			assert.ok(confirmation);
-			assert.doesNotMatch(confirmation.message, /Variables:/);
-		});
-
-		test('widens the fence so backticks in the operation cannot close it early', () => {
-			const confirmation = graphqlMutationConfirmation(
-				'buddy_graphql',
-				scopedMutation({ query: 'mutation M { x(body: "```danger```") { id } }' }),
-			);
-			assert.ok(confirmation);
-			// The inner ``` run forces a 4-backtick fence around the operation.
-			assert.match(confirmation.message, /````graphql\n/);
-			assert.match(confirmation.message, /\n````/);
-		});
-
-		test('returns undefined for queries and schema reads', () => {
-			assert.strictEqual(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation({ query: '{ user { id } }' })),
-				undefined,
-			);
-			assert.strictEqual(graphqlMutationConfirmation('buddy_graphql_schema', {}), undefined);
-		});
-
-		test('returns undefined for other tools, bad queries, and a mutation missing any scope field', () => {
-			assert.strictEqual(
-				graphqlMutationConfirmation('read_file', scopedMutation({ query: 'mutation D { x }' })),
-				undefined,
-			);
-			assert.strictEqual(graphqlMutationConfirmation('buddy_graphql', {}), undefined);
-			assert.strictEqual(graphqlMutationConfirmation('buddy_graphql', { query: '   ' }), undefined);
-			assert.strictEqual(graphqlMutationConfirmation('buddy_graphql', undefined), undefined);
-			// A mutation missing any scope field is refused in runGraphqlTool, so
-			// there is nothing to approve here.
-			for (const field of ['scopeId', 'scopeName', 'orgId', 'orgName']) {
-				assert.strictEqual(
-					graphqlMutationConfirmation('buddy_graphql', scopedMutation({ [field]: undefined })),
-					undefined,
-					`missing ${field}`,
-				);
-			}
-		});
-
-		test('an already-approved scope needs no further confirmation, a new resource does', () => {
-			assert.ok(graphqlMutationConfirmation('buddy_graphql', scopedMutation()), 'first time prompts');
-
-			approveMutationScope(SCOPE);
-			assert.strictEqual(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation()),
-				undefined,
-				'same resource no longer prompts',
-			);
-			assert.ok(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation({ scopeId: 'wf-2' })),
-				'a different resource still prompts',
-			);
-			assert.ok(
-				graphqlMutationConfirmation('buddy_graphql', scopedMutation({ orgId: 'org-2' })),
-				'the same resource id in another org still prompts',
-			);
-		});
-	});
-
-	suite('graphqlMutationScope() + scope approval', () => {
-		test('reports the full scope only for a complete scoped mutation', () => {
-			assert.deepStrictEqual(graphqlMutationScope('buddy_graphql', scopedMutation()), SCOPE);
-			assert.strictEqual(
-				graphqlMutationScope('buddy_graphql', scopedMutation({ scopeName: undefined })),
-				undefined,
-			);
-			assert.strictEqual(
-				graphqlMutationScope('buddy_graphql', scopedMutation({ query: '{ user { id } }' })),
-				undefined,
-			);
-		});
-
+	suite('scope approval', () => {
 		test('approval is keyed on org + resource ids, not names', () => {
 			assert.strictEqual(isMutationScopeApproved(SCOPE), false);
 			approveMutationScope(SCOPE);
@@ -184,140 +80,77 @@ suite('Unit: graphqlTool', () => {
 
 	test('fails when deps are missing', async () => {
 		await assert.rejects(
-			runGraphqlTool({ tool: 'buddy_graphql', args: { query: '{ user { id } }' } }, undefined),
+			runGraphqlTool({ tool: 'buddy_graphql_schema', args: {} }, undefined),
 			/GraphQL dependencies are unavailable/,
 		);
 	});
 
-	test('requires a query argument', async () => {
-		await assert.rejects(runGraphqlTool({ tool: 'buddy_graphql', args: {} }, deps()), /requires a "query"/);
+	test('rejects the retired combined GraphQL tool', async () => {
 		await assert.rejects(
-			runGraphqlTool({ tool: 'buddy_graphql', args: { query: '  ' } }, deps()),
-			/requires a "query"/,
+			runGraphqlTool({ tool: 'buddy_graphql', args: { query: '{ user { id } }' } }, deps()),
+			/Unknown GraphQL tool "buddy_graphql"/,
 		);
 	});
 
-	test('rejects non-object variables', async () => {
+	test('read-only GraphQL requires a query argument', async () => {
+		await assert.rejects(runReadonlyGraphql('', undefined, deps().execute), /GraphQL "query"/);
+		await assert.rejects(runReadonlyGraphql('  ', undefined, deps().execute), /GraphQL "query"/);
+	});
+
+	test('read-only GraphQL rejects subscriptions', async () => {
 		await assert.rejects(
-			runGraphqlTool({ tool: 'buddy_graphql', args: { query: '{ user { id } }', variables: [1] } }, deps()),
-			/must be a JSON object/,
+			runReadonlyGraphql('subscription S { x }', undefined, deps().execute),
+			/read-only queries only/,
 		);
 	});
 
-	test('rejects subscriptions', async () => {
-		await assert.rejects(
-			runGraphqlTool({ tool: 'buddy_graphql', args: { query: 'subscription S { x }' } }, deps()),
-			/does not support subscriptions/,
-		);
-	});
-
-	test('runs queries without confirmation and passes variables through', async () => {
-		let confirms = 0;
+	test('read-only GraphQL passes variables through', async () => {
 		const calls: { query: string; variables?: Record<string, unknown> }[] = [];
-		const output = await runGraphqlTool(
-			{
-				tool: 'buddy_graphql',
-				args: { query: 'query T($id: ID!) { template(id: $id) { name } }', variables: { id: 't-1' } },
+		const output = await runReadonlyGraphql(
+			'query T($id: ID!) { template(id: $id) { name } }',
+			{ id: 't-1' },
+			async (query, variables) => {
+				calls.push({ query, variables });
+				return { data: { template: { name: 'My Template' } } };
 			},
-			deps({
-				confirmMutation: async () => {
-					confirms++;
-					return true;
-				},
-				execute: async (query, variables) => {
-					calls.push({ query, variables });
-					return { data: { template: { name: 'My Template' } } };
-				},
-			}),
 		);
-		assert.strictEqual(confirms, 0);
 		assert.strictEqual(calls.length, 1);
 		assert.deepStrictEqual(calls[0].variables, { id: 't-1' });
 		assert.match(output, /My Template/);
 	});
 
-	test('asks for confirmation before running a mutation, with the resource, org, and operation in the summary', async () => {
-		let confirmed = '';
-		const output = await runGraphqlTool(
-			{
-				tool: 'buddy_graphql',
-				args: scopedMutation({
-					query: 'mutation U($id: ID!) { updateTemplate(id: $id) { id } }',
-					variables: { id: 't-1' },
-				}),
+	test('mutation GraphQL requires a mutation operation', async () => {
+		await assert.rejects(runMutationGraphql('{ user { id } }', undefined, deps().execute), /runs mutations only/);
+	});
+
+	test('mutation GraphQL passes variables through', async () => {
+		const calls: { query: string; variables?: Record<string, unknown> }[] = [];
+		const output = await runMutationGraphql(
+			'mutation U($id: ID!) { updateTemplate(id: $id) { id } }',
+			{ id: 't-1' },
+			async (query, variables) => {
+				calls.push({ query, variables });
+				return { data: { updateTemplate: { id: 't-1' } } };
 			},
-			deps({
-				confirmMutation: async operation => {
-					confirmed = operation;
-					return true;
-				},
-			}),
 		);
-		assert.match(confirmed, /My Workflow/);
-		assert.match(confirmed, /wf-1/);
-		assert.match(confirmed, /Acme/);
-		assert.match(confirmed, /org-1/);
-		assert.match(confirmed, /mutation U/);
-		assert.match(confirmed, /"id": "t-1"/);
-		assert.match(output, /"ok": true/);
-	});
-
-	test('refuses a mutation that is missing any scope field, naming the missing ones', async () => {
-		for (const field of ['scopeId', 'scopeName', 'orgId', 'orgName']) {
-			let ran = false;
-			await assert.rejects(
-				runGraphqlTool(
-					{
-						tool: 'buddy_graphql',
-						args: scopedMutation({ query: 'mutation D { deleteTemplate { id } }', [field]: undefined }),
-					},
-					deps({
-						execute: async () => {
-							ran = true;
-							return {};
-						},
-					}),
-				),
-				new RegExp(field),
-				`missing ${field} is refused`,
-			);
-			assert.strictEqual(ran, false, `${field}: nothing ran`);
-		}
-	});
-
-	test('does not run a declined mutation', async () => {
-		let ran = false;
-		await assert.rejects(
-			runGraphqlTool(
-				{ tool: 'buddy_graphql', args: scopedMutation({ query: 'mutation D { deleteTemplate { id } }' }) },
-				deps({
-					confirmMutation: async () => false,
-					execute: async () => {
-						ran = true;
-						return {};
-					},
-				}),
-			),
-			/declined this mutation/,
-		);
-		assert.strictEqual(ran, false);
+		assert.deepStrictEqual(calls, [
+			{ query: 'mutation U($id: ID!) { updateTemplate(id: $id) { id } }', variables: { id: 't-1' } },
+		]);
+		assert.match(output, /"t-1"/);
 	});
 
 	test('includes GraphQL errors in the output', async () => {
-		const output = await runGraphqlTool(
-			{ tool: 'buddy_graphql', args: { query: '{ nope }' } },
-			deps({ execute: async () => ({ data: null, errors: [{ message: 'Cannot query field "nope"' }] }) }),
-		);
+		const output = await runReadonlyGraphql('{ nope }', undefined, async () => ({
+			data: null,
+			errors: [{ message: 'Cannot query field "nope"' }],
+		}));
 		assert.match(output, /Cannot query field/);
 		assert.ok(!output.includes('"data"'));
 	});
 
 	test('returns oversized responses intact for the shared tool-output formatter', async () => {
 		const big = 'x'.repeat(20_000);
-		const output = await runGraphqlTool(
-			{ tool: 'buddy_graphql', args: { query: '{ big }' } },
-			deps({ execute: async () => ({ data: { big } }) }),
-		);
+		const output = await runReadonlyGraphql('{ big }', undefined, async () => ({ data: { big } }));
 		assert.ok(output.includes(big));
 		assert.doesNotMatch(output, /output truncated/);
 	});
@@ -426,6 +259,9 @@ suite('Unit: graphqlTool', () => {
 			assert.match(output, /type Template \(OBJECT\)/);
 			assert.match(output, /Query\.template: Template/);
 			assert.match(output, /Mutation\.updateTemplate: Template/);
+			assert.match(output, /buddy_graphql_query/);
+			assert.match(output, /buddy_graphql_mutate/);
+			assert.doesNotMatch(output, /\bbuddy_graphql\b/);
 		});
 
 		test('validates schema arguments', async () => {

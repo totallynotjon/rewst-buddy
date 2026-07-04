@@ -8,6 +8,7 @@ import {
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import { currentApprovalOrigin, type ApprovalOrigin } from './approvalOrigin';
 import type { Capability, CapabilityContext } from './Capability';
+import { writeCapability } from './capabilityFactories';
 
 export type McpMutationApprover = (scope: MutationScope, operation: string, origin: ApprovalOrigin) => Promise<boolean>;
 
@@ -112,12 +113,7 @@ async function runGraphqlMutate(input: Record<string, unknown>, ctx: CapabilityC
 	return runMutationGraphql(query, variables, (q, v) => ctx.session.rawGraphql(q, v));
 }
 
-export const graphqlMutateCapability: Capability = {
-	spec: graphqlMutateSpec,
-	access: 'write',
+export const graphqlMutateCapability: Capability = writeCapability(graphqlMutateSpec, runGraphqlMutate, {
 	dangerous: true,
-	chat: false,
-	mcp: true,
 	requiresOrg: true,
-	run: runGraphqlMutate,
-};
+});

@@ -37,7 +37,7 @@ jobs:
             - name: Unit tests
               run: xvfb-run -a npm run test:unit
             - name: Changelog tooling tests
-              run: npm run test:changelog
+              run: npm run test:changelog:tools
 
     changelog:
         name: Changelog note

@@ -11,6 +11,7 @@
 
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { readCapability } from './capabilityFactories';
 import { asString } from './inputHelpers';
 
 const FILTERS_PATH = '/jinja/intellisense/filters';
@@ -209,12 +210,5 @@ async function runGetJinjaFilterDocs(input: Record<string, unknown>, ctx: Capabi
 }
 
 export const JINJA_DOCS_CAPABILITIES: Capability[] = [
-	{
-		spec: getJinjaFilterDocsSpec,
-		access: 'read',
-		chat: false,
-		mcp: true,
-		requiresOrg: false,
-		run: runGetJinjaFilterDocs,
-	},
+	readCapability(getJinjaFilterDocsSpec, runGetJinjaFilterDocs, { requiresOrg: false }),
 ];

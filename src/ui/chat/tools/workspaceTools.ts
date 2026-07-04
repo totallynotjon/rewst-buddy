@@ -1,8 +1,14 @@
 import { LinkManager, orgForTemplateLink, type TemplateLink } from '@models';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { describeRequest, type ToolRequest, type ToolResult, type ToolSpec } from './toolProtocol';
 import { GRAPHQL_TOOL_SPECS, isGraphqlTool, runGraphqlTool, type GraphqlToolDeps } from './graphqlTool';
+import {
+	describeRequest,
+	withGeneratedArgsForAll,
+	type ToolRequest,
+	type ToolResult,
+	type ToolSpec,
+} from './toolProtocol';
 import { isWorkflowTool, runWorkflowTool, WORKFLOW_TOOL_SPECS } from './workflowTools';
 
 /**
@@ -31,10 +37,9 @@ export const defaultDeps: WorkspaceToolDeps = {
 const SEARCH_DEFAULT_LIMIT = 20;
 const SEARCH_MAX_LIMIT = 50;
 
-export const WORKSPACE_TOOL_SPECS: ToolSpec[] = [
+export const WORKSPACE_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	{
 		name: 'buddy_search_template_links',
-		args: '{"query"?: string, "limit"?: number}',
 		description:
 			'Search the local files linked to Rewst templates, returning a bounded list of matches (path, template name, template id, org). Pass query to filter by a case-insensitive substring of the file path, template name, template id, or org name; omit it to list the linked files (still bounded). Results are capped at limit (default 20, max 50) with a note when more match. To check whether one specific file is linked, prefer buddy_template_link_status.',
 		inputSchema: {
@@ -52,7 +57,7 @@ export const WORKSPACE_TOOL_SPECS: ToolSpec[] = [
 			},
 		},
 	},
-];
+]);
 
 /** What one tool produced: text for the assistant. */
 interface ToolOutcome {

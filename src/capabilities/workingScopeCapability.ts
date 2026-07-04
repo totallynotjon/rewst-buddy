@@ -4,6 +4,7 @@ import { readMcpSettings } from '../mcp/settings';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import { currentApprovalOrigin, type ApprovalOrigin } from './approvalOrigin';
 import type { Capability, CapabilityContext } from './Capability';
+import { readCapability } from './capabilityFactories';
 
 /**
  * Read and request changes to the user's working scope (see WorkingScopeManager).
@@ -195,24 +196,14 @@ async function runSetWorkingScope(input: Record<string, unknown>, ctx: Capabilit
 	return JSON.stringify({ status: 'ok', scope: currentScope() }, null, 2);
 }
 
-export const getWorkingScopeCapability: Capability = {
-	spec: getWorkingScopeSpec,
-	access: 'read',
-	chat: false,
-	mcp: true,
+export const getWorkingScopeCapability: Capability = readCapability(getWorkingScopeSpec, runGetWorkingScope, {
 	requiresOrg: false,
-	run: runGetWorkingScope,
-};
+});
 
-export const setWorkingScopeCapability: Capability = {
-	spec: setWorkingScopeSpec,
-	// Read access: changing scope is not a Rewst write, so it bypasses the write
-	// gate (it cannot require an org already in scope) and stays always-available.
-	access: 'read',
-	chat: false,
-	mcp: true,
+// Read access: changing scope is not a Rewst write, so it bypasses the write
+// gate (it cannot require an org already in scope) and stays always-available.
+export const setWorkingScopeCapability: Capability = readCapability(setWorkingScopeSpec, runSetWorkingScope, {
 	requiresOrg: false,
-	run: runSetWorkingScope,
-};
+});
 
 export const WORKING_SCOPE_CAPABILITIES: Capability[] = [getWorkingScopeCapability, setWorkingScopeCapability];

@@ -1,6 +1,7 @@
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
-import { asString, requireString, asPositiveInt, ORG_ID_PROP } from './inputHelpers';
+import { readCapability } from './capabilityFactories';
+import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
 
 const MAX_INTEGRATIONS_LIMIT = 200;
 
@@ -69,10 +70,7 @@ async function runListInstalledPacks(input: Record<string, unknown>, ctx: Capabi
 }`;
 	const orgId = requireString(input, 'orgId');
 	const variables = { orgId };
-	const { data, errors } = await ctx.session.rawGraphql(QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, QUERY, variables);
 	const installedPacksAndBundles = ((
 		data as
 			| {
@@ -104,10 +102,7 @@ async function runGetPackAuthStatus(input: Record<string, unknown>, ctx: Capabil
 	const orgId = requireString(input, 'orgId');
 	const packName = requireString(input, 'packName');
 	const variables = { orgId, packName };
-	const { data, errors } = await ctx.session.rawGraphql(QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, QUERY, variables);
 	const url = (data as { packAuthUrl?: unknown } | undefined)?.packAuthUrl;
 	if (url == null) return 'configured (no auth URL needed)';
 	return `needs setup: ${url}`;
@@ -125,10 +120,7 @@ async function runListPackConfigs(input: Record<string, unknown>, ctx: Capabilit
 }`;
 	const orgId = requireString(input, 'orgId');
 	const variables = { orgId };
-	const { data, errors } = await ctx.session.rawGraphql(QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, QUERY, variables);
 	const packConfigs = ((data as { packConfigs?: unknown[] | null } | undefined)?.packConfigs ?? []) as {
 		id?: string | null;
 		name?: string | null;
@@ -158,10 +150,7 @@ async function runListIntegrations(input: Record<string, unknown>, ctx: Capabili
 	requireString(input, 'orgId');
 	const limit = Math.min(asPositiveInt(input, 'limit') ?? 50, MAX_INTEGRATIONS_LIMIT);
 	const variables = { limit };
-	const { data, errors } = await ctx.session.rawGraphql(QUERY, variables);
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
+	const data = await rawGraphqlOrThrow(ctx.session, QUERY, variables);
 	const integrations = ((data as { integrations?: unknown[] | null } | undefined)?.integrations ?? []) as {
 		name?: string | null;
 		description?: string | null;
@@ -180,8 +169,8 @@ async function runListIntegrations(input: Record<string, unknown>, ctx: Capabili
 }
 
 export const PACK_INTEGRATION_CAPABILITIES: Capability[] = [
-	{ spec: listInstalledPacksSpec, access: 'read', chat: false, mcp: true, run: runListInstalledPacks },
-	{ spec: getPackAuthStatusSpec, access: 'read', chat: false, mcp: true, run: runGetPackAuthStatus },
-	{ spec: listPackConfigsSpec, access: 'read', chat: false, mcp: true, run: runListPackConfigs },
-	{ spec: listIntegrationsSpec, access: 'read', chat: false, mcp: true, run: runListIntegrations },
+	readCapability(listInstalledPacksSpec, runListInstalledPacks),
+	readCapability(getPackAuthStatusSpec, runGetPackAuthStatus),
+	readCapability(listPackConfigsSpec, runListPackConfigs),
+	readCapability(listIntegrationsSpec, runListIntegrations),
 ];

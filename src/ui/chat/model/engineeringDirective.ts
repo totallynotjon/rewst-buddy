@@ -48,7 +48,7 @@ const DISCIPLINE = `# Tool protocol guidance
  * Terse, high-recency reminder appended after the whole prompt so it is the last
  * thing the model reads.
  */
-const EDITOR_ONLY_REMINDER_TOOLS = [
+export const EDITOR_ONLY_REMINDER_TOOLS = [
 	'create_file',
 	'replace_string_in_file',
 	'insert_edit_into_file',

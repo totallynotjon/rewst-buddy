@@ -14,7 +14,6 @@ import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
  */
 
 export type CapabilityAccess = 'read' | 'write';
-export type CapabilityGroup = 'workflow' | 'graphql' | 'workspace' | 'result';
 
 /**
  * The session + org a capability handler runs against. The surface resolves and
@@ -30,8 +29,6 @@ export interface CapabilityContext {
 
 export interface Capability {
 	spec: ToolSpec;
-	/** Tool family used by steering and category-level capability lookups. */
-	group?: CapabilityGroup;
 	/**
 	 * Whether the capability can change Rewst state. The MCP server boundary
 	 * rejects access:'write' unless write tools are explicitly enabled, regardless
@@ -40,15 +37,6 @@ export interface Capability {
 	access: CapabilityAccess;
 	/** High-risk write capability that has its own MCP exposure toggle. */
 	dangerous?: boolean;
-	/**
-	 * Exposed through the legacy VS Code language-model chat tool contribution.
-	 * Cage-Free Rewsty's current Buddy path mirrors MCP descriptors in-process,
-	 * so mcp:true capabilities can still be available there without exposing the
-	 * external MCP server endpoint.
-	 */
-	chat: boolean;
-	/** Exposed over the MCP server surface and mirrored by Cage-Free Rewsty's in-process Buddy path. */
-	mcp: boolean;
 	/**
 	 * Whether the capability operates on a specific org. When false (e.g.
 	 * buddy_list_orgs), the MCP surface does not require an `orgId` argument and the

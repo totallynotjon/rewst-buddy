@@ -622,16 +622,12 @@ suite('Unit: templateSyncCapabilities', () => {
 		test('buddy_template_sync_status is a read tool, mcp-only, no org required', () => {
 			const c = cap('buddy_template_sync_status');
 			assert.strictEqual(c.access, 'read');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.strictEqual(c.requiresOrg, false);
 		});
 
 		test('buddy_template_sync is a write tool, mcp-only, and stays org-scoped', () => {
 			const c = cap('buddy_template_sync');
 			assert.strictEqual(c.access, 'write');
-			assert.strictEqual(c.mcp, true);
-			assert.strictEqual(c.chat, false);
 			assert.notStrictEqual(c.requiresOrg, false);
 		});
 	});

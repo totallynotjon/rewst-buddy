@@ -137,8 +137,9 @@ reloaded. A successful refresh SHALL reset the consecutive-failure counter.
 - **GIVEN** an active session whose cookie can no longer be refreshed
 - **WHEN** three consecutive refresh attempts fail
 - **THEN** the session is marked expired
-- **AND** session-change subscribers receive an event whose active profiles no
-  longer include that session
+- **AND** session-change subscribers receive a removal event whose active
+  profiles no longer include that session, so consumers that prune per-session
+  state on removal (for example cached template metadata) react to the expiry
 - **AND** the user sees one error notification offering `Re-authenticate`
 
 #### Scenario: Re-auth action opens the sidebar

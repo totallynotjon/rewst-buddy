@@ -1,6 +1,8 @@
 import { randomUUID } from 'crypto';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability } from './Capability';
+import { readCapability } from './capabilityFactories';
+import { asString } from './inputHelpers';
 
 export const RESULT_READ_TOOL_NAME = 'buddy_result_read';
 export const MCP_MAX_OUTPUT_CHARS = 24_000;
@@ -116,14 +118,9 @@ const resultReadSpec: ToolSpec = {
 	},
 };
 
-export const resultReadCapability: Capability = {
-	spec: resultReadSpec,
-	group: 'result',
-	access: 'read',
-	chat: false,
-	mcp: true,
-	requiresOrg: false,
-	async run(input: Record<string, unknown>, _ctx): Promise<string> {
+export const resultReadCapability: Capability = readCapability(
+	resultReadSpec,
+	async (input: Record<string, unknown>, _ctx): Promise<string> => {
 		const id = asString(input, 'id');
 		if (!id) throw new Error('buddy_result_read requires an "id" from a previous oversized Rewst Buddy result.');
 		const entry = mcpResultCache.get(id);
@@ -138,7 +135,8 @@ export const resultReadCapability: Capability = {
 		const limit = clampInt(input.limit, 1, MAX_READ_LIMIT, DEFAULT_READ_LIMIT);
 		return sliceCachedOutput(entry, offset, limit);
 	},
-};
+	{ requiresOrg: false },
+);
 
 function sliceCachedOutput(entry: CacheEntry, offset: number, limit: number): string {
 	const end = Math.min(offset + limit, entry.text.length);
@@ -176,11 +174,6 @@ function searchCachedOutput(entry: CacheEntry, query: string): string {
 
 function clampLine(line: string): string {
 	return line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)}...` : line;
-}
-
-function asString(input: Record<string, unknown>, key: string): string | undefined {
-	const value = input[key];
-	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 function clampInt(value: unknown, min: number, max: number, fallback: number): number {

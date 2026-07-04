@@ -185,6 +185,21 @@ suite('Unit: determineSyncAction()', () => {
 			assert.deepStrictEqual(result, { action: 'download-remote' });
 		});
 
+		test('reports a conflict for sentinel links because the stored local hash is not a last sync', () => {
+			const localBody = '// local body present when link was created';
+			const result = determineSyncAction(
+				createParams({
+					localUpdatedAt: '0',
+					remoteUpdatedAt: '2024-01-02T00:00:00Z',
+					localBody,
+					remoteBody: '// different remote body',
+					lastSyncedBodyHash: getHash(localBody),
+				}),
+			);
+
+			assert.deepStrictEqual(result, { action: 'conflict', changed: 'both' });
+		});
+
 		test('reports a genuine conflict when local and remote bodies both changed', () => {
 			const result = determineSyncAction(
 				createParams({

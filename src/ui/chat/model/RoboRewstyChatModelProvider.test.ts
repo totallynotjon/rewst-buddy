@@ -1,11 +1,11 @@
+import type { AskOptions, ConversationEvent, Session } from '@sessions';
+import { createMockSession, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { createMockSession, initTestEnvironment } from '@test';
-import type { AskOptions, ConversationEvent, Session } from '@sessions';
-import { onDidChangeContextUsage, type ContextUsage } from './contextUsage';
 import vscode from 'vscode';
-import { conversationMap } from './conversationMap';
 import { parseLatestBreadcrumb } from './breadcrumb';
+import { onDidChangeContextUsage, type ContextUsage } from './contextUsage';
+import { conversationMap } from './conversationMap';
 import {
 	MAX_BUDDY_TOOL_ROUNDS,
 	normalizeBuddyToolRounds,
@@ -465,27 +465,111 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		);
 	});
 
-	test('does not redirect native Rewst tool activity when Buddy tools are disabled', async () => {
-		const harness = makeHarness([
-			[
-				{ kind: 'conversation', conversationId: 'conv-1' },
-				{
-					kind: 'status',
-					label: 'Running Rewst tool: listWorkflow…',
-					activity: true,
-					tool: { name: 'listWorkflow' },
-				},
-				{ kind: 'chunk', text: 'native answer' },
-				{ kind: 'complete', content: 'native answer', sources: [], conversationId: 'conv-1' },
-			],
-		]);
+	test('redirects any native Rewst tool unconditionally, even when no Buddy tools are configured', async () => {
+		// Previously the redirect was gated on buddyNames.size > 0 — this test
+		// documents that the unconditional redirect fires even with no buddy tools.
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-1' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: listWorkflow…',
+				activity: true,
+				tool: { name: 'listWorkflow' },
+			},
+			{ kind: 'chunk', text: 'native result that should not stream' },
+			{
+				kind: 'complete',
+				content: 'native result that should not stream',
+				sources: [],
+				conversationId: 'conv-1',
+			},
+		];
+		const harness = makeHarness([nativeAttempt, completeTurn('Redirected answer.', 'conv-1')]); // buddyToolSpecs defaults to []
 
 		await harness.run([message(User, [text('look up workflow w1')])]);
 
-		assert.strictEqual(harness.captured.length, 1, 'no correction turn is sent without Buddy tools');
+		assert.strictEqual(harness.captured.length, 2, 'a correction turn is sent even without Buddy tools');
+		assert.ok(harness.captured[1].message.includes('vscode-tool'), 'correction names the fenced protocol');
 		const out = textOf(harness.parts);
-		assert.ok(out.includes('🔧 **Rewst tool** · `listWorkflow`'), 'native activity remains visible');
-		assert.ok(out.includes('native answer'), 'native answer still streams');
+		assert.ok(!out.includes('native result that should not stream'), 'abandoned native stream is not rendered');
+		assert.ok(out.includes('Redirected answer.'), 'the corrected turn answer streams');
+	});
+
+	test('redirects a native call to a VS Code editor tool with an editor-specific correction', async () => {
+		// manage_todo_list is in EDITOR_ONLY_REMINDER_TOOLS; when it is also in
+		// vscodeNames (passed via options.tools), editorToolNames picks it up and
+		// buildNativeToEditorCorrection is used instead of buildNativeToBuddyCorrection.
+		const MANAGE_TODO_TOOL: vscode.LanguageModelChatTool = {
+			name: 'manage_todo_list',
+			description: 'manage a todo list',
+			inputSchema: { type: 'object' },
+		};
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-1' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: manage_todo_list…',
+				activity: true,
+				tool: { name: 'manage_todo_list', args: '{"todoList":[]}' },
+			},
+			{ kind: 'chunk', text: 'native result that should not stream' },
+			{
+				kind: 'complete',
+				content: 'native result that should not stream',
+				sources: [],
+				conversationId: 'conv-1',
+			},
+		];
+		const harness = makeHarness([nativeAttempt, completeTurn('Used vscode-tool block.', 'conv-1')]);
+
+		await harness.run([message(User, [text('update the todo list')])], [MANAGE_TODO_TOOL]);
+
+		assert.strictEqual(harness.captured.length, 2, 'a correction turn is sent for the editor tool call');
+		const correction = harness.captured[1].message;
+		// Editor correction tells the model to use a vscode-tool fenced block, not a buddy tool.
+		assert.ok(correction.includes('vscode-tool'), 'correction names the fenced block protocol');
+		assert.ok(correction.includes('manage_todo_list'), 'correction names the intercepted tool');
+		assert.ok(correction.includes('VS Code editor tool'), 'correction identifies it as an editor tool');
+		assert.ok(!correction.includes('buddy_'), 'editor correction does not mention buddy tools');
+		const out = textOf(harness.parts);
+		assert.ok(!out.includes('native result that should not stream'), 'abandoned native stream is not rendered');
+		assert.ok(out.includes('Used vscode-tool block.'), 'the corrected turn answer streams');
+	});
+
+	test('redirects a native call to an unknown tool using the buddy correction fallback', async () => {
+		// A tool that is neither in EDITOR_ONLY_REMINDER_TOOLS nor a buddy tool
+		// (e.g. a hallucinated Rewst action name) still gets redirected, and the
+		// correction falls back to buildNativeToBuddyCorrection.
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-1' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: someRewstAction…',
+				activity: true,
+				tool: { name: 'someRewstAction' },
+			},
+			{ kind: 'chunk', text: 'native result that should not stream' },
+			{
+				kind: 'complete',
+				content: 'native result that should not stream',
+				sources: [],
+				conversationId: 'conv-1',
+			},
+		];
+		const harness = makeHarness([nativeAttempt, completeTurn('Buddy answer.', 'conv-1')], {
+			buddyToolSpecs: () => [BUDDY_GET_SPEC],
+		});
+
+		await harness.run([message(User, [text('do something')])]);
+
+		assert.strictEqual(harness.captured.length, 2, 'unknown native tool is still redirected');
+		const correction = harness.captured[1].message;
+		assert.ok(correction.includes('vscode-tool'), 'correction names the fenced protocol');
+		assert.ok(correction.includes('local tool protocol'), 'buddy correction wording is used');
+		assert.ok(correction.includes('buddy_workflow_get'), 'correction lists available buddy tools');
+		const out = textOf(harness.parts);
+		assert.ok(!out.includes('native result that should not stream'), 'abandoned native stream is not rendered');
+		assert.ok(out.includes('Buddy answer.'), 'the corrected turn answer streams');
 	});
 
 	test('redirects any native Rewst tool status even if the activity flag is omitted', async () => {
@@ -1133,24 +1217,19 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.strictEqual(harness.captured[0].conversationType, 'WORKFLOW_DIAGNOSIS');
 	});
 
+	// Activity turn for label-filtering tests. No `tool` field on the Rewst-tool
+	// status events — adding one would trigger the unconditional native-tool
+	// redirect and consume extra turns, breaking tests that only care about
+	// activity-label visibility. Card rendering for native tools is covered by
+	// the redirect tests above (which assert on the intercepted card).
 	const activityTurn: ConversationEvent[] = [
 		{ kind: 'conversation', conversationId: 'conv-1' },
 		{ kind: 'status', label: 'Thinking…' }, // housekeeping (no activity flag) → hidden
 		{ kind: 'status', label: 'Summarizing conversation…' }, // housekeeping → hidden
 		{ kind: 'status', label: 'Searching documentation…', activity: true },
-		{
-			kind: 'status',
-			label: 'Running Rewst tool: listOrgVariable…',
-			activity: true,
-			tool: { name: 'listOrgVariable' },
-		},
+		{ kind: 'status', label: 'Running Rewst tool: listOrgVariable…', activity: true },
 		// back-to-back dup → collapsed
-		{
-			kind: 'status',
-			label: 'Running Rewst tool: listOrgVariable…',
-			activity: true,
-			tool: { name: 'listOrgVariable' },
-		},
+		{ kind: 'status', label: 'Running Rewst tool: listOrgVariable…', activity: true },
 		{ kind: 'chunk', text: 'the answer' },
 		{ kind: 'complete', content: 'the answer', sources: [], conversationId: 'conv-1' },
 	];
@@ -1163,9 +1242,10 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(!out.includes('Thinking…'), 'housekeeping thinking is not shown');
 		assert.ok(!out.includes('Summarizing'), 'housekeeping summarizing is not shown');
 		assert.ok(out.includes('> _Searching documentation…_'), 'searches are surfaced');
-		assert.ok(out.includes('🔧 **Rewst tool** · `listOrgVariable`'), 'native tool renders card-like');
+		// Without a `tool` field the status renders as a plain italic activity line.
+		assert.ok(out.includes('Running Rewst tool: listOrgVariable'), 'native tool activity is surfaced');
 		assert.strictEqual(
-			out.split('🔧 **Rewst tool** · `listOrgVariable`').length - 1,
+			out.split('Running Rewst tool: listOrgVariable').length - 1,
 			1,
 			'a repeated tool label collapses to one line',
 		);

@@ -122,24 +122,32 @@ suite('Unit: workspaceTools', () => {
 			assert.strictEqual(result.ok, false);
 			assert.match(result.output, /Unknown tool "delete_everything"/);
 			assert.match(result.output, /buddy_search_template_links/);
-			assert.match(result.output, /buddy_graphql/);
+			assert.match(result.output, /buddy_graphql_schema/);
+			assert.doesNotMatch(result.output, /\bbuddy_graphql\b/);
 		});
 
-		test('routes buddy_graphql through GraphQL deps', async () => {
+		test('routes buddy_graphql_schema through GraphQL deps', async () => {
 			const calls: { query: string; variables?: Record<string, unknown> }[] = [];
 			const graphqlDeps: GraphqlToolDeps = {
 				isEnabled: () => true,
 				confirmMutation: async () => true,
 				execute: async (query, variables) => {
 					calls.push({ query, variables });
-					return { data: { user: { id: 'u-1' } } };
+					return {
+						data: {
+							__schema: {
+								queryType: { name: 'Query', fields: [] },
+								mutationType: { name: 'Mutation', fields: [] },
+							},
+						},
+					};
 				},
 			};
 			const [result] = await runToolRequests(
 				[
 					{
-						tool: 'buddy_graphql',
-						args: { query: 'query U($id: ID!) { user(id: $id) { id } }', variables: { id: 'u-1' } },
+						tool: 'buddy_graphql_schema',
+						args: {},
 					},
 				],
 				deps(),
@@ -147,29 +155,15 @@ suite('Unit: workspaceTools', () => {
 				graphqlDeps,
 			);
 			assert.strictEqual(result.ok, true);
-			assert.match(result.output, /"u-1"/);
-			assert.deepStrictEqual(calls, [
-				{ query: 'query U($id: ID!) { user(id: $id) { id } }', variables: { id: 'u-1' } },
-			]);
+			assert.match(result.output, /## Query \(Query\)/);
+			assert.strictEqual(calls.length, 1);
+			assert.deepStrictEqual(calls[0].variables, { includeDeprecated: false });
 		});
 
-		test('returns oversized tool output directly for the MCP boundary to truncate', async () => {
-			const big = 'y'.repeat(20_000);
-			const graphqlDeps: GraphqlToolDeps = {
-				isEnabled: () => true,
-				confirmMutation: async () => true,
-				execute: async () => ({ data: { big } }),
-			};
-			const [result] = await runToolRequests(
-				[{ tool: 'buddy_graphql', args: { query: '{ big }' } }],
-				deps(),
-				undefined,
-				graphqlDeps,
-			);
-			assert.strictEqual(result.ok, true);
-			assert.ok(result.output.includes('y'.repeat(100)), 'raw output is preserved');
-			assert.doesNotMatch(result.output, /buddy_result_read/);
-			assert.doesNotMatch(result.output, /cached in memory/);
+		test('rejects retired buddy_graphql instead of routing it', async () => {
+			const [result] = await runToolRequests([{ tool: 'buddy_graphql', args: { query: '{ big }' } }], deps());
+			assert.strictEqual(result.ok, false);
+			assert.match(result.output, /Unknown tool "buddy_graphql"/);
 		});
 
 		test('reports progress per request', async () => {

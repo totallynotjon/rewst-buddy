@@ -1,3 +1,4 @@
+import { extPrefix } from '@global';
 import {
 	askRewstAi,
 	SessionManager,
@@ -6,26 +7,19 @@ import {
 	type ConversationSource,
 	type Session,
 } from '@sessions';
-import { extPrefix } from '@global';
 import { log } from '@utils';
 import vscode from 'vscode';
-import { ChunkGate } from '../tools/chunkGate';
-import {
-	buildToolInstructions,
-	stripToolRequestBlocks,
-	type ToolRequest,
-	type ToolResult,
-	type ToolSpec,
-} from '../tools/toolProtocol';
 import { prependInstructions } from '../promptContext';
-import { buddyChatToolSpecs, runBuddyChatTool, type BuddyToolResult } from './buddyChatTools';
-import { buildEngineeringDirective, buildNativeToolReminder } from './engineeringDirective';
-import { conversationMap, nextTurnKey, prefixKey, spineDepth } from './conversationMap';
+import { ChunkGate } from '../tools/chunkGate';
+import { buildToolInstructions, stripToolRequestBlocks, type ToolResult, type ToolSpec } from '../tools/toolProtocol';
 import { formatBreadcrumb, parseLatestBreadcrumb } from './breadcrumb';
-import { setLastAiAnswer } from './lastAnswer';
+import { buddyChatToolSpecs, runBuddyChatTool, type BuddyToolResult } from './buddyChatTools';
 import { setContextUsage } from './contextUsage';
-import { serializeVisibleChat } from './statelessTranscript';
+import { conversationMap, nextTurnKey, prefixKey, spineDepth } from './conversationMap';
+import { buildEngineeringDirective, buildNativeToolReminder, EDITOR_ONLY_REMINDER_TOOLS } from './engineeringDirective';
+import { setLastAiAnswer } from './lastAnswer';
 import { renderSourcesMarkdown } from './sources';
+import { serializeVisibleChat } from './statelessTranscript';
 import {
 	chatToolSpecs,
 	collectToolCalls,
@@ -95,11 +89,12 @@ function withDeferredToolsNote(
 type StatusEvent = Extract<ConversationEvent, { kind: 'status' }>;
 type NativeRewstToolStatus = StatusEvent & { tool: NonNullable<StatusEvent['tool']> };
 
-function shouldRedirectNativeRewstTool(
-	status: StatusEvent,
-	buddyNames: ReadonlySet<string>,
-): status is NativeRewstToolStatus {
-	return status.tool !== undefined && buddyNames.size > 0;
+function shouldRedirectNativeRewstTool(status: StatusEvent): status is NativeRewstToolStatus {
+	// In the VS Code chat context every tool the model should use is either a
+	// buddy (MCP) tool run in-process or a VS Code editor tool requested via a
+	// vscode-tool fenced block. A server-side Rewst tool call is always wrong
+	// here — redirect unconditionally regardless of the tool name.
+	return status.tool !== undefined;
 }
 
 function formatInlineName(name: string): string {
@@ -133,6 +128,21 @@ function buildNativeToBuddyCorrection(tool: NativeRewstToolStatus['tool'], buddy
 		'Continue with the local tool protocol: request local Buddy tools by writing fenced `vscode-tool` JSON blocks so VS Code can route them through the extension and apply its normal approval and sandbox flow.',
 		`Available buddy_* tool names this turn: ${names}.`,
 		'If one of those tools is needed, reply with the `vscode-tool` block only; otherwise answer from the current conversation.',
+	);
+	return lines.join('\n');
+}
+
+function buildNativeToEditorCorrection(tool: NativeRewstToolStatus['tool']): string {
+	const sanitizedArgs = tool.args ? sanitizeArgsForPrompt(tool.args) : '';
+	const lines = [
+		`Transport note: the previous server-side Rewst tool status was for ${formatInlineName(tool.name)}, which is a VS Code editor tool that must never be invoked as a native Rewst function call.`,
+	];
+	if (sanitizedArgs) {
+		lines.push(`Those arguments were: ${sanitizedArgs}`);
+	}
+	lines.push(
+		`Request it with a fenced \`vscode-tool\` JSON block instead: \`\`\`vscode-tool\n{"tool": "${tool.name}", "args": {…}}\n\`\`\``,
+		'Reply with the vscode-tool block only; do not invoke it as a native function call again.',
 	);
 	return lines.join('\n');
 }
@@ -311,7 +321,9 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 		// already supplied every Buddy tool natively, buddySpecs is empty yet the
 		// local Buddy path still exists, so the native Rewst tool must still be
 		// redirected (its fenced request then routes back through VS Code natively).
-		const allBuddyNames = new Set(allBuddySpecs.map(spec => spec.name));
+		// Editor tools available this turn — used to pick the right correction message
+		// when a native call to one of these is intercepted and redirected.
+		const editorToolNames = new Set(EDITOR_ONLY_REMINDER_TOOLS.filter(t => vscodeNames.has(t)));
 		const permittedNames = new Set<string>([...vscodeNames, ...buddyNames]);
 		const advertisedSpecs = [...chatToolSpecs(tools), ...buddySpecs];
 		const { customInstructions, conversationType, showActivity, maxBuddyToolRounds } = this.deps.aiConfig();
@@ -431,7 +443,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 						case 'registered':
 							break;
 						case 'status':
-							if (shouldRedirectNativeRewstTool(event, allBuddyNames)) {
+							if (shouldRedirectNativeRewstTool(event)) {
 								if (redirectedNativeRewstTool) {
 									emitText(gate.push(''));
 									needsSeparator = true;
@@ -443,7 +455,9 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 									return;
 								}
 								redirectedNativeRewstTool = true;
-								message = buildNativeToBuddyCorrection(event.tool, allBuddySpecs);
+								message = editorToolNames.has(event.tool.name)
+									? buildNativeToEditorCorrection(event.tool)
+									: buildNativeToBuddyCorrection(event.tool, allBuddySpecs);
 								needsSeparator = true;
 								continue turns;
 							}

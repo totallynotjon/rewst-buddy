@@ -1,9 +1,10 @@
-import { buildTemplateLink, LinkManager, SyncOnSaveManager, orgForTemplateLink } from '@models';
+import { buildTemplateLink, LinkManager, orgForTemplateLink, SyncOnSaveManager } from '@models';
 import type { FullTemplateFragment, Session } from '@sessions';
 import { uriExists } from '@utils';
 import vscode from 'vscode';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { readCapability } from './capabilityFactories';
 import { asString, getTemplateFromAnySession, json, requireString } from './inputHelpers';
 import { resolveLinkedUri } from './templateSyncCapabilities';
 
@@ -328,40 +329,8 @@ const linkStatusSpec: ToolSpec = {
 };
 
 export const TEMPLATE_LINK_CAPABILITIES: Capability[] = [
-	{
-		spec: linkSpec,
-		group: 'workspace',
-		access: 'read',
-		chat: false,
-		mcp: true,
-		requiresOrg: false,
-		run: (input, ctx) => runLink(input, ctx),
-	},
-	{
-		spec: linkStatusSpec,
-		group: 'workspace',
-		access: 'read',
-		chat: false,
-		mcp: true,
-		requiresOrg: false,
-		run: input => Promise.resolve(runLinkStatus(input)),
-	},
-	{
-		spec: unlinkSpec,
-		group: 'workspace',
-		access: 'read',
-		chat: false,
-		mcp: true,
-		requiresOrg: false,
-		run: (input, ctx) => runUnlink(input, ctx),
-	},
-	{
-		spec: syncOnSaveSpec,
-		group: 'workspace',
-		access: 'read',
-		chat: false,
-		mcp: true,
-		requiresOrg: false,
-		run: (input, ctx) => runSyncOnSave(input, ctx),
-	},
+	readCapability(linkSpec, (input, ctx) => runLink(input, ctx), { requiresOrg: false, scopedSessions: true }),
+	readCapability(linkStatusSpec, input => Promise.resolve(runLinkStatus(input)), { requiresOrg: false }),
+	readCapability(unlinkSpec, (input, ctx) => runUnlink(input, ctx), { requiresOrg: false }),
+	readCapability(syncOnSaveSpec, (input, ctx) => runSyncOnSave(input, ctx), { requiresOrg: false }),
 ];

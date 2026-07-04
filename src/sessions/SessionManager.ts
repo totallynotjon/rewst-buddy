@@ -419,7 +419,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		this.sessionMap.delete(userId);
 		this.setAnyActiveSessions(this.sessionMap.size > 0);
 		this.sessionChangeEmitter.fire({
-			type: 'saved',
+			type: 'removed',
 			session,
 			allProfiles: this.profilesForSessionChange([session.profile]),
 			activeProfiles: this.getActiveSessions().map(s => s.profile),

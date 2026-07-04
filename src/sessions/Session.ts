@@ -292,8 +292,9 @@ export default class Session {
 
 	/**
 	 * Executes an arbitrary GraphQL document against this session's region
-	 * endpoint, authenticated with the stored session cookie. Used by the chat
-	 * buddy_graphql tool; the extension's own operations use the typed SDK.
+	 * endpoint, authenticated with the stored session cookie. Used by the
+	 * dedicated GraphQL MCP capabilities; the extension's own operations use
+	 * the typed SDK.
 	 */
 	public async rawGraphql(
 		query: string,

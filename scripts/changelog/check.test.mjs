@@ -33,8 +33,8 @@ function repo() {
 	return dir;
 }
 
-function runCheck(dir) {
-	return execFileSync('node', [checkScript, '--base', 'main'], {
+function runCheck(dir, extraArgs = []) {
+	return execFileSync('node', [checkScript, '--base', 'main', ...extraArgs], {
 		cwd: dir,
 		stdio: 'pipe',
 		encoding: 'utf8',
@@ -48,6 +48,16 @@ test('check.mjs passes when a valid note is added on the branch', () => {
 		git(dir, 'add', '.');
 		git(dir, 'commit', '-q', '-m', 'add note');
 		assert.doesNotThrow(() => runCheck(dir));
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test('check.mjs --include-working-tree accepts an uncommitted valid note for local testing', () => {
+	const dir = repo();
+	try {
+		writeFileSync(join(dir, 'changelog.d', 'local.md'), '---\ncategory: Fixed\n---\n\n- Local note\n');
+		assert.doesNotThrow(() => runCheck(dir, ['--include-working-tree']));
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}

@@ -158,7 +158,6 @@ function writeOutOfScopeMessage(orgId: string, effective: Set<string>): string {
 
 /** Whether a capability is exposed to MCP under the current settings. */
 function isExposed(capability: Capability, settings: McpSettings): boolean {
-	if (!capability.mcp) return false;
 	if (capability.dangerous) {
 		if (!settings.enableDangerousGraphqlMutation) return false;
 	} else if (capability.access === 'write') {
@@ -358,7 +357,7 @@ export async function callTool(
 	let auditOutcome: AuditOutcome = 'ok';
 	try {
 		const capability = getCapability(params.name);
-		if (!capability || !capability.mcp) {
+		if (!capability) {
 			throw new McpError('unknown_tool', `Unknown tool "${params.name}".`);
 		}
 		if (capability.dangerous && !settings.enableDangerousGraphqlMutation) {

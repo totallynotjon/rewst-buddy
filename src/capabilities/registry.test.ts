@@ -1,16 +1,10 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { readdirSync, readFileSync } from 'fs';
+import { join } from 'path';
 import { SessionManager } from '@sessions';
 import { initTestEnvironment } from '@test';
-import type { CapabilityGroup } from './Capability';
-import {
-	CAPABILITY_REGISTRY,
-	chatCapabilities,
-	chatCapabilityNames,
-	getCapability,
-	hasChatCapability,
-	mcpCapabilities,
-} from './registry';
+import { CAPABILITY_REGISTRY, getCapability, mcpCapabilities } from './registry';
 import { RESULT_READ_TOOL_NAME } from './resultReadCapability';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
@@ -19,12 +13,11 @@ import {
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_TOOL_SPECS,
-} from '../ui/chat/tools/workflowTools';
+} from '@workflow';
 import { WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
 
 const { suite, test, setup } = Mocha;
 
-const CAPABILITY_GROUPS: CapabilityGroup[] = ['workspace', 'workflow', 'graphql', 'result'];
 const WORKSPACE_MCP_CAPABILITIES = WORKSPACE_TOOL_SPECS.map(spec => spec.name);
 const WORKFLOW_MCP_CAPABILITIES = WORKFLOW_TOOL_SPECS.map(spec => spec.name);
 const WORKFLOW_WRITE_MCP_CAPABILITIES = [
@@ -32,6 +25,7 @@ const WORKFLOW_WRITE_MCP_CAPABILITIES = [
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 ];
+const CAPABILITIES_DIR = join(process.cwd(), 'src/capabilities');
 
 suite('Unit: capability registry', () => {
 	setup(() => {
@@ -57,6 +51,48 @@ suite('Unit: capability registry', () => {
 		}
 	});
 
+	test('capability args are generated from inputSchema', () => {
+		for (const capability of CAPABILITY_REGISTRY) {
+			assert.strictEqual(
+				capability.spec.args,
+				JSON.stringify(capability.spec.inputSchema ?? {}),
+				`${capability.spec.name} args mirror inputSchema`,
+			);
+		}
+	});
+
+	test('capability modules use read/write factories instead of raw access literals', () => {
+		const offenders = readdirSync(CAPABILITIES_DIR)
+			.filter(file => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+			.filter(file => {
+				const source = readFileSync(join(CAPABILITIES_DIR, file), 'utf8');
+				return /^\s*access:\s*['"](read|write)['"]/m.test(source);
+			});
+
+		assert.deepStrictEqual(offenders, [], 'capability definitions should use readCapability/writeCapability');
+	});
+
+	test('capability modules import workflow definitions from @workflow, not the UI adapter', () => {
+		const offenders = readdirSync(CAPABILITIES_DIR)
+			.filter(file => file.endsWith('.ts') && !file.endsWith('.test.ts'))
+			.filter(file => {
+				const source = readFileSync(join(CAPABILITIES_DIR, file), 'utf8');
+				return /ui\/chat\/tools\/workflowTools|\.\/workflowTools/.test(source);
+			});
+
+		assert.deepStrictEqual(offenders, [], 'capabilities should depend on @workflow instead of UI workflowTools');
+	});
+
+	test('tool output bounding is centralized at the MCP/Buddy boundary, not identity formatters', () => {
+		const workflowTypes = readFileSync(join(process.cwd(), 'src/workflow/types.ts'), 'utf8');
+		const graphqlTool = readFileSync(join(process.cwd(), 'src/ui/chat/tools/graphqlTool.ts'), 'utf8');
+		const mcpActions = readFileSync(join(process.cwd(), 'src/mcp/McpActions.ts'), 'utf8');
+
+		assert.doesNotMatch(workflowTypes, /function formatWorkflowOutput/);
+		assert.doesNotMatch(graphqlTool, /function formatResultText/);
+		assert.match(mcpActions, /formatMcpOutput\(params\.name, text\)/);
+	});
+
 	test('getCapability resolves by tool name', () => {
 		const schema = getCapability('buddy_graphql_schema');
 		assert.ok(schema, 'buddy_graphql_schema is registered');
@@ -66,33 +102,6 @@ suite('Unit: capability registry', () => {
 
 	test('buddy_graphql is retired from the registry surfaces', () => {
 		assert.strictEqual(getCapability('buddy_graphql'), undefined);
-	});
-
-	suite('chat surface', () => {
-		test('Rewst capabilities are not exposed on the VS Code chat LM surface', () => {
-			assert.deepStrictEqual(chatCapabilities(), []);
-		});
-	});
-
-	suite('tool-family groups', () => {
-		test('every chat capability declares a group', () => {
-			for (const capability of chatCapabilities()) {
-				assert.ok(capability.group, `${capability.spec.name} has a group`);
-			}
-		});
-
-		test('chatCapabilityNames returns no Rewst tool families', () => {
-			for (const group of CAPABILITY_GROUPS) {
-				assert.deepStrictEqual([...chatCapabilityNames(group)], [], `${group} has no chat names`);
-			}
-		});
-
-		test('hasChatCapability never matches retired Rewst tool names', () => {
-			assert.ok(!hasChatCapability('workflow', new Set(['buddy_workflow_edit'])));
-			assert.ok(!hasChatCapability('graphql', new Set(['buddy_graphql_schema'])));
-			assert.ok(!hasChatCapability('workflow', new Set(['buddy_graphql'])));
-			assert.ok(!hasChatCapability('graphql', new Set(['read_file', 'unknown_tool'])));
-		});
 	});
 
 	suite('mcp surface', () => {
@@ -132,10 +141,11 @@ suite('Unit: capability registry', () => {
 		});
 
 		test('workflow write helpers keep write access on MCP', () => {
+			const names = new Set(mcpCapabilities().map(capability => capability.spec.name));
 			for (const name of WORKFLOW_WRITE_MCP_CAPABILITIES) {
 				const capability = getCapability(name);
 				assert.ok(capability, `${name} registered`);
-				assert.strictEqual(capability.mcp, true, `${name} exposed to MCP`);
+				assert.ok(names.has(name), `${name} exposed to MCP`);
 				assert.strictEqual(capability.access, 'write', `${name} remains write-gated`);
 			}
 		});
@@ -186,10 +196,8 @@ suite('Unit: capability registry', () => {
 			);
 		});
 
-		test('MCP surface includes every mcp capability without intrinsic family filtering', () => {
-			const registryNames = CAPABILITY_REGISTRY.filter(capability => capability.mcp).map(
-				capability => capability.spec.name,
-			);
+		test('MCP surface exposes the whole registry without intrinsic family filtering', () => {
+			const registryNames = CAPABILITY_REGISTRY.map(capability => capability.spec.name);
 			const surfaceNames = mcpCapabilities().map(capability => capability.spec.name);
 			assert.deepStrictEqual(surfaceNames, registryNames);
 		});

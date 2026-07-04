@@ -1,6 +1,7 @@
 import { approveMutationScope, isMutationScopeApproved, type MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { CapabilityContext } from './Capability';
 import { requestMcpMutationApproval } from './graphqlMutateCapability';
+export { throwOnGraphqlErrors } from './inputHelpers';
 
 /**
  * Shared plumbing for the org-scoped write capabilities (templates, org
@@ -31,24 +32,22 @@ export function orgDisplayName(ctx: CapabilityContext): string {
 	return managed?.name ?? ctx.orgId;
 }
 
-/** Runs a mutation behind the shared per-call approval flow. */
+/**
+ * Runs a mutation behind the shared per-call approval flow. With alwaysPrompt
+ * (e.g. workflow run/auto-layout) the prompt shows on every call and approval is
+ * never remembered for the scope.
+ */
 export async function withMutationApproval(
 	scope: MutationScope,
 	operationSummary: string,
 	run: () => Promise<string>,
+	opts: { alwaysPrompt?: boolean } = {},
 ): Promise<string> {
-	if (!isMutationScopeApproved(scope)) {
+	if (opts.alwaysPrompt || !isMutationScopeApproved(scope)) {
 		if (!(await requestMcpMutationApproval(scope, operationSummary))) {
 			return approvalRequiredResult();
 		}
-		approveMutationScope(scope);
+		if (!opts.alwaysPrompt) approveMutationScope(scope);
 	}
 	return run();
-}
-
-/** Throws with the serialized GraphQL errors when a rawGraphql call failed. */
-export function throwOnGraphqlErrors(errors: unknown): void {
-	if (Array.isArray(errors) ? errors.length > 0 : errors != null) {
-		throw new Error(`GraphQL error: ${JSON.stringify(errors)}`);
-	}
 }
