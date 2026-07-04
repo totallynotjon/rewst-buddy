@@ -1,15 +1,15 @@
 import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import { readCapability, writeCapability } from './capabilityFactories';
 
 const { suite, test, setup } = Mocha;
 
-const SPEC: ToolSpec = {
+const SPEC: ToolSpecDefinition = {
 	name: 'test_tool',
-	args: '', // overwritten by withGeneratedArgs inside the factories
 	description: 'A test tool.',
+	// args is intentionally omitted — factories derive it from inputSchema via withGeneratedArgs
 	inputSchema: {
 		type: 'object',
 		properties: {
@@ -41,6 +41,12 @@ suite('Unit: capabilityFactories', () => {
 			assert.ok(cap.spec.args.includes('orgId'), 'args includes orgId from inputSchema');
 		});
 
+		test('passes spec name and description through', () => {
+			const cap = readCapability(SPEC, noop);
+			assert.strictEqual(cap.spec.name, SPEC.name);
+			assert.strictEqual(cap.spec.description, SPEC.description);
+		});
+
 		test('spreads opts onto the capability', () => {
 			const cap = readCapability(SPEC, noop, { requiresOrg: false, scopedSessions: true });
 			assert.strictEqual(cap.requiresOrg, false);
@@ -51,7 +57,7 @@ suite('Unit: capabilityFactories', () => {
 			const cap = readCapability(SPEC, noop);
 			assert.strictEqual(cap.requiresOrg, undefined);
 			assert.strictEqual(cap.scopedSessions, undefined);
-			assert.strictEqual(cap.dangerous, undefined);
+			// dangerous is a write-only option; its absence here is enforced by the type system
 		});
 
 		test('wires the run function through', async () => {
@@ -79,10 +85,17 @@ suite('Unit: capabilityFactories', () => {
 			assert.ok(cap.spec.args.includes('orgId'), 'args includes orgId from inputSchema');
 		});
 
-		test('spreads opts including dangerous onto the capability', () => {
-			const cap = writeCapability(SPEC, noop, { dangerous: true, requiresOrg: false });
+		test('passes spec name and description through', () => {
+			const cap = writeCapability(SPEC, noop);
+			assert.strictEqual(cap.spec.name, SPEC.name);
+			assert.strictEqual(cap.spec.description, SPEC.description);
+		});
+
+		test('spreads opts including dangerous and scopedSessions onto the capability', () => {
+			const cap = writeCapability(SPEC, noop, { dangerous: true, requiresOrg: false, scopedSessions: true });
 			assert.strictEqual(cap.dangerous, true);
 			assert.strictEqual(cap.requiresOrg, false);
+			assert.strictEqual(cap.scopedSessions, true);
 		});
 
 		test('defaults dangerous to undefined when not supplied', () => {

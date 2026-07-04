@@ -1,5 +1,5 @@
+import { withGeneratedArgs, type ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
-import { withGeneratedArgs, type ToolSpec } from '../ui/chat/tools/toolProtocol';
 
 /**
  * Factories for the common capability shapes so definitions stay one-liners:
@@ -29,10 +29,14 @@ export interface WriteCapabilityOptions extends CapabilityOptions {
 	dangerous?: boolean;
 }
 
-export function readCapability(spec: ToolSpec, run: CapabilityRun, opts: CapabilityOptions = {}): Capability {
+export function readCapability(spec: ToolSpecDefinition, run: CapabilityRun, opts: CapabilityOptions = {}): Capability {
 	return { spec: withGeneratedArgs(spec), access: 'read', run, ...opts };
 }
 
-export function writeCapability(spec: ToolSpec, run: CapabilityRun, opts: WriteCapabilityOptions = {}): Capability {
+export function writeCapability(
+	spec: ToolSpecDefinition,
+	run: CapabilityRun,
+	opts: WriteCapabilityOptions = {},
+): Capability {
 	return { spec: withGeneratedArgs(spec), access: 'write', run, ...opts };
 }
