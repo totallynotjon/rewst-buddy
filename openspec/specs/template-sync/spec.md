@@ -26,12 +26,21 @@ register as remote changes. The decision SHALL be evaluated in this order:
 2. Otherwise, if the local body is empty → **download-remote**.
 3. Otherwise, if the local last-known timestamp and remote timestamp represent
    the same instant → **upload-local**.
-4. Otherwise, if the remote body hash equals the link's last-synced `bodyHash`
-   → **upload-local** because only remote metadata drifted.
-5. Otherwise, if the local body hash equals the link's last-synced `bodyHash`
-   → **download-remote** because only the remote body changed.
+4. Otherwise, if the link has a trusted last sync and the remote body hash
+   equals the link's last-synced `bodyHash` → **upload-local** because only
+   remote metadata drifted.
+5. Otherwise, if the link has a trusted last sync and the local body hash
+   equals the link's last-synced `bodyHash` → **download-remote** because only
+   the remote body changed.
 6. Otherwise → **conflict**, with the conflict result identifying whether the
    local side, remote side, or both sides changed.
+
+A link has a trusted last sync only when its last-known timestamp is not the
+sentinel `'0'` recorded at link time. A freshly linked file stores the hash of
+the local file as it was when the link was created — not the hash of a
+completed sync — so the `bodyHash` comparisons in steps 4–5 SHALL NOT be
+trusted for such a link, and differing bodies SHALL surface as a conflict
+rather than silently replacing the local file with the remote body.
 
 #### Scenario: Local matches remote
 
@@ -85,6 +94,16 @@ register as remote changes. The decision SHALL be evaluated in this order:
 - **WHEN** a sync runs
 - **THEN** the action is **upload-local**
 - **AND** the timestamp string-format difference does not produce a conflict
+
+#### Scenario: Freshly linked file with differing bodies
+
+- **GIVEN** a linked file whose last-known timestamp is still the link-time
+  sentinel `'0'`
+- **AND** the local body and the remote body differ, with a non-empty local body
+- **WHEN** a sync runs
+- **THEN** the action is **conflict**, even though the local body still hashes
+  to the link's stored `bodyHash`
+- **AND** the local file is not silently replaced with the remote body
 
 #### Scenario: Both sides changed
 

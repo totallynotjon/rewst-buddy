@@ -58,6 +58,10 @@ interface SessionSaver {
 	saveSession(session: Session): Promise<void>;
 }
 
+interface SessionExpirationHarness {
+	handleSessionExpired(session: Session): void;
+}
+
 suite('Unit: SessionManager', () => {
 	setup(() => {
 		initTestEnvironment();
@@ -615,6 +619,36 @@ suite('Unit: SessionManager', () => {
 	});
 
 	suite('removeSession()', () => {
+		test('expired active session emits a removed event for metadata consumers', () => {
+			const { session } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-expired' }),
+					org: { id: 'org-expired-primary', name: 'Expired Primary' },
+					allManagedOrgs: [
+						{ id: 'org-expired-primary', name: 'Expired Primary' },
+						{ id: 'org-expired-managed', name: 'Expired Managed' },
+					],
+				},
+			});
+			SessionManager._setSessionsForTesting([session]);
+
+			const events: { type: string; activeOrgIds: string[] }[] = [];
+			const disposable = SessionManager.onSessionChange(event => {
+				events.push({
+					type: event.type,
+					activeOrgIds: event.activeProfiles.map(profile => profile.org.id),
+				});
+			});
+			try {
+				(SessionManager as unknown as SessionExpirationHarness).handleSessionExpired(session);
+			} finally {
+				disposable.dispose();
+			}
+
+			assert.deepStrictEqual(events, [{ type: 'removed', activeOrgIds: [] }]);
+			assert.strictEqual(SessionManager.getActiveSessions().length, 0);
+		});
+
 		test('removes an active session: deletes its cookie, drops it from active and known profiles, and clears the org index', async () => {
 			const { session } = createMockSession({
 				profile: {

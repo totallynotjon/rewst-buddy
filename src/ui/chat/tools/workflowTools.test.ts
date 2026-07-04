@@ -96,6 +96,14 @@ suite('Unit: workflowTools', () => {
 		assert.ok(!isWorkflowTool('buddy_graphql'));
 	});
 
+	test('workflow tool guidance does not reference unregistered tools', () => {
+		const names = new Set(WORKFLOW_TOOL_SPECS.map(tool => tool.name));
+		assert.ok(!names.has('buddy_workflow_impact'));
+		for (const spec of WORKFLOW_TOOL_SPECS) {
+			assert.doesNotMatch(spec.description, /\bbuddy_workflow_impact\b/, spec.name);
+		}
+	});
+
 	test('buddy_workflow_get spec reserves full detail for ids and positions, not ordinary edits', () => {
 		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === 'buddy_workflow_get');
 		assert.ok(spec, 'buddy_workflow_get spec exists');

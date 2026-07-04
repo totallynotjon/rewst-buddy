@@ -15,6 +15,7 @@
  */
 
 import { type WorkflowOperation } from '../../../workflow/graphMutations';
+import { workflowToolAlwaysPrompts } from '../../../workflow/specs';
 import { asObject, str } from '../../../workflow/types';
 import { type GraphqlToolDeps, type MutationScope, isMutationScopeApproved } from './graphqlTool';
 import { type ToolRequest } from './toolProtocol';
@@ -110,7 +111,7 @@ export interface WorkflowConfirmation extends MutationScope {
 export function workflowEditConfirmation(name: string, input: unknown): WorkflowConfirmation | undefined {
 	const scope = workflowEditScope(name, input);
 	if (!scope) return undefined;
-	if (isMutationScopeApproved(scope)) return undefined;
+	if (!workflowToolAlwaysPrompts(name) && isMutationScopeApproved(scope)) return undefined;
 	const args = asObject(input);
 	let message: string;
 	if (name === 'buddy_workflow_autolayout') {

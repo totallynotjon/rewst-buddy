@@ -381,7 +381,9 @@ function formatSchemaSearch(schema: GraphqlRootSchema & { types?: GraphqlTypeDet
 	const sections = [`Search: ${term}`];
 	sections.push(`Types:\n${typeMatches.length ? typeMatches.join('\n') : '(none)'}`);
 	sections.push(`Root fields:\n${fieldMatches.length ? fieldMatches.join('\n') : '(none)'}`);
-	sections.push('Use buddy_graphql_schema with {"typeName": "TypeName"} for details before calling buddy_graphql.');
+	sections.push(
+		'Use buddy_graphql_schema with {"typeName": "TypeName"} for details before composing buddy_graphql_query or buddy_graphql_mutate operations.',
+	);
 	return sections.join('\n\n');
 }
 
