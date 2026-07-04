@@ -720,7 +720,9 @@
 		"changelog:new": "node scripts/changelog/new.mjs",
 		"changelog:check": "node scripts/changelog/check.mjs",
 		"changelog:build": "node scripts/changelog/build.mjs",
-		"test:changelog": "node --test scripts/changelog/*.test.mjs",
+		"test:changelog": "npm run test:changelog:tools && npm run test:changelog:ci",
+		"test:changelog:tools": "node --test scripts/changelog/*.test.mjs",
+		"test:changelog:ci": "node scripts/changelog/check.mjs --base main --include-working-tree",
 		"release:tag": "git tag v$npm_package_version && git push origin v$npm_package_version"
 	},
 	"devDependencies": {
