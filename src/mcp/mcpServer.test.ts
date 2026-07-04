@@ -1,14 +1,14 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import vscode from 'vscode';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { SessionManager } from '@sessions';
 import { createMockSession, initTestEnvironment } from '@test';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
+import vscode from 'vscode';
 import { _resetMcpThrottleForTesting } from './McpActions';
 import { buildMcpServer, handleMcpHttp } from './mcpServer';
 import { mcpAuthorizationHeader } from './protocol';
-import { getMcpToken, rotateMcpToken, _resetMcpTokenForTesting } from './runtime';
+import { _resetMcpTokenForTesting, getMcpToken, rotateMcpToken } from './runtime';
 
 const { suite, test, setup, teardown } = Mocha;
 

@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { suite, test } from '../test/tdd';
 import {
 	mapWithConcurrency,
 	rawGraphqlOrThrow,
@@ -6,7 +7,6 @@ import {
 	requireStringAllowEmpty,
 	throwOnGraphqlErrors,
 } from './inputHelpers';
-import { suite, test } from '../test/tdd';
 
 function delay(ms: number): Promise<void> {
 	return new Promise(resolve => setTimeout(resolve, ms));

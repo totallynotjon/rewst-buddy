@@ -1,5 +1,3 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
 import {
 	RENDER_VERIFY_STEERING,
 	WORKFLOW_COMPOSITION_STEERING,
@@ -8,6 +6,8 @@ import {
 	WORKFLOW_SUMMARY_DETAIL_STEERING,
 	WORKFLOW_TOOL_SPECS,
 } from '@workflow';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import { buildMcpInstructions, MCP_PROMPTS, renderMcpPrompt } from './instructions';
 
 const { suite, test } = Mocha;

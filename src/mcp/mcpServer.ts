@@ -1,4 +1,3 @@
-import { log } from '@utils';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import {
@@ -9,6 +8,7 @@ import {
 	ListToolsRequestSchema,
 	ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
+import { log } from '@utils';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { formatHostPort, getServerConfig } from '../server/config';
 import { callTool, listResources, listTools, McpError, readResource } from './McpActions';
