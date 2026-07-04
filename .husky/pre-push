@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+
+# Husky pre-push hook for rewst-buddy-vscode
+#
+# Why this exists:
+# The unit suite spans TWO runners — vitest (fast, pure suites) and the
+# vscode-test / mocha extension host (needs a display). CI runs BOTH under
+# xvfb. Running only vitest locally silently skips the mocha half, which is
+# how a stale assertion can look green locally yet fail CI. Run the full
+# suite here so a push mirrors CI and catches that drift before it lands.
+#
+# Emergency bypass:  git push --no-verify   (or  HUSKY=0 git push )
+
+echo "pre-push: running unit tests (vitest + vscode-test)…"
+
+if command -v xvfb-run >/dev/null 2>&1; then
+  # Headless, exactly like CI — no VS Code window pops up.
+  xvfb-run -a npm run test:unit
+elif [ -n "$DISPLAY" ] || [ -n "$WAYLAND_DISPLAY" ]; then
+  # No xvfb, but a live display is available. Works, though a VS Code test
+  # window will briefly appear. For headless parity with CI, install xvfb:
+  #   Fedora:  sudo dnf install xorg-x11-server-Xvfb
+  #   Debian:  sudo apt-get install xvfb
+  npm run test:unit
+else
+  echo "pre-push: no xvfb-run and no display; cannot run vscode-test." >&2
+  echo "          Install xvfb (see .husky/pre-push) or push with a display set." >&2
+  exit 1
+fi
