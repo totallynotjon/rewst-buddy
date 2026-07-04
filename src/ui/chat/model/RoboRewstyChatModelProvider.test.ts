@@ -1,11 +1,11 @@
+import type { AskOptions, ConversationEvent, Session } from '@sessions';
+import { createMockSession, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { createMockSession, initTestEnvironment } from '@test';
-import type { AskOptions, ConversationEvent, Session } from '@sessions';
-import { onDidChangeContextUsage, type ContextUsage } from './contextUsage';
 import vscode from 'vscode';
-import { conversationMap } from './conversationMap';
 import { parseLatestBreadcrumb } from './breadcrumb';
+import { onDidChangeContextUsage, type ContextUsage } from './contextUsage';
+import { conversationMap } from './conversationMap';
 import {
 	MAX_BUDDY_TOOL_ROUNDS,
 	normalizeBuddyToolRounds,
