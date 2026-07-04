@@ -66,6 +66,22 @@ suite('Unit: createAndLinkNewTemplate', () => {
 		assert.deepStrictEqual(link.referencedTemplateIds, ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
 	});
 
+	test('links with the org id as the org name when the template organization relation is absent', async () => {
+		const template = makeTemplate({ id: 'tpl-without-org-relation', orgId: 'org-missing-relation' });
+		template.organization = undefined as unknown as FullTemplateFragment['organization'];
+		const content = template.body;
+		const fixedUri = vscode.Uri.file('/ws/new-without-org-relation.j2');
+		stub(vscode.workspace, 'saveAs', (async () => fixedUri) as typeof vscode.workspace.saveAs);
+
+		const result = await createAndLinkNewTemplate(template);
+
+		assert.strictEqual(result, true);
+		const link = LinkManager.getTemplateLink(fixedUri);
+		assert.strictEqual(link.template.id, 'tpl-without-org-relation');
+		assert.strictEqual(link.bodyHash, getHash(content));
+		assert.deepStrictEqual(link.org, { id: 'org-missing-relation', name: 'org-missing-relation' });
+	});
+
 	test('returns false and links nothing when the user cancels the save dialog', async () => {
 		const template = makeTemplate({ id: 'tpl-cancelled', orgId: 'org-cancel' });
 		stub(vscode.workspace, 'saveAs', (async () => undefined) as typeof vscode.workspace.saveAs);

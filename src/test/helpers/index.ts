@@ -9,19 +9,14 @@ export {
 } from './testSession';
 
 // Mock SDK wrapper utilities
-export {
-	MockWrapper,
-	createMockWrapper,
-	MockWrapperConfig,
-	MockOperationHandler,
-	MockResponse,
-	MockWrapperCallRecord,
-} from './mockWrapper';
+export { MockWrapper, createMockWrapper } from './mockWrapper';
+export type { MockOperationHandler, MockResponse, MockWrapperCallRecord, MockWrapperConfig } from './mockWrapper';
 
 export { Fixtures } from './fixtures';
 export { stub } from './stub';
 
-export { createMockSession, MockSessionOptions } from './mockSession';
+export { createMockSession } from './mockSession';
+export type { MockSessionOptions } from './mockSession';
 
 export { createCapabilityTestHarness, fakeCapabilityContext, findTestCapability } from './capabilityTestUtils';
 export type { RawGraphqlCall } from './capabilityTestUtils';

@@ -2,6 +2,8 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { SessionManager } from '@sessions';
 import { initTestEnvironment } from '@test';
+import * as Commands from './commands/exportedCommands';
+import GenericCommand, { createCommand } from './commands/GenericCommand';
 
 const { suite, test, setup } = Mocha;
 
@@ -134,5 +136,21 @@ suite('Unit: package manifest', () => {
 			gated === undefined || gated.when === undefined || !gated.when.includes('anyActiveSessions'),
 			'Remove Session must stay reachable when only known/inactive sessions exist',
 		);
+	});
+
+	test('contributed command ids map to exported command registrations', () => {
+		const commandTypes = Object.values(Commands) as (new () => GenericCommand)[];
+		const registeredIds = new Set(
+			commandTypes.flatMap(type => {
+				const command = createCommand(type);
+				return [`rewst-buddy.${command.commandName}`, `rewst-buddy.prefix.${command.commandName}`];
+			}),
+		);
+
+		const missing = manifest.contributes.commands
+			.map(entry => entry.command)
+			.filter(commandId => !registeredIds.has(commandId));
+
+		assert.deepStrictEqual(missing, []);
 	});
 });

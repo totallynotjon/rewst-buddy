@@ -1,6 +1,6 @@
-import { LinkManager, TemplateLink } from '@models';
+import { buildTemplateLink, LinkManager } from '@models';
 import { pickOrganization } from '@ui';
-import { ensureSavedDocument, findAllTemplateReferences, getHash, log, requireUnlinked } from '@utils';
+import { ensureSavedDocument, log, requireUnlinked } from '@utils';
 import path from 'path';
 import vscode from 'vscode';
 import GenericCommand from '../GenericCommand';
@@ -50,14 +50,7 @@ export class CreateTemplate extends GenericCommand {
 		log.debug('CreateTemplate: template created', { templateId: response.template.id });
 
 		// now we link the template now that it has been created
-		const templateLink: TemplateLink = {
-			type: 'Template',
-			template: response.template,
-			bodyHash: getHash(body),
-			referencedTemplateIds: findAllTemplateReferences(body),
-			uriString: document.uri.toString(),
-			org: org,
-		};
+		const templateLink = buildTemplateLink(response.template, body, document.uri.toString());
 
 		LinkManager.addLink(templateLink);
 

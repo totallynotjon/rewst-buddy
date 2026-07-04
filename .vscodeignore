@@ -16,7 +16,9 @@ changelog.d/**
 
 # Build and config files
 .coderabbit.yaml
-webpack.config.cjs
+esbuild.mjs
+vitest.config.ts
+vitest.suites.mjs
 tsconfig.json
 **/tsconfig.json
 eslint.config.mjs

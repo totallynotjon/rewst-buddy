@@ -1,7 +1,6 @@
 import * as assert from 'assert';
-import * as Mocha from 'mocha';
 import { mapWithConcurrency } from './inputHelpers';
-const { suite, test } = Mocha;
+import { suite, test } from '../test/tdd';
 
 function delay(ms: number): Promise<void> {
 	return new Promise(resolve => setTimeout(resolve, ms));

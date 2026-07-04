@@ -1,15 +1,8 @@
-import { LinkManager, SyncManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
-import {
-	ensureSavedDocument,
-	findAllTemplateReferences,
-	getHash,
-	getTemplateURLParams,
-	log,
-	requireUnlinked,
-} from '@utils';
+import { ensureSavedDocument, getTemplateURLParams, log, requireUnlinked } from '@utils';
 import vscode from 'vscode';
 import GenericCommand from '../../GenericCommand';
+import { linkDocumentToTemplate } from './linkDocumentToTemplate';
 
 export class LinkTemplateFromURL extends GenericCommand {
 	commandName = 'LinkTemplateFromURL';
@@ -30,28 +23,6 @@ export class LinkTemplateFromURL extends GenericCommand {
 
 		const session = await SessionManager.getOrgSession(params.orgId, params.baseURL);
 
-		log.trace('LinkTemplateFromURL: fetching template');
-		const template = await session.getTemplate(params.templateId);
-		template.updatedAt = '0';
-		template.body = '';
-
-		const body = document.getText();
-		const templateLink: TemplateLink = {
-			type: 'Template',
-			template: template,
-			bodyHash: getHash(body),
-			referencedTemplateIds: findAllTemplateReferences(body),
-			uriString: document.uri.toString(),
-			org: {
-				id: template.orgId,
-				name: template.organization.name,
-			},
-		};
-
-		log.trace('LinkTemplateFromURL: adding link and syncing');
-		await LinkManager.addLink(templateLink);
-		await SyncManager.syncTemplate(document);
-
-		log.notifyInfo('SUCCESS: Linked template');
+		await linkDocumentToTemplate(document, session, params.templateId, 'LinkTemplateFromURL');
 	}
 }

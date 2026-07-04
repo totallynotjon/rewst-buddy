@@ -142,9 +142,9 @@ Per-change code review happens on each feature PR (CodeRabbit + CI), not at rele
 
 Every push to `main` runs `nightly.yml`, which publishes a `--pre-release` build to the Marketplace. Stable rides **even** minors (`package.json`); nightlies ride the next **odd** minor as `MAJOR.<oddMinor>.<git rev-list --count HEAD>` (e.g. stable `0.44.x` ⇒ nightly `0.45.<build>`), so versions only ever increase across both channels. Stable must stay on an even minor — `nightly.yml` fails fast otherwise. Nightlies are not tagged and get no GitHub release. Details in `docs/dev/releasing.md`.
 
-## Path Aliases (CRITICAL)
+## Path Aliases
 
-**Must be configured in BOTH files:**
+**Configured in `tsconfig.json` only** (`compilerOptions.paths`). esbuild reads them natively for bundling and `vite-tsconfig-paths` feeds them to vitest, so tsconfig is the single source of truth.
 
 | Alias       | Target                      | Purpose            |
 | ----------- | --------------------------- | ------------------ |
@@ -158,12 +158,7 @@ Every push to `main` runs `nightly.yml`, which publishes a `--pre-release` build
 | `@events`   | `src/events/index.ts`       | Event types        |
 | `@test`     | `src/test/helpers/index.ts` | Test utilities     |
 
-**When adding a new alias:**
-
-1. Add to `tsconfig.json` under `compilerOptions.paths`
-2. Add to `webpack.config.cjs` under `resolve.alias`
-
-Both are required - TypeScript uses tsconfig for type checking, webpack uses its config for bundling.
+**When adding a new alias:** add it to `tsconfig.json` under `compilerOptions.paths` — nothing else to sync.
 
 ## Core Patterns
 
@@ -289,10 +284,9 @@ All components implement `vscode.Disposable` and push to `context.subscriptions`
 
 ## Common Pitfalls
 
-1. **Path aliases**: Must update BOTH tsconfig.json AND webpack.config.cjs
-2. **Context menu args**: Use `args[0][0]` not `args[0]` for URI
-3. **Disposables**: Always push to `context.subscriptions` for cleanup
-4. **Template updates**: After modifying template, update `link.template.updatedAt` to prevent false conflicts
+1. **Context menu args**: Use `args[0][0]` not `args[0]` for URI
+2. **Disposables**: Always push to `context.subscriptions` for cleanup
+3. **Template updates**: After modifying template, update `link.template.updatedAt` to prevent false conflicts
 
 ## Capability / MCP Tool Authoring
 
@@ -384,7 +378,7 @@ npm run test:grep -- "Unit: toolProtocol"  # Run a targeted unit grep
 npm run test:grep:integration -- "an explicit insert edit tool request"  # Run a targeted live integration grep
 ```
 
-Use `vscode-test --grep`, not `vscode-test -- --grep`. The extra `--` prevents the VS Code test CLI from applying Mocha's grep and can accidentally run the full suite. For targeted live integration tests whose grep does not include the word `Integration`, use `test:grep:integration`; it sets `REWST_TEST_INTEGRATION=1` so `.vscode-test.mjs` loads `.env` / `REWST_TEST_TOKEN`.
+Use `vscode-test --grep`, not `vscode-test -- --grep`. The extra `--` prevents the VS Code test CLI from applying Mocha's grep and can accidentally run the full suite. `.vscode-test.mjs` defines labeled configs: `unit` and `integration` carry a config-level `mocha.grep` (which silently wins over CLI `--grep`), so the targeted scripts run the grep-dedicated labels instead — `test:grep` uses `--label grep` (offline, no `.env`) and `test:grep:integration` uses `--label grep-integration` (loads `.env` / `REWST_TEST_TOKEN` for live runs). Never run the grep labels without a `--grep` pattern.
 
 ### Test Structure
 
@@ -729,9 +723,12 @@ suite('Unit: YourFeature', () => {
 
 **Rule of thumb:** If you can mock it, do. Integration tests are slower and more brittle.
 
-### 6. Test Auto-Discovery
+### 6. Test Auto-Discovery & Runners
 
-Tests are automatically discovered by webpack using glob patterns. No manual configuration needed.
+Tests are automatically discovered by glob patterns — no manual registration. There are two unit runners:
+
+- **vitest** runs the pure suites listed in `vitest.suites.mjs` (no `vscode` anywhere in the file's transitive imports, no `@test` helpers). These files import `suite`/`test`/`setup`/`teardown` from `src/test/tdd.ts` (a Mocha-TDD-shaped shim over vitest) instead of `mocha`, and use direct relative imports rather than `@`-barrels that pull in `vscode`.
+- **mocha in the VS Code extension host** (`vscode-test`) runs everything else. `esbuild.mjs` bundles all `*.test.ts` files into one `dist/test/index.test.js`, excluding the vitest list — every test runs in exactly one runner.
 
 **To add a new unit test:**
 
@@ -740,10 +737,10 @@ Tests are automatically discovered by webpack using glob patterns. No manual con
 3. Use `@test` alias for test helpers (e.g., `import { initTestEnvironment } from '@test'`)
 4. Run `npm run test:unit` to verify
 
+If the suite is pure (no `vscode`/`@test` in its transitive graph), prefer the vitest runner: import from `src/test/tdd.ts` and add the file to `vitest.suites.mjs`.
+
 **To add a new integration test:**
 
 1. Create the test file in `src/test/integration/`
 2. Use `@sessions`, `@models`, etc. aliases for imports
 3. Run `npm run test:integration` to verify
-
-The webpack config uses glob patterns to find all `*.test.ts` files automatically.

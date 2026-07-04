@@ -1,8 +1,7 @@
 import * as assert from 'assert';
-import * as Mocha from 'mocha';
 import { ConversationEventMapper, type ConversationEvent } from './conversationEvents';
 
-const { suite, test, setup } = Mocha;
+import { suite, test, setup } from '../../test/tdd';
 
 suite('Unit: ConversationEventMapper', () => {
 	let mapper: ConversationEventMapper;

@@ -6,19 +6,10 @@ import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { determineSyncAction, type SyncDecision } from './syncDecision';
-import { nonEmptyString, type Org } from './types';
+import { buildTemplateLink } from './templateLinkFactory';
+import { nonEmptyString } from './types';
 
-/**
- * The org a template actually belongs to, taken from the template itself — not
- * from the session's primary org. One session manages a parent org plus its
- * sub-orgs, so a sub-org template's link must record the sub-org, matching how
- * the link commands build it. Falls back to the orgId when the organization
- * relation is absent.
- */
-export function orgFromTemplate(template: FullTemplateFragment): Org {
-	const id = nonEmptyString(template.orgId) ?? nonEmptyString(template.organization?.id) ?? template.orgId;
-	return { id, name: template.organization?.name ?? id };
-}
+export { orgFromTemplate } from './templateLinkFactory';
 
 /**
  * Everything needed to act on a sync without re-fetching: the link, the session
@@ -273,7 +264,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 			case 'conflict':
 				log.debug('syncTemplateInternal: conflict detected');
-				await this.handleConflict(doc, session, remoteTemplate);
+				await this.handleConflict(doc, session, remoteTemplate, decision);
 				break;
 		}
 	}
@@ -343,6 +334,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			remoteUpdatedAt: remoteTemplate.updatedAt,
 			localBody,
 			remoteBody: remoteTemplate.body,
+			lastSyncedBodyHash: link.bodyHash,
 		});
 
 		log.debug('computeSyncDecision: states', {
@@ -368,23 +360,21 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		localBody: string,
 	): void {
 		remoteTemplate.body = '';
-		const templateLink: TemplateLink = {
-			type: 'Template',
-			bodyHash: getHash(localBody),
-			referencedTemplateIds: findAllTemplateReferences(localBody),
-			template: remoteTemplate,
-			uriString: doc.uri.toString(),
-			org: orgFromTemplate(remoteTemplate),
-		};
+		const templateLink = buildTemplateLink(remoteTemplate, localBody, doc.uri.toString());
 		this.addLink(templateLink, doc.uri);
 	}
 
-	private async handleConflict(doc: vscode.TextDocument, session: Session, remoteTemplate: FullTemplateFragment) {
+	private async handleConflict(
+		doc: vscode.TextDocument,
+		session: Session,
+		remoteTemplate: FullTemplateFragment,
+		decision: Extract<SyncDecision, { action: 'conflict' }>,
+	) {
 		log.debug('handleConflict: conflict detected, prompting user');
 		log.info('Rewst and last update of local template are out of sync, need to remediate before push');
 
 		const choice = await vscode.window.showInformationMessage(
-			'Template and Rewst are out of sync! Do you wish to force upload to rewst, or download the latest version of the template?',
+			`Template and Rewst are out of sync. ${this.describeConflict(decision.changed)} Do you wish to force upload to Rewst, or download the latest version of the template?`,
 			{ modal: true },
 			'Force Override',
 			'Download Latest',
@@ -414,6 +404,10 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
+	private describeConflict(_changed: Extract<SyncDecision, { action: 'conflict' }>['changed']): string {
+		return 'The local file and Rewst template both changed since the last sync.';
+	}
+
 	async applyTemplateToDocument(doc: vscode.TextDocument, _session: Session, remoteTemplate: FullTemplateFragment) {
 		log.trace('applyTemplateToDocument: applying remote template', {
 			templateId: remoteTemplate.id,
@@ -431,14 +425,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		);
 		await vscode.workspace.applyEdit(edit);
 
-		const templateLink: TemplateLink = {
-			type: 'Template',
-			bodyHash: getHash(body),
-			referencedTemplateIds: findAllTemplateReferences(body),
-			template: remoteTemplate,
-			uriString: doc.uri.toString(),
-			org: orgFromTemplate(remoteTemplate),
-		};
+		const templateLink = buildTemplateLink(remoteTemplate, body, doc.uri.toString());
 
 		this.addLink(templateLink, doc.uri);
 
@@ -548,14 +535,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 							log.trace('fetchFolder: file written', uri.fsPath);
 
 							template.body = '';
-							const templateLink: TemplateLink = {
-								type: 'Template',
-								template: template,
-								bodyHash: getHash(body),
-								referencedTemplateIds: findAllTemplateReferences(body),
-								uriString: uri.toString(),
-								org: org,
-							};
+							const templateLink = buildTemplateLink(template, body, uri.toString());
 
 							LinkManager.addLink(templateLink); // Batched - no immediate save
 							return true;

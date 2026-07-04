@@ -1,5 +1,5 @@
-import { LinkManager } from '@models';
-import { getDocumentFromArgs, log } from '@utils';
+import { getDocumentFromArgs } from '@utils';
+import { removeLinkForUri } from '../../linkCore';
 import GenericCommand from '../../GenericCommand';
 
 export class UnlinkTemplate extends GenericCommand {
@@ -9,11 +9,10 @@ export class UnlinkTemplate extends GenericCommand {
 		const document = await getDocumentFromArgs(args);
 		const uri = document.uri;
 
-		if (!LinkManager.isLinked(uri)) {
-			throw log.error(`There is no template link to clear for uri ${uri.toString()}`);
-		}
-
-		await LinkManager.removeLink(uri.toString());
-		log.notifyInfo(`SUCCESS: Unlinked template from uri ${uri.toString()}`);
+		await removeLinkForUri(
+			uri,
+			`There is no template link to clear for uri ${uri.toString()}`,
+			`SUCCESS: Unlinked template from uri ${uri.toString()}`,
+		);
 	}
 }

@@ -57,7 +57,7 @@ function makeTarget(opts: TargetOpts): TemplateSyncTarget {
 		session: {} as unknown as Session,
 		remoteTemplate,
 		localBody: opts.localBody ?? 'local',
-		decision: { action: opts.action },
+		decision: opts.action === 'conflict' ? { action: 'conflict', changed: 'both' } : { action: opts.action },
 	};
 	const uri = { fsPath: '/ws/greeting.j2', toString: () => 'file:///ws/greeting.j2' } as unknown as vscode.Uri;
 	return { uri, doc: {} as unknown as vscode.TextDocument, context, dirty: opts.dirty ?? false };

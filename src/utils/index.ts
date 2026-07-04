@@ -9,6 +9,7 @@ export { openTemplateById } from './openTemplateById';
 export { parseArgsUri } from './parseArgsUri';
 export { parseCookieString } from './parseCookieString';
 export { requireUnlinked } from './requireUnlinked';
-export { getTemplateURLParams, TemplateURLParams } from './templateUrl';
+export { getTemplateURLParams } from './templateUrl';
+export type { TemplateURLParams } from './templateUrl';
 export { uriExists } from './uriExists';
 export { writeTextFile } from './writeTextFile';

@@ -18,13 +18,20 @@ Source: `src/models/SyncManager.ts`, `src/models/syncDecision.ts`,
 
 On each sync the system SHALL compare the local file against the remote template
 and choose exactly one action: **update-metadata**, **download-remote**,
-**upload-local**, or **conflict**. The decision SHALL be evaluated in this order:
+**upload-local**, or **conflict**. Timestamp comparisons SHALL compare parsed
+instants, not raw timestamp strings, so equivalent timestamp formats do not
+register as remote changes. The decision SHALL be evaluated in this order:
 
 1. If the local body equals the remote body → **update-metadata**.
 2. Otherwise, if the local body is empty → **download-remote**.
-3. Otherwise, if the local last-known timestamp equals the remote timestamp →
-   **upload-local**.
-4. Otherwise → **conflict**.
+3. Otherwise, if the local last-known timestamp and remote timestamp represent
+   the same instant → **upload-local**.
+4. Otherwise, if the remote body hash equals the link's last-synced `bodyHash`
+   → **upload-local** because only remote metadata drifted.
+5. Otherwise, if the local body hash equals the link's last-synced `bodyHash`
+   → **download-remote** because only the remote body changed.
+6. Otherwise → **conflict**, with the conflict result identifying whether the
+   local side, remote side, or both sides changed.
 
 #### Scenario: Local matches remote
 
@@ -43,19 +50,52 @@ and choose exactly one action: **update-metadata**, **download-remote**,
 #### Scenario: Local edited, remote unchanged since last sync
 
 - **GIVEN** a linked file edited locally
-- **AND** the remote template's timestamp still equals the link's last-known
-  timestamp
+- **AND** the remote template's timestamp represents the same instant as the
+  link's last-known timestamp
 - **WHEN** a sync runs
 - **THEN** the action is **upload-local**: the local body is pushed to Rewst and
   the link is updated with the response metadata
+
+#### Scenario: Remote metadata drifted without a body change
+
+- **GIVEN** a linked file edited locally
+- **AND** the remote template's timestamp differs from the link's last-known
+  timestamp
+- **AND** the remote template body still hashes to the link's last-synced
+  `bodyHash`
+- **WHEN** a sync runs
+- **THEN** the action is **upload-local**
+- **AND** no conflict is reported for metadata-only remote drift
+
+#### Scenario: Local unchanged, remote body changed
+
+- **GIVEN** a linked file whose local body still hashes to the link's
+  last-synced `bodyHash`
+- **AND** the remote template's timestamp differs from the link's last-known
+  timestamp
+- **AND** the remote body no longer hashes to the link's last-synced `bodyHash`
+- **WHEN** a sync runs
+- **THEN** the action is **download-remote**
+
+#### Scenario: Timestamp formats differ but instant is equal
+
+- **GIVEN** a linked file edited locally
+- **AND** the remote template timestamp and link timestamp are formatted
+  differently but parse to the same instant
+- **WHEN** a sync runs
+- **THEN** the action is **upload-local**
+- **AND** the timestamp string-format difference does not produce a conflict
 
 #### Scenario: Both sides changed
 
 - **GIVEN** a linked file edited locally
 - **AND** the remote template's timestamp differs from the link's last-known
   timestamp
+- **AND** neither the local body nor the remote body hashes to the link's
+  last-synced `bodyHash`
 - **WHEN** a sync runs
 - **THEN** the action is **conflict**
+- **AND** the conflict result identifies that both sides changed
 
 ### Requirement: Sync on save when enabled
 

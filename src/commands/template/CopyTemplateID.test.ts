@@ -1,5 +1,5 @@
 import { LinkManager, TemplateLink } from '@models';
-import { initTestEnvironment } from '@test';
+import { initTestEnvironment, stub } from '@test';
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as Mocha from 'mocha';
@@ -17,14 +17,26 @@ const { suite, test, setup, teardown } = Mocha;
  */
 suite('Unit: CopyTemplateID', () => {
 	let tmpDir: string;
+	let clipboardText: string;
+	let restoreClipboard: () => void;
 
 	setup(() => {
 		initTestEnvironment();
 		LinkManager._resetForTesting();
 		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewst-buddy-copy-id-'));
+		// Stub the clipboard: the real vscode.env.clipboard is the SYSTEM
+		// clipboard, so anything the user copies mid-run makes these flaky.
+		clipboardText = '';
+		restoreClipboard = stub(vscode.env, 'clipboard', {
+			writeText: async (text: string) => {
+				clipboardText = text;
+			},
+			readText: async () => clipboardText,
+		});
 	});
 
 	teardown(() => {
+		restoreClipboard();
 		LinkManager._resetForTesting();
 		fs.rmSync(tmpDir, { recursive: true, force: true });
 	});

@@ -5,6 +5,8 @@
  * thorough unit testing without VS Code dependencies.
  */
 
+import { getHash } from '../utils/getHash';
+
 /**
  * Represents the action to take after comparing local and remote template states.
  */
@@ -12,7 +14,7 @@ export type SyncDecision =
 	| { action: 'update-metadata' }
 	| { action: 'download-remote' }
 	| { action: 'upload-local' }
-	| { action: 'conflict' };
+	| { action: 'conflict'; changed: 'both' };
 
 /**
  * Input parameters for determining sync action.
@@ -26,6 +28,8 @@ export interface SyncDecisionParams {
 	localBody: string;
 	/** Current content from the remote template */
 	remoteBody: string;
+	/** Hash of the body stored when the link last synced successfully */
+	lastSyncedBodyHash: string;
 }
 
 /**
@@ -34,17 +38,18 @@ export interface SyncDecisionParams {
  * Decision matrix:
  * 1. Bodies match → update-metadata (just refresh link metadata, no content change needed)
  * 2. Local empty → download-remote (initial download or file was cleared)
- * 3. In sync (timestamps match AND hash matches) → upload-local (safe to push changes)
- * 4. Otherwise → conflict (remote changed OR file was edited externally)
+ * 3. Timestamps represent the same instant → upload-local (remote unchanged)
+ * 4. Remote hash matches the last synced hash → upload-local (remote metadata drift only)
+ * 5. Local hash matches the last synced hash → download-remote (only remote body changed)
+ * 6. Otherwise → conflict (local and remote bodies both changed)
  *
  * @param params - The current state of local and remote templates
  * @returns The action to take
  */
 export function determineSyncAction(params: SyncDecisionParams): SyncDecision {
-	const { localUpdatedAt, remoteUpdatedAt, localBody, remoteBody } = params;
+	const { localUpdatedAt, remoteUpdatedAt, localBody, remoteBody, lastSyncedBodyHash } = params;
 
-	// Check if timestamps match (remote hasn't changed since last sync)
-	const timestampsMatch = localUpdatedAt === remoteUpdatedAt;
+	const timestampsMatch = timestampsRepresentSameInstant(localUpdatedAt, remoteUpdatedAt);
 
 	// Check if bodies are identical (no actual content change)
 	const bodySame = remoteBody === localBody;
@@ -68,6 +73,25 @@ export function determineSyncAction(params: SyncDecisionParams): SyncDecision {
 		return { action: 'upload-local' };
 	}
 
-	// Conflict: either remote changed (timestamp mismatch) or local was edited externally (hash mismatch)
-	return { action: 'conflict' };
+	const localMatchesLastSync = getHash(localBody) === lastSyncedBodyHash;
+	const remoteMatchesLastSync = getHash(remoteBody) === lastSyncedBodyHash;
+
+	if (remoteMatchesLastSync) {
+		return { action: 'upload-local' };
+	}
+
+	if (localMatchesLastSync) {
+		return { action: 'download-remote' };
+	}
+
+	return { action: 'conflict', changed: 'both' };
+}
+
+function timestampsRepresentSameInstant(localUpdatedAt: string, remoteUpdatedAt: string): boolean {
+	const localInstant = Date.parse(localUpdatedAt);
+	const remoteInstant = Date.parse(remoteUpdatedAt);
+	if (!Number.isNaN(localInstant) && !Number.isNaN(remoteInstant)) {
+		return localInstant === remoteInstant;
+	}
+	return localUpdatedAt === remoteUpdatedAt;
 }

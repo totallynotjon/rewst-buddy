@@ -5,5 +5,6 @@ export { TemplateBundleManager } from './TemplateBundleManager';
 export { TemplateMetadataStore, type TemplateMetadata } from './TemplateMetadataStore';
 export { WorkingScopeManager, type WorkingScopeState } from './WorkingScopeManager';
 export { determineSyncAction, type SyncDecision, type SyncDecisionParams } from './syncDecision';
+export { buildTemplateLink, orgFromTemplate } from './templateLinkFactory';
 export * from './bundleTypes';
 export * from './types';
