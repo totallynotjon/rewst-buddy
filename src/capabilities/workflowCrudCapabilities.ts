@@ -2,8 +2,8 @@ import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
-import { ORG_ID_PROP, asString, requireString } from './inputHelpers';
-import { orgDisplayName, throwOnGraphqlErrors, withMutationApproval } from './mutationApproval';
+import { ORG_ID_PROP, asString, rawGraphqlOrThrow, requireResourceInOrg, requireString } from './inputHelpers';
+import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
  * Workflow create/delete capabilities. buddy_create_workflow makes an empty workflow
@@ -40,13 +40,15 @@ const WORKFLOW_DESCRIPTION_MAX_LENGTH = 255;
  * org. Returns the workflow name for the approval scope.
  */
 async function requireWorkflowInOrg(ctx: CapabilityContext, workflowId: string, orgId: string): Promise<WorkflowRow> {
-	const { data, errors } = await ctx.session.rawGraphql(WORKFLOW_OWNER, { id: workflowId });
-	throwOnGraphqlErrors(errors);
-	const workflow = (data as { workflow?: WorkflowRow } | undefined)?.workflow;
-	if (!workflow || workflow.orgId !== orgId) {
-		throw new Error(`Workflow ${workflowId} is not in org ${orgId}.`);
-	}
-	return workflow;
+	return requireResourceInOrg({
+		label: 'Workflow',
+		id: workflowId,
+		orgId,
+		fetch: async () => {
+			const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_OWNER, { id: workflowId });
+			return (data as { workflow?: WorkflowRow } | undefined)?.workflow;
+		},
+	});
 }
 
 const createWorkflowSpec: ToolSpec = {
@@ -81,8 +83,7 @@ async function runCreateWorkflow(input: Record<string, unknown>, ctx: Capability
 	return withMutationApproval(scope, summary, async () => {
 		const workflow: Record<string, unknown> = { orgId, name };
 		if (description !== undefined) workflow.description = description;
-		const { data, errors } = await ctx.session.rawGraphql(CREATE_WORKFLOW, { workflow });
-		throwOnGraphqlErrors(errors);
+		const data = await rawGraphqlOrThrow(ctx.session, CREATE_WORKFLOW, { workflow });
 		const created = (data as { createWorkflow?: WorkflowRow } | undefined)?.createWorkflow;
 		if (!created?.id) throw new Error('createWorkflow returned no workflow; the mutation may have failed.');
 		return JSON.stringify({ status: 'created', id: created.id, name: created.name ?? name }, null, 2);
@@ -113,8 +114,7 @@ async function runDeleteWorkflow(input: Record<string, unknown>, ctx: Capability
 	const scope: MutationScope = { scopeId: workflowId, scopeName: name, orgId, orgName };
 	const summary = `Delete workflow "${name}" (${workflowId}) and its triggers, tasks, and history in org "${orgName}" (${orgId})`;
 	return withMutationApproval(scope, summary, async () => {
-		const { data, errors } = await ctx.session.rawGraphql(DELETE_WORKFLOW, { id: workflowId });
-		throwOnGraphqlErrors(errors);
+		const data = await rawGraphqlOrThrow(ctx.session, DELETE_WORKFLOW, { id: workflowId });
 		const deletedId = (data as { deleteWorkflow?: string | null } | undefined)?.deleteWorkflow;
 		if (!deletedId) throw new Error('deleteWorkflow returned no id; the mutation may have failed.');
 		return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);

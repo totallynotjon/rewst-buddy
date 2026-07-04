@@ -1,5 +1,5 @@
-import { withGeneratedArgs, type ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
+import { withGeneratedArgs, type ToolSpec } from '../ui/chat/tools/toolProtocol';
 
 /**
  * Factories for the common capability shapes so definitions stay one-liners:
@@ -10,12 +10,22 @@ import type { Capability, CapabilityContext } from './Capability';
 
 type CapabilityRun = (input: Record<string, unknown>, ctx: CapabilityContext) => Promise<string>;
 
+/** Options shared by both read and write capabilities. */
 export interface CapabilityOptions {
 	/** See {@link Capability.requiresOrg}. */
 	requiresOrg?: boolean;
 	/** See {@link Capability.scopedSessions}. */
 	scopedSessions?: boolean;
-	/** See {@link Capability.dangerous}. Only meaningful on write capabilities. */
+}
+
+/**
+ * Options for write capabilities. Extends {@link CapabilityOptions} with
+ * write-only fields. Use this type with {@link writeCapability} — passing it
+ * to {@link readCapability} is a type error, which enforces the constraint that
+ * `dangerous` is only meaningful on mutating operations.
+ */
+export interface WriteCapabilityOptions extends CapabilityOptions {
+	/** See {@link Capability.dangerous}. */
 	dangerous?: boolean;
 }
 
@@ -23,6 +33,6 @@ export function readCapability(spec: ToolSpec, run: CapabilityRun, opts: Capabil
 	return { spec: withGeneratedArgs(spec), access: 'read', run, ...opts };
 }
 
-export function writeCapability(spec: ToolSpec, run: CapabilityRun, opts: CapabilityOptions = {}): Capability {
+export function writeCapability(spec: ToolSpec, run: CapabilityRun, opts: WriteCapabilityOptions = {}): Capability {
 	return { spec: withGeneratedArgs(spec), access: 'write', run, ...opts };
 }

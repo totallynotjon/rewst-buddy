@@ -111,7 +111,16 @@ function graphqlSchemaSpec(): ToolSpec {
 	return spec;
 }
 
-/** Schema inspection over MCP; the combined buddy_graphql chat tool is retired. */
+/**
+ * Schema inspection capability exposed over MCP.
+ *
+ * The combined `buddy_graphql` chat tool (which handled both schema inspection
+ * and arbitrary query/mutation execution in one tool) has been retired. MCP
+ * now uses dedicated primitives: this capability covers schema introspection,
+ * while `buddy_graphql_query` and `buddy_graphql_mutate` handle read and write
+ * operations respectively. Splitting the tools gives the approval layer
+ * fine-grained control — mutations can be gated independently of reads.
+ */
 export const graphqlSchemaCapability: Capability = readCapability(
 	graphqlSchemaSpec(),
 	(input, ctx) => runGraphqlTool({ tool: 'buddy_graphql_schema', args: input }, createGraphqlDeps(ctx.session)),
