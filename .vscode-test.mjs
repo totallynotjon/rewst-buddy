@@ -41,7 +41,7 @@ function loadDotEnv() {
 const baseConfig = {
 	files: 'dist/test/**/*.test.js',
 	version: 'stable',
-	launchArgs: ['--disable-chromium-sandbox', '--no-sandbox'],
+	launchArgs: ['--disable-chromium-sandbox', '--no-sandbox', '--ozone-platform=headless'],
 	mocha: {
 		ui: 'bdd',
 		timeout: 60000,
