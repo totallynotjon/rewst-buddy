@@ -17,3 +17,4 @@ scripts/wf-backups/
 .claude/settings.*
 .claudeignore
 .LOCAL
+.vscode/settings.json
