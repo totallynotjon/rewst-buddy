@@ -1,4 +1,4 @@
-import { buildTemplateLink, LinkManager, SyncOnSaveManager, orgForTemplateLink } from '@models';
+import { buildTemplateLink, LinkManager, orgForTemplateLink, SyncOnSaveManager } from '@models';
 import type { FullTemplateFragment, Session } from '@sessions';
 import { uriExists } from '@utils';
 import vscode from 'vscode';
@@ -329,7 +329,7 @@ const linkStatusSpec: ToolSpec = {
 };
 
 export const TEMPLATE_LINK_CAPABILITIES: Capability[] = [
-	readCapability(linkSpec, (input, ctx) => runLink(input, ctx), { requiresOrg: false }),
+	readCapability(linkSpec, (input, ctx) => runLink(input, ctx), { requiresOrg: false, scopedSessions: true }),
 	readCapability(linkStatusSpec, input => Promise.resolve(runLinkStatus(input)), { requiresOrg: false }),
 	readCapability(unlinkSpec, (input, ctx) => runUnlink(input, ctx), { requiresOrg: false }),
 	readCapability(syncOnSaveSpec, (input, ctx) => runSyncOnSave(input, ctx), { requiresOrg: false }),
