@@ -1,5 +1,11 @@
 import * as assert from 'assert';
-import { mapWithConcurrency, rawGraphqlOrThrow, requireResourceInOrg, throwOnGraphqlErrors } from './inputHelpers';
+import {
+	mapWithConcurrency,
+	rawGraphqlOrThrow,
+	requireResourceInOrg,
+	requireStringAllowEmpty,
+	throwOnGraphqlErrors,
+} from './inputHelpers';
 import { suite, test } from '../test/tdd';
 
 function delay(ms: number): Promise<void> {
@@ -223,5 +229,25 @@ suite('Unit: inputHelpers', () => {
 			() => mapWithConcurrency([1], 1.5, async (item: number) => item),
 			/"limit" must be a positive integer\./,
 		);
+	});
+});
+
+suite('Unit: inputHelpers — requireStringAllowEmpty', () => {
+	test('returns empty string for an empty-string value', () => {
+		const result = requireStringAllowEmpty({ body: '' }, 'body');
+		assert.strictEqual(result, '');
+	});
+
+	test('returns the string unchanged (no trimming) for a padded value', () => {
+		const result = requireStringAllowEmpty({ body: '  hello  ' }, 'body');
+		assert.strictEqual(result, '  hello  ');
+	});
+
+	test('throws when the key is absent', () => {
+		assert.throws(() => requireStringAllowEmpty({}, 'body'), /Missing required string argument "body"/);
+	});
+
+	test('throws when the value is a non-string (number)', () => {
+		assert.throws(() => requireStringAllowEmpty({ body: 42 }, 'body'), /Missing required string argument "body"/);
 	});
 });

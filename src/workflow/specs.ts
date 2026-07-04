@@ -14,6 +14,27 @@ export const WORKFLOW_EXECUTION_LOGS_TOOL_NAME = 'buddy_execution_logs';
 export const WORKFLOW_SEARCH_TOOL_NAME = 'buddy_workflow_search';
 
 /**
+ * Steering fragment: read summary first, escalate to full only when ids/positions are needed.
+ * Appears verbatim in buddy_workflow_get description and in the MCP server instructions.
+ */
+export const WORKFLOW_SUMMARY_DETAIL_STEERING =
+	'detail defaults to "summary": a concise ANALYSIS view that OMITS task ids, transition ids, canvas x/y positions, and the version token and refers to tasks/edges by name. Summary is sufficient for understanding, explaining, and most name-based edits (buddy_workflow_edit operations resolve tasks by name). Pass detail "full" only when you need task ids, transition ids, or canvas positions, such as repositioning a task or targeting one specific transition by id.';
+
+/**
+ * Steering fragment: prefer sub-workflow composition over one giant canvas.
+ * Appears verbatim in buddy_workflow_edit description and in the MCP server instructions.
+ */
+export const WORKFLOW_COMPOSITION_STEERING =
+	'PREFER COMPOSITION over one giant canvas: repeated sequences, independently testable sections, or many tasks doing one business operation are a sign to split; give the reusable sequence (ticket lifecycle, user lookup, license handling) its own workflow with set_inputs for its run inputs and set_output for its return values, then call it as a sub-workflow task.';
+
+/**
+ * Steering fragment: render-verify Jinja before and after edits.
+ * Appears verbatim in buddy_render_jinja description and in the MCP server instructions.
+ */
+export const RENDER_VERIFY_STEERING =
+	"Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>).";
+
+/**
  * Running a workflow actually executes its automation, so it requires a fresh
  * approval every time and is never remembered per-session — unlike edit/autolayout.
  */
@@ -24,8 +45,8 @@ export function workflowToolAlwaysPrompts(name: string): boolean {
 export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	{
 		name: 'buddy_workflow_get',
-		description:
-			'Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what buddy_workflow_edit operations expect. detail defaults to "summary": a concise ANALYSIS view that OMITS task ids, transition ids, canvas x/y positions, and the version token and refers to tasks/edges by name. Summary is sufficient for understanding, explaining, and most name-based edits (buddy_workflow_edit operations resolve tasks by name). Pass detail "full" only when you need task ids, transition ids, or canvas positions, such as repositioning a task or targeting one specific transition by id.',
+		description: `Read a Rewst workflow as a normalized graph: nodes (tasks with their action ref and input) and edges (transitions with their condition, label, target task names, and published context variables). Returns far less noise than raw GraphQL and the node/edge names this tool uses are exactly what buddy_workflow_edit operations expect. ${WORKFLOW_SUMMARY_DETAIL_STEERING}`,
+		// NOTE: WORKFLOW_SUMMARY_DETAIL_STEERING is embedded verbatim above — do not paraphrase it here.
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -81,7 +102,8 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	},
 	{
 		name: WORKFLOW_EDIT_TOOL_NAME,
-		description: `Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. ${workflowEditOperationGrammar()}. Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. Loop inputs use with: {items, concurrency}; inside the loop body, {{ item() }} is the current element. At most one outgoing transition runs: the first condition that evaluates true in listed order. publish entries apply whenever that transition is taken, including on {{ FAILED }}. This tool does not expose parallel task controls. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. A caller reads that sub-workflow task result as RESULT.<name>, matching the callee's set_output contract. PREFER COMPOSITION over one giant canvas: repeated sequences, independently testable sections, or many tasks doing one business operation are a sign to split; give the reusable sequence (ticket lifecycle, user lookup, license handling) its own workflow with set_inputs for its run inputs and set_output for its return values, then call it as a sub-workflow task.`,
+		description: `Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. ${workflowEditOperationGrammar()}. Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. Loop inputs use with: {items, concurrency}; inside the loop body, {{ item() }} is the current element. At most one outgoing transition runs: the first condition that evaluates true in listed order. publish entries apply whenever that transition is taken, including on {{ FAILED }}. This tool does not expose parallel task controls. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. A caller reads that sub-workflow task result as RESULT.<name>, matching the callee's set_output contract. ${WORKFLOW_COMPOSITION_STEERING}`,
+		// NOTE: WORKFLOW_COMPOSITION_STEERING is embedded verbatim above — do not paraphrase it here.
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -193,7 +215,9 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	{
 		name: 'buddy_render_jinja',
 		description:
-			"Render a Jinja template against a real workflow execution's context and return only the result. Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>). Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. An execution's stored snapshots are per-publish deltas (each holds only the keys that publish wrote), so by default the tool merges them all, in order, into one cumulative context — the closest view of the run's final CTX; pass contextIndex to inspect one raw delta instead. Rewst context storage alphabetizes dict keys, so key order from dict.keys() may not match authoring order. For regex_replace backreferences, write '\\\\\\\\1' rather than '\\\\1'; an unexpected non-whitespace control character in the result usually means an escaping mistake. Returns the rendered value, or the Jinja error if it fails.",
+			`Render a Jinja template against a real workflow execution's context and return only the result. ${RENDER_VERIFY_STEERING}` +
+			" Pass executionId and the tool fetches that run's context server-side, so the (large) context never enters the chat; or pass vars as an ad-hoc context object. This renders against the STORED context snapshot, which is the CTX namespace only — the live runtime objects WORKFLOW, ORG, USER, and RESULT do NOT exist here, so use their CTX equivalents: the execution id is CTX.execution_id, the org id is CTX.organization.id, and the running workflow's own id is CTX.trigger_instance.trigger.workflow_id. To discover what a run actually holds, pass keys:true to list the context's top-level keys instead of rendering (then drill in with {{ CTX.<key> }}). In the template, CTX is the context: read a field as {{ CTX.field }}, and to dump the whole context use {{ CTX() }} with parentheses — in a live Rewst workflow CTX is callable, so bare {{ CTX }} does not work. An execution's stored snapshots are per-publish deltas (each holds only the keys that publish wrote), so by default the tool merges them all, in order, into one cumulative context — the closest view of the run's final CTX; pass contextIndex to inspect one raw delta instead. Rewst context storage alphabetizes dict keys, so key order from dict.keys() may not match authoring order. For regex_replace backreferences, write '\\\\1' rather than '\\1'; an unexpected non-whitespace control character in the result usually means an escaping mistake. Returns the rendered value, or the Jinja error if it fails.",
+		// NOTE: RENDER_VERIFY_STEERING is embedded verbatim in the description above — do not paraphrase it here.
 		inputSchema: {
 			type: 'object',
 			properties: {

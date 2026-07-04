@@ -129,6 +129,95 @@ suite('Unit: mcpServer', () => {
 		});
 	});
 
+	suite('MCP SDK server — instructions and prompts', () => {
+		test('client.getInstructions() is non-empty and contains buddy_workflow_get', async () => {
+			useSession('org-1', 'Acme');
+			const server = buildMcpServer();
+			const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+			await server.connect(serverTransport);
+			const client = new Client({ name: 'test-client', version: '0' });
+			await client.connect(clientTransport);
+
+			try {
+				const instructions = client.getInstructions();
+				assert.ok(
+					typeof instructions === 'string' && instructions.length > 0,
+					'instructions must be non-empty',
+				);
+				assert.ok(
+					instructions.includes('buddy_workflow_get'),
+					'instructions must reference buddy_workflow_get',
+				);
+			} finally {
+				await client.close();
+				await server.close();
+			}
+		});
+
+		test('client.listPrompts() returns the three recipe prompts', async () => {
+			useSession('org-1', 'Acme');
+			const server = buildMcpServer();
+			const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+			await server.connect(serverTransport);
+			const client = new Client({ name: 'test-client', version: '0' });
+			await client.connect(clientTransport);
+
+			try {
+				const result = await client.listPrompts();
+				const names = result.prompts.map((p: { name: string }) => p.name);
+				assert.ok(names.includes('debug-execution'), 'must include debug-execution');
+				assert.ok(names.includes('safe-workflow-edit'), 'must include safe-workflow-edit');
+				assert.ok(names.includes('compose-sub-workflow'), 'must include compose-sub-workflow');
+			} finally {
+				await client.close();
+				await server.close();
+			}
+		});
+
+		test('getPrompt debug-execution with executionId returns user message containing the id', async () => {
+			useSession('org-1', 'Acme');
+			const server = buildMcpServer();
+			const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+			await server.connect(serverTransport);
+			const client = new Client({ name: 'test-client', version: '0' });
+			await client.connect(clientTransport);
+
+			try {
+				const result = await client.getPrompt({
+					name: 'debug-execution',
+					arguments: { executionId: 'abc-123' },
+				});
+				assert.strictEqual(result.messages.length, 1);
+				const msg = result.messages[0];
+				assert.strictEqual(msg.role, 'user');
+				const text = (msg.content as { type: string; text: string }).text;
+				assert.ok(text.includes('abc-123'), 'rendered prompt must include the executionId');
+			} finally {
+				await client.close();
+				await server.close();
+			}
+		});
+
+		test('getPrompt with unknown name throws an error', async () => {
+			useSession('org-1', 'Acme');
+			const server = buildMcpServer();
+			const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+			await server.connect(serverTransport);
+			const client = new Client({ name: 'test-client', version: '0' });
+			await client.connect(clientTransport);
+
+			try {
+				await assert.rejects(
+					() => client.getPrompt({ name: 'no-such-prompt', arguments: {} }),
+					(err: unknown) => err instanceof Error && /unknown prompt/i.test(err.message),
+				);
+			} finally {
+				await client.close();
+				await server.close();
+			}
+		});
+	});
+
 	suite('token', () => {
 		test('is stable across reads and validates only itself', () => {
 			const token = getMcpToken();
