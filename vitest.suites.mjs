@@ -16,4 +16,5 @@ export const vitestSuites = [
 	'src/capabilities/inputHelpers.test.ts',
 	'src/sessions/conversation/conversationEvents.test.ts',
 	'src/test/tdd.test.ts',
+	'src/sessions/graphql/sdk.test.ts',
 ];
