@@ -1,13 +1,13 @@
 import type { CodegenConfig } from '@graphql-codegen/cli';
 
 const config: CodegenConfig = {
-	schema: 'https://api.rewst.io/graphql',
-	documents: ['src/**/*.graphql'],
+	schema: 'src/sessions/graphql/schema.graphql',
+	documents: ['src/**/*.graphql', '!src/sessions/graphql/schema.graphql'],
 	generates: {
-		'src/sessions/graphql/sdk.ts': {
-			plugins: ['typescript', 'typescript-operations', 'typescript-graphql-request'],
-			config: {
-				gqlImport: 'graphql-request#gql',
+		'src/sessions/graphql/generated/': {
+			preset: 'client',
+			presetConfig: {
+				fragmentMasking: false,
 			},
 		},
 	},

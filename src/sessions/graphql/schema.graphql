@@ -1,0 +1,6022 @@
+"""
+Directive which grabs the current user from the request context and adds it as the "createdById" argument to a mutation.
+"""
+directive @auditCreate(inputFieldName: String) on FIELD_DEFINITION
+
+"""
+Directive which grabs the current user from the request context and adds it as the "updatedById" argument to a mutation.
+"""
+directive @auditUpdate(inputFieldName: String) on FIELD_DEFINITION
+
+"""
+DEPRECATED. Slated for deletion after the SpiceDB-backed form permissions
+rollout completes (Statsig gate `spicedb_permissions` at 100%) and the
+companion `use_warrant_form_permissions` gate is retired.
+
+Replace with `@requiresPermission` (single-resource) or
+`@filtersByPermission` (per-item list filtering) — see
+`packages/graph_api/src/directives/requiresPermission.js` and
+`filtersByPermission.js`. Do NOT add new `@auth` usages.
+
+Currently still active on form Query/Mutation fields in `forms.graphql`
+during dual-gate rollout. Resolver implementation is already gated on
+the `use_warrant_form_permissions` Statsig flag — once that flag is OFF
+everywhere, the directive is a no-op and can be ripped out.
+
+Directive used for authorization. Requires the user to be authenticated.
+"""
+directive @auth(
+  """
+  Defines the type of the object being accessed. This is used to determine the appropriate authorization logic based on the object's type.
+  """
+  objectType: String
+
+  """
+  Defines the ID of the parent object. This is required if parentType is supplied.
+  """
+  parentIDKey: ID
+
+  """
+  Defines the type of the parent object. This is useful for hierarchical authorization checks where access is checked via the parent object.
+  """
+  parentType: String
+
+  """
+  Specifies the relationship the authenticated user must have to access the field or object. Default is MEMBER. Same relation must be defined in the targetted object's Warrant schema.
+  """
+  relation: Relation
+) on FIELD_DEFINITION | OBJECT
+
+"""
+Filter a list-returning field by a SpiceDB CheckBulkPermissions call. The
+wrapped resolver runs first; its result is post-filtered to items the
+caller has `permission` on. Supports plain arrays and Connection-style
+(`edges[].node.id`) responses. `idField` defaults to 'id'.
+
+`onFlagOff` mirrors @requiresPermission — `ALLOW` passes through unfiltered.
+Does NOT adjust totalCount/pageInfo on connection responses — known
+limitation; paginated lists that need correct counts should use a
+resolver-level helper instead of this directive.
+"""
+directive @filtersByPermission(idField: String, onFlagOff: OnFlagOff = DENY, permission: String!, resource: String!) on FIELD_DEFINITION
+
+"""Directive for requiring a user to have a CSP admin permission."""
+directive @requiresCSPAdminPermissions on FIELD_DEFINITION
+
+"""Directive which check for crate modification permission."""
+directive @requiresCrateModificationPermission on FIELD_DEFINITION
+
+"""Directive for managing delegated organization access."""
+directive @requiresDelegatedAccessPermissions on FIELD_DEFINITION
+
+"""
+Authorization directive to be placed on fields whose features are enabled for a given organization.
+"""
+directive @requiresFeature(label: String) on FIELD_DEFINITION
+
+"""
+Gate a field on a GLOBAL role-grant check — the same `checkRoleHasPermission`
+the spicedb Query/Mutation middleware runs for its restrictive gate. Unlike
+`@requiresPermission` (resource-scoped, needs a resource id), this is a pure
+role-capability check and needs NO resource id, so it can gate NESTED
+association fields (e.g. `Organization.variables`, `PackConfig.orgVariables`)
+that the root-only middleware structurally cannot see.
+
+Provide EITHER `permission` (a single `rewst.*` string) OR `permissions` (a list,
+OR semantics — the caller passes if their roles carry ANY one of them). `onFlagOff`
+controls behaviour when `spicedb_permissions` is OFF — use `ALLOW` when the legacy
+caller path is still the authoritative gate (matching the middleware's flag-off
+pass-through).
+"""
+directive @requiresGrant(onFlagOff: OnFlagOff = DENY, permission: String, permissions: [String!]) on FIELD_DEFINITION
+
+"""
+Authorization directive to be placed on any Type that should be filtered to items that are
+owned OR are visible by Organizations the user has access to
+
+The associated model MUST have BOTH `orgId` and `visibleForOrganizations` fields.
+"""
+directive @requiresManagesOwningOrVisibleOrg on FIELD_DEFINITION
+
+"""
+Authorization directive to be placed on any Type that should be filtered to items that are
+OWNED by Organization's the user has access toThe associated model MUST have an orgId field
+"""
+directive @requiresManagesOwningOrg on FIELD_DEFINITION
+
+"""
+Directive used on types that don't have an orgId column themselves but instead "inherit" it from
+a parent model, i.e. a `TaskLog`'s owning org is the orgId on the WorkflowExecution it belongs to
+"""
+directive @requiresManagesParentModel(parentField: String!) on FIELD_DEFINITION
+
+"""
+Authorization directive to be placed on fields whose PARENT object has an orgId field
+i.e. if placed on the `User.role` field the `User.orgId` will be checked
+"""
+directive @requiresManagesParentObjOrgId on FIELD_DEFINITION
+
+"""
+Gate a field on a SpiceDB CheckPermission call against an arbitrary
+resource.
+
+Either `field` (dotted path into args — e.g. 'id', 'input.formId',
+'input.where.id') or `resourceId` (literal string — e.g. 'role-member')
+MUST be set, not both. Use `resourceId` for role-membership /
+grant-to-create checks where no resource id is available in the
+caller's args.
+
+`onFlagOff` controls behaviour when `spicedb_permissions` is OFF.
+"""
+directive @requiresPermission(field: String, onFlagOff: OnFlagOff = DENY, permission: String!, resource: String!, resourceId: String, surface: PermissionDenialSurface = TOAST) on FIELD_DEFINITION
+
+"""Directive for requiring a user to be a staff user or support role."""
+directive @requiresStaffOrSupportRole on FIELD_DEFINITION
+
+directive @requiresSuperuser on FIELD_DEFINITION
+
+"""Directive which hides sensitive data."""
+directive @sensitive on FIELD_DEFINITION
+
+type Action {
+  actionOptions: [ActionOption!]!
+  category: String
+  className: String
+  currentVersion: String
+  defaultHumanSecondsSaved: Int
+  deprecated: Boolean
+  deprecationMessage: String
+  description: String
+  enabled: Boolean
+  entryPoint: String
+  hidden: Boolean
+  icon: String
+  id: ID
+  name: String
+  orgId: ID
+  organization: Organization
+  outputSchema: JSON
+  pack(where: PackInput): Pack
+  packId: ID!
+  parameters(populateOptions: Boolean = true): JSON
+  ref: String
+  runner: Runner
+  uid: ID
+  visibleForOrganizations: [Organization!]!
+  workflow: Workflow
+}
+
+input ActionInput {
+  category: String
+  deprecated: Boolean
+  deprecationMessage: String
+  description: String
+  enabled: Boolean
+  hidden: Boolean
+  id: ID
+  name: String
+  outputSchema: JSON
+  pack: PackInput
+  packId: ID
+  parameters: JSON
+  ref: String
+  runner_type: String
+  uid: ID
+}
+
+type ActionOption {
+  actions: [Action!]
+  id: ID
+  optionLabel: String
+  optionValue: String
+  organization: Organization
+  organizationId: ID
+  packConfig: PackConfig
+  packConfigId: ID
+  resourceName: String
+}
+
+input ActionOptionInput {
+  optionLabel: String
+  optionValue: String
+  organizationId: ID
+  packConfigId: ID
+  resourceName: String
+}
+
+input ActionOptionSearchInput {
+  optionLabel: string_comparison_exp
+  optionValue: string_comparison_exp
+  organizationId: id_comparison_exp
+  packConfig: PackConfigSearch
+  packConfigId: id_comparison_exp
+  resourceName: string_comparison_exp
+}
+
+input ActionOptionWhereInput {
+  optionLabel: String
+  optionValue: String
+  organizationId: ID
+  packConfig: PackConfigWhereInput
+  packConfigId: ID
+  resourceName: String
+}
+
+input ActionSearch {
+  category: string_comparison_exp
+  deprecated: bool_comparison_exp
+  description: string_comparison_exp
+  enabled: bool_comparison_exp
+  hidden: bool_comparison_exp
+  id: id_comparison_exp
+  name: string_comparison_exp
+  outputSchema: json_comparison_exp
+  pack: PackSearchInput
+  parameters: json_comparison_exp
+  ref: string_comparison_exp
+  uid: id_comparison_exp
+}
+
+input ActionUpdateInput {
+  category: String
+  deprecated: Boolean
+  deprecationMessage: String
+  description: String
+  enabled: Boolean
+  hidden: Boolean
+  id: ID
+  name: String
+  outputSchema: JSON
+  parameters: JSON
+  ref: String
+}
+
+type ActiveConversationRequest {
+  conversationId: ID
+  orgId: ID!
+  requestId: ID!
+  updatedAt: String
+  userId: ID
+}
+
+type AffectedWorkflowInfo {
+  affectedActionNames: [String!]!
+  workflowId: ID!
+  workflowName: String!
+}
+
+type ApiClient {
+  auth0ClientId: String!
+  clientType: ApiClientType!
+  createdAt: String!
+  createdById: ID
+  description: String
+  id: ID!
+  impersonationUser: User
+  impersonationUserId: ID
+  name: String!
+  orgId: ID!
+  organization: Organization!
+  secretRotatedAt: String
+  updatedAt: String!
+  updatedById: ID
+}
+
+type ApiClientList {
+  apiClients: [ApiClient!]!
+  hasMore: Boolean!
+  totalCount: Int!
+}
+
+input ApiClientListInput {
+  limit: Int = 50
+  offset: Int = 0
+}
+
+type ApiClientSecretRotation {
+  auth0ClientId: String!
+  auth0ClientSecret: String!
+  id: ID!
+  secretRotatedAt: String!
+}
+
+enum ApiClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ApiClientType {
+  ENGINE
+  ORGANIZATION
+}
+
+input ApiClientWhereInput {
+  clientType: ApiClientType
+  id: ID
+  orgId: ID
+}
+
+type ApiClientWithSecret {
+  auth0ClientId: String!
+  auth0ClientSecret: String!
+  clientType: ApiClientType!
+  createdAt: String!
+  description: String
+  id: ID!
+  impersonationUser: User
+  impersonationUserId: ID
+  name: String!
+  orgId: ID!
+  organization: Organization!
+  secretRotatedAt: String
+  updatedAt: String!
+}
+
+type AppPlatformReservedDomain {
+  createdAt: String
+  createdBy: User
+  createdById: ID
+  domain: String
+  id: ID!
+  isStaffAllowed: Boolean
+  updatedAt: String
+  updatedBy: User
+  updatedById: ID
+  useStrictMatch: Boolean
+}
+
+input AppPlatformReservedDomainCreateInput {
+  domain: String!
+  isStaffAllowed: Boolean
+}
+
+input AppPlatformReservedDomainSearchInput {
+  createdBy: UserSearchInput
+  domain: string_comparison_exp
+  id: id_comparison_exp
+  isStaffAllowed: bool_comparison_exp
+  updatedBy: UserSearchInput
+}
+
+input AppPlatformReservedDomainUpdateInput {
+  domain: String
+  isStaffAllowed: Boolean
+}
+
+input AppPlatformReservedDomainWhereInput {
+  createdBy: UserWhereInput
+  domain: String
+  id: ID
+  isStaffAllowed: Boolean
+  updatedBy: UserWhereInput
+  useStrictMatch: Boolean
+}
+
+type AssociatedPack {
+  id: String!
+  name: String!
+}
+
+type AuthUrlResponse {
+  authUrl: String
+  error: String
+}
+
+union AzureFunctionAppInterpreterDeploymentStreamEvent = AzureFunctionAppInterpreterDeploymentStreamFailureResponse | AzureFunctionAppInterpreterDeploymentStreamMessage | AzureFunctionAppInterpreterDeploymentStreamSuccessResponse
+
+type AzureFunctionAppInterpreterDeploymentStreamFailureResponse implements BaseStreamEvent {
+  didSucceed: Boolean!
+  error: String!
+  isFinished: Boolean!
+}
+
+type AzureFunctionAppInterpreterDeploymentStreamMessage implements BaseStreamEvent {
+  isFinished: Boolean!
+  phase: String!
+}
+
+type AzureFunctionAppInterpreterDeploymentStreamSuccessResponse implements BaseStreamEvent {
+  didSucceed: Boolean!
+  isFinished: Boolean!
+  phase: String!
+}
+
+interface BaseCloneObjectSuccessResponse {
+  id: ID!
+  orgId: ID!
+  type: CloneableObjectType!
+}
+
+interface BaseCloningResponse implements BaseStreamEvent {
+  didSucceed: Boolean!
+  isFinished: Boolean!
+}
+
+interface BaseMicrosoftCSPConsentResponse implements BaseStreamEvent {
+  event: String!
+  isFinished: Boolean!
+}
+
+interface BaseStreamEvent {
+  isFinished: Boolean!
+}
+
+interface BaseStreamResponse implements BaseStreamEvent {
+  didSucceed: Boolean!
+  isFinished: Boolean!
+}
+
+input BreakingChangeActionInput {
+  actionRefs: [String!]!
+  packRef: String!
+}
+
+"""
+Filter for `bulkSetFormPermissions` when applying to every user matching
+the drawer's current server filter. Mirrors the Users tab's query
+variables (org + optional free-text search on username).
+"""
+input BulkFormUserFilterInput {
+  orgId: ID!
+  search: String
+}
+
+input BulkSetFormPermissionsInput {
+  formId: ID!
+  operation: FormGrantOperation!
+  permission: FormPermissionKey!
+  roleIds: [ID!]
+
+  """
+  Scope. Exactly one of `userFilter` / `userIds` / `roleIds` must be
+  provided:
+    - userFilter: apply to every user matching the filter (server-side
+      expansion of org + optional search)
+    - userIds: apply to an explicit user id list (drawer's "this page"
+      scope for the Users tab)
+    - roleIds: apply to an explicit role id list (drawer's Roles tab)
+  """
+  userFilter: BulkFormUserFilterInput
+  userIds: [ID!]
+}
+
+type BulkSetFormPermissionsResult {
+  changesApplied: Int!
+  formId: ID!
+  zedtoken: String
+}
+
+input CSPApplicationGrant {
+  enterpriseApplicationId: String!
+  scope: String!
+}
+
+enum CSPConsentAction {
+  CREATE
+  REVOKE
+}
+
+type CSPConsentResult {
+  action: CSPConsentAction!
+  errors: [String!]!
+  packConfigId: ID!
+  tenantIdsWithConsent: [ID!]!
+  updatedCustomers: [CSPCustomerRecord!]!
+}
+
+type CSPCustomerRecord {
+  companyName: String!
+  domain: String!
+  tenantId: ID!
+}
+
+input CheckAuthorizationInput {
+  fullyConsistent: Boolean
+  objectId: String!
+  objectType: String!
+  relation: String!
+  userId: ID!
+}
+
+input CheckInput {
+  objectId: String!
+  objectType: String!
+  relation: String!
+}
+
+input CheckSpiceDBPermissionInput {
+  permission: String!
+  resourceId: String!
+  resourceType: String!
+  userId: ID!
+}
+
+type CloneFormStreamSuccessResponse implements BaseCloneObjectSuccessResponse & BaseCloningResponse & BaseStreamEvent {
+  didSucceed: Boolean!
+  form: Form!
+  id: ID!
+  isFinished: Boolean!
+  orgId: ID!
+  type: CloneableObjectType!
+}
+
+union CloneObjectStreamEvent = CloneFormStreamSuccessResponse | CloneSiteStreamSuccessResponse | CloneTemplateStreamSuccessResponse | CloneWorkflowStreamSuccessResponse | CloningExportPhaseStreamFailureResponse | CloningExportPhaseStreamMessage | CloningImportPhaseStreamFailureResponse | CloningImportPhaseStreamMessage
+
+enum ClonePhase {
+  EXPORTING
+  IMPORTING
+}
+
+type CloneSiteStreamSuccessResponse implements BaseCloneObjectSuccessResponse & BaseCloningResponse & BaseStreamEvent {
+  didSucceed: Boolean!
+  id: ID!
+  isFinished: Boolean!
+  orgId: ID!
+  site: Site!
+  type: CloneableObjectType!
+}
+
+type CloneTemplateStreamSuccessResponse implements BaseCloneObjectSuccessResponse & BaseCloningResponse & BaseStreamEvent {
+  didSucceed: Boolean!
+  id: ID!
+  isFinished: Boolean!
+  orgId: ID!
+  template: Template!
+  type: CloneableObjectType!
+}
+
+type CloneWorkflowStreamSuccessResponse implements BaseCloneObjectSuccessResponse & BaseCloningResponse & BaseStreamEvent {
+  didSucceed: Boolean!
+  id: ID!
+  isFinished: Boolean!
+  orgId: ID!
+  type: CloneableObjectType!
+  workflow: Workflow!
+}
+
+enum CloneableObjectType {
+  form
+  page
+  site
+  template
+  trigger
+  workflow
+}
+
+type CloningExportPhaseStreamFailureResponse implements BaseCloningResponse & BaseStreamEvent & PhasedCloneEvent {
+  code: String
+  didSucceed: Boolean!
+  error: String
+  failures: [ExportErrorObject!]!
+  isFinished: Boolean!
+  phase: ClonePhase!
+}
+
+type CloningExportPhaseStreamMessage implements BaseStreamEvent & ExportObjectsProgressMessage & PhasedCloneEvent {
+  errors: [String!]
+  failed: Boolean!
+  identity: ExportObjectIdentifier!
+  isFinished: Boolean!
+  object: IntermediateExportObject
+  phase: ClonePhase!
+  progress: ExportProgressInfo!
+}
+
+type CloningImportPhaseStreamFailureResponse implements BaseCloningResponse & BaseStreamEvent & PhasedCloneEvent {
+  code: String
+  didSucceed: Boolean!
+  error: String!
+  isFinished: Boolean!
+  phase: ClonePhase!
+}
+
+type CloningImportPhaseStreamMessage implements BaseStreamEvent & ImportProgressMessage & PhasedCloneEvent {
+  isFinished: Boolean!
+  object: ImportObject!
+  phase: ClonePhase!
+  progress: ImportProgressInfo!
+}
+
+type CommonlyUsedAction {
+  category: String
+  deprecated: Boolean
+  deprecationMessage: String
+  description: String
+  id: ID
+  name: String
+  pack: Pack
+  ref: String
+  usageCount: Int
+}
+
+input CompletionListenerCreateInput {
+  enabled: Boolean
+  handlerWorkflowId: ID!
+  listeningToWorkflowId: ID!
+  orgId: ID!
+  packOverrides: [PackOverrideInput]
+  triggerOnStatuses: [String!]!
+}
+
+input CompletionListenerUpdateInput {
+  cloneOverrides: JSON
+  enabled: Boolean
+  handlerWorkflowId: ID!
+  listeningToWorkflowId: ID!
+  orgId: ID!
+  packOverrides: [PackOverrideInput]
+  triggerId: ID!
+  triggerOnStatuses: [String!]!
+}
+
+type Component {
+  createdAt: String
+  createdBy: User
+  createdById: ID
+  currentVersion: Int
+  description: String
+  id: ID!
+  name: String!
+  orgId: ID!
+  updatedAt: String
+  updatedBy: User
+  updatedById: ID
+  versions: [ComponentVersion!]
+}
+
+type ComponentGeneratorResponse {
+  tsx: String!
+}
+
+type ComponentInstance {
+  componentVersionId: String
+  createdAt: String
+  id: String
+  pageId: ID!
+  pageNodes: String
+  updatedAt: String
+}
+
+input ComponentInstanceCreateInput {
+  pageId: ID!
+  pageNodes: String!
+}
+
+type ComponentInstanceCreationResult {
+  componentInstance: ComponentInstance
+  componentVersionId: ID!
+}
+
+input ComponentInstanceInput {
+  componentVersionId: String
+  id: String
+  pageId: ID!
+  pageNodes: String
+}
+
+type ComponentInstanceResult {
+  componentInstances: [ComponentInstance]
+  errors: [String]
+  message: String
+  success: Boolean!
+}
+
+input ComponentInstanceUpdateInput {
+  componentVersionId: ID!
+  pageId: ID!
+}
+
+type ComponentTree {
+  component: Component!
+  createdAt: String
+  encoded: String!
+  orgId: ID!
+  updatedAt: String
+  updatedBy: User
+  versionNumber: Int
+}
+
+type ComponentVersion {
+  componentId: ID!
+  createdAt: String
+  createdBy: User
+  createdById: ID
+  description: String
+  id: ID!
+  updatedAt: String
+  updatedBy: User
+  updatedById: ID
+  versionNumber: Int!
+  workflows: [Workflow]
+}
+
+enum ConfigFallbackModes {
+  FAIL_ACTION
+  FAIL_WORKFLOW
+  USE_DEFAULT
+}
+
+enum ConfigName {
+  chart_generator
+  component_generator
+}
+
+enum ConfigSelectionModes {
+  USE_DEFAULT
+  USE_NAME_SEARCH
+  USE_ORG_MAPPING
+  USE_SELECTED_ID
+}
+
+type Conversation {
+  createdAt: String!
+  firstUserMessage: ConversationMessagePreview
+  id: ID!
+  messages(limit: Int, offset: Int): [ConversationMessage!]!
+  metadata: JSON
+  orgId: ID!
+  organization: Organization!
+  title: String
+  type: ConversationType!
+  updatedAt: String!
+  user: User!
+  userId: ID!
+}
+
+input ConversationInput {
+  id: ID
+  metadata: JSON
+  orgId: ID!
+  title: String
+  type: ConversationType
+  userId: ID
+}
+
+type ConversationMessage {
+  content: String!
+  conversation: Conversation!
+  conversationId: ID!
+  createdAt: String!
+  currentUserVote: ConversationMessageVote
+  id: ID!
+  metadata: JSON
+  role: ConversationRole!
+  updatedAt: String!
+  user: User
+  userId: ID
+}
+
+input ConversationMessageInput {
+  content: String!
+  conversationId: ID!
+  id: ID
+  metadata: JSON
+  role: ConversationRole!
+  userId: ID
+}
+
+type ConversationMessageItemResponse {
+  content: String!
+  conversation: Conversation!
+  conversationId: ID!
+  createdAt: String!
+  id: ID
+  metadata: JSON
+  role: ConversationRole!
+  updatedAt: String!
+  user: User
+  userId: ID
+}
+
+type ConversationMessagePreview {
+  content: String!
+  createdAt: String!
+  role: ConversationRole!
+}
+
+type ConversationMessageResponse {
+  conversation_id: ID
+  error: String
+  message: ConversationMessage
+  metadata: JSON
+  status: String!
+}
+
+type ConversationMessageVote {
+  comment: String
+  conversationMessageId: ID!
+  createdAt: String!
+  id: ID!
+  message: ConversationMessage
+  reason: VoteReason
+  updatedAt: String!
+  user: User
+  userId: ID!
+  vote: VoteType!
+}
+
+input ConversationMessageVoteInput {
+  comment: String
+  conversationMessageId: ID!
+  id: ID
+  reason: VoteReason
+  vote: VoteType!
+}
+
+input ConversationMessageVoteWhereInput {
+  conversationMessageId: ID
+  id: ID
+  reason: VoteReason
+  userId: ID
+  vote: VoteType
+}
+
+enum ConversationRole {
+  ASSISTANT
+  SYSTEM
+  TOOL
+  USER
+}
+
+enum ConversationType {
+  HELP_DOCS
+  WORKFLOW_AUTO_DOCUMENTATION
+  WORKFLOW_DIAGNOSIS
+}
+
+input ConversationWhereInput {
+  id: ID
+  orgId: ID
+  type: ConversationType
+  userId: ID
+}
+
+type Crate {
+  associatedPacks: [Pack!]
+  category: String
+  crateTriggers: [CrateTrigger!]
+  createdAt: String
+  createdById: ID
+
+  """Description of the crate"""
+  description: String
+  gid: ID
+  id: ID!
+  isPublic: Boolean!
+  isUnpackedForSelectedOrg: Boolean
+  lastPublishedAt: String
+  maturity: CrateMaturity
+
+  """Name of the crate"""
+  name: String!
+  orgId: ID!
+  overrides: [CrateOverride!]
+  primaryPack: Pack
+  primaryPackId: ID
+  primaryUnpackedWorkflows: [CratePrimaryUnpackedWorkflow!]
+  providedValue: String
+  replicationRegions: [CrateReplicationRegion!]
+  requiredOrgVariables: [String!]
+  setupAssistance: Boolean
+  setupTime: Int
+  sourceEnvironment: String
+  status: CrateStatus!
+  tagIds: [ID!]
+  tags: [Tag!]
+  tokens: [CrateToken!]!
+  triggers: [Trigger!]
+  unpackedWorkflowId: ID
+  unpackingCount: Int
+  updatedAt: String
+  updatedById: ID
+  workflow: Workflow
+  workflowId: ID
+}
+
+input CrateCreateInput {
+  associatedPacks: [ID!]
+  category: String
+  createdAt: String
+  description: String
+  gid: ID
+  id: ID
+  isPublic: Boolean
+  maturity: CrateMaturity
+  name: String
+  orgId: ID!
+  primaryPackId: ID
+  providedValue: String
+  replicationRegions: [CrateReplicationRegion!]
+  requiredOrgVariables: [String!]
+  setupAssistance: Boolean
+  setupTime: Int
+  sourceEnvironment: String
+  status: CrateStatus
+  tagIds: [ID!]
+  tokens: [CrateTokenInput]
+  triggers: [CrateTriggerInput!]
+  workflowId: ID
+}
+
+enum CrateMaturity {
+  EGG
+  FLEDGLING
+  HATCHLING
+  MIGRATING
+  NESTLING
+  SOARING
+}
+
+type CrateOverride {
+  crate: Crate!
+  crateId: ID!
+  crateTriggers: [CrateTrigger!]
+  crateUnpackingArgument: CrateUnpackingArgument
+  crateUnpackingArgumentId: ID
+  createdAt: String
+  createdBy: User
+  createdById: ID
+  defaultValue: String
+  entity: CrateOverrideEntityType
+  id: ID!
+  isDynamic: Boolean!
+  isMultiselect: Boolean!
+  label: String!
+  name: String!
+  options: [CrateOverrideOption!]!
+  updatedAt: String
+  updatedBy: User
+  updatedById: ID
+}
+
+enum CrateOverrideEntityType {
+  parameter
+  var
+}
+
+input CrateOverrideInput {
+  crateId: ID
+  crateTriggerIds: [ID!]
+  defaultValue: String
+  entity: CrateOverrideEntityType
+  id: ID
+  isDynamic: Boolean
+  isMultiselect: Boolean
+  label: String
+  name: String
+  options: [CrateOverrideOptionInput!]
+}
+
+type CrateOverrideOption {
+  crateOverride: CrateOverride!
+  crateOverrideId: ID!
+  createdAt: String
+  createdBy: User
+  createdById: ID
+  id: ID!
+  isDefault: Boolean!
+  label: String!
+  updatedAt: String
+  updatedBy: User
+  updatedById: ID
+  value: String!
+}
+
+input CrateOverrideOptionInput {
+  crateOverrideId: ID
+  id: ID
+  isDefault: Boolean
+  label: String
+  value: String
+}
+
+type CratePrimaryUnpackedWorkflow {
+  id: ID!
+  isSynchronized: Boolean!
+  name: String!
+}
+
+enum CrateReplicationRegion {
+  AU
+  DEV
+  EU
+  QA
+  STAGING
+  UK
+  US
+}
+
+input CrateSearchInput {
+  description: string_comparison_exp
+  id: id_comparison_exp
+  lastPublishedAt: string_comparison_exp
+  name: string_comparison_exp
+  primaryPack: PackSearchInput
+  tokens: json_comparison_exp
+  workflow: WorkflowSearch
+}
+
+enum CrateStatus {
+  DRAFT
+  PUBLISHED
+}
+
+input CrateTagInput {
+  id: ID!
+}
+
+type CrateToken {
+  appliedToCrateTriggers: [CrateTrigger!]
+  children: [CrateToken]
+  crate: Crate
+  crateId: ID!
+  emptyLabel: String
+  id: ID
+  index: Int!
+  isMultiselect: Boolean
+  name: String
+  options: [CrateTokenOption!]!
+  parent: CrateToken
+  parentId: ID
+  previewText: String
+  type: CrateTokenType
+  value: String
+}
+
+input CrateTokenInput {
+  appliedToCrateTriggers: [ID!]
+  appliedToTriggers: [ID!]
+  crateId: ID
+  emptyLabel: String
+  id: ID
+  index: Int
+  isMultiselect: Boolean
+  name: String
+  options: [CrateTokenOptionInput!]
+  parentId: ID
+  previewText: String
+  type: String
+  value: String
+}
+
+type CrateTokenOption {
+  crate: Crate!
+  crateId: ID!
+  id: ID!
+  isDefault: Boolean!
+  label: String
+  pack: Pack
+  packId: ID
+  token: CrateToken!
+  tokenId: ID!
+  value: String
+}
+
+input CrateTokenOptionInput {
+  crateId: ID
+  id: ID
+  isDefault: Boolean
+  label: String
+  packId: ID
+  tokenId: ID
+  value: String
+}
+
+enum CrateTokenType {
+  inputTriggerParam
+  inputVar
+  linebreak
+  requiresPackVar
+  requiresPackVarLine
+  requiresVar
+  requiresVarLine
+  selectPackVar
+  selectTriggerParam
+  selectVar
+  text
+}
+
+type CrateTrigger {
+  crate: Crate!
+  crateId: ID!
+  crateOverrides: [CrateOverride!]
+  defaultPackOverrides: [PackOverride!]
+  id: ID!
+  trigger: Trigger!
+  triggerId: ID!
+}
+
+input CrateTriggerInput {
+  crateId: ID
+  defaultPackOverrides: [PackOverrideInput!]
+  triggerId: ID!
+}
+
+type CrateTriggerUnpacking {
+  activateForOrgIds: [ID!]
+  activateForTagIds: [ID!]
+  autoActivateManagedOrgs: Boolean!
+  crateTrigger: CrateTrigger!
+  crateUnpackingArgumentSet: CrateUnpackingArgumentSet!
+  criteria: JSON
+  enabled: Boolean!
+  id: ID!
+  isActivatedForOwner: Boolean!
+  packOverrides: [PackOverride!]!
+  triggerName: String!
+}
+
+input CrateTriggerUnpackingInput {
+  activateForOrgIds: [ID!]
+  activateForTagIds: [ID!]
+  autoActivateManagedOrgs: Boolean!
+  crateTriggerId: ID!
+  criteria: JSON
+  enabled: Boolean!
+  isActivatedForOwner: Boolean!
+  packOverrides: [PackOverrideInput!]
+  parameters: JSON
+  triggerName: String!
+}
+
+type CrateUnpackingArgument {
+  crateToken: CrateToken!
+  crateUnpackingArgumentSet: CrateUnpackingArgumentSet!
+  id: ID!
+  value: String!
+}
+
+input CrateUnpackingArgumentInput {
+  crateTokenId: ID!
+  value: String!
+}
+
+type CrateUnpackingArgumentSet {
+  arguments: [CrateUnpackingArgument!]!
+  crate: Crate!
+  crateId: ID!
+  crateTriggerUnpackings: [CrateTriggerUnpacking!]!
+  createdAt: String!
+  createdBy: User!
+  createdById: ID!
+  humanSecondsSaved: Int!
+  id: ID!
+  orgId: ID!
+  updatedAt: String
+  updatedBy: User
+  updatedById: ID
+  workflowName: String!
+}
+
+input CrateUnpackingArgumentSetWhereInput {
+  crateId: ID
+  id: ID
+  orgId: ID
+}
+
+input CrateUpdateInput {
+  associatedPacks: [ID!]
+  category: String
+  description: String
+  gid: ID
+  id: ID!
+  isPublic: Boolean
+  lastPublishedAt: String
+  maturity: CrateMaturity
+  name: String
+  orgId: ID
+  primaryPackId: ID
+  providedValue: String
+  replicationRegions: [CrateReplicationRegion!]
+  requiredOrgVariables: [String!]
+  setupAssistance: Boolean
+  setupTime: Int
+  sourceEnvironment: String
+  status: CrateStatus
+  tagIds: [ID!]
+  tokens: [CrateTokenInput!]
+  triggers: [CrateTriggerInput!]
+  workflowId: ID
+}
+
+type CrateUseCase {
+  crate: Crate!
+  crateId: ID!
+  createdAt: String!
+  createdBy: User
+  description: String
+  id: ID!
+  isActive: Boolean!
+  name: String!
+  updatedAt: String!
+  updatedBy: User
+}
+
+input CrateUseCaseInput {
+  crateId: ID!
+  description: String
+  isActive: Boolean
+  name: String!
+}
+
+input CrateUseCaseSearchInput {
+  description: String
+  isActive: Boolean
+  name: String
+}
+
+input CrateUseCaseWhereInput {
+  crateId: ID
+  id: ID
+  isActive: Boolean
+  name: String
+}
+
+input CrateWhereInput {
+  description: String
+  gid: ID
+  id: ID
+  isPublic: Boolean
+  lastPublishedAt: String
+  name: String
+  orgId: ID
+  primaryPack: PackWhereInput
+  status: String
+  tokens: JSON
+  workflow: WorkflowWhereInput
+  workflowId: ID
+}
+
+input CreateApiClientInput {
+  description: String
+  name: String!
+  orgId: ID!
+}
+
+input CreateComponentInput {
+  description: String
+  isSynced: Boolean
+  name: String!
+  nodeTree: JSON!
+  orgId: ID!
+  workflows: [ID]
+}
+
+input CreateFeaturePreviewSettingInput {
+  description: String!
+  isStaffOnly: Boolean!
+  label: String!
+}
+
+input CreateForeignObjectReferenceInput {
+  actionId: ID
+  id: ID
+  identifier: ID
+  orgId: ID!
+  packConfigId: ID
+  referenceId: ID!
+  workflowExecutionId: ID
+}
+
+input CreateUserInput {
+  isTestUser: Boolean
+  orgId: ID!
+  roleIds: [String!]!
+  username: String!
+}
+
+type DNSValidationResponse {
+  isValid: Boolean
+  message: String
+}
+
+type DatabaseNotificationError {
+  detail: String!
+  raised_at: String!
+  type: String!
+}
+
+type DeleteOrgInterpreterResponse {
+  id: ID!
+}
+
+type DiffExplanationResponse {
+  markdown: String!
+  title: String!
+}
+
+type DocumentationGenerationResponse {
+  markdown: String!
+  title: String!
+}
+
+type DropdownOption {
+  label: String
+  value: String
+}
+
+type EncodedPageNodes {
+  encoded: String!
+  faviconUrl: String
+  page: Page
+}
+
+type ErrorMessage {
+  error: String!
+}
+
+input EvaluatedFormWhereInput {
+  orgId: ID!
+  triggerId: ID!
+}
+
+enum ExecuteContextType {
+  APP_BUILDER
+}
+
+type ExportBundle {
+  exportedAt: String!
+  objects: JSON!
+  signing: JSON!
+  version: Int!
+}
+
+type ExportDownloadPhaseStreamFailureResponse implements BaseCloningResponse & BaseStreamEvent & PhasedCloneEvent {
+  code: String
+  didSucceed: Boolean!
+  error: String!
+  isFinished: Boolean!
+  phase: ClonePhase!
+}
+
+type ExportDownloadPhaseStreamMessage implements BaseStreamEvent & PhasedCloneEvent {
+  bundle: ExportBundle!
+  isFinished: Boolean!
+  phase: ClonePhase!
+}
+
+type ExportErrorObject {
+  dependents: [ExportObjectIdentifier!]!
+  errors: [String!]!
+  id: ID!
+  paths: [[ExportObjectIdentifier!]!]!
+  type: String!
+}
+
+type ExportObjectIdentifier {
+  displayName: String
+  id: ID!
+  isSignificant: Boolean!
+  type: String!
+}
+
+enum ExportObjectType {
+  crate
+  form
+  page
+  site
+  template
+  workflow
+}
+
+interface ExportObjectsProgressMessage {
+  errors: [String!]
+  failed: Boolean!
+  identity: ExportObjectIdentifier!
+  object: IntermediateExportObject
+  progress: ExportProgressInfo!
+}
+
+union ExportObjectsStreamEvent = ExportObjectsStreamFailureResponse | ExportObjectsStreamMessage | ExportObjectsStreamSuccessResponse
+
+type ExportObjectsStreamFailureResponse implements BaseStreamEvent & BaseStreamResponse {
+  didSucceed: Boolean!
+  failures: [ExportErrorObject!]!
+  isFinished: Boolean!
+}
+
+type ExportObjectsStreamMessage implements BaseStreamEvent & ExportObjectsProgressMessage {
+  errors: [String!]
+  failed: Boolean!
+  identity: ExportObjectIdentifier!
+  isFinished: Boolean!
+  object: IntermediateExportObject
+  progress: ExportProgressInfo!
+}
+
+type ExportObjectsStreamSuccessResponse implements BaseStreamEvent & BaseStreamResponse {
+  bundle: ExportBundle!
+  didSucceed: Boolean!
+  isFinished: Boolean!
+  recommendedFilename: String!
+}
+
+type ExportProgressInfo {
+  hasEncounteredErrors: Boolean!
+  processedCount: Int!
+  queuedCount: Int!
+  totalCount: Int!
+}
+
+input ExportRequestObject {
+  id: ID!
+  type: ExportObjectType!
+}
+
+type ExportResponse {
+  bundle: ExportBundle
+  failures: [ExportErrorObject]
+  recommendedFilename: String
+}
+
+type FeaturePreviewSetting {
+  description: String!
+  id: ID!
+  isStaffOnly: Boolean!
+  label: String!
+}
+
+input FeaturePreviewSettingWhereInput {
+  id: ID
+  label: String
+}
+
+type FieldCondition {
+  action: FormConditionAction!
+  actionValue: String
+  conditionType: String
+  field: FormField!
+  fieldId: ID!
+  index: Int
+  requiredValue: JSON
+  sourceField: FormField
+  sourceFieldId: ID
+}
+
+type File {
+  filename: String!
+  id: ID!
+  mimetype: String!
+  path: String!
+}
+
+type ForeignObjectReference {
+  action: Action
+  actionId: ID
+  id: ID!
+  identifier: ID
+  orgId: ID!
+  organization: Organization!
+  packConfig: PackConfig
+  packConfigId: ID
+  referenceId: ID!
+  workflowExecution: WorkflowExecution
+  workflowExecutionId: ID
+}
+
+input ForeignObjectReferenceInput {
+  action: ActionInput
+  actionId: ID
+  id: ID
+  identifier: ID
+  packConfig: PackConfigWhereInput
+  packConfigId: ID
+  referenceId: ID
+  workflowExecution: WorkflowExecutionWhereInput
+  workflowExecutionId: ID
+}
+
+input ForeignObjectReferenceWhereInput {
+  action: ActionInput
+  actionId: ID
+  id: ID
+  identifier: ID
+  orgId: ID
+  packConfig: PackConfigWhereInput
+  packConfigId: ID
+  referenceId: ID
+  workflowExecution: WorkflowExecutionWhereInput
+}
+
+type Form {
+  cloneOverrides: JSON
+  clonedFrom: Form
+  clonedFromId: ID
+  clones: [Form]
+  createdAt: String
+  createdBy: User
+  createdById: ID
+  description: String
+  fields(orgContextId: ID): [FormField]
+  id: ID!
+  isSynchronized: Boolean
+  name: String!
+  orgId: ID!
+  organization: Organization!
+  tags: [Tag!]!
+  triggers: [Trigger!]
+  unpackedFrom: Crate
+  unpackedFromId: ID
+  updatedAt: String
+  updatedBy: User
+  updatedById: ID
+  warrant: Warrant
+}
+
+type FormAuditAuthorizedOrg {
+  id: ID!
+  name: String!
+}
+
+type FormAuditEntry {
+  authorizedOrgs: [FormAuditAuthorizedOrg!]!
+  formId: ID!
+  formName: String!
+  grants: [FormAuditGrant!]!
+  hasManagedOrgsCascade: Boolean!
+}
+
+type FormAuditGrant {
+  label: String!
+  permission: FormPermissionKey!
+  subjectId: ID!
+  subjectType: FormPermissionSubjectType!
+}
+
+input FormCloneOverridesInput {
+  description: String
+  isSynchronized: Boolean
+  name: String
+}
+
+enum FormConditionAction {
+  hide
+  required
+  set
+  show
+}
+
+input FormCreateInput {
+  cloneOverrides: JSON
+  clonedFromId: ID
+  description: String
+  fields: [FormFieldInput!]
+  id: ID
+  isSynchronized: Boolean
+  name: String
+  orgId: ID!
+  unpackedFromId: ID
+}
+
+type FormField {
+  conditions: [FieldCondition!]!
+  createdAt: String
+  form: Form
+  formId: ID!
+  id: ID!
+  index: Int
+  schema: JSON
+  sourceFields: [SourceField!]!
+  type: FormFieldType
+}
+
+input FormFieldConditionInput {
+  action: FormConditionAction!
+  actionValue: String
+  conditionType: String
+  fieldId: ID
+  index: Int
+  requiredValue: JSON
+  sourceFieldId: ID
+}
+
+input FormFieldInput {
+  conditions: [FormFieldConditionInput!]
+  formId: ID
+  id: ID
+  index: Int
+  schema: JSON
+  type: FormFieldType
+}
+
+input FormFieldInstanceInput {
+  formFieldId: ID!
+  schema: JSON
+}
+
+input FormFieldSearchInput {
+  formId: id_comparison_exp
+  id: id_comparison_exp
+  index: int_comparison_exp
+  schema: json_comparison_exp
+  type: FormFieldTypeSearchInput
+}
+
+enum FormFieldType {
+  CHECKBOX
+  DATE
+  FILE_INPUT
+  MULTILINE_INPUT
+  MULTISELECT
+  NUMBER_INPUT
+  RADIO
+  SELECT
+  TEXT
+  TEXT_INPUT
+}
+
+input FormFieldTypeSearchInput {
+  _eq: FormFieldType
+  _in: [FormFieldType!]
+  _neq: FormFieldType
+  _nin: [FormFieldType!]
+  _substr: FormFieldType
+}
+
+input FormFieldWhereInput {
+  formId: ID
+  id: ID
+  index: Int
+  schema: JSON
+  type: FormFieldType
+}
+
+input FormGrantChangeInput {
+  operation: FormGrantOperation!
+  permission: FormPermissionKey!
+  subjectId: ID!
+  subjectType: FormPermissionSubjectType!
+}
+
+enum FormGrantOperation {
+  ALLOW
+  DENY
+  RESET
+}
+
+"""
+Origin of a subject's effective grant on a form.
+- ROLE_DEFAULT: granted via role assignment; no override tuple on the form.
+- OVERRIDE_ALLOW: explicit allow override row.
+- OVERRIDE_DENY: explicit deny override row (blocks role default).
+- NONE: not effective, no override.
+"""
+enum FormGrantSource {
+  NONE
+  OVERRIDE_ALLOW
+  OVERRIDE_DENY
+  ROLE_DEFAULT
+}
+
+type FormGrantState {
+  enabled: Boolean!
+  permission: FormPermissionKey!
+  source: FormGrantSource!
+}
+
+"""
+Form permission drawer types — maps to peck-order `form` grants in
+packages/peck-order/schema.zed. See plan at
+/home/codeplug/.claude/plans/cached-meandering-lecun.md.
+
+CREATE is intentionally absent: form creation is an org/role-scoped
+capability (peck-order organization#role_form_creators), not a per-form
+override. peck-order still accepts the create permission in CDC events
+for back-compat with any in-flight data.
+"""
+enum FormPermissionKey {
+  CLONE
+  DELETE
+  EDIT
+  EXTERNAL_VIEW
+  MANAGE_ACCESS
+  PUBLISH
+  SUBMIT
+  VIEW
+}
+
+type FormPermissionState {
+  formId: ID!
+  roles: [FormPermissionSubject!]!
+  triggers: [FormTriggerSummary!]!
+
+  """
+  Total users matching the current org/search filter, ignoring pagination.
+  """
+  userTotalCount: Int!
+  users: [FormPermissionSubject!]!
+}
+
+type FormPermissionSubject {
+  grants: [FormGrantState!]!
+  id: ID!
+  label: String!
+  type: FormPermissionSubjectType!
+}
+
+enum FormPermissionSubjectType {
+  ROLE
+  USER
+}
+
+input FormSearchInput {
+  clonedFromId: id_comparison_exp
+  createdBy: UserSearchInput
+  id: id_comparison_exp
+  isSynchronized: bool_comparison_exp
+  name: string_comparison_exp
+  organization: OrganizationSearchInput
+  organizationId: id_comparison_exp
+  triggerId: id_comparison_exp
+  unpackedFromId: id_comparison_exp
+  updatedBy: UserSearchInput
+}
+
+type FormTriggerAuthorizedOrg {
+  id: ID!
+  name: String!
+}
+
+"""
+Read-only summary of a form_submission trigger tied to the form. Exposes the
+two levers that drive the `form#suborg_grant` tuples in SpiceDB:
+- `autoActivateManagedOrgs`: cascade to every descendant of the form's org
+- `authorizedOrgs`: explicit child orgs activated via org_trigger_instances
+Editing these lives in the workflow builder, not the permissions drawer.
+"""
+type FormTriggerSummary {
+  authorizedOrgs: [FormTriggerAuthorizedOrg!]!
+  autoActivateManagedOrgs: Boolean!
+  enabled: Boolean!
+  id: ID!
+  name: String!
+
+  """
+  The workflow this trigger belongs to, used by the drawer to deep-link
+  back into the workflow builder with the trigger pre-selected.
+  Workflow's owning org may differ from the form's owning org for
+  managed/parent workflows.
+  """
+  workflowId: ID!
+  workflowOrgId: ID!
+}
+
+input FormUpdateInput {
+  cloneOverrides: JSON
+  clonedFromId: ID
+  description: String
+  fields: [FormFieldInput!]
+  id: ID!
+  isSynchronized: Boolean
+  name: String
+  orgId: ID
+  unpackedFromId: ID
+}
+
+input FormWhereInput {
+  clonedFromId: ID
+  id: ID
+  isSynchronized: Boolean
+  name: String
+  orgId: ID
+  triggerId: [ID]
+  triggers: TriggerWhereInput
+  unpackedFromId: ID
+}
+
+input GetUserWhereInput {
+  id: ID
+  isApiUser: Boolean
+  isSuperuser: Boolean
+  isTestUser: Boolean
+  managedOrgs: OrganizationWhereInput
+  orgId: ID!
+  organization: OrganizationWhereInput
+  roleIds: [String!]
+  sub: String
+  username: String
+}
+
+input GrantDelegatedAccessInput {
+  expiresAt: String
+  organizationId: ID!
+  reason: String
+  userId: ID!
+}
+
+"""Enumeration for HTTP Methods."""
+enum HTTPMethod {
+  DELETE
+  GET
+  PATCH
+  POST
+  PUT
+}
+
+input ImportBundle {
+  exportedAt: String!
+  objects: JSON!
+  signing: JSON!
+  version: Int!
+}
+
+union ImportBundleStreamEvent = ImportBundleStreamMessage | ImportBundleStreamResponse | ImportBundleStreamResponseError
+
+type ImportBundleStreamMessage implements BaseStreamEvent & ImportProgressMessage {
+  isFinished: Boolean!
+  object: ImportObject!
+  progress: ImportProgressInfo!
+}
+
+type ImportBundleStreamResponse implements BaseStreamEvent {
+  isFinished: Boolean!
+  objects: [ImportObject!]!
+}
+
+type ImportBundleStreamResponseError implements BaseStreamEvent {
+  error: String!
+  isFinished: Boolean!
+}
+
+type ImportObject {
+  contentHash: String!
+  displayName: String
+  id: ID!
+  isSignificant: Boolean!
+  name: String
+  serializableKey: String!
+  type: String!
+  wasCreated: Boolean!
+}
+
+type ImportProgressInfo {
+  importedCount: Int!
+  requestId: String
+  totalCount: Int!
+  weightedImportedCount: Int!
+  weightedTotalCount: Int!
+}
+
+interface ImportProgressMessage {
+  object: ImportObject!
+  progress: ImportProgressInfo!
+}
+
+type Integration {
+  """Description of the integration"""
+  description: String
+
+  """Icon url of the integration"""
+  iconUrl: String
+
+  """Indicates if the integration is feature-flagged"""
+  isFeatureFlagged: Boolean
+
+  """Indicates if the integration should not be seen by the public"""
+  isPublic: Boolean
+
+  """Name of the integration"""
+  name: String
+
+  """Number of integration installations made by organizations"""
+  numInstalled: Int
+
+  """Reference tag"""
+  tags: [IntegrationTag!]
+}
+
+type IntegrationTag {
+  name: String
+}
+
+type IntegrationWorkflowOutput {
+  description: String
+  error: String
+  id: ID
+  name: String
+}
+
+type IntermediateExportObject {
+  contentHash: String!
+  fields: JSON!
+  isSignificant: Boolean!
+  name: String
+  nonfunctionalFields: JSON
+  serializableKey: String
+  type: String!
+}
+
+type InterpreterVersion {
+  id: ID!
+  language: String!
+  notes: String
+  version: String!
+}
+
+type JParserConversionResult {
+  actions: JSON
+  auth_config: JSON
+  categories: JSON
+  config_schema: JSON
+  description: String
+  errors: JSON
+  name: String
+  pack_config: JSON
+  ref: String
+  version: String
+}
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON
+
+type Jinja2Documentation {
+  description: String
+  name: String
+  parameters: [Jinja2ParameterDocumentation!]
+  signature: String
+}
+
+type Jinja2ParameterDocumentation {
+  default: JSON
+  description: String
+  name: String
+  required: Boolean
+  type: String
+}
+
+type JinjaRenderSession {
+  context: JSON
+  createdAt: String!
+  id: ID!
+  metadata: JSON
+  result: JSON
+  template: String
+}
+
+input JinjaTemplateMapInput {
+  id: String!
+  template: String!
+}
+
+type JobRequestedResponse {
+  executionId: ID!
+}
+
+enum Loader {
+  Bar
+  Beat
+  Bounce
+  Clip
+  Dot
+  Fade
+  Grid
+  Moon
+  Pacman
+  Propagate
+  Puff
+  Pulse
+  Scale
+  Sync
+}
+
+enum LocalReferenceModel {
+  Crate
+  CustomDatabase
+  Form
+  Organization
+  PackConfig
+  Page
+  Role
+  Site
+  Template
+  TemplateExport
+  Trigger
+  User
+  Workflow
+}
+
+type Login {
+  """Custom Domain, if present"""
+  customDomain: String
+
+  """Name of the Domain"""
+  domain: String
+
+  """Favorite icon URL"""
+  faviconUrl: String
+
+  """Login page layout"""
+  layout: String
+
+  """Login page loader enum"""
+  loader: String
+
+  """Page Title"""
+  pageTitle: String
+
+  """Site wide theme"""
+  theme: JSON
+
+  """Whether to use the custom domain"""
+  useCustomDomain: Boolean
+}
+
+type MessageVoteStats {
+  downVotes: Int!
+  reasonCounts: [ReasonCount!]!
+  upVotes: Int!
+}
+
+union MicrosoftBundleAuthorizationRequestStreamEvent = MicrosoftBundleAuthorizationStreamFailureResponse | MicrosoftBundleAuthorizationStreamMessage | MicrosoftBundleAuthorizationStreamSuccessResponse
+
+type MicrosoftBundleAuthorizationStreamFailureResponse implements BaseStreamEvent {
+  didSucceed: Boolean!
+  error: String!
+  isFinished: Boolean!
+}
+
+type MicrosoftBundleAuthorizationStreamMessage implements BaseStreamEvent {
+  isFinished: Boolean!
+  phase: String!
+  warning: String
+}
+
+type MicrosoftBundleAuthorizationStreamSuccessResponse implements BaseStreamEvent {
+  didSucceed: Boolean!
+  isFinished: Boolean!
+  phase: String!
+}
+
+union MicrosoftCSPConsentRequestStreamEvent = MicrosoftCSPConsentStreamFailureResponse | MicrosoftCSPConsentStreamMessage | MicrosoftCSPConsentStreamSuccessResponse
+
+type MicrosoftCSPConsentStreamFailureResponse implements BaseMicrosoftCSPConsentResponse & BaseStreamEvent {
+  didSucceed: Boolean!
+  errors: [String!]
+  event: String!
+  isFinished: Boolean!
+}
+
+type MicrosoftCSPConsentStreamMessage implements BaseMicrosoftCSPConsentResponse & BaseStreamEvent {
+  action: CSPConsentAction
+  errors: [String!]
+  event: String!
+  isFinished: Boolean!
+  updatedTenantIds: [ID!]
+}
+
+type MicrosoftCSPConsentStreamSuccessResponse implements BaseMicrosoftCSPConsentResponse & BaseStreamEvent {
+  didSucceed: Boolean!
+  event: String!
+  isFinished: Boolean!
+}
+
+type MicrosoftCSPCustomer {
+  companyName: String!
+  createdAt: String!
+  cspTenantId: String!
+  gdapRelationshipId: ID
+  gdapRelationshipStatus: String
+  hasConsent: Boolean!
+  id: ID!
+  linkedOrganizations: [Organization!]
+  tenantId: String!
+  updatedAt: String!
+}
+
+input MicrosoftCSPCustomerSearchInput {
+  companyName: string_comparison_exp
+  cspTenantId: string_comparison_exp
+  hasConsent: bool_comparison_exp
+  id: id_comparison_exp
+  linkedOrganizations: OrganizationSearchInput
+  tenantId: string_comparison_exp
+}
+
+input MicrosoftCSPCustomerWhereInput {
+  companyName: String
+  cspTenantId: String
+  hasConsent: Boolean
+  id: ID
+  linkedOrganizations: OrganizationWhereInput
+  tenantId: String
+}
+
+type MonacoCompletionItem {
+  commitCharacters: [String!]
+  detail: String
+  documentation: MonacoMarkdownString
+  insertText: String!
+  kind: Int!
+  label: MonacoCompletionItemLabel!
+}
+
+type MonacoCompletionItemLabel {
+  description: String
+  detail: String
+  label: String!
+}
+
+type MonacoMarkdownString {
+  value: String!
+}
+
+type Mutation {
+  addAllowedTool(toolName: String!): UserRoboRewstyPreferences!
+  addFavoriteAction(actionId: ID!, userId: ID!): Void
+  adminCreateIntegrationTestWorkflow(includeFakeData: Boolean, orgId: ID, packId: ID): IntegrationWorkflowOutput
+  adminCreateOrUpdatePack(actions: [Upload!], configSchema: Upload, isDryRun: Boolean, migrations: [Upload!], orgId: ID, pack: Upload, sensorTypes: [Upload!]): Pack
+  adminCreateOrUpdatePackBundle(configSchema: Upload, isDryRun: Boolean, packBundle: Upload): PackBundle
+
+  """
+  Approve a pending user invite. Only org admins or staff can approve requests.
+  This will send the invite email to the user.
+  """
+  approveUserInvite(id: ID!): UserInvite!
+  assignGDAPAccess(packConfigId: ID!, relationshipId: ID!): JobRequestedResponse
+  assignRoleToUser(roleId: ID!, userId: ID!): UserRole!
+  bulkCreateOrganizations(organizations: [OrganizationInput!]!): [Organization!]!
+  bulkDeleteOrganizations(organizationIds: [ID!]!): Void
+
+  """
+  Apply a single (permission, operation) to every subject matching the
+  supplied scope in one transaction. The server expands the filter, so
+  the client doesn't have to materialize an edit per user for
+  column-header "Grant all" style actions.
+  """
+  bulkSetFormPermissions(input: BulkSetFormPermissionsInput!): BulkSetFormPermissionsResult!
+  bulkSetWorkflowTags(tagIds: [ID!]!, workflowIds: [ID!]!): [Workflow!]!
+  bulkUpdateOrgVariables(orgVariables: [OrgVariableUpdateInput!]!): [OrgVariable!]!
+  bulkUpdateOrganizationFeaturePreviewSettingByLabel(isEnabled: Boolean!, label: String!, orgIds: [ID!]!): [OrganizationFeaturePreviewSetting!]!
+  clearOAuthTokenCache(packConfigId: ID!): OAuthTokenClearResult!
+  clearWorkflowOutputs(id: ID!): Void
+  createActionOptions(actionOptions: [ActionOptionInput!]!, replace: Boolean): [ActionOption]
+  createAppPlatformReservedDomain(reservedDomain: AppPlatformReservedDomainCreateInput!): AppPlatformReservedDomain
+  createComponent(component: CreateComponentInput!): Component
+  createComponentInstance(input: ComponentInstanceCreateInput!): ComponentInstanceResult
+  createConversation(conversation: ConversationInput!): Conversation!
+  createConversationMessage(message: ConversationMessageInput!): ConversationMessage!
+  createConversationMessageVote(vote: ConversationMessageVoteInput!): ConversationMessageVote!
+  createCrate(crate: CrateCreateInput!): Crate
+  createCrateOverride(crateOverride: CrateOverrideInput!): CrateOverride
+  createCrateOverrideOption(option: CrateOverrideOptionInput!): CrateOverrideOption
+  createFeaturePreviewSetting(featurePreviewSetting: CreateFeaturePreviewSettingInput): FeaturePreviewSetting
+  createForeignObjectReference(foreignObjectReference: CreateForeignObjectReferenceInput): ForeignObjectReference
+  createForm(form: FormCreateInput!): Form
+  createGDAPGroups(packConfigId: ID!): JobRequestedResponse
+  createMicrosoftCSPCustomer(companyName: String!, cspPackConfigId: ID!, cspTenantId: String!, tenantId: String!): MicrosoftCSPCustomer!
+  createOrUpdateForeignObjectReference(foreignObjectReference: CreateForeignObjectReferenceInput): ForeignObjectReference
+  createOrUpdateOnboardingQuestionnaireResponse(onboardingQuestionnaireResponse: OnboardingQuestionnaireResponseInput!): OnboardingQuestionnaireResponse
+  createOrUpdateOrgSupportAccess(orgSupportAccess: OrgSupportAccessInput!): [OrgSupportAccess]
+  createOrUpdateOrganizationOnboardingRequirement(organizationOnboardingRequirement: OrganizationOnboardingRequirementInput!): OrganizationOnboardingRequirement
+  createOrgForCSPCustomer(cspPackConfigId: ID!, organization: OrganizationInput!, tenantId: ID!): Organization!
+  createOrgVariable(orgVariable: OrgVariableCreateInput!): OrgVariable
+  createOrganization(organization: OrganizationInput): Organization
+  createOrganizationApiClient(input: CreateApiClientInput!): ApiClientWithSecret!
+  createOrganizations(organizations: [OrganizationInput!]!): [Organization]
+  createPack(pack: PackCreateInput!): Pack
+  createPackConfig(packConfig: PackConfigCreateInput!): PackConfig
+  createPage(nodes: [PageNodeInput], page: PageCreateInput!, preset: String): Page
+  createPermission(permission: PermissionCreateInput!): Permission!
+  createReservedOrganizationName(name: String!): ReservedOrganizationName
+  createRole(role: RoleCreateInput!): Role!
+  createSite(site: SiteCreateInput!): Site
+  createTag(tag: TagCreateInput!): Tag!
+  createTaskLog(taskLog: TaskLogInput!): TaskLog
+  createTemplate(template: TemplateCreateInput!): Template
+  createTrigger(createPatch: Boolean, trigger: TriggerCreateInput!): Trigger
+  createUser(user: CreateUserInput!): User
+  createUserInvite(invite: UserInviteCreateInput!): UserInvite
+  createWorkflow(workflow: WorkflowInput!): Workflow
+  createWorkflowCompletionListener(listener: CompletionListenerCreateInput!): Trigger
+  createWorkflowPatch(comment: String!, commentDescription: String, foreignId: ID, patch: JSON!, patchType: PatchType!, workflowId: ID!): WorkflowPatch!
+  debug: Boolean
+  deleteAppPlatformReservedDomain(id: ID!): Void
+  deleteComponent(id: ID!): Boolean
+  deleteComponentInstance(id: ID!): Boolean!
+  deleteConversation(id: ID!): ID!
+  deleteConversationMessageVote(id: ID!): ID!
+  deleteCrate(id: ID!): ID
+  deleteCrateOverride(id: ID!): Boolean
+  deleteCrateOverrideOption(id: ID!): Boolean
+  deleteFeaturePreviewSetting(id: ID!): Void
+  deleteForm(id: ID!): Void
+  deleteMicrosoftCSPCustomer(cspPackConfigId: ID!, customerId: ID!): Void
+  deleteMicrosoftCSPCustomerById(customerId: ID!): Void
+  deleteOrgFormFieldInstance(id: ID!): Boolean!
+  deleteOrgInterpreterSetting(id: ID!): DeleteOrgInterpreterResponse
+  deleteOrgSupportAccess(orgId: ID!): Void
+  deleteOrgVariable(id: ID!): ID
+  deleteOrganization(id: ID!): Void
+  deleteOrganizationApiClient(id: ID!): Boolean!
+  deletePack(packId: ID!): PackDeleteResponse
+  deletePackConfig(id: ID!, orgId: ID!): Void
+  deletePage(id: ID!): Void
+  deletePermission(id: ID!): ID
+  deleteReservedOrganizationName(id: ID!): Int
+  deleteRole(id: ID!): ID
+  deleteSite(id: ID!): Void
+  deleteTag(id: ID!): ID
+  deleteTemplate(id: ID!): ID
+  deleteTrigger(id: ID!): ID
+  deleteUser(id: ID!): Void
+  deleteUserInvite(id: ID!): Boolean
+  deleteWorkflow(id: ID!): ID
+  deleteWorkflowCompletionListener(id: ID!): Void
+  deleteWorkflowExecution(id: ID!): Boolean
+  deleteWorkflowPatch(id: ID!): Void
+  deleteWorkflows(ids: [ID!]!): [ID]
+  duplicateComponent(id: ID!): Component
+  excludeUserFromRole(roleId: ID!, userId: ID!): UserRoleExclusion!
+  findAndDeleteUserInvite(email: String!, orgId: ID!): Int
+  generateComponent(code: String, configName: ConfigName!, prompt: String!): ComponentGeneratorResponse!
+  generateDiffExplanation(modified: JSON!, original: JSON!): DiffExplanationResponse!
+  generateDocumentation(tasks: [JSON]!): DocumentationGenerationResponse!
+  generatePackOrBundleAuthUrl(extra: JSON, orgId: ID!, packBundleId: ID, packConfigId: ID): AuthUrlResponse
+  generateThemeConfig(code: String, configName: ConfigName!, prompt: String!): ThemeConfigGeneratorResponse!
+  getOAuthTokenStatus(packConfigId: ID!): OAuthTokenStatus!
+  getPackInstallations(packId: ID!): PackInstalledByResponse
+  getPackPageUrl(integrationRef: String!, pagePath: String!): String
+  grantDelegatedAccess(input: GrantDelegatedAccessInput!): UserDelegatedAccess!
+
+  """
+  Bulk-grant: every effective member of the org (and its descendants)
+  inherits this role.
+  """
+  grantRoleToOrganizationMembers(orgId: ID!, roleId: ID!): OrganizationRoleMembership!
+  installPack(name: String, orgId: ID!, packId: ID!): Organization
+  killConversation(id: ID!): Boolean!
+  killWorkflowExecution(id: ID!): JSON
+  linkMicrosoftCSPCustomer(cspPackConfigId: ID!, customerId: ID!, orgIds: [ID!]!): MicrosoftCSPCustomer!
+  listGDAPRelationshipsForTenant(customerTenantId: ID!, packConfigId: ID!): JobRequestedResponse
+  lockGDAPRelationship(packConfigId: ID!, relationshipId: ID!): JobRequestedResponse
+  markGdapComplete(complete: Boolean!, id: ID!): OrganizationOnboardingPackRequirement
+  markOrgMappingComplete(complete: Boolean!, id: ID!): OrganizationOnboardingPackRequirement
+  modifyCSPConsent(action: CSPConsentAction = CREATE, applicationGrants: [CSPApplicationGrant!] = [], packConfigId: ID!, tenantIds: [ID!]!): CSPConsentResult! @deprecated(reason: "Replaced with microsoftCSPConsentRequest subscription")
+  openaiCompletionItems(autocompleteOptions: JSON!, textUntilPosition: String!): OpenAIResponse!
+
+  """
+  Preview the import without creating any organizations.
+  Validates all records and returns categorization.
+  """
+  previewOrganizationImport(input: OrganizationImportInput!): OrganizationImportPreviewResult!
+
+  """
+  Process the organization import, creating valid organizations.
+  Returns the import record with all results.
+  """
+  processOrganizationImport(input: OrganizationImportInput!): OrganizationImportResult!
+  reassignCSPCustomer(cspTenantId: ID!, customerId: ID!): MicrosoftCSPCustomer!
+
+  """
+  Record an audit-log entry for a permissions report download. Called by
+  the Permissions Report modal after the CSV/ZIP successfully reaches the
+  user's browser. The full role/user/permission matrix is a
+  security-sensitive read; logging the download event (who, when, which
+  report types) is required for SOC2-style audit trails.
+  """
+  recordPermissionsReportDownload(orgId: ID!, reportTypes: [PermissionsReportType!]!): Boolean!
+  refetchPackConfigRefOptions(packConfigId: ID!, reference: JSON): JobRequestedResponse
+  refreshGDAPStatuses(packConfigId: ID!, relationshipId: ID): JobRequestedResponse
+  refreshOnboardingOrgMappingProgress(orgId: ID!): OrganizationOnboardingRequirement
+  removeAllowedTool(toolName: String!): UserRoboRewstyPreferences!
+  removeFavoriteAction(actionId: ID!, userId: ID!): Void
+  removeRoleFromUser(roleId: ID!, userId: ID!): Boolean!
+  removeUserExclusion(roleId: ID!, userId: ID!): Boolean!
+  renderJinja(orgId: ID!, principalOrgId: ID, template: String!, triggerId: ID, vars: JSON): JSON
+
+  """
+  Delete every per-user and per-role override for a form in one transaction.
+  The caller's own overrides are deleted like any other row — after reset,
+  access falls back to role defaults + cascade.
+  """
+  resetFormPermissions(formId: ID!): ResetFormPermissionsResult!
+  restoreOrganization(id: ID!): Organization!
+  revertTriggerPatch(foreignId: ID!, patchId: ID!, workflowId: ID!): JSON!
+  revertWorkflowPatch(foreignId: ID, patchId: ID!, workflowId: ID!): JSON!
+  revokeDelegatedAccess(organizationId: ID!, userId: ID!): Boolean!
+  revokeRoleFromOrganizationMembers(orgId: ID!, roleId: ID!): Boolean!
+  rotateApiClientSecret(id: ID!): ApiClientSecretRotation!
+  runTriggerWithMCP(input: JSON, orgId: ID, workflowId: ID!): JobRequestedResponse
+  runWorkflowForOptions(input: JSON!, inputContext: JSON!, orgId: ID!, skipCache: Boolean = false, triggerId: ID, workflowId: ID!): WorkflowOptionsResponse
+  sendGDAPInvites(customerTenantIds: [ID!]!, displayNamePrefix: String, packConfigId: ID!): JobRequestedResponse
+  setFavoriteActions(favoriteActions: [UserFavoriteActionInput!]!, userId: ID!): [UserFavoriteAction!]!
+  setFormPermissions(input: SetFormPermissionsInput!): SetFormPermissionsResult!
+  setFormTags(form: SetFormTagsInput!): Form
+  setManagedOrgGraphTenantId(orgId: ID!, tenantId: ID): ForeignObjectReference @deprecated(reason: "Replaced with linkMicrosoftCSPCustomer and unlinkMicrosoftCSPCustomer mutations")
+  setOrgFormFieldInstanceStatuses(formId: ID!, orgId: ID!, status: Boolean!): Boolean!
+
+  """
+  Toggle the org-level Engine Next (Temporal) setting for `orgId`. Cascade is opt-in: when
+  `cascade` is true, enabling or disabling propagates the value to every descendant org via LTREE.
+  Returns the upserted `organization_feature_preview_settings` rows so Apollo cache can update.
+  
+  Requires the caller to be an org admin who manages `orgId`. Staff-org callers must have
+  support write access to the affected org(s). Gated by `ENABLE_WORKFLOW_TEMPORAL` for `orgId`
+  or one of its managing orgs; calls return `TEMPORAL_DISABLED` when the flag is off for that
+  org chain.
+  
+  Authz is enforced inside the resolver (isOrgAdminUser + verifyStaffOrgUserHasOrgWriteAccess +
+  per-descendant verifyUserManagesOrg), NOT via a schema `@requires*` directive: org admins —
+  not just staff/support — must be able to call this, which is finer-grained than the available
+  directives express.
+  """
+  setOrgTemporalEnabled(cascade: Boolean = false, enabled: Boolean!, orgId: ID!): [OrganizationFeaturePreviewSetting!]!
+  setOrganizationTags(orgId: ID!, tagIds: [ID!]!): Organization
+  setTestUserSession(userId: ID!): Void
+  setWorkflowTemporal(enabled: Boolean!, workflowId: ID!): Workflow!
+  shallowCloneForm(id: ID!, orgId: ID!, overrides: ShallowCloneOverridesInput): Form
+  shallowCloneSite(id: ID!, orgId: ID!, overrides: ShallowCloneOverridesInput): Site
+  shallowCloneTemplate(id: ID!, orgId: ID!, overrides: ShallowCloneOverridesInput): Template
+  shallowCloneWorkflow(id: ID!, orgId: ID!, overrides: ShallowCloneOverridesInput): Workflow
+  skipOrganizationOnboardingCrateRequirement(id: ID!, skip: Boolean!): OrganizationOnboardingCrateRequirement
+  skipOrganizationOnboardingPackRequirement(id: ID!, skip: Boolean!): OrganizationOnboardingPackRequirement
+  stopTestUserSession: Void
+  submitForm(id: ID!, orgId: ID!, triggerId: ID!, values: JSON!): JSON
+  submitPendingTaskResponse(orgId: ID, pendingTaskId: ID!, values: JSON!): JSON
+  submitPendingTaskResponses(pendingTaskId: ID!, values: JSON!): JSON
+  suggestCSPCustomerMatches(packConfigId: ID!): JSON
+  suggestOrgVarMatches(packConfigId: ID!): JSON
+  swaggerToOpenapiConversion(swaggerDoc: JSON!): SwaggerToOpenapiConversionResult!
+  synchronizePackBundleConfigs(orgId: ID!, packBundleId: ID!, primaryPackConfigId: ID!): [SynchronizedPackConfig!]!
+  testPackConfig(packConfig: PackConfigTestInput!): JobRequestedResponse
+  testWorkflow(context: ExecuteContextType, id: ID!, input: JSON, orgId: ID!): JobRequestedResponse
+  testWorkflowTrigger(input: JSON, triggerInstance: OrgTriggerInstanceInput!, workflowId: ID): JobRequestedResponse
+  trackWorkflowEvent(data: JSON, type: WorkflowEventType!, workflowId: ID!): Void
+  uninstallPack(name: String, orgIds: [ID!], packId: ID!): Void
+  uninstallPackBundle(orgIds: [ID!], packBundleId: ID!): Void
+  unlinkClone(id: ID!, objectType: CloneableObjectType!): ID
+  unlinkMicrosoftCSPCustomer(cspPackConfigId: ID!, customerId: ID!, orgIds: [ID!]!): Void
+  unsyncClone(id: ID!, objectType: CloneableObjectType!): ID
+  updateAppPlatformReservedDomain(id: ID!, reservedDomain: AppPlatformReservedDomainUpdateInput!): AppPlatformReservedDomain
+  updateComponent(component: UpdateComponentInput!): Component
+  updateComponentInstance(id: ID!, input: ComponentInstanceUpdateInput!): ComponentInstance!
+  updateConversation(conversation: ConversationInput!): Conversation!
+  updateConversationMessageVote(vote: ConversationMessageVoteInput!): ConversationMessageVote!
+  updateCrate(crate: CrateUpdateInput!): Crate
+  updateCrateOverride(crateOverride: CrateOverrideInput!): CrateOverride
+  updateCrateOverrideOption(option: CrateOverrideOptionInput!): CrateOverrideOption
+  updateCustomInstructions(customInstructions: String!): UserRoboRewstyPreferences!
+  updateFeaturePreviewSetting(featurePreviewSetting: UpdateFeaturePreviewSettingInput): FeaturePreviewSetting
+  updateForm(form: FormUpdateInput!): Form
+  updateFormOverrides(id: ID!, overrides: JSON!): Form
+  updateManagedAndSubOrganizations(organization: OrganizationUpdateInput!): Int
+  updateMicrosoftCSPCustomer(cspPackConfigId: ID!, customerId: ID!, gdapRelationshipId: ID, gdapRelationshipStatus: String, hasConsent: Boolean): MicrosoftCSPCustomer!
+  updateMyRoboRewstyPreferences(preferences: UserRoboRewstyPreferencesInput!): UserRoboRewstyPreferences!
+  updateOrgTriggerInstance(orgTriggerInstance: OrgTriggerInstanceInput!): OrgTriggerInstance
+  updateOrgVariables(orgVariables: [OrgVariableUpdateInput!]!): [OrgVariable!]!
+  updateOrganization(cascadeChildOrgReenable: Boolean = false, organization: OrganizationUpdateInput): Organization
+  updateOrganizationApiClient(input: UpdateApiClientInput!): ApiClient!
+  updateOrganizationFeaturePreviewSetting(featurePreviewSettingId: ID!, isEnabled: Boolean!, orgId: ID!): OrganizationFeaturePreviewSetting
+  updatePack(pack: PackUpdateInput!): Pack
+  updatePackConfig(packConfig: PackConfigUpdateInput!): PackConfig
+  updatePackConfigs(packConfigs: [PackConfigUpdateInput!]!): [PackConfig!]!
+  updatePage(nodes: [PageNodeInput], page: PageUpdateInput!): Page
+  updatePageNode(id: ID!, props: JSON!): PageNode
+  updatePageNodeByCraftId(craftId: String!, pageId: ID!, props: JSON!): PageNode
+  updatePermission(permission: PermissionUpdateInput!): Permission!
+  updateReservedOrganizationName(id: ID!, name: String!): ReservedOrganizationName
+  updateRole(role: RoleUpdateInput!): Role!
+  updateSite(site: SiteUpdateInput!): Site
+  updateSites(sites: [SiteUpdateInput!]!): [Site!]!
+  updateTag(tag: TagUpdateInput!): Tag!
+  updateTags(tags: [TagUpdateInput!]!): [Tag!]!
+  updateTemplate(template: TemplateUpdateInput!): Template
+  updateTrigger(comment: String, commentDescription: String, createPatch: Boolean, trigger: TriggerUpdateInput!): Trigger
+  updateUserInviteRoles(id: ID!, roleIds: [String!]!): UserInvite
+  updateUserPreferences(preferences: UserPreferencesInput!, userId: ID!): User!
+  updateUserRoles(user: UserRolesInput): User
+  updateWorkflow(comment: String, commentDescription: String, createPatch: Boolean, openedAt: String, overwrite: Boolean, overwritePatchId: ID, trigger: TriggerCreateInput, workflow: WorkflowInput!): Workflow
+  updateWorkflowCompletionListener(listener: CompletionListenerUpdateInput!): Trigger
+  upsertOrgFormFieldInstances(input: UpsertOrgFormFieldInstancesInput!): [OrgFormFieldInstance!]!
+  upsertOrgInterpreterSetting(config: JSON!, language: String!, orgId: ID!): OrgInterpreterSetting
+  validateSiteCustomDomainDNS(id: ID!): DNSValidationResponse
+}
+
+type NewWorkflowExecutionEvent {
+  eventId: ID!
+  isFinished: Boolean
+  payload: NewWorkflowExecutionLog
+}
+
+type NewWorkflowExecutionLog {
+  createdAt: String!
+  executionId: ID!
+  orgId: ID!
+  originatingExecutionId: ID!
+  workflowId: ID!
+  workflowType: WorkflowType!
+}
+
+type OAuthTokenClearResult {
+  cleared_tokens: [String!]!
+  message: String!
+  success: Boolean!
+}
+
+type OAuthTokenStatus {
+  custom_refresh_interval: Int
+  expires_at: Float
+  expires_in_seconds: Int
+  last_refreshed_at: Float
+  message: String
+  metadata_present: Boolean!
+  next_refresh_time: Float
+  refresh_buffer_seconds: Int!
+  refresh_strategy: String!
+  status: OAuthTokenStatusEnum!
+  time_until_expiration: Float
+  time_until_refresh: Float
+  token_present: Boolean!
+}
+
+enum OAuthTokenStatusEnum {
+  error
+  expiring_soon
+  healthy
+  metadata_invalid
+  needs_refresh
+  no_metadata
+  no_token
+  unknown
+}
+
+"""
+How @requiresPermission / @filtersByPermission behave when the
+`spicedb_permissions` Statsig flag is OFF.
+
+- DENY (default) — throw AUTH_ERR. Use for SpiceDB-only fields with no
+  legacy authz directive.
+- ALLOW — pass through to the wrapped resolver. Use for fields being
+  MIGRATED from `@auth` / `@requiresManagesOwningOrg` so the legacy
+  directive still enforces when the flag is OFF.
+"""
+enum OnFlagOff {
+  ALLOW
+  DENY
+}
+
+type OnboardingQuestionnaireResponse {
+  createdAt: String!
+  createdBy: User
+  id: ID!
+  onboardingRequirementId: ID!
+  questionField: String!
+  questionText: String
+  responseValue: OnboardingQuestionnaireResponseValue
+  updatedAt: String!
+  updatedBy: User
+}
+
+input OnboardingQuestionnaireResponseInput {
+  onboardingRequirementId: ID!
+  questionField: String!
+  questionText: String
+  responseValue: OnboardingQuestionnaireResponseValue!
+}
+
+"""
+Validated response value that can be a string (max 255 chars), number, boolean, or array of selection objects (max 20 items)
+"""
+scalar OnboardingQuestionnaireResponseValue
+
+input OnboardingQuestionnaireResponseWhereInput {
+  id: ID
+  onboardingRequirementId: ID
+  questionField: String
+}
+
+enum OnboardingStatus {
+  COMPLETED
+  IN_PROGRESS
+  NOT_STARTED
+  REQUIREMENTS_POPULATED
+}
+
+type OpenAIChoice {
+  message: OpenAIMessage!
+}
+
+type OpenAIFunctionCall {
+  arguments: JSON
+  name: String!
+}
+
+type OpenAIMessage {
+  content: String
+  function_call: OpenAIFunctionCall!
+}
+
+type OpenAIResponse {
+  choices: [OpenAIChoice!]
+}
+
+type OrgBreadcrumb {
+  id: ID
+  name: String!
+}
+
+type OrgFormFieldInstance {
+  createdAt: String
+  formFieldId: ID!
+  id: ID!
+  isEnabled: Boolean
+  orgId: ID!
+  organization: Organization
+  schema: JSON
+  updatedAt: String
+}
+
+type OrgInterpreterSetting {
+  config: JSON
+  id: ID!
+  language: String!
+  orgId: ID!
+}
+
+input OrgInterpreterSettingSearchInput {
+  config: json_comparison_exp
+  id: id_comparison_exp
+  orgId: id_comparison_exp
+}
+
+input OrgInterpreterSettingWhereInput {
+  id: ID
+  language: String
+  orgId: ID
+}
+
+type OrgSearchResult {
+  breadcrumbs: [OrgBreadcrumb]
+  hasChildren: Boolean!
+  id: ID!
+  isInternal: Boolean
+  managingOrgId: ID
+  name: String!
+  supportAccessStatus: SupportAccessStatus
+}
+
+type OrgSupportAccess {
+  createdAt: String!
+  expiresAt: String
+  id: ID!
+  orgId: ID!
+  organization: Organization!
+  supportOrgId: ID!
+  supportOrganization: Organization!
+  updatedAt: String!
+}
+
+input OrgSupportAccessInput {
+  expiresAt: String
+  orgId: ID!
+}
+
+type OrgTriggerInstance {
+  createdAt: String!
+  id: ID!
+  isManualActivation: Boolean
+  lastSearchedAt: String
+  nextFireTime: String
+  orgId: ID
+  organization: Organization
+  state: JSON
+  trigger: Trigger
+  triggerId: ID
+  updatedAt: String!
+}
+
+input OrgTriggerInstanceInput {
+  id: ID
+  isManualActivation: Boolean
+  lastSearchedAt: String
+  orgId: ID
+  organization: OrganizationInput
+  state: JSON
+  trigger: TriggerUpdateInput
+  triggerId: ID
+}
+
+input OrgTriggerInstanceSearchInput {
+  id: id_comparison_exp
+  orgId: id_comparison_exp
+  organization: OrganizationInput
+  trigger: TriggerSearchInput
+  triggerId: id_comparison_exp
+}
+
+input OrgTriggerInstanceWhereInput {
+  id: ID
+  orgId: ID
+  organization: OrganizationInput
+  trigger: TriggerWhereInput
+  triggerId: ID
+}
+
+type OrgVariable {
+  cascade: Boolean!
+  category: OrgVariableCategory!
+  createdAt: String!
+  id: ID!
+  name: String!
+  orgId: ID!
+  organization: Organization!
+  packConfig: PackConfig
+  packConfigId: ID
+  updatedAt: String
+  value: String
+}
+
+enum OrgVariableCategory {
+  contact
+  general
+  secret
+  system
+}
+
+input OrgVariableCategorySearchInput {
+  _eq: OrgVariableCategory
+  _gt: OrgVariableCategory
+  _gte: OrgVariableCategory
+  _ilike: OrgVariableCategory
+  _in: [OrgVariableCategory!]
+  _like: OrgVariableCategory
+  _lt: OrgVariableCategory
+  _lte: OrgVariableCategory
+  _ne: OrgVariableCategory
+  _nilike: OrgVariableCategory
+  _nin: [OrgVariableCategory!]
+  _nlike: OrgVariableCategory
+  _substr: OrgVariableCategory
+}
+
+input OrgVariableCreateInput {
+  cascade: Boolean!
+  category: OrgVariableCategory
+  id: ID
+  name: String!
+  orgId: ID!
+  packConfigId: ID
+  value: String!
+}
+
+input OrgVariableSearchInput {
+  category: OrgVariableCategorySearchInput
+  id: id_comparison_exp
+  name: string_comparison_exp
+  orgId: id_comparison_exp
+  organization: OrganizationSearchInput
+  packConfig: PackConfigSearch
+  packConfigId: id_comparison_exp
+  value: string_comparison_exp
+}
+
+input OrgVariableUpdateInput {
+  cascade: Boolean
+  category: OrgVariableCategory
+  id: ID
+  name: String!
+  orgId: ID
+  packConfigId: ID
+  value: String
+}
+
+input OrgVariableWhereInput {
+  category: OrgVariableCategory
+  id: ID
+  name: String
+  orgId: ID
+  organization: OrganizationWhereInput
+  packConfig: PackConfigWhereInput
+  packConfigId: ID
+  value: String
+}
+
+type Organization {
+  actions: [Action!]!
+  activatedTriggers: [Trigger!]!
+  createdAt: String
+  createdTags: [Tag!]!
+  deletedAt: String
+
+  """
+  Number of descendant organizations beneath this org (excludes self), computed by descending
+  the LTREE org hierarchy.
+  
+  LAZY BY CONVENTION: each resolution triggers a full LTREE descent. Frontend MUST only request
+  this field from the Engine Next confirmation modal's dedicated query — do NOT include it in
+  `getSelectedOrg` or any always-on query, or every selected-org refetch will pay the LTREE cost.
+  """
+  descendantOrgCount: Int!
+  domain: String
+  featurePreviewSettings: [OrganizationFeaturePreviewSetting]
+  forms: [Form!]!
+  id: ID
+  installedPacks(order: [[String!]!] = [["name"]], search: PackSearchInput, where: PackInput): [Pack!]!
+  isDeleted: Boolean
+  isEnabled: Boolean
+  isInternal: Boolean
+  isMsp: Boolean
+  isOnboarding: Boolean
+  isStaff: Boolean
+  managedAndSubOrgs(order: [[String!]!] = [["name"]]): [Organization!]!
+  managedOrgAutoInstallingWorkflows: [Workflow!]!
+  managedOrgs: [Organization!]!
+  managingOrg: Organization
+  managingOrgId: ID
+  name: String!
+  orgSlug: String
+  packConfigs: [PackConfig!]!
+  resultsRetentionDays: Int
+  rocSiteId: String
+  supportAccessStatus: SupportAccessStatus
+  tags: [Tag!]!
+  templates: [Template!]!
+
+  """
+  Whether the Engine Next (org-level Temporal) toggle is on for this organization. Derived from
+  the `organization_feature_preview_settings` row keyed by the Engine Next setting UUID — the
+  catalog row's `label` is presentation-only and is NOT consulted by this resolver.
+  """
+  temporalEnabled: Boolean!
+
+  """
+  Whether the Engine Next feature-preview surface is available for this organization. True when
+  the `ENABLE_WORKFLOW_TEMPORAL` Statsig gate is enabled for this org or one of its managing orgs.
+  This controls row visibility/management affordances, not whether the org-level toggle is on.
+  """
+  temporalFeaturePreviewAvailable: Boolean!
+  tid: ID
+  triggerInstances: [OrgTriggerInstance!]!
+  triggers: [Trigger!]!
+  users: [User!]!
+  variables: [OrgVariable!]!
+  visibleActions: [Action!]!
+  visiblePackConfigs: [PackConfig!]!
+  visibleWorkflows: [Workflow!]!
+  workflowExecutions: [WorkflowExecution!]!
+  workflows: [Workflow!]!
+}
+
+type OrganizationAuditEntry {
+  organizationId: ID!
+  organizationName: String!
+  roles: [OrganizationAuditRole!]!
+}
+
+type OrganizationAuditRole {
+  """
+  FORM_GRANTS ids (e.g. `form_viewer`, `form_editor`) granted by this role.
+  System roles return defaults from POLICY.md; custom roles return their
+  authorizedPermissions array (filtered to valid form grant ids).
+  """
+  authorizedPermissions: [String!]!
+  id: ID!
+  name: String!
+}
+
+type OrganizationFeaturePreviewSetting {
+  featurePreviewSetting: FeaturePreviewSetting
+  featurePreviewSettingId: ID
+  isEnabled: Boolean
+  orgId: ID
+}
+
+type OrganizationImport {
+  completedAt: String
+  createdAt: String!
+  createdBy: User
+  createdById: ID
+  errorMessage: String
+  failedCount: Int!
+  id: ID!
+  importType: OrganizationImportType!
+  orgId: ID!
+  organization: Organization
+  records(category: OrganizationImportRecordCategory, limit: Int, offset: Int, status: OrganizationImportRecordStatus): [OrganizationImportRecord!]!
+  skippedCount: Int!
+  startedAt: String
+  status: OrganizationImportStatus!
+  successfulCount: Int!
+  totalRecords: Int!
+  updatedAt: String!
+}
+
+input OrganizationImportInput {
+  """
+  The parent organization ID under which all imported orgs will be created.
+  If a record specifies managingOrgId, it will be used instead (with authorization check).
+  """
+  defaultManagingOrgId: ID!
+
+  """Import type identifier for tracking."""
+  importType: OrganizationImportType = CSV
+
+  """
+  Pack config ID for the PSA integration. When provided, org variable mappings
+  are created for each successfully imported organization using the record's
+  externalId. The org variable name is derived from the pack's orgVariables schema.
+  """
+  psaPackConfigId: ID
+
+  """Pre-parsed array of organization records to import."""
+  records: [OrganizationImportRecordInput!]!
+}
+
+type OrganizationImportPreviewRecord {
+  category: OrganizationImportRecordCategory!
+  domain: String
+  isEnabled: Boolean
+  managingOrgId: ID
+  orgSlug: String
+  organizationName: String!
+
+  """Resolved tag IDs from the provided tag names."""
+  resolvedTagIds: [ID!]
+  rowNumber: Int!
+
+  """Tag names provided in the import record."""
+  tagNames: [String!]
+  validationErrors: [ValidationError!]
+}
+
+type OrganizationImportPreviewResult {
+  records: [OrganizationImportPreviewRecord!]!
+  summary: OrganizationImportSummary!
+}
+
+type OrganizationImportRecord {
+  category: OrganizationImportRecordCategory!
+  createdAt: String!
+  domain: String
+  errorMessage: String
+  id: ID!
+  importId: ID!
+  isEnabled: Boolean
+  managingOrgId: ID
+  orgSlug: String
+  organizationName: String!
+  rowNumber: Int!
+  status: OrganizationImportRecordStatus!
+  tagIds: [ID!]
+  updatedAt: String!
+  validationErrors: [ValidationError!]
+}
+
+enum OrganizationImportRecordCategory {
+  EXISTING
+  INVALID
+  NEW
+  PENDING
+}
+
+input OrganizationImportRecordInput {
+  domain: String
+
+  """
+  External organization ID from an integration (e.g. PSA company ID).
+  Used with psaPackConfigId to create org variable mappings.
+  """
+  externalId: String
+  isEnabled: Boolean
+  managingOrgId: ID
+  orgSlug: String
+  organizationName: String!
+
+  """
+  Tag names to apply to the organization. Tags must exist and belong to the
+  managing organization or be global tags.
+  """
+  tagNames: [String!]
+}
+
+enum OrganizationImportRecordStatus {
+  FAILED
+  SKIPPED
+}
+
+type OrganizationImportResult {
+  import: OrganizationImport!
+  summary: OrganizationImportSummary!
+}
+
+enum OrganizationImportStatus {
+  COMPLETED
+  FAILED
+  PROCESSING
+}
+
+type OrganizationImportSummary {
+  existingOrganizations: Int!
+  failedCreations: Int!
+  invalidRecords: Int!
+  newOrganizations: Int!
+  skippedCreations: Int!
+  successfulCreations: Int!
+  totalRecords: Int!
+}
+
+enum OrganizationImportType {
+  CSV
+  PSA
+}
+
+input OrganizationInput {
+  domain: String
+  id: ID
+  isEnabled: Boolean
+  isOnboarding: Boolean
+  managingOrgId: ID
+  name: String!
+  orgSlug: String
+  rocSiteId: String
+  tagIds: [ID!]
+  tid: String
+}
+
+type OrganizationOnboardingCrateRequirement {
+  crate: Crate!
+  crateId: ID!
+  crateName: String!
+  createdAt: String!
+  createdBy: User
+  executionCount: Int!
+  executionLastCountedAt: String
+  executionThreshold: Int!
+  executionThresholdMet: Boolean!
+  id: ID!
+  installedAt: String
+  installedBy: User
+  installedById: ID
+  isInstalled: Boolean!
+  isOrgSetupRequirement: Boolean
+  isSkipped: Boolean
+  onboardingRequirement: OrganizationOnboardingRequirement!
+  onboardingRequirementId: ID!
+  orgId: ID!
+  organization: Organization!
+  parentPackRequirement: OrganizationOnboardingPackRequirement
+  parentPackRequirementId: ID
+  skippedAt: String
+  skippedById: ID
+  updatedAt: String!
+  updatedBy: User
+  workflow: Workflow
+  workflowId: ID
+}
+
+input OrganizationOnboardingCrateRequirementInput {
+  crateId: ID!
+  crateName: String!
+  installedAt: String
+  installedById: ID
+  isInstalled: Boolean
+  onboardingRequirementId: ID!
+  orgId: ID!
+  workflowId: ID
+}
+
+input OrganizationOnboardingCrateRequirementSearchInput {
+  crateName: String
+  isInstalled: Boolean
+}
+
+input OrganizationOnboardingCrateRequirementWhereInput {
+  crateId: ID
+  crateName: String
+  id: ID
+  isInstalled: Boolean
+  onboardingRequirementId: ID
+  orgId: ID!
+  workflowId: ID
+}
+
+type OrganizationOnboardingPackRequirement {
+  configuredAt: String
+  configuredBy: User
+  configuredById: ID
+  createdAt: String!
+  createdBy: User
+  gdapActiveCount: Int!
+  gdapManuallyCompletedAt: String
+  gdapManuallyCompletedById: ID
+  id: ID!
+  installedAt: String
+  installedBy: User
+  installedById: ID
+  isConfigured: Boolean!
+  isGdapManuallyCompleted: Boolean!
+  isInstalled: Boolean!
+  isOrgMappingManuallyCompleted: Boolean!
+  isRequired: Boolean!
+  isSkipped: Boolean
+  lastGdapCountSavedAt: String
+  lastMappingSavedAt: String
+  mappedOrgsCount: Int!
+  needsOrgMapping: Boolean!
+  onboardingRequirement: OrganizationOnboardingRequirement!
+  onboardingRequirementId: ID!
+  orgId: ID!
+  orgMappingManuallyCompletedAt: String
+  orgMappingManuallyCompletedById: ID
+  organization: Organization!
+  packType: PackType!
+  selectedPack: Pack
+  selectedPackId: ID
+  skippedAt: String
+  skippedById: ID
+  updatedAt: String!
+  updatedBy: User
+}
+
+input OrganizationOnboardingPackRequirementInput {
+  configuredAt: String
+  configuredById: ID
+  installedAt: String
+  installedById: ID
+  isConfigured: Boolean
+  isInstalled: Boolean
+  onboardingRequirementId: ID!
+  orgId: ID!
+  packType: PackType!
+  selectedPackId: ID
+}
+
+input OrganizationOnboardingPackRequirementSearchInput {
+  isConfigured: Boolean
+  isInstalled: Boolean
+  packType: PackType
+}
+
+input OrganizationOnboardingPackRequirementWhereInput {
+  id: ID
+  isConfigured: Boolean
+  isInstalled: Boolean
+  onboardingRequirementId: ID
+  orgId: ID!
+  packType: PackType
+  selectedPackId: ID
+}
+
+type OrganizationOnboardingRequirement {
+  crateRequirements: [OrganizationOnboardingCrateRequirement!]
+  createdAt: String!
+  createdBy: User
+  currentCustomerCount: Int
+  id: ID!
+  onboardingCompletedAt: String
+  onboardingStartedAt: String
+  orgId: ID!
+  organization: Organization!
+  organizationType: OrganizationType
+  packRequirements: [OrganizationOnboardingPackRequirement!]
+  questionnaireResponses: [OnboardingQuestionnaireResponse!]
+  requirementsCompleted: Boolean
+  requirementsPopulated: Boolean
+  requirementsPopulatedAt: String
+  status: OnboardingStatus
+  targetCustomerCount: Int
+  updatedAt: String!
+  updatedBy: User
+}
+
+input OrganizationOnboardingRequirementInput {
+  onboardingCompletedAt: String
+  onboardingStartedAt: String
+  orgId: ID!
+  organizationType: OrganizationType
+  requirementsCompleted: Boolean
+  requirementsPopulated: Boolean
+  requirementsPopulatedAt: String
+  status: OnboardingStatus
+  targetCustomerCount: Int
+  updatedAt: String
+}
+
+input OrganizationOnboardingRequirementSearchInput {
+  organizationType: OrganizationType
+  status: OnboardingStatus
+  targetCustomerCount: Int
+}
+
+input OrganizationOnboardingRequirementWhereInput {
+  id: ID
+  orgId: ID!
+  organizationType: OrganizationType
+  requirementsCompleted: Boolean
+  requirementsPopulated: Boolean
+  status: OnboardingStatus
+}
+
+type OrganizationRoleMembership {
+  orgId: ID!
+  roleId: ID!
+}
+
+input OrganizationSearchInput {
+  createdAt: string_comparison_exp
+  id: id_comparison_exp
+  installedPacks: PackSearchInput
+  isDeleted: bool_comparison_exp
+  isEnabled: bool_comparison_exp
+  isInternal: bool_comparison_exp
+  isOnboarding: bool_comparison_exp
+  isStaff: bool_comparison_exp
+  managedOrgs: OrganizationSearchInput
+  managingOrg: OrganizationSearchInput
+  managingOrgId: id_comparison_exp
+  name: string_comparison_exp
+  orgSlug: string_comparison_exp
+  resultsRetentionDays: int_comparison_exp
+  rocSiteId: string_comparison_exp
+  tags: TagSearchInput
+  users: UserSearchInput
+}
+
+input OrganizationTagsWhereInput {
+  id: [ID!]
+}
+
+enum OrganizationType {
+  DIRECT
+  ENTERPRISE
+  MSP
+  OTHER
+}
+
+input OrganizationUpdateInput {
+  deletedAt: String
+  domain: String
+  id: ID!
+  isDeleted: Boolean
+  isEnabled: Boolean
+  isInternal: Boolean
+  isOnboarding: Boolean
+  name: String
+  orgSlug: String
+  resultsRetentionDays: Int
+  rocSiteId: String
+  tagIds: [ID!]
+  tid: ID
+}
+
+input OrganizationWhereInput {
+  domain: String
+  id: ID
+  isStaff: Boolean
+  managedOrgs: OrganizationWhereInput
+  managingOrg: OrganizationWhereInput
+  managingOrgId: ID
+  name: String
+  orgSlug: String
+  rocSiteId: String
+  tags: OrganizationTagsWhereInput
+  users: UserWhereInput
+}
+
+type Pack {
+  actions(limit: Int, search: ActionSearch, where: ActionInput): [Action!]!
+  configFormSchema: JSON
+  configSchema: JSON
+  description: String
+  icon: String
+  id: String
+  installedBy(filter: OrganizationInput, where: OrganizationInput): [Organization]
+  isDefault: Boolean
+  isMultitenancyEnabled: Boolean
+  isOauthConfiguration: Boolean
+  metadata: JSON
+  name: String
+  orgId: ID
+  orgVariables: JSON
+  packBundle: PackBundle
+  packBundleId: ID
+  packConfigs(where: PackConfigWhereInput): [PackConfig!]!
+  packOverrides: [PackOverride]
+  packTestAction: Action
+  packType: PackType
+  ref: String
+  sensorTypes: [SensorType!]!
+  setupInstructions: String
+  status: PackStatus!
+  tags: [Tag!]!
+  triggerTypes(search: TriggerTypesSearchInput, where: TriggerTypeWhereInput): [TriggerType!]!
+  uid: String
+  version: String
+}
+
+"""Defines the structure for making an API request configuration."""
+type PackActionOption {
+  headers: JSON
+  id: ID!
+  label: String!
+  labelIsTemplate: Boolean
+  maxPages: Int
+  method: HTTPMethod
+  name: String!
+  packId: ID!
+  pageSize: Int
+  paginate: Boolean
+  path: String!
+  pathParams: JSON
+  queryParams: JSON
+  requiredHeaderVars: [String!]
+  requiredPathVars: [String!]
+  requiredQueryVars: [String!]
+  resultsKey: String
+  valueField: String!
+  valueFieldIsPath: Boolean
+}
+
+input PackActionOptionInput {
+  headers: JSON
+  label: String! = "name"
+  labelIsTemplate: Boolean = false
+  maxPages: Int
+  method: HTTPMethod = GET
+  name: String!
+  packId: ID!
+  pageSize: Int
+  paginate: Boolean = true
+  path: String!
+  pathParams: JSON
+  queryParams: JSON
+  requiredHeaderVars: [String!] = []
+  requiredPathVars: [String!] = []
+  requiredQueryVars: [String!] = []
+  resultsKey: String
+  valueField: String! = "id"
+  valueFieldIsPath: Boolean = false
+}
+
+input PackActionOptionWhereInput {
+  headers: JSON
+  id: ID
+  label: String
+  labelIsTemplate: Boolean
+  method: HTTPMethod
+  name: String
+  packId: ID
+  paginate: Boolean
+  path: String
+  pathParams: JSON
+  queryParams: JSON
+  requiredHeaderVars: [String!]
+  requiredPathVars: [String!]
+  requiredQueryVars: [String!]
+  resultsKey: String
+  valueField: String
+  valueFieldIsPath: Boolean
+}
+
+type PackBundle {
+  configSchema: JSON
+  description: String
+  id: ID!
+  name: String!
+  packs: [Pack!]!
+  ref: String!
+}
+
+type PackBundleIncludedPack {
+  description: String
+  id: ID!
+  isInstalled: Boolean!
+  isRequired: Boolean!
+  name: String!
+  ref: String!
+  updatedAt: String
+}
+
+input PackBundleSearchInput {
+  description: string_comparison_exp
+  id: id_comparison_exp
+  name: string_comparison_exp
+  packs: PackSearchInput
+  ref: String
+}
+
+input PackBundleWhereInput {
+  description: String
+  id: ID
+  name: String
+  packs: PackWhereInput
+  ref: String
+}
+
+type PackConfig {
+  actionOptions(limit: Int, offset: Int, order: [[String!]!], search: ActionOptionSearchInput, where: ActionOptionWhereInput): [ActionOption!]!
+  appliedToTriggers: [Trigger!]!
+  config: JSON
+  createdAt: String
+  default: Boolean
+  description: String
+  foreignObjectReferences: [ForeignObjectReference!]!
+  id: ID
+  metadata: JSON
+  name: String!
+  orgId: ID
+  orgVariables: [OrgVariable!]!
+  organization: Organization
+  pack: Pack
+  packId: ID
+  testActionRun: PackTestActionRun
+  updatedAt: String
+  visibleForOrganizations: [Organization!]!
+}
+
+input PackConfigApplyInput {
+  config: JSON
+  description: String
+  id: ID!
+  metadata: JSON
+  name: String
+  orgId: ID!
+  packId: ID!
+}
+
+input PackConfigCreateInput {
+  config: JSON
+  default: Boolean
+  description: String
+  id: ID
+  metadata: JSON
+  name: String!
+  orgId: ID!
+  packId: ID!
+}
+
+input PackConfigDeleteInput {
+  id: ID!
+  orgId: ID!
+}
+
+input PackConfigSearch {
+  config: json_comparison_exp
+  default: bool_comparison_exp
+  description: string_comparison_exp
+  id: id_comparison_exp
+  metadata: json_comparison_exp
+  name: string_comparison_exp
+  orgId: id_comparison_exp
+  pack: PackSearchInput
+  packId: id_comparison_exp
+}
+
+input PackConfigTestInput {
+  config: JSON
+  description: String
+  id: ID!
+  metadata: JSON
+  name: String
+  orgId: ID
+  packId: ID
+}
+
+input PackConfigUpdateInput {
+  config: JSON
+  default: Boolean
+  description: String
+  id: ID!
+  metadata: JSON
+  name: String
+  orgId: ID
+  packId: ID
+}
+
+input PackConfigWhereInput {
+  actionOptions: ActionOptionWhereInput
+  config: JSON
+  default: Boolean
+  description: String
+  id: ID
+  metadata: JSON
+  name: String
+  orgId: ID
+  pack: PackWhereInput
+  packId: ID
+  ref: ID
+}
+
+input PackCreateInput {
+  actions: [ActionInput!]
+  configSchema: JSON!
+  description: String
+  icon: String
+  isDefault: Boolean
+  isMultitenancyEnabled: Boolean
+  isOauthConfiguration: Boolean
+  metadata: JSON
+  name: String!
+  orgId: ID
+  orgVariables: JSON
+  packTestActionId: ActionInput
+  packType: PackType
+  ref: String!
+  status: PackStatus
+  tags: [String!]
+  uid: String
+  version: String
+}
+
+type PackDeleteResponse {
+  installedBy: [ID!]
+  message: String
+  success: Boolean!
+}
+
+input PackInput {
+  actions: [ActionInput!]
+  description: String
+  icon: String
+  id: ID
+  installedBy: OrganizationInput
+  name: String
+  orgId: ID
+  packTestActionId: ID
+  packType: PackType
+  ref: String
+  status: PackStatus
+  tags: [String!]
+  uid: String
+  version: String
+}
+
+type PackInstalledByResponse {
+  installedBy: [ID!]
+  message: String
+  success: Boolean!
+}
+
+union PackOrError = ErrorMessage | Pack
+
+type PackOrPackBundle {
+  description: String
+  icon: String
+  id: ID!
+  includedPacks: [PackBundleIncludedPack!]
+  isBundle: Boolean!
+  isDefault: Boolean
+  name: String!
+  orgId: ID
+  packType: PackType
+  ref: String!
+  status: PackStatus
+  tags: [Tag!]
+  updatedAt: String
+}
+
+type PackOverride {
+  configFallbackMode: ConfigFallbackModes
+  configSelectionMode: ConfigSelectionModes
+  crateTrigger: CrateTrigger
+  crateTriggerId: ID
+  crateTriggerUnpacking: CrateTriggerUnpacking
+  crateTriggerUnpackingId: ID
+  id: ID!
+  pack: Pack!
+  packConfig: PackConfig
+  packConfigId: ID
+  packId: ID!
+  searchInput: String
+  trigger: Trigger
+  triggerId: ID
+  workflowTask: WorkflowTask
+  workflowTaskId: ID
+}
+
+input PackOverrideInput {
+  configFallbackMode: ConfigFallbackModes
+  configSelectionMode: ConfigSelectionModes
+  packConfigId: ID
+  packId: ID!
+  searchInput: String
+}
+
+input PackOverrideSearchInput {
+  pack: PackSearchInput
+  packConfig: PackConfigSearch
+  packConfigId: id_comparison_exp
+  packId: id_comparison_exp
+  trigger: TriggerSearchInput
+  triggerId: id_comparison_exp
+  workflowTask: WorkflowTaskSearchInput
+  workflowTaskId: id_comparison_exp
+}
+
+type PackResourceTypesContainer {
+  id: ID!
+  packName: String!
+  resourceTypes: [String!]!
+}
+
+input PackSearchInput {
+  actions: ActionSearch
+  description: string_comparison_exp
+  id: id_comparison_exp
+  installedBy: OrganizationSearchInput
+  isOauthConfiguration: bool_comparison_exp
+  name: string_comparison_exp
+  orgId: id_comparison_exp
+  packBundleId: id_comparison_exp
+  packOverrides: PackOverrideSearchInput
+  packType: PackTypeSearch
+  ref: string_comparison_exp
+  status: PackStatusSearch
+  tags: string_comparison_exp
+  uid: string_comparison_exp
+  version: string_comparison_exp
+}
+
+enum PackStatus {
+  deprecated
+  draft
+  hidden
+  published
+}
+
+input PackStatusSearch {
+  _eq: PackStatus
+  _in: [PackStatus!]
+  _ne: PackStatus
+  _nin: [PackStatus!]
+}
+
+type PackTestActionRun {
+  createdAt: String!
+  errorMsg: String
+  executionId: ID
+  id: ID!
+  isPassing: Boolean!
+  packConfig: PackConfig
+  packConfigId: ID!
+  responseTimeMs: Int
+  updatedAt: String!
+}
+
+enum PackType {
+  BACKUP
+  BILLING
+  DOCUMENTATION
+  IDENTITY_PROVIDER
+  IDENTITY_PROVIDER_LICENSING
+  MONITORING
+  PSA
+  RMM
+  SECURITY
+  custom
+  default
+  openapi
+}
+
+input PackTypeSearch {
+  _eq: PackType
+  _in: [PackType!]
+  _ne: PackType
+  _nin: [PackType!]
+}
+
+input PackUpdateInput {
+  actions: [ActionUpdateInput!]
+  configSchema: JSON
+  description: String
+  icon: String
+  id: ID
+  isDefault: Boolean
+  isMultitenancyEnabled: Boolean
+  isOauthConfiguration: Boolean
+  metadata: JSON
+  name: String
+  orgId: ID
+  orgVariables: JSON
+  packTestActionId: ID
+  ref: String
+  setupInstructions: String
+  status: PackStatus
+  tags: [String!]
+  uid: String
+  version: String
+}
+
+input PackWhereInput {
+  actions: ActionInput
+  description: String
+  id: ID
+  installedBy: OrganizationWhereInput
+  isOauthConfiguration: Boolean
+  name: String
+  orgId: ID
+  packBundleId: ID
+  packType: PackType
+  ref: String
+  status: PackStatus
+}
+
+type PacksAndBundlesByInstalledState {
+  installedPacksAndBundles: [PackOrPackBundle!]
+  marketplacePacksAndBundles: [PackOrPackBundle!]
+}
+
+type Page {
+  cloneOverrides: JSON
+  clonedFrom: Site
+  clonedFromId: ID
+  clones: [Page]
+  createdAt: String
+  createdBy: User
+  createdById: ID
+  id: ID!
+  isSynchronized: Boolean
+  loader: Loader
+  name: String!
+  nodes: [PageNode]
+  orgId: ID
+  organization: Organization
+  path: String!
+  permission: Permission
+  site: Site
+  siteId: ID
+  title: String
+  updatedAt: String
+  updatedBy: User
+  updatedById: ID
+  variables: [JSON]
+  workflows: [Workflow!]!
+}
+
+input PageCreateInput {
+  cloneOverrides: JSON
+  clonedFromId: ID
+  id: ID
+  isSynchronized: Boolean
+  loader: Loader
+  name: String!
+  orgId: ID!
+  path: String!
+  siteId: ID
+  variables: [JSON]
+  workflows: [WorkflowInput]
+}
+
+type PageNode {
+  componentId: ID
+  craftId: String!
+  custom: JSON
+  displayName: String!
+  formId: ID
+  hidden: Boolean
+  id: ID!
+  isCanvas: Boolean!
+  linkedNodes: JSON!
+  linkedPages: [Page!]
+  nodes: [String]!
+  pageId: ID!
+  parentId: ID
+  props: JSON!
+  templates: [Template!]
+  triggers: [Trigger!]
+  type: JSON!
+  workflows: [Workflow!]
+}
+
+input PageNodeInput {
+  componentId: ID
+  craftId: String!
+  custom: JSON
+  displayName: String!
+  formId: ID
+  hidden: Boolean
+  id: ID!
+  isCanvas: Boolean!
+  linkedNodes: JSON!
+  linkedPages: [PageCreateInput!]
+  nodes: [String]!
+  pageId: ID
+  parentId: ID
+  props: JSON!
+  templates: [TemplateInput!]
+  triggers: [TriggerCreateInput!]
+  type: JSON!
+  workflows: [WorkflowInput!]!
+}
+
+input PageSearchInput {
+  name: String
+  siteId: ID
+}
+
+input PageUpdateInput {
+  componentInstances: [ComponentInstanceInput]
+  id: ID!
+  loader: Loader
+  name: String
+  orgId: ID
+  pageNodes: String
+  path: String
+  siteId: ID!
+  title: String
+  variables: [JSON]
+  workflows: [WorkflowInput]
+}
+
+input PageWhereInput {
+  _: String
+  clonedFromId: ID
+  domain: String
+  id: ID
+  name: String
+  orgId: ID
+  path: String
+  site: SitePropertiesInput
+  siteId: ID
+}
+
+input PagesImportInput {
+  id: ID!
+  name: String!
+  path: String!
+}
+
+enum PatchType {
+  form
+  template
+  trigger
+  workflow
+}
+
+type PendingTask {
+  expiresAt: String!
+  id: ID!
+  status: PendingTaskStatus!
+  workflowExecution: WorkflowExecution!
+  workflowTask: PendingTaskWorkflowTask!
+}
+
+input PendingTaskInput {
+  expiresAt: String
+  id: ID
+  status: PendingTaskStatus
+  workflowExecutionId: ID
+}
+
+input PendingTaskSearchInput {
+  id: id_comparison_exp
+  status: PendingTaskStatusSearchInput
+  workflowExecution: WorkflowExecutionSearchInput
+  workflowExecutionId: id_comparison_exp
+}
+
+enum PendingTaskStatus {
+  canceled
+  delayed
+  expired
+  pending
+  success
+}
+
+input PendingTaskStatusSearchInput {
+  _eq: PendingTaskStatus
+  _gt: PendingTaskStatus
+  _gte: PendingTaskStatus
+  _ilike: PendingTaskStatus
+  _in: [PendingTaskStatus!]
+  _like: PendingTaskStatus
+  _lt: PendingTaskStatus
+  _lte: PendingTaskStatus
+  _neq: PendingTaskStatus
+  _nilike: PendingTaskStatus
+  _nin: [PendingTaskStatus!]
+  _nlike: PendingTaskStatus
+  _substr: PendingTaskStatus
+}
+
+input PendingTaskWhereInput {
+  id: ID
+  status: PendingTaskStatus
+  workflowExecution: WorkflowExecutionWhereInput
+  workflowExecutionId: ID
+}
+
+type PendingTaskWorkflowTask {
+  action_item: JSON
+  action_metadata: JSON
+  action_params: JSON
+  execution_id: ID
+  originating_execution_id: ID
+  pack_params: JSON
+  runner_params: JSON
+  spec: JSON
+  started_at: String
+  task: JSON
+}
+
+type PendingTasksAggregate {
+  count: Int!
+}
+
+input PendingTasksAggregateInput {
+  status: PendingTaskStatus
+  workflowExecution: WorkflowExecutionWhereInput
+}
+
+type Permission {
+  authorizedForOrganizations: [Organization]
+  authorizedForSubOrganizations: [Organization]
+  excludeOrganizations: [Organization]
+  id: ID
+  objectId: String
+  objectType: String
+  orgId: ID
+  override: String
+  permissionType: String
+  relation: String
+  roleIds: [String]
+  subjectId: String
+  subjectType: String
+  templateId: ID
+}
+
+enum PermissionAuditExportFormat {
+  csv
+  json
+}
+
+enum PermissionAuditItemType {
+  permission
+  role
+}
+
+type PermissionAuditLogEntry {
+  action: String!
+  actionDetails: JSON!
+  actor: User
+  actorUserEmail: String!
+  actorUserId: ID
+  createdAt: String!
+  id: ID!
+  itemType: String!
+  orgId: ID
+  orgName: String!
+  organization: Organization
+  resourceId: ID
+}
+
+input PermissionAuditLogFiltersInput {
+  endDate: String
+  itemType: PermissionAuditItemType
+  startDate: String
+  userId: ID
+  userSearch: String
+}
+
+type PermissionAuditLogList {
+  entries: [PermissionAuditLogEntry!]!
+  hasMore: Boolean!
+  totalCount: Int!
+}
+
+input PermissionCreateInput {
+  id: ID
+  objectId: String
+  objectType: String
+  orgId: ID
+  orgIds: [ID!]
+  override: String
+  relation: String
+  roleIds: [String!]
+  templateId: ID
+}
+
+"""
+Surface for `@requiresPermission` denials — controls how the frontend
+renders the AUTH_ERR.
+
+- TOAST (default) — denial is silent at the GraphQL layer; the route
+  component / Apollo handler decide what to render. Existing behavior.
+- PAGE — denial is "user-visible" at the route level; the frontend route
+  component renders <AccessDeniedPage> in place of the resource content.
+"""
+enum PermissionDenialSurface {
+  PAGE
+  TOAST
+}
+
+input PermissionUpdateInput {
+  excludeOrgIds: [ID]
+  objectId: String!
+  orgIds: [ID!]
+  override: String
+  relation: String
+  roleIds: [String!]
+  subOrgIds: [ID]
+}
+
+input PermissionWhereInput {
+  id: ID
+  objectId: String
+  objectType: String
+  permissionType: String
+  templateId: ID
+}
+
+"""
+The four report types exposed by the Permissions Report panel. Used as the
+audit-log payload for `recordPermissionsReportDownload` so the schema
+rejects arbitrary strings at the boundary — `permission_audit_log` rows are
+read by compliance tooling that does not re-validate the payload.
+"""
+enum PermissionsReportType {
+  ORGANIZATIONS
+  RESOURCES
+  ROLES
+  USERS
+}
+
+interface PhasedCloneEvent {
+  phase: ClonePhase!
+}
+
+type PsaAccountType {
+  id: String!
+  label: String!
+}
+
+type PsaFilterOptions {
+  accountTypes: [PsaAccountType!]!
+  statuses: [PsaStatus!]!
+}
+
+type PsaOrganization {
+  accountTypeIds: [String!]!
+  id: String!
+  name: String!
+  statusId: String
+}
+
+type PsaStatus {
+  id: String!
+  label: String!
+}
+
+type PublicCrate {
+  associatedPacks: [AssociatedPack]
+  category: String
+  description: String
+  gid: ID
+  id: ID!
+  maturity: String
+  name: String
+  providedValue: String
+  setupAssistance: String
+  setupTime: String
+}
+
+union PublishCrateStreamEvent = PublishCrateStreamFailureResponse | PublishCrateStreamSuccessResponse
+
+type PublishCrateStreamFailureResponse implements BaseStreamEvent {
+  code: String!
+  didSucceed: Boolean!
+  error: String!
+  isFinished: Boolean!
+}
+
+type PublishCrateStreamSuccessResponse implements BaseStreamEvent {
+  crateId: ID!
+  didSucceed: Boolean!
+  isFinished: Boolean!
+}
+
+type Query {
+  action(search: ActionSearch, where: ActionInput): Action
+  actionOption(where: ActionOptionWhereInput): ActionOption
+  actionOptions(limit: Int, offset: Int, order: [[String!]!] = [["optionLabel"]], where: ActionOptionWhereInput): [ActionOption!]!
+  actions(limit: Int = 100, offset: Int, order: [[String!]!] = [["name"]], search: ActionSearch, where: ActionInput): [Action!]!
+  actionsForOrg(limit: Int = 100, offset: Int, order: [[String!]!] = [["name"]], orgId: ID, search: ActionSearch, where: ActionInput): [Action!]!
+  activeConversationRequest(orgId: ID!, requestId: ID!): ActiveConversationRequest
+  activeConversationRequests(orgId: ID!, userId: ID!): [ActiveConversationRequest!]!
+  apiClient(id: ID!): ApiClient
+  apiClients(pagination: ApiClientListInput, where: ApiClientWhereInput): ApiClientList!
+  appPlatformReservedDomain(search: AppPlatformReservedDomainSearchInput, where: AppPlatformReservedDomainWhereInput): AppPlatformReservedDomain
+  appPlatformReservedDomains(limit: Int, offset: Int, search: AppPlatformReservedDomainSearchInput, where: AppPlatformReservedDomainWhereInput): [AppPlatformReservedDomain!]!
+
+  """
+  Org-wide audit projection used by the permissions report CSV builder.
+  Returns one row per form. Unlike `formPermissionState`, this does not
+  enumerate users: only users with explicit ALLOW overrides are surfaced.
+  Role grants are computed from system-role defaults overlaid with explicit
+  role overrides. Issues one Postgres query per category (forms, overrides,
+  triggers, org_roles, users-for-overrides) regardless of form count.
+  """
+  bulkFormPermissionsAudit(orgId: ID!): [FormAuditEntry!]!
+
+  """
+  Org-wide audit projection used by the permissions report CSV builder.
+  Returns one entry per organization in the caller's subtree (orgId +
+  descendants), each with its assigned roles and the form-grant IDs those
+  roles carry (system role defaults or the custom role's authorized
+  permissions). Single query — no per-role round trips.
+  """
+  bulkOrganizationsAudit(orgId: ID!): [OrganizationAuditEntry!]!
+  check(where: [CheckInput!]!): JSON
+  checkAuthorization(where: CheckAuthorizationInput!): JSON
+
+  """
+  Per-permission grant check resolved through peck-order, matching the path
+  spicedbMiddleware enforces. Returns a Boolean[] aligned with the input order.
+  """
+  checkRolePermissions(permissions: [String!]!): [Boolean!]!
+  checkSpiceDBPermission(where: CheckSpiceDBPermissionInput!): SpiceDBCheckResult
+  checkUserManagesOrg(orgId: ID!): Boolean!
+  commonlyUsedIntegrationActions(integrationId: ID!, limit: Int = 10, orgId: ID): [CommonlyUsedAction!]!
+  component(id: ID!): Component
+  componentInstance(id: ID!): ComponentInstance
+  componentInstances(orgId: ID!): [ComponentInstance]
+  componentInstancesByComponentVersion(componentVersionId: ID!): [ComponentInstance]
+  componentInstancesByPage(pageId: ID!): [ComponentInstance]
+  componentTree(id: ID!): ComponentTree
+  components(orgId: ID!): [Component]
+  componentsByRoots(rootIds: [ID]!): [Component]
+  conversation(id: ID!): Conversation
+  conversationMessageVotes(where: ConversationMessageVoteWhereInput): [ConversationMessageVote!]!
+  conversations(limit: Int, offset: Int, order: [[String!]], where: ConversationWhereInput): [Conversation!]!
+  crate(search: CrateSearchInput, selectedOrgId: ID, where: CrateWhereInput): Crate
+  crateCategories(selectedOrgId: ID!): JSON
+  crateExportInfo(workflowId: ID!): JSON
+  crateTags(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: TagSearchInput, where: TagWhereInput): [Tag!]!
+  crateTokenTypes: [String!]!
+  crateUnpackingArgumentSet(where: CrateUnpackingArgumentSetWhereInput): CrateUnpackingArgumentSet
+  crateUseCase(where: CrateUseCaseWhereInput): CrateUseCase
+  crateUseCases(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: CrateUseCaseSearchInput, where: CrateUseCaseWhereInput): [CrateUseCase!]!
+
+  """
+  This public query returns all available crates within the Rewst platform.
+  """
+  crates(limit: Int, offset: Int, order: [[String!]!] = [["unpackingCount", "desc"], ["createdAt", "asc"]], search: CrateSearchInput, selectedOrgId: ID, where: CrateWhereInput): [Crate!]!
+  cratesForForm(formId: ID!): [Crate]
+  cratesForTemplate(templateId: ID!): [Crate]
+  dailyTaskCountsByDateRange(endDate: String!, orgId: ID!, startDate: String!): [TaskCountByDate!]!
+  dailyTimeSavedByDateRange(endDate: String!, orgId: ID!, startDate: String!): [TimeSavedByDate!]!
+  debug: Boolean
+  evaluatedForm(orgContextId: ID, where: EvaluatedFormWhereInput): Form
+  extractJinjaValues(fields: JSON!, orgId: ID!): JSON
+  featurePreviewSetting(where: FeaturePreviewSettingWhereInput): FeaturePreviewSetting
+  featurePreviewSettings(order: [[String!]!] = [["createdAt"]], where: FeaturePreviewSettingWhereInput): [FeaturePreviewSetting]
+  foreignObjectReference(where: ForeignObjectReferenceWhereInput): ForeignObjectReference
+  foreignObjectReferences(where: ForeignObjectReferenceWhereInput): [ForeignObjectReference!]!
+  form(orgContextId: ID, search: FormSearchInput, where: FormWhereInput): Form
+
+  """
+  Users are server-paginated to bound per-request work (drawer bulk-checks
+  every returned user × permission against peck-order). orgId is validated
+  against the form's own org and its form_submission trigger authorized
+  orgs; callers cannot enumerate users of arbitrary orgs through this query.
+  """
+  formPermissionState(
+    formId: ID!
+    orgId: ID
+    userLimit: Int
+    userOffset: Int
+    userSearch: String
+
+    """
+    SpiceDB zedtoken returned by a prior form-permission mutation on this
+    form. When set, the server issues the underlying bulk permission
+    check with `Consistency.at_least_as_fresh(zedtoken)` so the refetch
+    reflects the caller's own write. Closes the CDC propagation window.
+    """
+    zedtoken: String
+  ): FormPermissionState
+  forms(hasTagIds: [ID], limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: FormSearchInput, where: FormWhereInput): [Form!]!
+  getAppPermissions(orgId: ID!): [Site!]!
+  getCannyToken: String
+  getHaloLiveChatToken: String
+  getSiteTheme(domain: String, id: ID): JSON
+  getSkilljarLoginToken: String
+  getTestUserSession: User
+  getTestUsers(where: GetUserWhereInput): [User!]!
+  getTriggerErrorStatus(triggerIds: [ID!]): JSON!
+  home(domain: String!): String!
+  hourlyTaskCountByDate(date: String!, orgId: ID!): [TaskCountByHour!]!
+  hourlyTimeSavedByDate(date: String!, orgId: ID!): [TimeSavedByHour!]!
+
+  """
+  This public query returns all available integrations within the Rewst platform.
+  """
+  integrations(limit: Int, offset: Int): [Integration!]!
+  isOrgManagedBy(orgId: ID!, parentOrgId: ID!): Boolean
+  jinjaFilterDocumentation(filterName: String!): Jinja2Documentation
+  jinjaFiltersDocumentation: [Jinja2Documentation!]!
+  jinjaRenderSession(conversationId: ID, id: ID!): JinjaRenderSession
+  jinjaTemplate(where: TemplateInput): Template
+  latestInterpreterVersions(language: String): [InterpreterVersion!]
+  latestWorkflowExecution(orgId: ID!, status: String, workflowId: ID!): WorkflowExecution
+  listDelegatedAccess(organizationId: ID!): [UserDelegatedAccess!]!
+  livePage(domain: String, id: ID, path: String!, query: JSON): EncodedPageNodes
+  localReferenceOptions(filterArg: JSON, limit: Int, modelName: LocalReferenceModel!, offset: Int, order: [[String!]!], orgId: ID!, search: String): [DropdownOption!]!
+  login(domain: String!): Login!
+  managedAndSubOrganizations(hasTagIds: [ID], limit: Int, offset: Int, order: [[String!]!] = [["name"]], parentOrgId: ID!, search: OrganizationSearchInput): [Organization!]!
+  managedOrgMsGraphTenantIdReferences(orgId: ID!): [ForeignObjectReference!]! @deprecated(reason: "Replaced with microsoftCSPCustomer query")
+  me: User
+  messageVoteStats(conversationMessageId: ID!): MessageVoteStats!
+  microsoftAllCSPCustomers(search: MicrosoftCSPCustomerSearchInput, where: MicrosoftCSPCustomerWhereInput): [MicrosoftCSPCustomer!]!
+  microsoftCSPCustomer(cspPackConfigId: ID!, where: MicrosoftCSPCustomerWhereInput): MicrosoftCSPCustomer
+  microsoftCSPCustomers(cspPackConfigId: ID!, search: MicrosoftCSPCustomerSearchInput, where: MicrosoftCSPCustomerWhereInput): [MicrosoftCSPCustomer!]!
+  monacoFilterCompletionItems: [MonacoCompletionItem!]!
+  myAccessibleOrganizations: [Organization!]!
+  myRoboRewstyPreferences: UserRoboRewstyPreferences
+  onboardingQuestionnaireResponse(where: OnboardingQuestionnaireResponseWhereInput): OnboardingQuestionnaireResponse
+  onboardingQuestionnaireResponses(limit: Int, offset: Int, order: [[String!]!] = [["createdAt"]], where: OnboardingQuestionnaireResponseWhereInput): [OnboardingQuestionnaireResponse!]!
+  orgBreadcrumb(orgId: ID!, rootOrgId: ID!): [OrgBreadcrumb]
+  orgFormFieldInstance(id: ID!): OrgFormFieldInstance
+  orgFormFieldInstanceStatus(formId: ID!, orgId: ID!): Boolean
+  orgFormFieldInstances(formFieldId: ID!): [OrgFormFieldInstance!]
+  orgInterpreterSetting(id: ID, language: String, orgId: ID): OrgInterpreterSetting
+  orgInterpreterSettings(orgId: ID!): [OrgInterpreterSetting!]!
+  orgSearch(breadcrumbRootOrgId: ID!, rootOrgId: ID!, search: String): [OrgSearchResult!]!
+  orgTriggerInstance(search: OrgTriggerInstanceSearchInput, where: OrgTriggerInstanceWhereInput): OrgTriggerInstance
+  orgTriggerInstances(limit: Int, offset: Int, order: [[String!]!] = [["createdAt"]], search: OrgTriggerInstanceSearchInput, where: OrgTriggerInstanceWhereInput): [OrgTriggerInstance!]!
+  orgVariable(maskSecrets: Boolean, search: OrgVariableSearchInput, where: OrgVariableWhereInput): OrgVariable
+  orgVariables(limit: Int, maskSecrets: Boolean, offset: Int, order: [[String!]!] = [["name"]], search: OrgVariableSearchInput, where: OrgVariableWhereInput): [OrgVariable!]!
+  organization(search: OrganizationSearchInput, where: OrganizationWhereInput): Organization
+  organizationApiClients(orgId: ID!, pagination: ApiClientListInput): ApiClientList!
+
+  """Get a specific organization import by ID."""
+  organizationImport(id: ID!): OrganizationImport
+
+  """Get organization import history for a managing organization."""
+  organizationImports(importType: OrganizationImportType, limit: Int = 20, offset: Int = 0, order: [[String!]!] = [["createdAt", "DESC"]], orgId: ID!, status: OrganizationImportStatus): [OrganizationImport!]!
+  organizationOnboardingCrateRequirement(where: OrganizationOnboardingCrateRequirementWhereInput): OrganizationOnboardingCrateRequirement
+  organizationOnboardingCrateRequirements(limit: Int, offset: Int, order: [[String!]!] = [["crateName"]], search: OrganizationOnboardingCrateRequirementSearchInput, where: OrganizationOnboardingCrateRequirementWhereInput): [OrganizationOnboardingCrateRequirement!]!
+  organizationOnboardingPackRequirement(where: OrganizationOnboardingPackRequirementWhereInput): OrganizationOnboardingPackRequirement
+  organizationOnboardingPackRequirements(limit: Int, offset: Int, order: [[String!]!] = [["packType"]], search: OrganizationOnboardingPackRequirementSearchInput, where: OrganizationOnboardingPackRequirementWhereInput): [OrganizationOnboardingPackRequirement!]!
+  organizationOnboardingRequirement(where: OrganizationOnboardingRequirementWhereInput): OrganizationOnboardingRequirement
+  organizations(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: OrganizationSearchInput, where: OrganizationWhereInput): [Organization!]!
+  organizationsWithFeaturePreviewSettingEnabled(label: String!): [Organization!]!
+  pack(where: PackWhereInput): Pack
+  packActionOption(where: PackActionOptionWhereInput): PackActionOption
+  packActionOptions(limit: Int, offset: Int, order: [[String!]!] = [["label"]], where: PackActionOptionWhereInput): [PackActionOption!]!
+  packAuthUrl(orgId: ID!, packName: String!): String
+  packBundle(where: PackBundleWhereInput!): PackBundle
+  packBundles(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: PackBundleSearchInput, where: PackBundleWhereInput): [PackBundle]!
+  packConfig(includeSpec: Boolean, search: PackConfigSearch, where: PackConfigWhereInput): PackConfig
+  packConfigs(includeSpec: Boolean, order: [[String!]!], resourceNames: String, search: PackConfigSearch, where: PackConfigWhereInput): [PackConfig!]!
+  packConfigsForForm(formId: ID!, orgId: ID!, triggerId: ID): [PackConfig!]!
+  packConfigsForOrg(includeSpec: Boolean, orgId: ID!, packIds: [ID!]!): [PackConfig!]!
+  packs(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: PackSearchInput, where: PackWhereInput): [Pack!]!
+  packsAndBundlesByInstalledState(includeCustomPack: Boolean, orgId: ID!): PacksAndBundlesByInstalledState!
+  packsByTag(tagName: String!): [Pack!]!
+  packsForOrg(includeSpec: Boolean, limit: Int = 100, offset: Int, order: [[String!]!] = [["name"]], orgId: ID, search: PackSearchInput, where: PackWhereInput): [Pack!]!
+  page(where: PageWhereInput!): Page
+  pageElements(pageId: ID!): [PageNode!]!
+  pageNode(id: ID!): PageNode
+  pageNodes(where: PageWhereInput!): EncodedPageNodes
+  pageVars(id: ID!, query: JSON): JSON
+  pages(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: PageSearchInput, where: PageWhereInput): [Page!]!
+  pendingTasksAggregate(where: PendingTasksAggregateInput): PendingTasksAggregate!
+
+  """
+  Count of workflow executions with at least one awaiting-response task, scoped to the org (and its
+  sub-orgs when includeSubOrgs is true) within the recent createdSince window. Drives the "View All"
+  numbered pagination page count so it matches the executions the list actually returns. Authorized
+  to orgs the caller manages.
+  """
+  pendingWorkflowExecutionsCount(createdSince: String, includeSubOrgs: Boolean, orgId: ID): Int!
+  permission(where: PermissionWhereInput): Permission
+  permissionAuditLog(filters: PermissionAuditLogFiltersInput, includeSubOrgs: Boolean, limit: Int = 50, offset: Int = 0, orgId: ID!): PermissionAuditLogList!
+  permissions(where: PermissionWhereInput): [Permission!]!
+
+  """
+  Fetch account type and status filter options from the specified PSA integration
+  """
+  psaFilterOptions(orgId: ID!, psaPackConfigId: ID!, psaRef: String!, refresh: Boolean): PsaFilterOptions!
+
+  """
+  Fetch organizations from the specified PSA integration, filtered by account types and statuses
+  """
+  psaOrganizations(accountTypes: [String!], orgId: ID!, psaPackConfigId: ID!, psaRef: String!, refresh: Boolean, statuses: [String!]): [PsaOrganization!]!
+  publicCrates(limit: Int, offset: Int): [PublicCrate!]!
+  recentComponentVersions(componentId: ID!, limit: Int): [ComponentTree!]!
+  reservedOrganizationName(where: ReservedOrganizationNameWhereInput!): ReservedOrganizationName
+  reservedOrganizationNames(limit: Int, offset: Int, order: [[String!]]! = [["name"]], where: ReservedOrganizationNameWhereInput): [ReservedOrganizationName]
+  resourceTypesByPack: [PackResourceTypesContainer!]!
+  roboRewstyConfigOption(where: RoboRewstyConfigWhere): RoboRewstyConfigValue!
+  roboRewstyConfigOptions(where: RoboRewstyConfigWhere): [RoboRewstyConfigValue!]!
+  roboRewstyWorkflowDraftState(orgId: ID!, workflowId: ID!): WorkflowDraftStateMetadata
+
+  """
+  Batched membership counts for the role list sidebar, scoped to the
+  caller's managed subtree.
+  """
+  roleOrganizationMembershipCounts(orgId: ID!, roleIds: [ID!]!): [RoleOrganizationCount!]!
+
+  """
+  Orgs whose effective members inherit the role (bulk membership).
+  
+  When `includeSubOrgs` is true, descendants of each directly-granted org are
+  included with `isDirectAssignment=false` (cascade preview). Direct rows
+  always come back regardless of the flag.
+  
+  `limit` and `offset` are optional; omit both to return the full set.
+  """
+  roleOrganizationMemberships(includeSubOrgs: Boolean, limit: Int, offset: Int, roleId: ID!): [RoleOrganizationRow!]!
+  roleUserCounts(orgId: ID!, roleIds: [ID!]!): [RoleUserCount!]!
+  roles(where: RoleWhereInput): [Role!]!
+  searchInstalledPackActions(actionFilter: String, actionSearch: ActionSearch, order: [[String!]!] = [["name"]], orgId: ID!, packSearch: PackSearchInput): [Pack!]!
+  searchManagedOrgs(input: SearchManagedOrgsInput!): [Organization!]!
+  sensorType(search: SensorTypeSearchInput, where: SensorTypeInput): SensorType
+  sensorTypes(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: SensorTypeSearchInput, where: SensorTypeInput): [SensorType!]!
+  site(search: SiteSearchInput, where: SiteWhereInput): Site
+  sites(search: SiteSearchInput, where: SiteWhereInput): [Site!]!
+  softDeletedOrgs(managingOrgId: ID!): [Organization!]!
+  tag(search: TagSearchInput, where: TagWhereInput): Tag
+  tags(includeTagsWithNoOwner: Boolean = false, limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: TagSearchInput, where: TagWhereInput): [Tag!]!
+  taskExecutionStats(createdSince: String, orgId: ID!): Int!
+  taskLog(search: TaskLogSearchInput, where: TaskLogWhereInput): TaskLog
+  taskLogs(limit: Int, offset: Int, order: [[String!]!] = [["createdAt"]], search: TaskLogSearchInput, where: TaskLogWhereInput): [TaskLog!]!
+  template(where: TemplateInput): Template
+  templates(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: TemplateSearch, where: TemplateInput): [Template!]!
+  timeSavedGroupBySubOrg(orgId: ID!, updatedAt: String!, useStatsTable: Boolean! = true, workflowStatus: String): [TimeSavedGroupByOrg!]!
+  timeSavedGroupByWorkflow(orgId: ID!, updatedAt: String!, useStatsTable: Boolean! = true, workflowStatus: String): [TimeSavedGroupByWorkflow!]!
+  trigger(search: TriggerSearchInput, where: TriggerWhereInput): Trigger
+  triggerDbNotificationErrors(triggerId: ID!): [DatabaseNotificationError!]!
+  triggerType(where: TriggerTypeWhereInput): TriggerType
+  triggerTypes(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: TriggerTypesSearchInput, where: TriggerTypeWhereInput): [TriggerType!]!
+  triggers(excludeTagIds: [ID!], hasTagIds: [ID!], includeUnlisted: Boolean, limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: TriggerSearchInput, where: TriggerWhereInput): [Trigger!]!
+  user(search: UserSearchInput, where: GetUserWhereInput): User
+  userInvite(search: UserInviteSearchInput, where: UserInviteWhereInput): UserInvite
+  userInvites(limit: Int, offset: Int, order: [[String!]!] = [["email"]], search: UserInviteSearchInput, where: UserInviteWhereInput): [UserInvite]
+  userOrganization: Organization
+  userRoboRewstyPreferences(where: UserRoboRewstyPreferencesWhereInput): UserRoboRewstyPreferences
+  users(limit: Int, offset: Int, order: [[String!]!] = [["username"]], search: UserSearchInput, where: GetUserWhereInput): [User!]!
+  validateSiteDomain(domain: String!, orgId: ID!): SiteDomainValid
+  visibleOrgVariables(limit: Int, offset: Int, order: [[String!]!] = [["name"]], search: OrgVariableSearchInput, visibleForOrgId: ID!): [OrgVariable!]!
+  visibleOrgVariablesCount(search: OrgVariableSearchInput, visibleForOrgId: ID!): Int!
+  visibleWorkflows(limit: Int, offset: Int, order: [[String!]!] = [["name"]], orgId: ID, search: WorkflowSearch, where: WorkflowWhereInput): [Workflow!]!
+  warrants(where: QueryInput!): JSON
+  workflow(search: WorkflowSearch, where: WorkflowWhereInput): Workflow
+  workflowCompletionListeners(search: TriggerSearchInput, where: TriggerWhereInput): [Trigger!]!
+  workflowExecution(search: WorkflowExecutionSearchInput, where: WorkflowExecutionWhereInput): WorkflowExecution
+  workflowExecutionContexts(workflowExecutionId: ID!): JSON
+  workflowExecutionStats(createdSince: String!, includeSubWorkflows: Boolean, orgId: ID!, rollUpTimeSaved: Boolean): WorkflowExecutionStats
+  workflowExecutions(createdSince: String, includeSubOrgs: Boolean, limit: Int, offset: Int, order: [[String!]!] = [["createdAt"]], search: WorkflowExecutionSearchInput, where: WorkflowExecutionWhereInput): [WorkflowExecution]
+  workflowIOConfigurations(ids: [ID!]!): [Workflow!]!
+  workflowNote(where: WorkflowNoteWhereInput): WorkflowNote
+  workflowNotes(limit: Int, offset: Int, order: [[String!]!] = [["index"]], search: WorkflowNoteSearchInput, where: WorkflowNoteWhereInput): [WorkflowNote!]!
+  workflowPatch(id: ID!): WorkflowPatch!
+  workflowPatches(createdSince: String, limit: Int, offset: Int, orderBy: WorkflowPatchOrderByInput = createdAt_DESC, where: WorkflowPatchWhereInput): [WorkflowPatch!]!
+  workflowStatsByOrg(endDate: String!, orgId: ID!, startDate: String!): [WorkflowStatsByOrg!]!
+  workflowTask(where: WorkflowTaskWhereInput): WorkflowTask
+  workflowTasks(limit: Int, offset: Int, order: [[String!]!] = [["name"]], where: WorkflowTaskWhereInput): [WorkflowTask!]!
+  workflows(excludeTagIds: [ID!], hasClones: Boolean, hasListeners: Boolean, hasParentWorkflows: Boolean, hasTagIds: [ID!], hasTokens: Boolean, hasTriggerOfType: TriggerOfType, hasTriggers: Boolean, isClone: Boolean, isCrate: Boolean, isCrateSource: Boolean, isOptionsGenerator: Boolean, isSyncClone: Boolean, limit: Int, offset: Int, order: [[String!]!] = [["name"]], requireMatchingTasks: Boolean, search: WorkflowSearch, where: WorkflowWhereInput): [Workflow!]!
+  workflowsAffectedByBreakingChanges(actions: [BreakingChangeActionInput!]!, orgId: ID!): [AffectedWorkflowInfo!]!
+}
+
+input QueryInput {
+  objectId: String
+  objectType: String
+  query: String
+  relation: String
+  subjectId: String
+  subjectType: String
+}
+
+type RateLimitingStatusEvent {
+  eventId: String
+  payload: JSON
+}
+
+type ReasonCount {
+  count: Int!
+  reason: VoteReason!
+}
+
+enum Relation {
+  editor
+  member
+  owner
+}
+
+type RenderedJinja {
+  content: String!
+  id: String!
+}
+
+type RenderedPage {
+  executionId: ID
+  id: ID!
+  loader: Loader
+  name: String!
+  path: String!
+  renderedJinja: RenderedJinja
+  site: Site!
+  useEditor: Boolean
+}
+
+union ResendUserInviteEmailStreamEvent = ResendUserInviteEmailStreamFailureResponse | ResendUserInviteEmailStreamSuccessResponse
+
+type ResendUserInviteEmailStreamFailureResponse implements BaseStreamEvent {
+  didSucceed: Boolean!
+  error: String!
+  isFinished: Boolean!
+}
+
+type ResendUserInviteEmailStreamSuccessResponse implements BaseStreamEvent {
+  didSucceed: Boolean!
+  isFinished: Boolean!
+  recipient: String!
+}
+
+type ReservedOrganizationName {
+  createdAt: String
+  createdBy: User
+  id: ID!
+  name: String!
+  updatedAt: String
+  updatedBy: User
+}
+
+input ReservedOrganizationNameWhereInput {
+  createdAt: String
+  createdBy: UserWhereInput
+  id: ID
+  name: String
+  updatedAt: String
+  updatedBy: UserWhereInput
+}
+
+"""
+Result of a `resetFormPermissions` call. `deletedCount` is the number of
+`form_permission_overrides` rows removed by the reset; `0` is a valid
+success when the form had no overrides to begin with. `zedtoken` carries
+SpiceDB's post-write snapshot — see `SetFormPermissionsResult.zedtoken`.
+"""
+type ResetFormPermissionsResult {
+  deletedCount: Int!
+  success: Boolean!
+  zedtoken: String
+}
+
+type RoboRewstyConfigValue {
+  configKey: String
+  configName: String
+  configValue: JSON
+  id: ID
+}
+
+input RoboRewstyConfigWhere {
+  configKey: String
+  configName: String
+  id: ID
+}
+
+type Role {
+  authorizedPermissions: [String]
+  authorizedSpicedbPermissions: [String]
+  color: String
+  description: String
+  icon: String
+  id: ID
+  name: String
+  orgId: ID
+  userCount: Int
+}
+
+"""
+Compact role identity used to render chips alongside an organization in the
+Roles Management Organizations tab. Stays separate from `Role` so we don't
+have to load the heavier RBAC fields (`authorizedPermissions`, etc.) per chip.
+"""
+type RoleAssignment {
+  color: String
+  icon: String
+  id: ID!
+  name: String!
+}
+
+input RoleCreateInput {
+  authorizedPermissions: [String!]
+  authorizedSpicedbPermissions: [String!]
+  color: String
+  description: String
+  icon: String
+  id: ID
+  name: String!
+  orgId: ID!
+  rolePermissions: [String!]
+}
+
+type RoleOrganizationCount {
+  count: Int!
+  roleId: ID!
+}
+
+"""
+One row in the Roles Management Organizations tab.
+
+`isDirectAssignment` distinguishes orgs directly granted the role from
+descendants surfaced when `includeSubOrgs=true`. Only direct rows are
+removable from this tab; sub-org rows are read-only.
+
+`assignedRoles` is the full set of roles granted to that org via bulk
+membership — used to render the chip list per row regardless of which role
+is currently being viewed.
+"""
+type RoleOrganizationRow {
+  assignedRoles: [RoleAssignment!]!
+  id: ID!
+  isDirectAssignment: Boolean!
+  isEnabled: Boolean!
+  name: String!
+
+  """
+  Immediate parent org's name, when this org is a sub-org. Rendered as a
+  secondary line under the org name so admins can tell siblings apart at a
+  glance. Null for top-level orgs.
+  """
+  parentName: String
+}
+
+input RoleUpdateInput {
+  authorizedPermissions: [String!]
+  authorizedSpicedbPermissions: [String!]
+  color: String
+  description: String
+  icon: String
+  id: ID!
+  name: String
+  rolePermissions: [String!]
+}
+
+type RoleUserCount {
+  count: Int!
+  roleId: ID!
+}
+
+input RoleWhereInput {
+  id: ID
+  name: String
+  orgId: ID
+}
+
+type Runner {
+  actions: [Action!]!
+  enabled: Boolean
+  id: ID
+  name: String
+  outputKey: String
+  outputSchema: JSON
+  runnerParameters: JSON
+}
+
+input RunnerInput {
+  enabled: Boolean
+  id: ID
+  name: String
+  outputKey: String
+  outputSchema: JSON
+  runnerParameters: JSON
+}
+
+input SearchManagedOrgsInput {
+  limit: Int = 20
+  offset: Int = 0
+  search: String
+}
+
+type SensorType {
+  description: String
+  enabled: Boolean
+  entryPoint: String
+  id: ID
+  name: String
+  notifyOnTriggerChanges: Boolean
+  pack: Pack
+  ref: String
+  triggerTypes: [TriggerType!]!
+}
+
+input SensorTypeInput {
+  description: String
+  enabled: Boolean
+  entryPoint: String
+  id: ID
+  name: String
+  notifyOnTriggerChanges: Boolean
+  packId: ID
+  ref: String
+}
+
+input SensorTypeSearchInput {
+  description: string_comparison_exp
+  enabled: bool_comparison_exp
+  entryPoint: string_comparison_exp
+  id: id_comparison_exp
+  name: string_comparison_exp
+  notifyOnTriggerChanges: Boolean
+  packId: id_comparison_exp
+  ref: string_comparison_exp
+}
+
+input SetFormPermissionsInput {
+  changes: [FormGrantChangeInput!]!
+  formId: ID!
+}
+
+type SetFormPermissionsResult {
+  changesApplied: Int!
+  formId: ID!
+
+  """
+  SpiceDB zedtoken from the synchronous write-through to peck-order. Pass
+  to the next `formPermissionState` query so its bulk Check reads with
+  `Consistency.at_least_as_fresh(zedtoken)`. Null when the sync RPC failed
+  gracefully — the CDC path will still converge; the client falls back to
+  default consistency on the refetch.
+  """
+  zedtoken: String
+}
+
+input SetFormTagsInput {
+  id: ID!
+  tagIds: [ID!]!
+}
+
+input ShallowCloneOverridesInput {
+  name: String
+}
+
+input ShallowWorkflowCloneOverridesInput {
+  name: String
+}
+
+type Site {
+  cloneOverrides: JSON
+  clonedFrom: Site
+  clonedFromId: ID
+  clones: [Site]
+  createdAt: String
+  createdBy: User
+  createdById: ID
+  customDomain: String
+  domain: String
+  faviconUrl: String
+  id: ID!
+  isDnsValidated: Boolean
+  isLive: Boolean
+  isSynchronized: Boolean
+  name: String!
+  orgId: ID!
+  organization: Organization
+  pages: [Page]
+  permission: Permission
+  shared: Boolean
+  statusCode: Int
+  statusMessage: String
+  template: String
+  theme: JSON
+  themeReferenceOrgVariable: String
+  updatedAt: String
+  updatedBy: User
+  updatedById: ID
+  useCustomDomain: Boolean
+}
+
+input SiteCreateInput {
+  cloneOverrides: JSON
+  clonedFromId: ID
+  domain: String
+  isSynchronized: Boolean
+  name: String
+  orgId: ID!
+  pages: [PagesImportInput]
+  template: String
+  theme: JSON
+}
+
+type SiteDomainValid {
+  isValid: Boolean!
+  message: String!
+}
+
+input SiteOverridesInput {
+  domain: String
+  isSynchronized: Boolean
+  name: String
+}
+
+input SitePropertiesInput {
+  domain: String
+  id: ID
+}
+
+input SiteSearchInput {
+  clonedFromId: id_comparison_exp
+  customDomain: string_comparison_exp
+  domain: string_comparison_exp
+  id: id_comparison_exp
+  isDnsValidated: bool_comparison_exp
+  isLive: bool_comparison_exp
+  name: string_comparison_exp
+  organization: OrganizationSearchInput
+  organizationId: id_comparison_exp
+  useCustomDomain: bool_comparison_exp
+}
+
+input SiteUpdateInput {
+  cloneOverrides: JSON
+  clonedFromId: ID
+  customDomain: String
+  domain: String
+  faviconUrl: String
+  id: ID!
+  isDnsValidated: Boolean
+  isLive: Boolean
+  isSynchronized: Boolean
+  layout: String
+  name: String
+  orgId: ID
+  pages: [PagesImportInput]
+  statusCode: Int
+  statusMessage: String
+  theme: JSON
+  themeReferenceOrgVariable: String
+  useCustomDomain: Boolean
+}
+
+input SiteWhereInput {
+  clonedFromId: ID
+  customDomain: String
+  domain: String
+  id: ID
+  isDnsValidated: Boolean
+  isLive: Boolean
+  isSynchronized: Boolean
+  name: String
+  orgId: ID
+  useCustomDomain: Boolean
+}
+
+type SourceField {
+  fieldCondition: FieldCondition
+  id: ID!
+  index: Int
+  schema: JSON
+}
+
+type SpiceDBCheckResult {
+  debugTrace: [String!]!
+  hasPermission: Boolean!
+
+  """
+  Whether the `spicedb_permissions` Statsig gate evaluates to ON for the
+  subject user. Lets the admin checker surface a "would the directives
+  actually enforce this on real traffic for that user?" signal next to
+  the raw SpiceDB result. `null` when the user can't be loaded.
+  """
+  subjectSpicedbFlagEnabled: Boolean
+}
+
+type Subscription {
+  actionResults(executionId: ID!): JSON
+  adminExportPackDocs(packId: ID!): JSON
+  adminExportPackYaml(packId: ID!): JSON
+  appLogs(domain: String!): JSON
+  azureFunctionAppInterpreterDeployment(config: JSON, language: String!, orgId: ID!): AzureFunctionAppInterpreterDeploymentStreamEvent
+  azureFunctionAppInterpreterRollback(language: String!, orgId: ID!): AzureFunctionAppInterpreterDeploymentStreamEvent
+  azureFunctionAppInterpreterUpdate(config: JSON, language: String!, orgId: ID!): AzureFunctionAppInterpreterDeploymentStreamEvent
+  cloneForm(id: ID!, includeInsignificantProgress: Boolean = false, orgId: ID!, overrides: FormCloneOverridesInput): CloneObjectStreamEvent
+  cloneSite(id: ID!, includeInsignificantProgress: Boolean = false, orgId: ID!, overrides: SiteOverridesInput): CloneObjectStreamEvent
+  cloneTemplate(id: ID!, includeInsignificantProgress: Boolean = false, orgId: ID!, overrides: TemplateInput): CloneObjectStreamEvent
+  cloneWorkflow(id: ID!, includeInsignificantProgress: Boolean = false, orgId: ID!, overrides: WorkflowInput): CloneObjectStreamEvent
+  componentTriggered(context: JSON, id: ID, inputs: JSON, jinjaList: [JinjaTemplateMapInput]!, pageId: ID!, payload: JSON, query: JSON, runAsOrgId: ID, workflows: [ID]): JSON
+  conversationMessage(conversationId: ID, conversationType: String, message: String!, metadata: JSON, orgId: ID!, resumeRequestId: ID): ConversationMessageResponse!
+  debug: Boolean
+  exportObjects(objects: [ExportRequestObject!]!): ExportObjectsStreamEvent
+  importBundle(bundle: ImportBundle!, includeInsignificantProgress: Boolean = false, orgId: ID!, siteId: ID, triggerOverrides: [TriggerOverride!]!): ImportBundleStreamEvent
+  microsoftBundleAuthorizationRequest(orgId: ID!, packBundleId: ID!): MicrosoftBundleAuthorizationRequestStreamEvent
+  microsoftBundleRevocationRequest(orgId: ID!, packBundleId: ID!): MicrosoftBundleAuthorizationRequestStreamEvent
+  microsoftCSPConsentRequest(action: CSPConsentAction = CREATE, applicationGrants: [CSPApplicationGrant!] = [], packConfigId: ID!, tenantIds: [ID!]!): MicrosoftCSPConsentRequestStreamEvent
+  microsoftPermissionsSyncRequest(orgId: ID!, packConfigId: ID!): MicrosoftBundleAuthorizationRequestStreamEvent
+  newWorkflowExecutions(eventId: String, orgId: ID!, workflowId: ID): NewWorkflowExecutionEvent
+  openapiConversion(openapiDoc: JSON!, orgId: ID!): JParserConversionResult!
+  publishCrate(crateId: ID!, orgId: ID!, workflowId: ID!): PublishCrateStreamEvent
+  rateLimitingStatus(eventId: String, orgId: ID!): RateLimitingStatusEvent
+  renderPage(additionalWorkflows: [ID], jinjaList: [JinjaTemplateMapInput], query: JSON, runAsOrgId: ID, where: PageWhereInput!): JSON
+  resendUserInviteEmail(inviteId: ID!): ResendUserInviteEmailStreamEvent
+  syncRoboRewstyWorkflowDraft(conversationId: ID, expectedDraftHash: String, expectedRevision: Int, orgId: ID!, workflow: JSON!): WorkflowDraftSyncResponse!
+  synchronizeClones(cloneIds: [ID!], id: ID!, includeInsignificantProgress: Boolean = false, objectType: CloneableObjectType!, shouldPublishCrates: Boolean = false): SynchronizeClonesStreamEvent
+  taskLogs(eventId: String, executionId: ID!, includeStatuses: [String!]): TaskLogEvent
+  triggerCriteria(triggerId: ID!): TriggerCriteriaEvent
+  unpackCrate(includeInsignificantProgress: Boolean = false, unpackingArguments: UnpackCrateInput!): UnpackCrateStreamEvent
+  workflowEvents(eventId: String, workflowId: ID!): JSON
+  workflowOutputs(eventId: String, workflowId: ID!): JSON
+  workflowResults(executionId: ID!): JSON
+  workflowStatus(executionId: ID!): JSON
+}
+
+type SupportAccessStatus {
+  expiresAt: String
+  isEnabled: Boolean!
+}
+
+type SwaggerToOpenapiConversionResult {
+  errors: JSON
+  openapiDoc: JSON
+}
+
+type SynchronizeClonesImportPhaseStreamFailureMessage implements BaseStreamEvent & PhasedCloneEvent {
+  code: String
+  error: String
+  isFinished: Boolean!
+  phase: ClonePhase!
+  requestId: ID!
+}
+
+union SynchronizeClonesStreamEvent = CloningExportPhaseStreamFailureResponse | CloningExportPhaseStreamMessage | CloningImportPhaseStreamMessage | SynchronizeClonesImportPhaseStreamFailureMessage | SynchronizeClonesStreamResponse
+
+type SynchronizeClonesStreamResponse implements BaseCloningResponse & BaseStreamEvent {
+  cloneIds: [ID!]!
+  didSucceed: Boolean!
+  failedCloneIds: [ID!]!
+  isFinished: Boolean!
+}
+
+type SynchronizedPackConfig {
+  config: JSON
+  description: String
+  id: ID!
+  metadata: JSON
+  name: String!
+  orgId: ID!
+  packId: ID!
+}
+
+type Tag {
+  color: String
+  crates: [Crate!]
+  createdAt: String
+  description: String
+  id: ID
+  name: String
+  orgId: ID
+  organization: Organization
+  organizations: [Organization!]!
+  packs: [Pack!]!
+  triggers: [Trigger!]!
+  updatedAt: String
+}
+
+input TagCreateInput {
+  color: String
+  description: String
+  id: ID
+  name: String
+  orgId: ID!
+}
+
+input TagInput {
+  color: String
+  description: String
+  id: ID
+  name: String
+  orgId: ID
+}
+
+input TagOrganizationsWhereInput {
+  id: [ID]
+}
+
+input TagSearchInput {
+  id: id_comparison_exp
+  name: string_comparison_exp
+  orgId: id_comparison_exp
+  organizations: OrganizationSearchInput
+}
+
+input TagUpdateInput {
+  color: String
+  description: String
+  id: ID!
+  name: String!
+  orgId: ID!
+}
+
+input TagWhereInput {
+  id: ID
+  name: String
+  orgId: ID
+  organizations: TagOrganizationsWhereInput
+}
+
+type TaskCountByDate {
+  count: Int!
+  date: String!
+}
+
+type TaskCountByHour {
+  count: Int!
+  hour: String!
+}
+
+type TaskLog {
+  createdAt: String
+  executionId: String
+  executionTime: String
+  id: ID
+  input: JSON
+  message: String
+  originalParentTaskId: String
+  originalPrincipalOrgId: ID
+  originalPrincipalOrgName: String
+  originalRunAsOrgId: String
+  originalRunAsOrgName: String
+  originalWorkflowExecutionId: String
+  originalWorkflowTaskId: String
+  originalWorkflowTaskName: String
+  parentTask: WorkflowTask
+  parentTaskId: ID
+  principalOrg: Organization
+  principalOrgId: ID
+  result: JSON
+  runAsOrg: Organization
+  runAsOrgId: ID
+  status: String
+  taskExecutionId: ID
+  updatedAt: String
+  workflow: Workflow
+  workflowExecution: WorkflowExecution
+  workflowExecutionId: String
+  workflowTask: WorkflowTask
+  workflowTaskId: ID
+}
+
+type TaskLogEvent implements BaseStreamEvent {
+  eventId: String!
+  isFinished: Boolean!
+  taskLog: TaskLog
+  workflowStatus: String
+}
+
+input TaskLogInput {
+  executionTime: String
+  id: ID
+  input: JSON
+  message: String
+  originalParentTaskId: String
+  originalWorkflowExecutionId: String!
+  originalWorkflowTaskId: String
+  result: JSON
+  status: String!
+  taskExecutionId: ID
+}
+
+input TaskLogSearchInput {
+  id: ID
+  originalPrincipalOrgId: string_comparison_exp
+  originalPrincipalOrgName: string_comparison_exp
+  originalRunAsOrgId: string_comparison_exp
+  originalRunAsOrgName: string_comparison_exp
+  principalOrgId: id_comparison_exp
+  runAsOrgId: id_comparison_exp
+  status: string_comparison_exp
+  workflowExecutionId: id_comparison_exp
+}
+
+input TaskLogWhereInput {
+  executionTime: String
+  id: ID
+  input: JSON
+  message: String
+  originalParentTaskId: String
+  originalPrincipalOrgId: String
+  originalPrincipalOrgName: String
+  originalRunAsOrgId: String
+  originalRunAsOrgName: String
+  originalWorkflowExecutionId: String
+  originalWorkflowTaskId: String
+  parentTaskId: ID
+  principalOrgId: ID
+  result: JSON
+  runAsOrgId: ID
+  status: String
+  taskExecutionId: ID
+  workflowExecutionId: ID
+  workflowTaskId: ID
+}
+
+type Template {
+  body: String!
+  cloneOverrides: JSON
+  clonedFrom: Template
+  clonedFromId: ID
+  clones: [Template]
+  contentType: String!
+  context: JSON
+  createdAt: String!
+  description: String
+  id: ID!
+  isShared: Boolean
+  isSynchronized: Boolean
+  language: String!
+  name: String!
+  orgId: ID!
+  organization: Organization!
+  permission: Permission
+  tags: [Tag!]!
+  unpackedFrom: Crate
+  unpackedFromId: ID
+  updatedAt: String!
+  updatedBy: User
+  updatedById: ID
+}
+
+input TemplateCreateInput {
+  body: String!
+  cloneOverrides: JSON
+  clonedFromId: ID
+  contentType: String
+  context: JSON
+  description: String
+  id: ID
+  isShared: Boolean
+  isSynchronized: Boolean
+  language: String
+  name: String!
+  orgId: ID!
+  tags: [TagInput!]
+  unpackedFromId: ID
+}
+
+input TemplateInput {
+  body: String
+  cloneOverrides: JSON
+  clonedFromId: ID
+  contentType: String
+  description: String
+  id: ID
+  isSynchronized: Boolean
+  language: String
+  name: String
+  orgId: ID
+  tagIds: [ID!]
+  unpackedFromId: ID
+}
+
+input TemplateSearch {
+  clonedFromId: id_comparison_exp
+  contentType: string_comparison_exp
+  description: string_comparison_exp
+  id: id_comparison_exp
+  isSynchronized: bool_comparison_exp
+  name: string_comparison_exp
+  organization: OrganizationSearchInput
+  unpackedFromId: id_comparison_exp
+}
+
+input TemplateUpdateInput {
+  body: String
+  cloneOverrides: JSON
+  clonedFromId: ID
+  contentType: String
+  context: JSON
+  description: String
+  id: ID!
+  isShared: Boolean
+  isSynchronized: Boolean
+  language: String
+  name: String
+  orgId: ID
+  tags: [TagInput!]
+  unpackedFromId: ID
+}
+
+type ThemeConfigGeneratorResponse {
+  config: JSON!
+}
+
+type TimeSavedByDate {
+  date: String!
+  seconds: Int!
+}
+
+type TimeSavedByHour {
+  hour: String!
+  seconds: Int
+}
+
+type TimeSavedGroupByOrg {
+  ranForOrg: String
+  secondsSaved: Int
+  totalExecutions: Int
+  workflowId: ID!
+  workflowName: String
+}
+
+type TimeSavedGroupByWorkflow {
+  failedExecutions: Int
+  secondsSaved: Int
+  successfulExecutions: Int
+  totalExecutions: Int
+  workflowId: ID!
+  workflowName: String
+}
+
+enum TransitionModes {
+  FOLLOW_ALL
+  FOLLOW_FIRST
+}
+
+type Trigger {
+  activatedForOrgs: [Organization!]!
+  autoActivateManagedOrgs: Boolean!
+  cloneOverrides: JSON
+  clonedFrom: Trigger
+  clonedFromId: ID
+  clones: [Trigger]!
+  createdAt: String
+  criteria: JSON
+  description: String
+  enabled: Boolean
+  form: Form
+  formId: ID
+  id: ID!
+  isSynchronized: Boolean
+  name: String
+  orgId: ID
+  orgInstances(where: OrgTriggerInstanceWhereInput): [OrgTriggerInstance]
+  organization: Organization!
+  packOverrides: [PackOverride!]
+  parameters: JSON
+  state: JSON
+  tags: [Tag!]!
+  triggerType(where: TriggerTypeWhereInput): TriggerType
+  triggerTypeId: ID!
+  unpackedFrom: Crate
+  unpackedFromId: ID
+  updatedAt: String
+  vars: [JSON]
+  workflow: Workflow!
+  workflowId: ID!
+}
+
+input TriggerCreateInput {
+  activatedForOrgIds: [ID!]
+  activatedForTagIds: [ID!]
+  autoActivateManagedOrgs: Boolean
+  cloneOverrides: JSON
+  clonedFromId: ID
+  criteria: JSON
+  description: String
+  enabled: Boolean
+  formId: ID
+  id: ID
+  isActivatedForOwner: Boolean
+  isSynchronized: Boolean
+  name: String
+  orgId: ID
+  packOverrides: [PackOverrideInput]
+  parameters: JSON
+  state: JSON
+  triggerTypeId: ID
+  unpackedFromId: ID
+  vars: [JSON!]
+  workflow: WorkflowInput
+  workflowBuilderInfo: JSON
+  workflowId: ID
+}
+
+type TriggerCriteriaEvent implements BaseStreamEvent {
+  eventId: String!
+  isFinished: Boolean!
+  payload: JSON
+}
+
+input TriggerOfType {
+  enabled: Boolean
+  name: String
+}
+
+input TriggerOverride {
+  enabled: Boolean
+  name: String
+}
+
+input TriggerSearchInput {
+  clonedFromId: id_comparison_exp
+  criteria: json_comparison_exp
+  description: string_comparison_exp
+  enabled: Boolean
+  formId: id_comparison_exp
+  id: id_comparison_exp
+  isSynchronized: bool_comparison_exp
+  name: string_comparison_exp
+  orgId: id_comparison_exp
+  orgInstances: OrgTriggerInstanceSearchInput
+  organization: OrganizationSearchInput
+  packOverrides: PackOverrideSearchInput
+  parameters: json_comparison_exp
+  state: json_comparison_exp
+  triggerType: TriggerTypesSearchInput
+  triggerTypeId: id_comparison_exp
+  unpackedFromId: id_comparison_exp
+  workflow: WorkflowSearch
+  workflowId: id_comparison_exp
+}
+
+type TriggerType {
+  canRunForManagedOrgs: Boolean
+  description: String
+  enabled: Boolean
+  id: ID
+  isPoll: Boolean
+  isWebhook: Boolean
+  name: String
+  outputSchema: JSON
+  pack: Pack
+  parametersSchema(filterArg: JSON, orgId: ID): JSON
+  ref: String
+  sensorType: SensorType
+  triggers(search: TriggerSearchInput, where: TriggerWhereInput): [Trigger!]!
+  webhookUrlTemplate: String
+}
+
+input TriggerTypeInput {
+  description: String
+  enabled: Boolean
+  id: ID
+  isPoll: Boolean
+  isWebhook: Boolean
+  name: String
+  outputSchema: JSON
+  pack: PackInput
+  packId: ID
+  parametersSchema: JSON
+  ref: String
+}
+
+input TriggerTypeWhereInput {
+  description: String
+  enabled: Boolean
+  id: ID
+  isPoll: Boolean
+  isWebhook: Boolean
+  name: String
+  outputSchema: JSON
+  packId: ID
+  parametersSchema: JSON
+  ref: String
+  triggers: TriggerWhereInput
+}
+
+input TriggerTypesSearchInput {
+  description: string_comparison_exp
+  enabled: bool_comparison_exp
+  id: id_comparison_exp
+  isPoll: Boolean
+  isWebhook: Boolean
+  name: string_comparison_exp
+  outputSchema: json_comparison_exp
+  pack: PackSearchInput
+  parametersSchema: json_comparison_exp
+  ref: string_comparison_exp
+  triggers: TriggerSearchInput
+}
+
+input TriggerUpdateInput {
+  activatedForOrgIds: [ID!]
+  activatedForTagIds: [ID!]
+  autoActivateManagedOrgs: Boolean
+  cloneOverrides: JSON
+  clonedFromId: ID
+  criteria: JSON
+  description: String
+  enabled: Boolean
+  formId: ID
+  id: ID!
+  isActivatedForOwner: Boolean
+  isSynchronized: Boolean
+  name: String
+  orgId: ID
+  packOverrides: [PackOverrideInput]
+  parameters: JSON
+  state: JSON
+  unpackedFromId: ID
+  vars: [JSON!]
+  workflow: WorkflowInput
+  workflowBuilderInfo: JSON
+  workflowId: ID
+}
+
+input TriggerWhereInput {
+  clonedFromId: ID
+  criteria: JSON
+  description: String
+  enabled: Boolean
+  formId: ID
+  id: ID
+  isSynchronized: Boolean
+  name: String
+  orgId: ID
+  orgInstances: OrgTriggerInstanceWhereInput
+  parameters: JSON
+  state: JSON
+  triggerType: TriggerTypeInput
+  triggerTypeId: ID
+  unpackedFromId: ID
+  workflowId: ID
+}
+
+input UnpackCrateInput {
+  crateId: ID!
+  orgId: ID!
+  tokenArguments: [CrateUnpackingArgumentInput!]
+  triggers: [CrateTriggerUnpackingInput!]
+  workflow: WorkflowInput!
+}
+
+union UnpackCrateStreamEvent = CloningImportPhaseStreamFailureResponse | CloningImportPhaseStreamMessage | ExportDownloadPhaseStreamFailureResponse | ExportDownloadPhaseStreamMessage | UnpackCrateStreamSuccessResponse
+
+type UnpackCrateStreamSuccessResponse implements BaseCloneObjectSuccessResponse & BaseCloningResponse & BaseStreamEvent {
+  didSucceed: Boolean!
+  id: ID!
+  isFinished: Boolean!
+  orgId: ID!
+  type: CloneableObjectType!
+}
+
+input UpdateApiClientInput {
+  description: String
+  id: ID!
+  name: String
+}
+
+input UpdateComponentInput {
+  description: String
+  id: ID!
+  isChild: Boolean
+  isSynced: Boolean
+  name: String!
+  nodeTree: JSON
+  orgId: ID!
+  workflows: [ID]
+}
+
+input UpdateFeaturePreviewSettingInput {
+  description: String
+  id: ID!
+  isStaffOnly: Boolean
+  label: String
+}
+
+"""The `Upload` scalar type represents a file upload."""
+scalar Upload
+
+input UpsertOrgFormFieldInstancesInput {
+  formFieldInstances: [FormFieldInstanceInput!]!
+  orgId: ID!
+}
+
+type User {
+  createdAt: String
+  favoriteActions: [UserFavoriteAction!]!
+  id: ID
+  isApiUser: Boolean
+  isSuperuser: Boolean
+  isTestUser: Boolean
+  isTokenUser: Boolean
+  managedOrgs: [Organization!]!
+  orgId: ID
+  organization: Organization
+  parentUserId: ID
+  parentUsername: String
+  preferences: UserPreferences!
+  roleIds: [String!]!
+  roles: [JSON]
+  sub: String
+  tokenApiClient: ApiClient
+  username: String
+}
+
+type UserDelegatedAccess {
+  expiresAt: String
+  grantedAt: String!
+  grantedBy: User
+  id: ID!
+  isActive: Boolean!
+  organization: Organization!
+  reason: String
+  revokedAt: String
+  user: User!
+}
+
+type UserFavoriteAction {
+  action: Action!
+  actionId: ID!
+  index: Int!
+  user: User!
+  userId: ID!
+}
+
+input UserFavoriteActionInput {
+  actionId: ID!
+  index: Int!
+}
+
+type UserInvite {
+  acceptedAt: String
+  approvedAt: String
+  approvedBy: User
+  approvedById: ID
+  createdAt: String
+  createdBy: User
+  createdById: ID
+  email: String!
+  id: ID!
+  isAccepted: Boolean
+  orgId: ID!
+  organization: Organization!
+  requiresApproval: Boolean!
+  roleIds: [String]
+  roles: [JSON]
+  sendEmail: Boolean
+}
+
+input UserInviteCreateInput {
+  email: String!
+  orgId: ID!
+  requiresApproval: Boolean
+  roleIds: [String!]!
+  sendEmail: Boolean
+}
+
+input UserInviteSearchInput {
+  email: string_comparison_exp
+  id: id_comparison_exp
+  orgId: id_comparison_exp
+  organization: OrganizationSearchInput
+  sendEmail: bool_comparison_exp
+}
+
+input UserInviteWhereInput {
+  acceptedAt: String
+  email: String
+  id: ID
+  isAccepted: Boolean
+  orgId: ID
+  organization: OrganizationWhereInput
+  sendEmail: Boolean
+}
+
+type UserPreferences {
+  dateFormat: String!
+  datetimeFormat: String!
+  isDarkModePreferred: Boolean
+}
+
+input UserPreferencesInput {
+  dateFormat: String
+  datetimeFormat: String
+  isDarkModePreferred: Boolean
+}
+
+type UserRoboRewstyPreferences {
+  alwaysAllowedTools: [String!]!
+  createdAt: String!
+  customInstructions: String
+  id: ID!
+  metadata: JSON
+  updatedAt: String!
+  user: User!
+  userId: ID!
+}
+
+input UserRoboRewstyPreferencesInput {
+  alwaysAllowedTools: [String!]
+  metadata: JSON
+}
+
+input UserRoboRewstyPreferencesWhereInput {
+  id: ID
+  userId: ID
+}
+
+type UserRole {
+  orgId: ID!
+  roleId: ID!
+  userId: ID!
+}
+
+type UserRoleExclusion {
+  orgId: ID!
+  roleId: ID!
+  userId: ID!
+}
+
+input UserRolesInput {
+  id: ID!
+  roleIds: [String!]!
+}
+
+input UserSearchInput {
+  createdAt: string_comparison_exp
+  id: id_comparison_exp
+  isApiUser: bool_comparison_exp
+  isSuperuser: bool_comparison_exp
+  isTestUser: bool_comparison_exp
+  managedOrgs: OrganizationSearchInput
+  orgId: id_comparison_exp
+  organization: OrganizationSearchInput
+  roleIds: string_comparison_exp
+  sub: string_comparison_exp
+  username: string_comparison_exp
+}
+
+input UserWhereInput {
+  id: ID
+  isApiUser: Boolean
+  isSuperuser: Boolean
+  isTestUser: Boolean
+  managedOrgs: OrganizationWhereInput
+  orgId: ID
+  organization: OrganizationWhereInput
+  roleIds: [String!]
+  sub: String
+  username: String
+}
+
+type ValidationError {
+  code: String
+  field: String!
+  message: String!
+}
+
+scalar Void
+
+enum VoteReason {
+  CORRECT
+  HARMFUL
+  HELPFUL
+  INCORRECT
+  IRRELEVANT
+  NOT_UNDERSTOOD
+  OTHER
+}
+
+enum VoteType {
+  DOWN
+  UP
+}
+
+type Warrant {
+  authorized: Boolean!
+  objectId: String
+  objectType: String
+  relation: String
+  subjectId: String
+  subjectType: String
+}
+
+type Workflow {
+  action: Action
+  autoInstallingForManagedOrgs: [Organization!]!
+  cloneOverrides: JSON
+  clonedFrom: Workflow
+  clonedFromId: ID
+  clones: [Workflow]!
+  completionListeners: [Trigger!]!
+  crates: [Crate!]
+  createdAt: String
+  createdBy: User
+  createdById: ID
+  description: String
+  humanSecondsSaved: Int!
+  id: ID
+  input: [String!]!
+  inputSchema: JSON
+  isSynchronized: Boolean
+  latestPatchCreatedAt: String
+  metadata: JSON
+  name: String
+  notes: [WorkflowNote!]
+  orgId: ID!
+  organization: Organization!
+  output: [JSON]!
+  outputSchema: JSON
+  packsUsed: [Pack!]!
+  parentWorkflows: [WorkflowTask]
+  permission: Permission
+  schemaVersion: String
+  tags: [Tag!]!
+  taskActions: [Action!]!
+  tasks(search: WorkflowTaskSearchInput, where: WorkflowTaskWhereInput): [WorkflowTask!]!
+  tasksObject: JSON
+  temporalEnabled: Boolean!
+  timeout: Int
+  tokens: [JSON!]
+  triggers(includeCompletionListeners: Boolean = false, search: TriggerSearchInput, where: TriggerWhereInput): [Trigger]
+  type: WorkflowType!
+  unpackedFrom: Crate
+  unpackedFromId: ID
+  updatedAt: String
+  updatedBy: User
+  updatedById: ID
+  varsSchema: JSON
+  version: String
+  visibleForOrganizations(where: OrganizationInput): [Organization!]!
+}
+
+type WorkflowDraftStateMetadata {
+  draftHash: String
+  revision: Int
+}
+
+type WorkflowDraftSyncResponse {
+  didSucceed: Boolean!
+  draftHash: String
+  error: String
+  isFinished: Boolean!
+  revision: Int
+}
+
+enum WorkflowEventType {
+  ACTION_EDITING
+  ACTION_EDITING_DONE
+  AUTOSAVE
+  MOUSE_MOVE
+}
+
+type WorkflowExecution {
+  childExecutions: [WorkflowExecution!]!
+  completionHandledExecution: WorkflowExecution
+  completionHandlerExecutions: [WorkflowExecution!]!
+  conductor: WorkflowExecutionConductor
+  createdAt: String
+  id: ID
+  numAwaitingResponseTasks: Int
+  numSuccessfulTasks: Int
+  orgId: ID!
+  organization: Organization!
+  originatingExecutionId: ID
+  parentExecution: WorkflowExecution
+  parentExecutionId: ID
+  parentTaskExecutionId: ID
+  pendingTasks(where: PendingTaskWhereInput): [PendingTask]
+  processedCompletionAt: String
+  status: String
+  statusEnum: WorkflowExecutionStatusEnum
+  subExecutions: [WorkflowExecution!]!
+  taskLogs(limit: Int, offset: Int, order: [[String!]!] = [["createdAt"]], search: TaskLogSearchInput, where: TaskLogInput): [TaskLog!]!
+  updatedAt: String
+  workflow: Workflow!
+}
+
+type WorkflowExecutionConductor {
+  errors: [JSON]
+  executionEngine: String
+  graph: JSON
+  input: JSON
+  output: JSON
+  spec: JSON
+  state: WorkflowExecutionConductorState
+}
+
+type WorkflowExecutionConductorState {
+  contexts: JSON
+  routes: JSON
+  sequence: JSON
+  staged: JSON
+  status: String
+  tasks: JSON
+}
+
+input WorkflowExecutionSearchInput {
+  createdAt: string_comparison_exp
+  id: id_comparison_exp
+  numAwaitingResponseTasks: int_comparison_exp
+  orgId: id_comparison_exp
+  organization: OrganizationSearchInput
+  originatingExecutionId: id_comparison_exp
+  processedCompletionAt: string_comparison_exp
+  status: string_comparison_exp
+  workflow: WorkflowSearch
+}
+
+type WorkflowExecutionStats {
+  delayed: Int!
+  failed: Int!
+  humanSecondsSaved: Int!
+  paused: Int!
+  pending: Int!
+  running: Int!
+  succeeded: Int!
+}
+
+"""
+Typed mirror of WorkflowExecution.status. Added in SC-93156 as a non-breaking
+sibling of the legacy `status: String` field so the SC-84208 graph-api Visibility
+resolver has an enum contract to target without disturbing existing app/playwright
+consumers that still read `status` as a free-form String. Values mirror the
+WorkflowExecutionStatus Python enum (engine/persistence/workflow_execution.py)
+upper-cased per GraphQL convention — including transient states (REQUESTED,
+SCHEDULED, PAUSING, RESUMING, RETRYING, CANCELING) which Postgres-backed queries
+can surface even though Temporal Visibility queries won't see them.
+"""
+enum WorkflowExecutionStatusEnum {
+  ABANDONED
+  CANCELED
+  CANCELING
+  DELAYED
+  FAILED
+  PAUSED
+  PAUSING
+  PENDING
+  REQUESTED
+  RESUMING
+  RETRYING
+  RUNNING
+  SCHEDULED
+  SUCCEEDED
+  TIMEOUT
+}
+
+input WorkflowExecutionWhereInput {
+  id: ID
+  numAwaitingResponseTasks: Int
+  orgId: ID
+  originatingExecutionId: ID
+  status: String
+  workflow: WorkflowWhereInput
+  workflowId: ID
+}
+
+input WorkflowInput {
+  actionId: ID
+  cloneOverrides: JSON
+  clonedFromId: ID
+  description: String
+  humanSecondsSaved: Int
+  id: ID
+  input: [String!]
+  inputSchema: JSON
+  isSynchronized: Boolean
+  metadata: JSON
+  name: String
+  notes: [WorkflowNoteInput!]
+  orgId: ID
+  output: [JSON!]
+  outputSchema: JSON
+  parameters: JSON
+  schemaVersion: String
+  tagIds: [ID!]
+  tasks: [WorkflowTaskInput!]
+  timeout: Int
+  tokens: [JSON!]
+  transitions: [WorkflowTransitionInput!]
+  triggers: [TriggerCreateInput!]
+  type: WorkflowType
+  unpackedFromId: ID
+  varsSchema: JSON
+  version: String
+}
+
+type WorkflowNote {
+  clonedFrom: WorkflowNote
+  clonedFromId: ID
+  content: String
+  createdAt: String
+  id: ID
+  index: Int!
+  metadata: JSON
+  title: String
+  updatedAt: String
+  workflow: Workflow
+  workflowId: ID
+}
+
+input WorkflowNoteInput {
+  clonedFromId: ID
+  content: String
+  id: ID
+  index: Int
+  metadata: JSON
+  title: String
+  workflowId: ID
+}
+
+input WorkflowNoteSearchInput {
+  clonedFromId: id_comparison_exp
+  content: string_comparison_exp
+  id: id_comparison_exp
+  index: int_comparison_exp
+  metadata: json_comparison_exp
+  title: string_comparison_exp
+  workflowId: id_comparison_exp
+}
+
+input WorkflowNoteWhereInput {
+  clonedFromId: ID
+  content: String
+  id: ID
+  index: Int
+  metadata: JSON
+  title: String
+  workflowId: ID
+}
+
+type WorkflowOptionsResponse {
+  cachedOptions: [JSON]
+  executionId: ID
+}
+
+type WorkflowPatch {
+  comment: String!
+  commentDescription: String
+  createdAt: String!
+  foreignId: ID
+  id: ID!
+  patch: JSON!
+  patchType: PatchType!
+  updatedAt: String!
+  user: User
+  workflowId: ID!
+}
+
+enum WorkflowPatchOrderByInput {
+  comment_ASC
+  comment_DESC
+  createdAt_ASC
+  createdAt_DESC
+  foreignId_ASC
+  foreignId_DESC
+  id_ASC
+  id_DESC
+  patchType_ASC
+  patchType_DESC
+  updatedAt_ASC
+  updatedAt_DESC
+  workflowId_ASC
+  workflowId_DESC
+}
+
+input WorkflowPatchWhereInput {
+  comment: String
+  createdAt: String
+  foreignId: ID
+  patchType: PatchType
+  updatedAt: String
+  user: UserWhereInput
+  workflowId: ID
+}
+
+input WorkflowSearch {
+  clonedFromId: id_comparison_exp
+  createdAt: string_comparison_exp
+  description: string_comparison_exp
+  id: id_comparison_exp
+  input: string_comparison_exp
+  isSynchronized: bool_comparison_exp
+  name: string_comparison_exp
+  orgId: id_comparison_exp
+  org_id: id_comparison_exp
+  organization: OrganizationSearchInput
+  output: string_comparison_exp
+  schemaVersion: string_comparison_exp
+  tags: TagSearchInput
+  tasks: id_comparison_exp
+  timeout: int_comparison_exp
+  tokens: json_comparison_exp
+  updatedAt: string_comparison_exp
+  updatedBy: UserSearchInput
+  version: string_comparison_exp
+  visibleForOrganizations: id_comparison_exp
+}
+
+type WorkflowStatsByOrg {
+  id: ID!
+  name: String!
+  numSucceededTasks: Int!
+  orgId: ID!
+  totalExecutions: Int!
+  totalHumanSecondsSaved: Int!
+  totalTasks: Int!
+  updatedAt: String!
+}
+
+type WorkflowTask {
+  action: Action
+  actionId: ID
+  description: String
+  humanSecondsSaved: Int
+  id: ID
+  input: JSON
+  isMocked: Boolean
+  join: Int
+  metadata: JSON
+  mockInput: JSON
+  name: String
+  next: [WorkflowTransition!]!
+  packOverrides: [PackOverride!]
+  publishResultAs: String
+  retry: WorkflowTaskRetry
+  runAsOrgId: String
+  securitySchema: JSON
+  timeout: Int
+  transitionMode: TransitionModes
+  with: WorkflowTaskWithItems
+  workflow: Workflow
+  workflowId: ID
+}
+
+input WorkflowTaskInput {
+  action: ActionInput
+  actionId: ID
+  description: String
+  humanSecondsSaved: Int
+  id: ID
+  input: JSON
+  isMocked: Boolean
+  join: Int
+  metadata: JSON
+  mockInput: JSON
+  name: String
+  next: [WorkflowTransitionInput!]
+  packOverrides: [PackOverrideInput!]
+  publishResultAs: String
+  retry: WorkflowTaskRetryInput
+  runAsOrgId: String
+  securitySchema: JSON
+  timeout: Int
+  transitionMode: TransitionModes
+  with: WorkflowTaskWithItemsInput
+  workflowId: ID
+}
+
+type WorkflowTaskRetry {
+  count: String!
+  delay: String
+  when: String
+}
+
+input WorkflowTaskRetryInput {
+  count: String!
+  delay: String
+  when: String
+}
+
+input WorkflowTaskSearchInput {
+  action: ActionSearch
+  actionId: id_comparison_exp
+  createdAt: string_comparison_exp
+  description: string_comparison_exp
+  humanSecondsSaved: int_comparison_exp
+  id: id_comparison_exp
+  input: json_comparison_exp
+  join: int_comparison_exp
+  metadata: json_comparison_exp
+  packOverrides: PackOverrideSearchInput
+  timeout: int_comparison_exp
+  workflowId: id_comparison_exp
+}
+
+input WorkflowTaskWhereInput {
+  action: ActionInput
+  actionId: ID
+  description: String
+  humanSecondsSaved: Int
+  id: ID
+  input: JSON
+  isMocked: Boolean
+  join: Int
+  metadata: JSON
+  mockInput: JSON
+  name: String
+  next: [WorkflowTransitionInput!]
+  retry: WorkflowTaskRetryInput
+  runAsOrgId: String
+  timeout: Int
+  with: WorkflowTaskWithItemsInput
+  workflow: WorkflowWhereInput
+  workflowId: ID
+}
+
+type WorkflowTaskWithItems {
+  concurrency: String
+  items: String
+}
+
+input WorkflowTaskWithItemsInput {
+  concurrency: String
+  items: String
+}
+
+type WorkflowTransition {
+  do: [String!]!
+  from: String
+  id: ID
+  label: String
+  left: Float
+  orientation: String
+  publish: [JSON!]!
+  targetHandles: JSON
+  to: String
+  top: Float
+  when: String
+}
+
+input WorkflowTransitionInput {
+  do: [String]
+  from: String
+  id: ID
+  label: String
+  left: Float
+  orientation: String
+  publish: [JSON]
+  targetHandles: JSON
+  to: String
+  top: Float
+  when: String
+}
+
+enum WorkflowType {
+  OPTION_GENERATOR
+  STANDARD
+  STREAM_OUTPUT
+}
+
+input WorkflowWhereInput {
+  clonedFromId: ID
+  crates: CrateWhereInput
+  description: String
+  id: ID
+  input: [String]
+  isSynchronized: Boolean
+  name: String
+  orgId: ID
+  output: [JSON]
+  schemaVersion: String
+  timeout: Int
+  type: WorkflowType
+  unpackedFromId: ID
+  version: String
+  visibleForOrganizations: ID
+}
+
+input bool_comparison_exp {
+  _eq: Boolean
+  _ne: Boolean
+}
+
+input float_comparison_exp {
+  _eq: Int
+  _gt: Int
+  _gte: Int
+  _in: [Int!]
+  _lt: Int
+  _lte: Int
+  _neq: Int
+  _nin: [Int!]
+}
+
+input id_comparison_exp {
+  _eq: ID
+  _in: [ID!]
+  _ne: ID
+  _nin: [ID!]
+}
+
+input int_comparison_exp {
+  _eq: Int
+  _gt: Int
+  _gte: Int
+  _in: [Int!]
+  _lt: Int
+  _lte: Int
+  _neq: Int
+  _nin: [Int!]
+}
+
+input json_comparison_exp {
+  _contains: JSON
+  _eq: JSON
+  _ne: JSON
+}
+
+"""
+expression to compare columns of type String. All fields are combined with logical 'AND'.
+"""
+input string_comparison_exp {
+  _eq: String
+  _gt: String
+  _gte: String
+  _ilike: String
+  _in: [String!]
+  _like: String
+  _lt: String
+  _lte: String
+  _neq: String
+  _nilike: String
+  _nin: [String!]
+  _nlike: String
+  _substr: String
+}

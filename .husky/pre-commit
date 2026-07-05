@@ -9,10 +9,10 @@ if [ -n "$GRAPHQL_FILES" ]; then
   echo "GraphQL files detected in commit, running codegen..."
   npm run codegen
 
-  # Stage the generated SDK file if it changed
-  if [ -f "src/sessions/graphql/sdk.ts" ]; then
-    git add src/sessions/graphql/sdk.ts
-    echo "Auto-staged generated SDK file"
+  # Stage the generated output directory if it changed
+  if [ -d "src/sessions/graphql/generated" ]; then
+    git add src/sessions/graphql/generated
+    echo "Auto-staged generated GraphQL output"
   fi
 fi
 
