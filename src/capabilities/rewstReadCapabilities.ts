@@ -3,12 +3,12 @@ import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
 import {
-	asString,
-	requireString,
 	asPositiveInt,
+	asString,
 	mapWithConcurrency,
-	rawGraphqlOrThrow,
 	ORG_ID_PROP,
+	rawGraphqlOrThrow,
+	requireString,
 } from './inputHelpers';
 
 /**
@@ -649,15 +649,11 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 			return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
 		}
 		try {
-			const res = await ctx.session.rawGraphql(EXECUTION_CONTEXTS_QUERY, {
+			const data = await rawGraphqlOrThrow(ctx.session, EXECUTION_CONTEXTS_QUERY, {
 				workflowExecutionId: execution.id,
 			});
-			if (Array.isArray(res.errors) ? res.errors.length > 0 : res.errors != null) {
-				skipped += 1;
-				return {};
-			}
 			return flattenExecutionContextFrames(
-				(res.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts,
+				(data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts,
 			);
 		} catch {
 			skipped += 1;

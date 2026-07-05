@@ -2,8 +2,14 @@ import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
-import { ORG_ID_PROP, requireString } from './inputHelpers';
-import { orgDisplayName, throwOnGraphqlErrors, withMutationApproval } from './mutationApproval';
+import {
+	ORG_ID_PROP,
+	rawGraphqlOrThrow,
+	requireResourceInOrg,
+	requireString,
+	requireStringAllowEmpty,
+} from './inputHelpers';
+import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
  * Org-variable write capabilities. createOrgVariable carries orgId in its input
@@ -59,13 +65,6 @@ function optionalBoolean(input: Record<string, unknown>, key: string): boolean |
 	return value;
 }
 
-/** Requires a string argument that may be empty (a variable value can be blank). */
-function requireStringAllowEmpty(input: Record<string, unknown>, key: string): string {
-	const value = input[key];
-	if (typeof value !== 'string') throw new Error(`Missing required string argument "${key}".`);
-	return value;
-}
-
 /**
  * Fetches a variable by id and fails closed unless it belongs to the requested
  * org. Returns the fields needed to build a safe update payload. The value is
@@ -76,12 +75,19 @@ async function requireOrgVariableInOrg(
 	variableId: string,
 	orgId: string,
 ): Promise<OrgVariableRow> {
-	const { data, errors } = await ctx.session.rawGraphql(ORG_VARIABLE_BY_ID, { orgId, id: variableId });
-	throwOnGraphqlErrors(errors);
-	const rows = ((data as { orgVariables?: OrgVariableRow[] } | undefined)?.orgVariables ?? []) as OrgVariableRow[];
-	const row = rows.find(r => r.id === variableId);
-	if (!row) throw new Error(`Org variable ${variableId} is not in org ${orgId}.`);
-	return row;
+	return requireResourceInOrg({
+		label: 'Org variable',
+		id: variableId,
+		orgId,
+		fetch: async () => {
+			const data = await rawGraphqlOrThrow(ctx.session, ORG_VARIABLE_BY_ID, { orgId, id: variableId });
+			const rows = ((data as { orgVariables?: OrgVariableRow[] } | undefined)?.orgVariables ??
+				[]) as OrgVariableRow[];
+			return rows.find(r => r.id === variableId);
+		},
+		// The query is already org-filtered, so a returned row is in-org by construction.
+		inOrg: () => true,
+	});
 }
 
 const createOrgVariableSpec: ToolSpec = {
@@ -116,10 +122,9 @@ async function runCreateOrgVariable(input: Record<string, unknown>, ctx: Capabil
 	const scope: MutationScope = { scopeId: orgId, scopeName: `new variable "${name}"`, orgId, orgName };
 	const summary = `Create ${category} variable "${name}" in org "${orgName}" (${orgId})`;
 	return withMutationApproval(scope, summary, async () => {
-		const { data, errors } = await ctx.session.rawGraphql(CREATE_ORG_VARIABLE, {
+		const data = await rawGraphqlOrThrow(ctx.session, CREATE_ORG_VARIABLE, {
 			orgVariable: { orgId, name, value, category, cascade },
 		});
-		throwOnGraphqlErrors(errors);
 		const created = (data as { createOrgVariable?: OrgVariableRow } | undefined)?.createOrgVariable;
 		if (!created?.id) throw new Error('createOrgVariable returned no variable; the mutation may have failed.');
 		return JSON.stringify({ status: 'created', id: created.id, name: created.name ?? name }, null, 2);
@@ -163,10 +168,9 @@ async function runUpdateOrgVariable(input: Record<string, unknown>, ctx: Capabil
 	const scope: MutationScope = { scopeId: variableId, scopeName: name, orgId, orgName };
 	const summary = `Update variable "${name}" (${variableId}) in org "${orgName}" (${orgId})`;
 	return withMutationApproval(scope, summary, async () => {
-		const { data, errors } = await ctx.session.rawGraphql(UPDATE_ORG_VARIABLES, {
+		const data = await rawGraphqlOrThrow(ctx.session, UPDATE_ORG_VARIABLES, {
 			orgVariables: [{ id: variableId, orgId, name, value, category, cascade }],
 		});
-		throwOnGraphqlErrors(errors);
 		const rows = ((data as { updateOrgVariables?: OrgVariableRow[] } | undefined)?.updateOrgVariables ??
 			[]) as OrgVariableRow[];
 		const updated = rows.find(r => r.id === variableId) ?? rows[0];
@@ -199,8 +203,7 @@ async function runDeleteOrgVariable(input: Record<string, unknown>, ctx: Capabil
 	const scope: MutationScope = { scopeId: variableId, scopeName: name, orgId, orgName };
 	const summary = `Delete variable "${name}" (${variableId}) in org "${orgName}" (${orgId})`;
 	return withMutationApproval(scope, summary, async () => {
-		const { data, errors } = await ctx.session.rawGraphql(DELETE_ORG_VARIABLE, { id: variableId });
-		throwOnGraphqlErrors(errors);
+		const data = await rawGraphqlOrThrow(ctx.session, DELETE_ORG_VARIABLE, { id: variableId });
 		const deletedId = (data as { deleteOrgVariable?: string | null } | undefined)?.deleteOrgVariable;
 		if (!deletedId) throw new Error('deleteOrgVariable returned no id; the mutation may have failed.');
 		return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);

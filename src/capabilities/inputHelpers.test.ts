@@ -132,6 +132,20 @@ suite('Unit: inputHelpers — requireResourceInOrg', () => {
 		);
 	});
 
+	test('throws when the resource row has no orgId field (default inOrg predicate)', async () => {
+		const row = { id: 'w1' };
+		await assert.rejects(
+			() =>
+				requireResourceInOrg({
+					label: 'Workflow',
+					id: 'w1',
+					orgId: 'org1',
+					fetch: async () => row,
+				}),
+			/Workflow w1 is not in org org1/,
+		);
+	});
+
 	test('uses custom inOrg predicate when provided', async () => {
 		const row = { id: 'w1', orgId: 'org2' };
 		// inOrg: () => true bypasses the orgId check (e.g. query is already org-filtered)

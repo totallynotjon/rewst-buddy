@@ -1,7 +1,6 @@
 import { approveMutationScope, isMutationScopeApproved, type MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { CapabilityContext } from './Capability';
 import { requestMcpMutationApproval } from './graphqlMutateCapability';
-export { throwOnGraphqlErrors } from './inputHelpers';
 
 /**
  * Shared plumbing for the org-scoped write capabilities (templates, org

@@ -15,6 +15,7 @@ scripts/wf-backups/
 
 # Claude Code local files
 .claude/settings.*
+.claude/specs/
 .claudeignore
 .LOCAL
 .vscode/settings.json
