@@ -1,4 +1,6 @@
 export { LinkManager } from './LinkManager';
+export { REWST_REMOTE_SCHEME, RewstContentProvider } from './RewstContentProvider';
+export { RewstQuickDiffProvider } from './RewstQuickDiffProvider';
 export { SyncManager, type SyncDecisionContext } from './SyncManager';
 export { SyncOnSaveManager } from './SyncOnSaveManager';
 export { TemplateBundleManager } from './TemplateBundleManager';

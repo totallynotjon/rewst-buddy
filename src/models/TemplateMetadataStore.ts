@@ -49,6 +49,18 @@ export const TemplateMetadataStore = new (class _ implements vscode.Disposable {
 		return this.templateIndex.get(templateId);
 	}
 
+	getTemplatesForOrg(orgId: string): TemplateFragment[] {
+		const templateIds = this.orgIndex.get(orgId);
+		if (!templateIds) return [];
+		const templates: TemplateFragment[] = [];
+		for (const id of templateIds) {
+			const metadata = this.templateIndex.get(id);
+			if (metadata) templates.push(metadata.template);
+		}
+		templates.sort((a, b) => a.name.localeCompare(b.name));
+		return templates;
+	}
+
 	private handleSessionChange(event: SessionChangeEvent): void {
 		if (event.type === 'saved') {
 			this.loadAllSessionTemplates(DEFERRED_DELAY_SESSION_EVENT_MS);

@@ -1,15 +1,49 @@
 import type { SessionChangeEvent } from '@events';
 import { FolderLink, Link, TemplateLink } from '@models';
 import { FullTemplateFragment, Session, SessionManager } from '@sessions';
-import { findAllTemplateReferences, getHash, log, makeUniqueUri, writeTextFile } from '@utils';
+import {
+	closeDiffTabsForOriginal,
+	findAllTemplateReferences,
+	getHash,
+	log,
+	makeUniqueUri,
+	writeTextFile,
+} from '@utils';
 import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
+import { RewstContentProvider } from './RewstContentProvider';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { determineSyncAction, type SyncDecision } from './syncDecision';
 import { buildTemplateLink } from './templateLinkFactory';
 import { nonEmptyString } from './types';
 
 export { orgFromTemplate } from './templateLinkFactory';
+
+/** Injectable seam for conflict resolution: real diff/prompt/cleanup vs. test doubles. */
+export interface ConflictResolutionDeps {
+	showDiff(doc: vscode.TextDocument, remoteBody: string): Promise<vscode.Uri>;
+	promptChoice(): Promise<'Keep Local' | 'Take Remote' | undefined>;
+	closeDiff(doc: vscode.TextDocument): Promise<void> | void;
+}
+
+const CONFLICT_PROMPT_MESSAGE =
+	'Template and Rewst are out of sync. The local file and Rewst template both changed since the last sync. Review the diff, then keep your local version or take the remote version.';
+
+const defaultConflictDeps: ConflictResolutionDeps = {
+	async showDiff(doc, remoteBody) {
+		const remoteUri = RewstContentProvider.put(doc.uri, remoteBody);
+		const fileName = doc.uri.path.split('/').pop() ?? doc.uri.path;
+		await vscode.commands.executeCommand('vscode.diff', doc.uri, remoteUri, `${fileName}: Local ↔ Rewst`);
+		return remoteUri;
+	},
+	async promptChoice() {
+		const choice = await vscode.window.showInformationMessage(CONFLICT_PROMPT_MESSAGE, 'Keep Local', 'Take Remote');
+		return choice as 'Keep Local' | 'Take Remote' | undefined;
+	},
+	closeDiff(doc) {
+		return closeDiffTabsForOriginal(doc.uri);
+	},
+};
 
 /**
  * Everything needed to act on a sync without re-fetching: the link, the session
@@ -31,6 +65,17 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 	private documentEventDisposables: vscode.Disposable[] = [];
 	private interval: NodeJS.Timeout | undefined;
 	private isActive = false;
+	private conflictDeps: ConflictResolutionDeps = defaultConflictDeps;
+
+	/** Test seam: override showDiff/promptChoice/closeDiff for conflict resolution tests. */
+	_setConflictDepsForTesting(deps: Partial<ConflictResolutionDeps>): void {
+		this.conflictDeps = { ...this.conflictDeps, ...deps };
+	}
+
+	/** Test seam: restore the real diff/prompt/cleanup deps. */
+	_resetConflictDepsForTesting(): void {
+		this.conflictDeps = defaultConflictDeps;
+	}
 
 	init(): _ {
 		// Subscribe to session changes
@@ -264,7 +309,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 			case 'conflict':
 				log.debug('syncTemplateInternal: conflict detected');
-				await this.handleConflict(doc, session, remoteTemplate, decision);
+				await this.handleConflict(doc, session, remoteTemplate);
 				break;
 		}
 	}
@@ -364,48 +409,39 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		this.addLink(templateLink, doc.uri);
 	}
 
-	private async handleConflict(
-		doc: vscode.TextDocument,
-		session: Session,
-		remoteTemplate: FullTemplateFragment,
-		decision: Extract<SyncDecision, { action: 'conflict' }>,
-	) {
-		log.debug('handleConflict: conflict detected, prompting user');
+	private async handleConflict(doc: vscode.TextDocument, session: Session, remoteTemplate: FullTemplateFragment) {
+		log.debug('handleConflict: conflict detected, showing diff');
 		log.info('Rewst and last update of local template are out of sync, need to remediate before push');
 
-		const choice = await vscode.window.showInformationMessage(
-			`Template and Rewst are out of sync. ${this.describeConflict(decision.changed)} Do you wish to force upload to Rewst, or download the latest version of the template?`,
-			{ modal: true },
-			'Force Override',
-			'Download Latest',
-		);
+		await this.conflictDeps.showDiff(doc, remoteTemplate.body);
 
-		log.debug('handleConflict: user chose', choice);
+		try {
+			const choice = await this.conflictDeps.promptChoice();
+			log.debug('handleConflict: user chose', choice);
 
-		switch (choice) {
-			case 'Force Override': {
-				log.trace('handleConflict: force overriding remote');
-				// Re-resolve rather than reusing the session captured before this
-				// modal: the user may take arbitrarily long to respond, during which
-				// the session could be refreshed, removed, or replaced.
-				const link = LinkManager.getTemplateLink(doc.uri);
-				const freshSession = await SessionManager.getSessionForOrg(link.org.id);
-				await this.updateTemplateBody(doc, freshSession);
-				break;
+			switch (choice) {
+				case 'Keep Local': {
+					log.trace('handleConflict: keeping local, uploading');
+					// Re-resolve rather than reusing the session captured before this
+					// prompt: the user may take arbitrarily long to respond, during
+					// which the session could be refreshed, removed, or replaced.
+					const link = LinkManager.getTemplateLink(doc.uri);
+					const freshSession = await SessionManager.getSessionForOrg(link.org.id);
+					await this.updateTemplateBody(doc, freshSession);
+					break;
+				}
+
+				case 'Take Remote':
+					log.trace('handleConflict: taking remote');
+					await this.applyTemplateToDocument(doc, session, remoteTemplate);
+					break;
+
+				case undefined:
+					throw log.error('handleConflict: operation aborted by user');
 			}
-
-			case 'Download Latest':
-				log.trace('handleConflict: downloading remote');
-				await this.applyTemplateToDocument(doc, session, remoteTemplate);
-				break;
-
-			case undefined:
-				throw log.error('handleConflict: operation aborted by user');
+		} finally {
+			await this.conflictDeps.closeDiff(doc);
 		}
-	}
-
-	private describeConflict(_changed: Extract<SyncDecision, { action: 'conflict' }>['changed']): string {
-		return 'The local file and Rewst template both changed since the last sync.';
 	}
 
 	async applyTemplateToDocument(doc: vscode.TextDocument, _session: Session, remoteTemplate: FullTemplateFragment) {

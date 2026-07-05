@@ -20,7 +20,9 @@ does not exist, stop and report — do not improvise a plan from the epic.
 2. `CLAUDE.md` at repo root — read fully before writing any code. Where the spec is silent,
    CLAUDE.md conventions govern (capability authoring, testing, changelog, PR mechanics,
    performance, AI-steering wording).
-3. Current code at HEAD. Read every file the spec tells you to touch before touching it.
+3. Current code at HEAD — but read it **just-in-time, one step at a time**, not as a bulk
+   pass. See "Context discipline" below; this is not optional for specs with more than a
+   handful of steps.
 
 ## Execution rules
 
@@ -39,6 +41,34 @@ does not exist, stop and report — do not improvise a plan from the epic.
   as you complete them, including every endgame item in the spec's stated order.
 - **The "Do NOT" section is binding.** Treat each bullet as a hard constraint, same weight as a
   contract.
+
+## Context discipline (do this for any spec beyond a handful of steps)
+
+Reading every file the spec cites, for every step, before writing any code is the single
+biggest way this command burns its context budget on research instead of implementation.
+The spec already did that research once — it exists precisely so you don't have to re-derive
+it. Do not open it.
+
+- **Do not bulk-read.** Never loop through the spec's file references (Source lines, "files
+  touched" lists, code excerpts) reading them all up front. Process **one step at a time**:
+  read only the file(s) that step's "files touched" names, immediately before editing them —
+  not the files named by step 9 while you're still on step 2.
+- **Trust the spec's cited contracts and code excerpts first.** They were verified against
+  HEAD when the spec was written. Read a file yourself only to (a) find the exact insertion
+  point / surrounding code the spec didn't quote, (b) confirm a cited path/symbol/line hasn't
+  drifted, or (c) resolve a real ambiguity the spec left to your discretion. Do not re-read a
+  file "for context" if the spec already gave you the signature/contract you need to act on it.
+- **A file touched by multiple steps is read once**, the first time a step needs it — not
+  re-read fresh at each later step that also touches it.
+- **Once a step's done-check passes, let that file's contents drop out of active attention.**
+  The working todo list (from the spec) plus `git status`/`git diff` are the source of truth
+  for progress, not everything you've read so far still being "in view." If context gets
+  compacted mid-run, re-derive state from the todo list and git, not by re-reading files you
+  already finished with.
+- **Docs/changelog/openspec steps are the cheapest to defer.** Do implementation + test steps
+  first in file-reading order; leave spec/doc/changelog edits (which mostly copy text this
+  command's spec already wrote verbatim) until their turn in the step order, not read early
+  "while you're in the area."
 
 ## When reality disagrees with the spec
 

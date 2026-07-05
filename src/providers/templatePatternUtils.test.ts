@@ -1,5 +1,10 @@
 import * as assert from 'assert';
-import { findAllTemplateReferences, findTemplateAtPosition, TEMPLATE_PATTERN } from './templatePatternUtils';
+import {
+	findAllTemplateReferences,
+	findTemplateAtPosition,
+	isInsideTemplateCallPrefix,
+	TEMPLATE_PATTERN,
+} from './templatePatternUtils';
 
 import { suite, test } from '../test/tdd';
 
@@ -151,5 +156,27 @@ suite('Unit: findAllTemplateReferences()', () => {
 		].join('\n');
 		const refs = findAllTemplateReferences(text);
 		assert.deepStrictEqual(refs, ['11111111-1111-1111-1111-111111111111']);
+	});
+});
+
+suite('Unit: isInsideTemplateCallPrefix()', () => {
+	test('true when cursor is inside template(" with the quote unclosed', () => {
+		const line = 'template("';
+		assert.strictEqual(isInsideTemplateCallPrefix(line, line.length), true);
+	});
+
+	test('true for single-quote variant', () => {
+		const line = "template('";
+		assert.strictEqual(isInsideTemplateCallPrefix(line, line.length), true);
+	});
+
+	test('false once the closing quote/paren is present before cursor', () => {
+		const line = 'template("550e8400-e29b-41d4-a716-446655440000")';
+		assert.strictEqual(isInsideTemplateCallPrefix(line, line.length), false);
+	});
+
+	test('false when cursor is outside any template( call', () => {
+		const line = 'no template call here';
+		assert.strictEqual(isInsideTemplateCallPrefix(line, 5), false);
 	});
 });

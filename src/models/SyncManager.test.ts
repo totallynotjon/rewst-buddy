@@ -869,11 +869,11 @@ suite('Unit: SyncManager.fetchFolder', () => {
 	});
 });
 
-// Spec: template-sync "Resolve conflicts with explicit user choice". The
+// Spec: template-sync "Resolve conflicts via diff, not a blind modal". The
 // 'conflict' action is only reachable through the public syncTemplate() entry
 // point (computeSyncDecision -> syncTemplateInternal -> handleConflict), which
-// no prior test exercised. These stub the modal vscode.window.showInformationMessage
-// uses to drive each of its three outcomes.
+// no prior test exercised. These inject the showDiff/promptChoice/closeDiff
+// deps via the test seam to drive each outcome without a real diff editor.
 suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 	setup(() => {
 		initTestEnvironment();
@@ -886,6 +886,7 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		SessionManager._resetForTesting();
 		LinkManager._resetForTesting();
 		SyncOnSaveManager._resetForTesting();
+		SyncManager._resetConflictDepsForTesting();
 	});
 
 	function setUpConflict() {
@@ -920,13 +921,30 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		return { uri, doc, wrapper, templateId, org };
 	}
 
-	test('user forces the local version: the local body is uploaded to Rewst', async () => {
+	const fakeRemoteUri = vscode.Uri.parse('rewst-remote:/test/conflict-file.txt?rewst-remote=1');
+
+	test('keeps local: uploads local body and shows a diff first', async () => {
 		const { doc, wrapper, templateId, org } = setUpConflict();
-		let modalMessage = '';
-		const restore = stub(vscode.window, 'showInformationMessage', (async (message: string) => {
-			modalMessage = message;
-			return 'Force Override';
-		}) as unknown as typeof vscode.window.showInformationMessage);
+		const calls: string[] = [];
+		let showDiffArgs: [vscode.TextDocument, string] | undefined;
+		let closeDiffArg: vscode.TextDocument | undefined;
+
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async (d, remoteBody) => {
+				calls.push('showDiff');
+				showDiffArgs = [d, remoteBody];
+				return fakeRemoteUri;
+			},
+			promptChoice: async () => {
+				calls.push('promptChoice');
+				return 'Keep Local';
+			},
+			closeDiff: async d => {
+				calls.push('closeDiff');
+				closeDiffArg = d;
+			},
+		});
+
 		wrapper.when('updateTemplateBody', {
 			data: Fixtures.updateTemplateBodyMutation({
 				id: templateId,
@@ -937,29 +955,32 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 			}),
 		});
 
-		try {
-			await SyncManager.syncTemplate(doc);
-		} finally {
-			restore();
-		}
+		await SyncManager.syncTemplate(doc);
 
-		assert.match(modalMessage, /out of sync/);
-		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 1, 'force override uploads local body');
+		assert.deepStrictEqual(calls, ['showDiff', 'promptChoice', 'closeDiff']);
+		assert.strictEqual(showDiffArgs?.[0], doc, 'showDiff receives the document');
+		assert.strictEqual(
+			showDiffArgs?.[1],
+			'// remote content, different from local',
+			'showDiff receives the remote body',
+		);
+		assert.strictEqual(closeDiffArg, doc, 'closeDiff runs after the choice is handled');
+
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 1, 'keep local uploads local body');
 		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody')[0].variables.body, '// locally edited content');
-		assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 1, 'no extra download happens');
 
 		const link = LinkManager.getTemplateLink(doc.uri);
 		assert.strictEqual(link.template.updatedAt, 'uploaded-ts', 'link reflects the upload response');
 	});
 
-	test('force override re-resolves the session instead of reusing one captured before the modal', async () => {
+	test('keep local re-resolves session instead of reusing one captured before the prompt', async () => {
 		const { doc, wrapper: staleWrapper, templateId, org } = setUpConflict();
 
 		// A session can be refreshed, removed, or replaced while the user is
-		// staring at the (indefinitely long) conflict modal. Swap in a distinct
-		// session for the same org from inside the modal stub to simulate that,
-		// and assert the upload lands on the new session, not the stale one
-		// captured before the modal was shown.
+		// staring at the (indefinitely long) conflict prompt. Swap in a distinct
+		// session for the same org from inside the promptChoice stub to simulate
+		// that, and assert the upload lands on the new session, not the stale
+		// one captured before the prompt was shown.
 		const { session: freshSession, wrapper: freshWrapper } = createMockSession({
 			profile: { org, allManagedOrgs: [org] },
 		});
@@ -983,45 +1004,45 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 			}),
 		});
 
-		const restore = stub(vscode.window, 'showInformationMessage', (async () => {
-			SessionManager._setSessionsForTesting([freshSession]);
-			return 'Force Override';
-		}) as unknown as typeof vscode.window.showInformationMessage);
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => fakeRemoteUri,
+			promptChoice: async () => {
+				SessionManager._setSessionsForTesting([freshSession]);
+				return 'Keep Local';
+			},
+			closeDiff: async () => {},
+		});
 
-		try {
-			await SyncManager.syncTemplate(doc);
-		} finally {
-			restore();
-		}
+		await SyncManager.syncTemplate(doc);
 
 		assert.strictEqual(
 			staleWrapper.getCallsFor('updateTemplateBody').length,
 			0,
-			'the session captured before the modal must not be used for the upload',
+			'the session captured before the prompt must not be used for the upload',
 		);
 		assert.strictEqual(
 			freshWrapper.getCallsFor('updateTemplateBody').length,
 			1,
-			'the session swapped in during the modal wait should receive the upload',
+			'the session swapped in during the prompt wait should receive the upload',
 		);
 	});
 
-	test('force override surfaces a clear error when no session remains for the org after the modal', async () => {
+	test('keep local surfaces a clear error when no session remains after the prompt', async () => {
 		const { doc, wrapper: staleWrapper } = setUpConflict();
 
 		// The org's only session is removed while the user is staring at the
-		// conflict modal; re-resolution must fail loudly rather than fall back
-		// to the stale session captured before the modal.
-		const restore = stub(vscode.window, 'showInformationMessage', (async () => {
-			SessionManager._setSessionsForTesting([]);
-			return 'Force Override';
-		}) as unknown as typeof vscode.window.showInformationMessage);
+		// conflict prompt; re-resolution must fail loudly rather than fall back
+		// to the stale session captured before the prompt.
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => fakeRemoteUri,
+			promptChoice: async () => {
+				SessionManager._setSessionsForTesting([]);
+				return 'Keep Local';
+			},
+			closeDiff: async () => {},
+		});
 
-		try {
-			await assert.rejects(() => SyncManager.syncTemplate(doc), /no session found/);
-		} finally {
-			restore();
-		}
+		await assert.rejects(() => SyncManager.syncTemplate(doc), /no session found/);
 
 		assert.strictEqual(
 			staleWrapper.getCallsFor('updateTemplateBody').length,
@@ -1030,47 +1051,66 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		);
 	});
 
-	test('user takes the remote version: the remote body replaces the local file', async () => {
+	test('takes remote: remote body replaces local file', async () => {
 		const { doc, wrapper } = setUpConflict();
-		const restore = stub(
-			vscode.window,
-			'showInformationMessage',
-			(async () => 'Download Latest') as unknown as typeof vscode.window.showInformationMessage,
-		);
+
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => fakeRemoteUri,
+			promptChoice: async () => 'Take Remote',
+			closeDiff: async () => {},
+		});
 
 		try {
 			await SyncManager.syncTemplate(doc);
 		} catch {
 			// expected: vscode.workspace.save of an unopened mock document fails here,
 			// same as the existing applyTemplateToDocument tests above.
-		} finally {
-			restore();
 		}
 
-		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload happens on download');
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload happens on take-remote');
 
 		const link = LinkManager.getTemplateLink(doc.uri);
 		assert.strictEqual(link.template.updatedAt, 'remote-ts', 'link now reflects the downloaded remote template');
 		assert.strictEqual(link.bodyHash, getHash('// remote content, different from local'));
 	});
 
-	test('user dismisses the prompt: the sync aborts and nothing changes', async () => {
+	test('user dismisses: aborts, nothing changes, diff is still closed', async () => {
 		const { doc, wrapper } = setUpConflict();
-		const restore = stub(
-			vscode.window,
-			'showInformationMessage',
-			(async () => undefined) as unknown as typeof vscode.window.showInformationMessage,
-		);
+		let closeDiffCalled = false;
 
-		try {
-			await assert.rejects(() => SyncManager.syncTemplate(doc));
-		} finally {
-			restore();
-		}
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => fakeRemoteUri,
+			promptChoice: async () => undefined,
+			closeDiff: async () => {
+				closeDiffCalled = true;
+			},
+		});
 
-		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload on cancel');
+		await assert.rejects(() => SyncManager.syncTemplate(doc));
+
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload on dismiss');
+		assert.ok(closeDiffCalled, 'closeDiff must run even when the user dismisses');
 		const link = LinkManager.getTemplateLink(doc.uri);
-		assert.strictEqual(link.template.updatedAt, 'local-ts', 'link is untouched after cancel');
+		assert.strictEqual(link.template.updatedAt, 'local-ts', 'link is untouched after dismiss');
+	});
+
+	test('showDiff failure aborts without ever prompting', async () => {
+		const { doc } = setUpConflict();
+		let promptCalls = 0;
+
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => {
+				throw new Error('diff failed to open');
+			},
+			promptChoice: async () => {
+				promptCalls++;
+				return 'Keep Local';
+			},
+			closeDiff: async () => {},
+		});
+
+		await assert.rejects(() => SyncManager.syncTemplate(doc), /diff failed to open/);
+		assert.strictEqual(promptCalls, 0, 'promptChoice must never run if the diff never opened');
 	});
 });
 

@@ -10,7 +10,14 @@ import {
 	TemplateMetadataStore,
 	WorkingScopeManager,
 } from '@models';
-import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
+import {
+	JINJA_SEMANTIC_TOKENS_LEGEND,
+	JinjaFilterProvider,
+	JinjaSemanticTokensProvider,
+	TemplateDefinitionProvider,
+	TemplateHoverProvider,
+	TemplateNameCompletionProvider,
+} from './providers';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
 import {
@@ -74,6 +81,25 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.languages.registerDefinitionProvider({ scheme: 'file' }, new TemplateDefinitionProvider()),
 		vscode.languages.registerHoverProvider({ scheme: 'file' }, new TemplateHoverProvider()),
+	);
+
+	// Register Jinja IntelliSense providers for linked files: filter completion/hover,
+	// template-name completion inside template("..."), and dialect keyword highlighting.
+	const jinjaFilterProvider = new JinjaFilterProvider();
+	context.subscriptions.push(
+		vscode.languages.registerHoverProvider({ scheme: 'file' }, jinjaFilterProvider),
+		vscode.languages.registerCompletionItemProvider({ scheme: 'file' }, jinjaFilterProvider, '|'),
+		vscode.languages.registerCompletionItemProvider(
+			{ scheme: 'file' },
+			new TemplateNameCompletionProvider(),
+			'"',
+			"'",
+		),
+		vscode.languages.registerDocumentSemanticTokensProvider(
+			{ scheme: 'file' },
+			new JinjaSemanticTokensProvider(),
+			JINJA_SEMANTIC_TOKENS_LEGEND,
+		),
 	);
 
 	// Register managers (self-register for their respective VS Code events).

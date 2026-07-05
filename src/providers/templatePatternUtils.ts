@@ -40,3 +40,19 @@ export function findAllTemplateReferences(text: string): string[] {
 	}
 	return [...ids];
 }
+
+const TEMPLATE_CALL_PREFIX_PATTERN = /template\s*\(\s*(["'])/g;
+
+/** True when `character` sits inside an open (unclosed-quote) `template("`/`template('` call. */
+export function isInsideTemplateCallPrefix(line: string, character: number): boolean {
+	TEMPLATE_CALL_PREFIX_PATTERN.lastIndex = 0;
+	let match: RegExpExecArray | null;
+	while ((match = TEMPLATE_CALL_PREFIX_PATTERN.exec(line)) !== null) {
+		const quote = match[1];
+		const quoteStart = match.index + match[0].length;
+		if (character < quoteStart) continue;
+		const closeIdx = line.indexOf(quote, quoteStart);
+		if (closeIdx === -1 || character <= closeIdx) return true;
+	}
+	return false;
+}

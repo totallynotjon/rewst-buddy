@@ -9,6 +9,7 @@
  * tool needs no orgId; the engine host is derived from the session's region.
  */
 
+import { log } from '@utils';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
@@ -153,9 +154,8 @@ export function formatJinjaFilters(filters: JinjaFilterDoc[], input: FormatInput
 	].join('\n');
 }
 
-/** Derives the engine host from the session's region (api.* → engine.*). */
-function engineBaseFrom(ctx: CapabilityContext): string {
-	const graphqlUrl = ctx.session?.profile?.region?.graphqlUrl;
+/** Derives the engine host from a region's graphqlUrl (api.* → engine.*). Pure. */
+export function engineBaseFromRegion(graphqlUrl: string | undefined): string {
 	if (typeof graphqlUrl !== 'string') return DEFAULT_ENGINE_BASE;
 	try {
 		const url = new URL(graphqlUrl);
@@ -164,6 +164,11 @@ function engineBaseFrom(ctx: CapabilityContext): string {
 	} catch {
 		return DEFAULT_ENGINE_BASE;
 	}
+}
+
+/** Derives the engine host from the session's region (api.* → engine.*). */
+function engineBaseFrom(ctx: CapabilityContext): string {
+	return engineBaseFromRegion(ctx.session?.profile?.region?.graphqlUrl);
 }
 
 async function defaultFetcher(engineBaseUrl: string): Promise<JinjaFilterDoc[]> {
@@ -177,14 +182,30 @@ async function defaultFetcher(engineBaseUrl: string): Promise<JinjaFilterDoc[]> 
 	return parseJinjaFilters(await response.json());
 }
 
-async function getFilters(ctx: CapabilityContext): Promise<JinjaFilterDoc[]> {
-	const base = engineBaseFrom(ctx);
+/** Cache-or-fetch the filter catalog for one engine base URL. */
+async function getFiltersForBase(base: string): Promise<JinjaFilterDoc[]> {
 	const cached = cacheByBase.get(base);
 	if (cached) return cached;
 	const fetcher = activeFetcher ?? defaultFetcher;
 	const filters = await fetcher(base);
 	cacheByBase.set(base, filters);
 	return filters;
+}
+
+/** Synchronous cache read for the completion/hover path — never fetches. */
+export function getCachedFilters(base: string): JinjaFilterDoc[] | undefined {
+	return cacheByBase.get(base);
+}
+
+/** Fire-and-forget background fetch for the completion/hover path on a cache miss. */
+export function primeFilters(base: string): void {
+	getFiltersForBase(base).catch(error => {
+		log.debug(`Jinja filter catalog fetch failed for ${base}: ${error}`);
+	});
+}
+
+async function getFilters(ctx: CapabilityContext): Promise<JinjaFilterDoc[]> {
+	return getFiltersForBase(engineBaseFrom(ctx));
 }
 
 const getJinjaFilterDocsSpec: ToolSpec = {

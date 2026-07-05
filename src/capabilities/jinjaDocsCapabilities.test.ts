@@ -4,8 +4,11 @@ import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import type { CapabilityContext } from './Capability';
 import {
 	JINJA_DOCS_CAPABILITIES,
+	engineBaseFromRegion,
 	formatJinjaFilters,
+	getCachedFilters,
 	parseJinjaFilters,
+	primeFilters,
 	_resetJinjaFilterCacheForTesting,
 	_resetJinjaFilterFetcherForTesting,
 	_setJinjaFilterFetcherForTesting,
@@ -233,6 +236,64 @@ suite('Unit: jinjaDocsCapabilities', () => {
 			} finally {
 				globalThis.fetch = originalFetch;
 			}
+		});
+	});
+
+	suite('engineBaseFromRegion()', () => {
+		test('rewrites an api.* host to engine.*', () => {
+			assert.strictEqual(engineBaseFromRegion('https://api.rewst.io/graphql'), 'https://engine.rewst.io');
+		});
+
+		test('falls back to the default engine base for a non-api.* host or undefined input', () => {
+			assert.strictEqual(engineBaseFromRegion('https://console.rewst.io/graphql'), 'https://engine.rewst.io');
+			assert.strictEqual(engineBaseFromRegion(undefined), 'https://engine.rewst.io');
+		});
+	});
+
+	suite('getCachedFilters() / primeFilters()', () => {
+		const BASE = 'https://engine.rewst.io';
+
+		test('getCachedFilters() returns undefined before any fetch has completed', () => {
+			assert.strictEqual(getCachedFilters(BASE), undefined);
+		});
+
+		test('getCachedFilters() returns the cached array once getFilters()/primeFilters() has resolved', async () => {
+			_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
+			const { ctx } = fakeCtx({});
+			await cap('buddy_get_jinja_filter_docs').run({}, ctx);
+			const cached = getCachedFilters(BASE);
+			assert.ok(cached);
+			assert.strictEqual(cached!.length, 3);
+		});
+
+		test('primeFilters() returns synchronously (void) while the fetch is still pending', () => {
+			let resolveFetch: (filters: JinjaFilterDoc[]) => void = () => {};
+			const pending = new Promise<JinjaFilterDoc[]>(resolve => {
+				resolveFetch = resolve;
+			});
+			_setJinjaFilterFetcherForTesting(() => pending);
+			const result = primeFilters(BASE);
+			assert.strictEqual(result, undefined);
+			resolveFetch([]);
+		});
+
+		test('primeFilters() populates the cache once its background fetch resolves', async () => {
+			_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
+			assert.strictEqual(getCachedFilters(BASE), undefined);
+			primeFilters(BASE);
+			await new Promise(resolve => setTimeout(resolve, 0));
+			const cached = getCachedFilters(BASE);
+			assert.ok(cached);
+			assert.strictEqual(cached!.length, 3);
+		});
+
+		test('primeFilters() swallows a fetch failure — does not throw, does not populate the cache', async () => {
+			_setJinjaFilterFetcherForTesting(async () => {
+				throw new Error('engine unavailable');
+			});
+			primeFilters(BASE);
+			await new Promise(resolve => setTimeout(resolve, 0));
+			assert.strictEqual(getCachedFilters(BASE), undefined);
 		});
 	});
 });
