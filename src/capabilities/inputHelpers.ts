@@ -106,9 +106,10 @@ export function requireStringAllowEmpty(input: Record<string, unknown>, key: str
 
 export function asPositiveInt(input: Record<string, unknown>, key: string): number | undefined {
 	const value = input[key];
-	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
-	const normalized = Math.floor(value);
-	return normalized > 0 ? normalized : undefined;
+	if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value) || value <= 0) {
+		return undefined;
+	}
+	return value;
 }
 
 export async function mapWithConcurrency<T, R>(

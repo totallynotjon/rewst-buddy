@@ -9,7 +9,6 @@ import {
 	ORG_ID_PROP,
 	rawGraphqlOrThrow,
 	requireString,
-	throwOnGraphqlErrors,
 } from './inputHelpers';
 
 /**
@@ -650,12 +649,11 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 			return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
 		}
 		try {
-			const res = await ctx.session.rawGraphql(EXECUTION_CONTEXTS_QUERY, {
+			const data = await rawGraphqlOrThrow(ctx.session, EXECUTION_CONTEXTS_QUERY, {
 				workflowExecutionId: execution.id,
 			});
-			throwOnGraphqlErrors(res.errors);
 			return flattenExecutionContextFrames(
-				(res.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts,
+				(data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts,
 			);
 		} catch {
 			skipped += 1;
@@ -673,11 +671,13 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 		}
 	});
 
+	let result: string;
 	if (lines.length === 0) {
 		const valuePart = valueArg ? ` with value containing "${valueArg}"` : '';
-		return `No executions of this workflow (scanned ${executions.length}) had a ${kind} variable matching "${rawName}"${valuePart}.`;
+		result = `No executions of this workflow (scanned ${executions.length}) had a ${kind} variable matching "${rawName}"${valuePart}.`;
+	} else {
+		result = lines.join('\n');
 	}
-	let result = lines.join('\n');
 	if (skipped > 0) result += `\n\n(${skipped} execution context fetch(es) failed and were skipped.)`;
 	if (executions.length >= limit) {
 		result += `\n\n(Scanned the ${limit} most-recent executions; raise limit — max ${MAX_EXECUTION_LIMIT} — to scan more.)`;

@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import { suite, test } from '../test/tdd';
 import {
+	asPositiveInt,
 	mapWithConcurrency,
 	rawGraphqlOrThrow,
 	requireResourceInOrg,
@@ -249,5 +250,23 @@ suite('Unit: inputHelpers — requireStringAllowEmpty', () => {
 
 	test('throws when the value is a non-string (number)', () => {
 		assert.throws(() => requireStringAllowEmpty({ body: 42 }, 'body'), /Missing required string argument "body"/);
+	});
+});
+
+suite('Unit: inputHelpers — asPositiveInt', () => {
+	test('returns positive integers unchanged', () => {
+		assert.strictEqual(asPositiveInt({ limit: 3 }, 'limit'), 3);
+	});
+
+	test('rejects zero, negatives, and fractions', () => {
+		assert.strictEqual(asPositiveInt({ limit: 0 }, 'limit'), undefined);
+		assert.strictEqual(asPositiveInt({ limit: -1 }, 'limit'), undefined);
+		assert.strictEqual(asPositiveInt({ limit: 1.5 }, 'limit'), undefined);
+	});
+
+	test('rejects non-numeric and non-finite values', () => {
+		assert.strictEqual(asPositiveInt({ limit: '3' }, 'limit'), undefined);
+		assert.strictEqual(asPositiveInt({ limit: Number.POSITIVE_INFINITY }, 'limit'), undefined);
+		assert.strictEqual(asPositiveInt({}, 'limit'), undefined);
 	});
 });
