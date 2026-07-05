@@ -1,7 +1,7 @@
+import type { Session } from '@sessions';
+import { createMockSession, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { createMockSession, initTestEnvironment } from '@test';
-import type { Session } from '@sessions';
 import type { CapabilityContext } from './Capability';
 import { getCapability } from './registry';
 
@@ -352,6 +352,53 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.strictEqual(contextCalls.length, 3, 'issues one context fetch per scanned execution');
 	});
 
+	test('buddy_find_executions_by_variable counts an errors-carrying context response as skipped, not as a match', async () => {
+		// Pins residual 4: the inline `if (res.errors)` check must be replaced with
+		// throwOnGraphqlErrors (or rawGraphqlOrThrow) so an errors-carrying response
+		// throws inside the per-execution try/catch and is counted as skipped rather
+		// than silently treated as empty data. A wrong migration that hoists the throw
+		// outside the try would cause the whole call to reject — this test catches that
+		// by asserting the call resolves (with a skip note) rather than rejects.
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', (arg: { query: string; variables: Record<string, unknown> }): { data?: unknown } => {
+			if (arg.query.includes('workflowExecutionContexts')) {
+				// The MockWrapper returns response.data as the rawGraphql result, so the
+				// { data, errors } envelope that rawGraphql returns must be nested inside
+				// the outer `data` field here.
+				return { data: { data: undefined, errors: [{ message: 'permission denied' }] } };
+			}
+			return {
+				data: {
+					data: {
+						workflowExecutions: [
+							{
+								id: 'exec-1',
+								status: 'succeeded',
+								createdAt: '1700000000000',
+								conductor: { input: {}, output: {} },
+							},
+						],
+					},
+				},
+			};
+		});
+		const findExec = getCapability('buddy_find_executions_by_variable');
+		assert.ok(findExec, 'buddy_find_executions_by_variable is registered');
+		const ctx = { session, orgId: 'org-1', sessions: [session] } satisfies CapabilityContext;
+
+		// Must resolve (not reject) — the errors-carrying response is caught per-execution.
+		const out = await findExec.run({ orgId: 'org-1', workflowId: 'wf-1', name: 'ticket', kind: 'context' }, ctx);
+
+		// The execution produced no match (context fetch failed), and the skip is reported.
+		assert.ok(/1 execution context fetch/.test(out), `expected skip note, got: ${out}`);
+		// The call must not have matched the variable (errors ≠ data).
+		assert.ok(
+			!out.includes('exec-1') || out.startsWith('No executions'),
+			`must not match on error response, got: ${out}`,
+		);
+	});
+
 	test('buddy_latest_workflow_execution uses latestWorkflowExecution query, forwards workflowId, and handles missing execution', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
@@ -531,7 +578,10 @@ suite('Unit: rewstReadCapabilities', () => {
 			listWorkflowTasks.spec.description.includes('mocked marker only when a task is mocked'),
 			'tool description explains that mocked output is conditional',
 		);
-		assert.ok(!listWorkflowTasks.spec.description.includes('isMocked,'), 'description does not imply isMocked is always listed');
+		assert.ok(
+			!listWorkflowTasks.spec.description.includes('isMocked,'),
+			'description does not imply isMocked is always listed',
+		);
 	});
 
 	test('buddy_list_workflow_patches uses workflowPatches query, forwards workflowId, and formats patches', async () => {

@@ -3,12 +3,13 @@ import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
 import {
-	asString,
-	requireString,
 	asPositiveInt,
+	asString,
 	mapWithConcurrency,
-	rawGraphqlOrThrow,
 	ORG_ID_PROP,
+	rawGraphqlOrThrow,
+	requireString,
+	throwOnGraphqlErrors,
 } from './inputHelpers';
 
 /**
@@ -652,10 +653,7 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 			const res = await ctx.session.rawGraphql(EXECUTION_CONTEXTS_QUERY, {
 				workflowExecutionId: execution.id,
 			});
-			if (Array.isArray(res.errors) ? res.errors.length > 0 : res.errors != null) {
-				skipped += 1;
-				return {};
-			}
+			throwOnGraphqlErrors(res.errors);
 			return flattenExecutionContextFrames(
 				(res.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts,
 			);

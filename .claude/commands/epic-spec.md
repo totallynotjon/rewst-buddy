@@ -162,6 +162,16 @@ in the reply. If a spec file for the same target already exists, overwrite it.
   State explicitly that `npm run test:unit` runs BOTH unit runners (vitest, then
   mocha-in-extension-host) and both must pass — a targeted `test:grep` run is never a
   substitute for the full `test:unit` pass.
+- Execution todo list: a checkbox list that Sonnet must keep current while implementing.
+  Include these exact endgame items, in this order, after the implementation/test items:
+  `- [ ] Run every acceptance command above locally and fix until green.`
+  `- [ ] Commit the finished local changes.`
+  `- [ ] Spin up the Codex test reviewer with /epic-test-review <this spec's path> against the committed diff.`
+  `- [ ] Address anything the reviewer stopped on, rerun affected checks, and confirm its fixes are committed.`
+  `- [ ] Push the branch.`
+  `- [ ] Open the draft PR with gh pr create --draft.`
+  `- [ ] Watch CI with gh pr checks --watch until every check passes.`
+  `- [ ] If CI fails, fix, push, and re-watch until every check passes.`
 - Definition of done (spell this out verbatim in the spec): all acceptance commands green
   locally → commit → push → `gh pr create --draft` → `gh pr checks --watch` until every CI
   check passes. If CI fails, fix, push, and re-watch; the task is not done until the draft
