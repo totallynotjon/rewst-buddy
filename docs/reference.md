@@ -86,6 +86,12 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 - `Unlink All Templates` — Remove all file-to-template associations
 - `Delete Template` — Delete the linked template on Rewst (with confirmation) and unlink
 
+**Conflict Resolution**
+
+- `Diff Against Rewst` — Open a diff between the current file and its current Rewst version, any time (not just during a conflict)
+- `Keep Local` — Upload the local version to Rewst. Appears as a toolbar button on the diff (and here in the palette) only while a conflict diff is open
+- `Take Remote` — Replace the local file with the Rewst version. Same availability as `Keep Local`
+
 **AI Assistant**
 
 - `Ask Rewst AI` — Open the Chat view; pick **Cage-Free Rewsty** in the model picker to talk to Rewst's AI assistant (`Ctrl+Alt+R` / `Cmd+Alt+R`)

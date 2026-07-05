@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import { initTestEnvironment, stub } from '@test';
-import { REWST_REMOTE_SCHEME, RewstContentProvider } from './RewstContentProvider';
+import { REWST_REMOTE_SCHEME, RewstContentProvider, showRewstDiff } from './RewstContentProvider';
 
 const { suite, test, setup, teardown, suiteSetup, suiteTeardown } = Mocha;
 
@@ -88,5 +88,36 @@ suite('Unit: RewstContentProvider', () => {
 			restoreEvent();
 			RewstContentProvider.init();
 		}
+	});
+
+	suite('showRewstDiff()', () => {
+		test('remote pane label is visibly distinct from the local file, extension preserved', async () => {
+			const localUri = vscode.Uri.file('/test/conflict-file.txt');
+			const doc = { uri: localUri } as vscode.TextDocument;
+			let diffArgs: unknown[] | undefined;
+			const restore = stub(vscode.commands, 'executeCommand', (async (...args: unknown[]) => {
+				diffArgs = args;
+				return undefined;
+			}) as typeof vscode.commands.executeCommand);
+
+			try {
+				const remoteUri = await showRewstDiff(doc, 'remote body', 'Local ↔ Rewst');
+
+				assert.ok(diffArgs);
+				assert.strictEqual(diffArgs![0], 'vscode.diff');
+				assert.strictEqual(diffArgs![1], localUri);
+				assert.strictEqual((diffArgs![2] as vscode.Uri).toString(), remoteUri.toString());
+
+				assert.notStrictEqual(
+					remoteUri.path,
+					localUri.path,
+					'remote pane must not read identically to the local file — that was the reported ambiguity',
+				);
+				assert.ok(remoteUri.path.endsWith('.txt'), 'extension stays for syntax highlighting');
+				assert.strictEqual(RewstContentProvider.provideTextDocumentContent(remoteUri), 'remote body');
+			} finally {
+				restore();
+			}
+		});
 	});
 });

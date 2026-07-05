@@ -11,7 +11,7 @@ import {
 } from '@utils';
 import vscode, { Uri } from 'vscode';
 import { LinkManager } from './LinkManager';
-import { RewstContentProvider } from './RewstContentProvider';
+import { showRewstDiff } from './RewstContentProvider';
 import { SyncOnSaveManager } from './SyncOnSaveManager';
 import { determineSyncAction, type SyncDecision } from './syncDecision';
 import { buildTemplateLink } from './templateLinkFactory';
@@ -19,28 +19,65 @@ import { nonEmptyString } from './types';
 
 export { orgFromTemplate } from './templateLinkFactory';
 
+type ConflictChoice = 'Keep Local' | 'Take Remote' | undefined;
+
 /** Injectable seam for conflict resolution: real diff/prompt/cleanup vs. test doubles. */
 export interface ConflictResolutionDeps {
 	showDiff(doc: vscode.TextDocument, remoteBody: string): Promise<vscode.Uri>;
-	promptChoice(): Promise<'Keep Local' | 'Take Remote' | undefined>;
+	promptChoice(remoteUri: vscode.Uri): Promise<ConflictChoice>;
 	closeDiff(doc: vscode.TextDocument): Promise<void> | void;
 }
 
+/**
+ * True only while a conflict diff opened by this extension is on screen. Drives
+ * the `editor/title` toolbar buttons in package.json (`when` clause) so "Keep
+ * Local"/"Take Remote" also appear on the diff itself, as a second, always-on
+ * option alongside the notification below.
+ */
+const CONFLICT_DIFF_CONTEXT_KEY = 'rewst-buddy.conflictDiffActive';
+
 const CONFLICT_PROMPT_MESSAGE =
-	'Template and Rewst are out of sync. The local file and Rewst template both changed since the last sync. Review the diff, then keep your local version or take the remote version.';
+	'Template and Rewst are out of sync. Keep your local changes, or take the Rewst version — click a button here, or use the Keep Local / Take Remote buttons on the diff toolbar.';
+
+let pendingConflictChoice: ((choice: ConflictChoice) => void) | undefined;
+
+/**
+ * Resolves the currently-open conflict diff's pending choice, if any. Called
+ * by both the toolbar button commands and the notification's own buttons —
+ * whichever the user clicks first wins; the second call is a no-op since
+ * `pendingConflictChoice` is already cleared by then.
+ */
+export function resolveConflictChoice(choice: 'Keep Local' | 'Take Remote'): void {
+	pendingConflictChoice?.(choice);
+}
 
 const defaultConflictDeps: ConflictResolutionDeps = {
-	async showDiff(doc, remoteBody) {
-		const remoteUri = RewstContentProvider.put(doc.uri, remoteBody);
-		const fileName = doc.uri.path.split('/').pop() ?? doc.uri.path;
-		await vscode.commands.executeCommand('vscode.diff', doc.uri, remoteUri, `${fileName}: Local ↔ Rewst`);
-		return remoteUri;
+	showDiff(doc, remoteBody) {
+		return showRewstDiff(doc, remoteBody, 'Local ↔ Rewst');
 	},
-	async promptChoice() {
-		const choice = await vscode.window.showInformationMessage(CONFLICT_PROMPT_MESSAGE, 'Keep Local', 'Take Remote');
-		return choice as 'Keep Local' | 'Take Remote' | undefined;
+	promptChoice(remoteUri) {
+		return new Promise<ConflictChoice>(resolve => {
+			const settle = (choice: ConflictChoice) => {
+				sub.dispose();
+				pendingConflictChoice = undefined;
+				resolve(choice);
+			};
+			pendingConflictChoice = settle;
+			void vscode.commands.executeCommand('setContext', CONFLICT_DIFF_CONTEXT_KEY, true);
+			const sub = vscode.workspace.onDidCloseTextDocument(closedDoc => {
+				if (closedDoc.uri.toString() === remoteUri.toString()) settle(undefined);
+			});
+			// Non-blocking: this notification is a second option alongside the
+			// diff's toolbar buttons, not the sole path — don't await it here.
+			void vscode.window
+				.showInformationMessage(CONFLICT_PROMPT_MESSAGE, 'Keep Local', 'Take Remote')
+				.then(choice => {
+					if (choice === 'Keep Local' || choice === 'Take Remote') resolveConflictChoice(choice);
+				});
+		});
 	},
 	closeDiff(doc) {
+		void vscode.commands.executeCommand('setContext', CONFLICT_DIFF_CONTEXT_KEY, false);
 		return closeDiffTabsForOriginal(doc.uri);
 	},
 };
@@ -411,12 +448,11 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 	private async handleConflict(doc: vscode.TextDocument, session: Session, remoteTemplate: FullTemplateFragment) {
 		log.debug('handleConflict: conflict detected, showing diff');
-		log.info('Rewst and last update of local template are out of sync, need to remediate before push');
 
-		await this.conflictDeps.showDiff(doc, remoteTemplate.body);
+		const remoteUri = await this.conflictDeps.showDiff(doc, remoteTemplate.body);
 
 		try {
-			const choice = await this.conflictDeps.promptChoice();
+			const choice = await this.conflictDeps.promptChoice(remoteUri);
 			log.debug('handleConflict: user chose', choice);
 
 			switch (choice) {

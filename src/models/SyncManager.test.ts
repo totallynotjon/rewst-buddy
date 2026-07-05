@@ -8,7 +8,7 @@ import * as Mocha from 'mocha';
 import * as os from 'os';
 import * as path from 'path';
 import vscode from 'vscode';
-import { SyncManager, orgFromTemplate } from './SyncManager';
+import { resolveConflictChoice, SyncManager, orgFromTemplate } from './SyncManager';
 
 const { suite, test, setup, teardown } = Mocha;
 
@@ -1111,6 +1111,210 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 
 		await assert.rejects(() => SyncManager.syncTemplate(doc), /diff failed to open/);
 		assert.strictEqual(promptCalls, 0, 'promptChoice must never run if the diff never opened');
+	});
+});
+
+// Spec: conflict resolution is button-driven (editor/title toolbar buttons on
+// the diff itself), not a showInformationMessage modal — the modal was the
+// reported source of ambiguity even after the diff panes were labeled. These
+// tests exercise the REAL defaultConflictDeps (no _setConflictDepsForTesting
+// override), driving the choice via the exported resolveConflictChoice(), the
+// same function the toolbar button commands call.
+suite('Unit: SyncManager.syncTemplate (conflict resolution, real button-driven deps)', () => {
+	// The notification is a second, parallel resolution path alongside the diff's
+	// toolbar buttons (see resolveConflictChoice's doc comment) — stub it so tests
+	// don't leave a real, unresolvable notification open in the test extension
+	// host, and so the dedicated test below can drive it explicitly.
+	let notificationResolve: ((choice: string | undefined) => void) | undefined;
+	let restoreNotification: (() => void) | undefined;
+
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+		LinkManager._resetForTesting();
+		SyncOnSaveManager._resetForTesting();
+		SyncManager._resetConflictDepsForTesting();
+		notificationResolve = undefined;
+		restoreNotification = stub(vscode.window, 'showInformationMessage', ((..._args: unknown[]) => {
+			return new Promise<string | undefined>(resolve => {
+				notificationResolve = resolve;
+			});
+		}) as unknown as typeof vscode.window.showInformationMessage);
+	});
+
+	teardown(() => {
+		SessionManager._resetForTesting();
+		LinkManager._resetForTesting();
+		SyncOnSaveManager._resetForTesting();
+		SyncManager._resetConflictDepsForTesting();
+		restoreNotification?.();
+		notificationResolve = undefined;
+	});
+
+	function setUpConflict() {
+		const uri = vscode.Uri.file('/test/real-conflict-file.txt');
+		const localContent = '// locally edited content';
+		const templateId = 'template-real-conflict';
+		const org = Fixtures.orgModel({ id: 'org-real-conflict', name: 'Real Conflict Org' });
+
+		const link: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org,
+			template: { id: templateId, name: 'Conflict Template', updatedAt: 'local-ts' } as any,
+			bodyHash: getHash('// some prior synced content'),
+		};
+		LinkManager.addLink(link);
+
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: templateId,
+				name: 'Conflict Template',
+				body: '// remote content, different from local',
+				updatedAt: 'remote-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		const doc = createMockDocument({ uri, content: localContent });
+		return { uri, doc, wrapper, templateId, org };
+	}
+
+	test('resolveConflictChoice("Keep Local") resolves the pending diff and uploads', async () => {
+		const { doc, wrapper, templateId, org } = setUpConflict();
+		wrapper.when('updateTemplateBody', {
+			data: Fixtures.updateTemplateBodyMutation({
+				id: templateId,
+				name: 'Conflict Template',
+				updatedAt: 'uploaded-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		const restoreExec = stub(
+			vscode.commands,
+			'executeCommand',
+			(async () => undefined) as typeof vscode.commands.executeCommand,
+		);
+
+		try {
+			const syncPromise = SyncManager.syncTemplate(doc);
+			await new Promise(resolve => setTimeout(resolve, 0));
+			resolveConflictChoice('Keep Local');
+			await syncPromise;
+		} finally {
+			restoreExec();
+		}
+
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 1);
+		const link = LinkManager.getTemplateLink(doc.uri);
+		assert.strictEqual(link.template.updatedAt, 'uploaded-ts');
+	});
+
+	test('sets the conflictDiffActive context key while the diff is open and clears it after', async () => {
+		const { doc, wrapper, templateId, org } = setUpConflict();
+		wrapper.when('updateTemplateBody', {
+			data: Fixtures.updateTemplateBodyMutation({
+				id: templateId,
+				name: 'Conflict Template',
+				updatedAt: 'uploaded-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		const setContextCalls: unknown[][] = [];
+		const restoreExec = stub(vscode.commands, 'executeCommand', (async (...args: unknown[]) => {
+			if (args[0] === 'setContext') setContextCalls.push(args);
+			return undefined;
+		}) as typeof vscode.commands.executeCommand);
+
+		try {
+			const syncPromise = SyncManager.syncTemplate(doc);
+			await new Promise(resolve => setTimeout(resolve, 0));
+			resolveConflictChoice('Keep Local');
+			await syncPromise;
+		} finally {
+			restoreExec();
+		}
+
+		assert.deepStrictEqual(setContextCalls, [
+			['setContext', 'rewst-buddy.conflictDiffActive', true],
+			['setContext', 'rewst-buddy.conflictDiffActive', false],
+		]);
+	});
+
+	test('closing the diff tab without a choice aborts, same as an explicit dismiss', async () => {
+		const { doc } = setUpConflict();
+		let closeHandler: ((doc: vscode.TextDocument) => void) | undefined;
+		const restoreClose = stub(vscode.workspace, 'onDidCloseTextDocument', ((
+			listener: (doc: vscode.TextDocument) => void,
+		) => {
+			closeHandler = listener;
+			return { dispose() {} };
+		}) as typeof vscode.workspace.onDidCloseTextDocument);
+
+		let capturedRemoteUri: vscode.Uri | undefined;
+		const restoreExec = stub(vscode.commands, 'executeCommand', (async (...args: unknown[]) => {
+			if (args[0] === 'vscode.diff') capturedRemoteUri = args[2] as vscode.Uri;
+			return undefined;
+		}) as typeof vscode.commands.executeCommand);
+
+		try {
+			const syncPromise = SyncManager.syncTemplate(doc);
+			await new Promise(resolve => setTimeout(resolve, 0));
+			assert.ok(closeHandler, 'expected promptChoice to register a close listener');
+			assert.ok(capturedRemoteUri, 'expected showDiff to have opened the diff');
+			closeHandler!({ uri: capturedRemoteUri! } as vscode.TextDocument);
+			await assert.rejects(() => syncPromise);
+		} finally {
+			restoreClose();
+			restoreExec();
+		}
+
+		const link = LinkManager.getTemplateLink(doc.uri);
+		assert.strictEqual(
+			link.template.updatedAt,
+			'local-ts',
+			'nothing changes when the tab is closed without a choice',
+		);
+	});
+
+	test('clicking the notification button also resolves the pending diff, same as the toolbar buttons', async () => {
+		const { doc, wrapper, templateId, org } = setUpConflict();
+		wrapper.when('updateTemplateBody', {
+			data: Fixtures.updateTemplateBodyMutation({
+				id: templateId,
+				name: 'Conflict Template',
+				updatedAt: 'uploaded-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		const restoreExec = stub(
+			vscode.commands,
+			'executeCommand',
+			(async () => undefined) as typeof vscode.commands.executeCommand,
+		);
+
+		try {
+			const syncPromise = SyncManager.syncTemplate(doc);
+			await new Promise(resolve => setTimeout(resolve, 0));
+			assert.ok(
+				notificationResolve,
+				'expected promptChoice to show a notification with Keep Local/Take Remote buttons',
+			);
+			notificationResolve!('Keep Local');
+			await syncPromise;
+		} finally {
+			restoreExec();
+		}
+
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 1);
+		const link = LinkManager.getTemplateLink(doc.uri);
+		assert.strictEqual(link.template.updatedAt, 'uploaded-ts');
 	});
 });
 

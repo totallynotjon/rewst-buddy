@@ -52,3 +52,35 @@ export const RewstContentProvider = new (class RewstContentProvider
 		this.counter = 0;
 	}
 })();
+
+/**
+ * Inserts a "(Rewst)" marker before the extension so the remote side of a diff
+ * reads differently from the local file at a glance — VS Code's diff editor
+ * labels each pane from its resource path, and `put()` otherwise preserves the
+ * local path exactly, leaving both sides looking identical except for the
+ * easy-to-miss tab title.
+ */
+function labelRemotePath(path: string): string {
+	const lastSlash = path.lastIndexOf('/');
+	const dir = path.slice(0, lastSlash + 1);
+	const base = path.slice(lastSlash + 1);
+	const dotIndex = base.lastIndexOf('.');
+	return dotIndex <= 0 ? `${dir}${base} (Rewst)` : `${dir}${base.slice(0, dotIndex)} (Rewst)${base.slice(dotIndex)}`;
+}
+
+/**
+ * Opens a native diff between a linked document and a remote template body,
+ * via a `rewst-remote:` virtual document. Shared by conflict resolution and
+ * "Diff Against Rewst" so both open the same diff the same way.
+ */
+export async function showRewstDiff(
+	doc: vscode.TextDocument,
+	remoteBody: string,
+	subtitle: string,
+): Promise<vscode.Uri> {
+	const remoteTarget = doc.uri.with({ path: labelRemotePath(doc.uri.path) });
+	const remoteUri = RewstContentProvider.put(remoteTarget, remoteBody);
+	const fileName = doc.uri.path.split('/').pop() ?? doc.uri.path;
+	await vscode.commands.executeCommand('vscode.diff', doc.uri, remoteUri, `${fileName}: ${subtitle}`);
+	return remoteUri;
+}

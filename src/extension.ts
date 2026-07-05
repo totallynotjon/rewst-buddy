@@ -4,6 +4,8 @@ import { extPrefix, context as globalVSContext } from '@global';
 import { McpDefinitionProvider, McpServerController } from '@mcp';
 import {
 	LinkManager,
+	RewstContentProvider,
+	RewstQuickDiffProvider,
 	SyncManager,
 	SyncOnSaveManager,
 	TemplateBundleManager,
@@ -136,6 +138,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(new RoboRewstyChatModelProvider().init());
 	context.subscriptions.push(ProposedContentProvider.init());
+	context.subscriptions.push(RewstContentProvider.init());
+	// Best-effort: quick-diff gutter decorations for linked files against the
+	// remote baseline. Registration/disposal is required; visible gutter
+	// decorations from a non-primary SourceControl are not guaranteed by VS Code.
+	context.subscriptions.push(RewstQuickDiffProvider.init());
 	context.subscriptions.push(WorkingScopeManager);
 	context.subscriptions.push(new StatusBar());
 	context.subscriptions.push(new WorkingScopeStatusBar());

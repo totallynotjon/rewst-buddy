@@ -10,7 +10,11 @@ background folder fetching.
 
 Source: `src/models/SyncManager.ts`, `src/models/syncDecision.ts`,
 `src/models/SyncOnSaveManager.ts`, `src/models/types.ts`,
-`src/capabilities/templateSyncCapabilities.ts`, `src/utils/getHash.ts`.
+`src/capabilities/templateSyncCapabilities.ts`, `src/utils/getHash.ts`,
+`src/models/RewstContentProvider.ts`, `src/models/RewstQuickDiffProvider.ts`,
+`src/commands/template/DiffAgainstRewst.ts`,
+`src/commands/template/sync/KeepLocalConflict.ts`,
+`src/commands/template/sync/TakeRemoteConflict.ts`.
 
 ## Requirements
 
@@ -249,29 +253,77 @@ fetch confirms that owner.
 - **WHEN** the sync would change local content, remote content, or link metadata
 - **THEN** the sync is rejected before changing either side
 
-### Requirement: Resolve conflicts with explicit user choice
+### Requirement: Resolve conflicts via diff, not a blind modal
 
-When the action is **conflict**, the system SHALL prompt the user with a modal
-offering to force-upload the local version or download the latest remote version,
-and SHALL abort the sync if the user dismisses the prompt.
+When the action is **conflict**, the system SHALL open a diff between the
+local file and the remote Rewst template body (via a read-only `rewst-remote:`
+virtual document, its side labeled distinctly from the local file) and SHALL
+let the user choose to keep the local version or take the remote version
+through either of two equivalent, always-available paths: buttons on the diff
+editor's own toolbar (and the equivalent Command Palette entries while the
+diff is open), or buttons on a non-blocking notification shown alongside the
+diff. Whichever the user clicks first resolves the choice; the sync SHALL
+abort if the diff is closed without a choice from either path.
+The diff view SHALL be closed once the user resolves or dismisses it.
 
-#### Scenario: User forces the local version
+#### Scenario: User keeps the local version
 
-- **GIVEN** a conflict prompt
-- **WHEN** the user chooses to force-override
+- **GIVEN** a conflict diff is shown
+- **WHEN** the user clicks "Keep Local" on the diff toolbar or on the notification
 - **THEN** the local body is uploaded to Rewst
 
 #### Scenario: User takes the remote version
 
-- **GIVEN** a conflict prompt
-- **WHEN** the user chooses to download the latest
+- **GIVEN** a conflict diff is shown
+- **WHEN** the user clicks "Take Remote" on the diff toolbar or on the notification
 - **THEN** the remote body replaces the local file
 
 #### Scenario: User dismisses
 
-- **GIVEN** a conflict prompt
-- **WHEN** the user cancels
-- **THEN** no change is made and the sync is aborted
+- **GIVEN** a conflict diff is shown
+- **WHEN** the user closes the diff tab without clicking either button
+- **THEN** no change is made, the sync is aborted, and the diff view is closed
+
+### Requirement: Proactively diff a linked file against Rewst
+
+The system SHALL offer a "Diff Against Rewst" action on any linked file that
+opens the same local-vs-remote diff used for conflict resolution, without
+requiring a sync attempt or a conflict to exist.
+
+#### Scenario: Diff a linked file with no pending conflict
+
+- **GIVEN** a linked file with no conflict
+- **WHEN** the user runs "Diff Against Rewst"
+- **THEN** a diff opens between the local file and the current remote
+  template body, and no local or remote state changes
+
+### Requirement: Quick-diff indicators for linked files
+
+Implementation status: gutter change indicators are best-effort. VS Code does
+not guarantee that a secondary (non-git) SourceControl's `quickDiffProvider`
+renders gutter decorations alongside the workspace's primary git
+SourceControl; this must be confirmed by hand in the Extension Development
+Host. The provider registering and resolving correctly is required; visible
+gutter decorations are not a hard acceptance gate.
+
+The system SHALL register a `quickDiffProvider` that resolves the remote
+template body as the "original resource" for linked files, backed by a
+short-lived per-template cache, so linked-file editors can gain gutter change
+indicators against the remote baseline where VS Code's decorations pipeline
+honors a non-primary SourceControl.
+
+#### Scenario: Linked file with a cached remote body
+
+- **GIVEN** a linked file whose remote body was fetched within the cache TTL
+- **WHEN** the editor requests the original resource for quick-diff
+- **THEN** the provider resolves a `rewst-remote:` uri from the cached body
+  without a new fetch
+
+#### Scenario: Unlinked file
+
+- **GIVEN** a file that is not linked
+- **WHEN** the editor requests the original resource for quick-diff
+- **THEN** the provider resolves no original resource
 
 ### Requirement: Expose explicit sync tools
 
