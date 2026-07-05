@@ -671,13 +671,11 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 		}
 	});
 
-	let result: string;
 	if (lines.length === 0) {
 		const valuePart = valueArg ? ` with value containing "${valueArg}"` : '';
-		result = `No executions of this workflow (scanned ${executions.length}) had a ${kind} variable matching "${rawName}"${valuePart}.`;
-	} else {
-		result = lines.join('\n');
+		return `No executions of this workflow (scanned ${executions.length}) had a ${kind} variable matching "${rawName}"${valuePart}.`;
 	}
+	let result = lines.join('\n');
 	if (skipped > 0) result += `\n\n(${skipped} execution context fetch(es) failed and were skipped.)`;
 	if (executions.length >= limit) {
 		result += `\n\n(Scanned the ${limit} most-recent executions; raise limit — max ${MAX_EXECUTION_LIMIT} — to scan more.)`;

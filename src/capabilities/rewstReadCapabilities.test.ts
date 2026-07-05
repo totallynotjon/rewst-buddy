@@ -352,13 +352,11 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.strictEqual(contextCalls.length, 3, 'issues one context fetch per scanned execution');
 	});
 
-	test('buddy_find_executions_by_variable counts an errors-carrying context response as skipped, not as a match', async () => {
+	test('buddy_find_executions_by_variable counts an errors-carrying context response as skipped, not fatal', async () => {
 		// Pins residual 4: the inline `if (res.errors)` check must be replaced with
 		// throwOnGraphqlErrors (or rawGraphqlOrThrow) so an errors-carrying response
 		// throws inside the per-execution try/catch and is counted as skipped rather
-		// than silently treated as empty data. A wrong migration that hoists the throw
-		// outside the try would cause the whole call to reject — this test catches that
-		// by asserting the call resolves (with a skip note) rather than rejects.
+		// than silently treated as empty data or made fatal to the whole tool call.
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', (arg: { query: string; variables: Record<string, unknown> }): { data?: unknown } => {
@@ -366,7 +364,16 @@ suite('Unit: rewstReadCapabilities', () => {
 				// The MockWrapper returns response.data as the rawGraphql result, so the
 				// { data, errors } envelope that rawGraphql returns must be nested inside
 				// the outer `data` field here.
-				return { data: { data: undefined, errors: [{ message: 'permission denied' }] } };
+				const id = arg.variables.workflowExecutionId;
+				if (id === 'exec-1') {
+					return {
+						data: { data: { workflowExecutionContexts: [{ ticket_id: '12345' }, { stage: 'done' }] } },
+					};
+				}
+				if (id === 'exec-2') {
+					return { data: { data: { workflowExecutionContexts: [{ unrelated: 'x' }] } } };
+				}
+				return { data: { data: undefined, errors: [{ message: 'boom' }] } };
 			}
 			return {
 				data: {
@@ -376,6 +383,18 @@ suite('Unit: rewstReadCapabilities', () => {
 								id: 'exec-1',
 								status: 'succeeded',
 								createdAt: '1700000000000',
+								conductor: { input: {}, output: {} },
+							},
+							{
+								id: 'exec-2',
+								status: 'succeeded',
+								createdAt: '1700000001000',
+								conductor: { input: {}, output: {} },
+							},
+							{
+								id: 'exec-3',
+								status: 'failed',
+								createdAt: '1700000002000',
 								conductor: { input: {}, output: {} },
 							},
 						],
@@ -390,13 +409,8 @@ suite('Unit: rewstReadCapabilities', () => {
 		// Must resolve (not reject) — the errors-carrying response is caught per-execution.
 		const out = await findExec.run({ orgId: 'org-1', workflowId: 'wf-1', name: 'ticket', kind: 'context' }, ctx);
 
-		// The execution produced no match (context fetch failed), and the skip is reported.
+		assert.ok(out.includes('exec-1') && out.includes('ticket_id=12345'), 'matches a context variable');
 		assert.ok(/1 execution context fetch/.test(out), `expected skip note, got: ${out}`);
-		// The call must not have matched the variable (errors ≠ data).
-		assert.ok(
-			!out.includes('exec-1') || out.startsWith('No executions'),
-			`must not match on error response, got: ${out}`,
-		);
 	});
 
 	test('buddy_latest_workflow_execution uses latestWorkflowExecution query, forwards workflowId, and handles missing execution', async () => {
