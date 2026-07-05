@@ -43,6 +43,12 @@ every applicable one explicitly (skip inapplicable ones silently):
   Sonnet will skip the spec edit unless given the exact requirement/scenario text.
 - **Tests first**: red → green → refactor. The spec's implementation steps must put the
   failing test before the code it covers.
+- **Test completeness**: Sonnet will under-test unless the spec names the cases. For every
+  behavior branch the target changes, enumerate the needed tests: happy path, regressions,
+  error/rejection paths, edge/boundary cases, permission/scope/session variants, cache/state
+  invalidation, and "no-op" behavior where applicable. Do not accept generic "add tests"
+  language; each test needs a file, runner, setup, action, assertions, and expected pre-fix
+  failure or reason it protects future behavior.
 - **Two unit runners**: pure suites (no `vscode`/`@test` in transitive imports) run on vitest —
   import suite/test/setup/teardown from `src/test/tdd.ts`, use relative imports, and add the
   file to `vitest.suites.mjs`. Everything else runs mocha-in-extension-host via the esbuild
@@ -109,8 +115,12 @@ every applicable one explicitly (skip inapplicable ones silently):
 4. Pin contracts exactly: capability spec objects (name, description text, inputSchema,
    access, requiresOrg, scopedSessions), function signatures, storage keys + shapes, event
    names, settings ids. Ambiguity in contracts cascades; ambiguity in internal logic is fine.
-5. Order steps by dependency; the first implementation step is always the failing test(s).
-   Give each step a done-check with the exact command.
+5. Build the test matrix from those contracts before writing implementation steps. For each
+   changed contract or behavior branch, specify the test cases that prove it, including the
+   tricky cases where the obvious implementation could pass the happy path but still be wrong.
+   If a branch is intentionally untested, state why.
+6. Order steps by dependency; the first implementation step is always the failing test(s).
+   Give each step a done-check with the exact command and the expected failing/passing signal.
 
 ## Output destination
 
@@ -128,12 +138,17 @@ in the reply. If a spec file for the same target already exists, overwrite it.
 - Project summary (max 10 lines, target-relevant slice only).
 - Spec delta: which `openspec/specs/*/spec.md`, the requirement/scenario text to add or change
   (SHALL / GIVEN-WHEN-THEN, matching the file's existing style, with a Source: line).
-- Test plan FIRST: each new/changed test file, its runner (vitest vs extension host), the
+- Test plan FIRST: a concrete test matrix, not prose intent. For each new/changed test file,
+  list its runner (vitest vs extension host), each test case name, setup, inputs/actions,
   assertions, mock setup (`createMockSession`/`MockWrapper.when`/`Fixtures` per CLAUDE.md),
-  and whether an integration test is required.
+  why it should fail before the fix or what regression it guards, and whether an integration
+  test is required. Include non-happy-path coverage: validation failures, missing/invalid
+  args, auth/scope/session denial, GraphQL errors/empty responses, stale cache/state,
+  boundary values, ordering/idempotency, cancellation/no-op paths, and any target-specific
+  tricky case. If a category is inapplicable, say so briefly; do not omit it silently.
 - Ordered implementation steps, each with: files touched, contract changes, done-check command.
-- Tricky sections: wrong approach vs required approach; pseudocode only where prose is
-  ambiguous.
+- Tricky sections: wrong approach vs required approach; include the exact test(s) that catch
+  the wrong approach. Use pseudocode only where prose is ambiguous.
 - Do NOT: the epic item's "Do not" bullets plus applicable repo traps, as explicit
   anti-instructions.
 - Left to implementer discretion: name what you are deliberately not specifying.

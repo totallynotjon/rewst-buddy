@@ -2,7 +2,7 @@ import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
-import { ORG_ID_PROP, requireString } from './inputHelpers';
+import { ORG_ID_PROP, requireResourceInOrg, requireString, requireStringAllowEmpty } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
@@ -14,15 +14,6 @@ import { orgDisplayName, withMutationApproval } from './mutationApproval';
  * every mutation is gated by the same per-call VS Code approval the other write
  * tools use. Exposure is additionally gated by rewst-buddy.mcp.enableWriteTools.
  */
-
-/** Requires a string argument that may be empty (e.g. a blank template body). */
-function requireStringAllowEmpty(input: Record<string, unknown>, key: string): string {
-	const value = input[key];
-	if (typeof value !== 'string') {
-		throw new Error(`Missing required string argument "${key}".`);
-	}
-	return value;
-}
 
 /**
  * Fetches a template by id and fails closed unless it belongs to the requested
@@ -36,11 +27,15 @@ async function requireTemplateInOrg(
 	templateId: string,
 	orgId: string,
 ): Promise<{ name: string }> {
-	const template = await ctx.session.getTemplate(templateId);
-	const templateOrgId = (template as { orgId?: unknown }).orgId;
-	if (typeof templateOrgId !== 'string' || templateOrgId !== orgId) {
-		throw new Error(`Template ${templateId} is not in org ${orgId}.`);
-	}
+	const template = await requireResourceInOrg({
+		label: 'Template',
+		id: templateId,
+		orgId,
+		fetch: async () => {
+			const t = await ctx.session.getTemplate(templateId);
+			return t as { orgId?: unknown; name?: unknown };
+		},
+	});
 	const name = (template as { name?: unknown }).name;
 	return { name: typeof name === 'string' && name.length > 0 ? name : '(unnamed)' };
 }

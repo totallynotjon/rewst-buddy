@@ -1,6 +1,3 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
 import {
 	_resetMcpMutationApproverForTesting,
 	setMcpMutationApprover,
@@ -8,6 +5,9 @@ import {
 	type CapabilityContext,
 } from '@capabilities';
 import type { Session } from '@sessions';
+import { initTestEnvironment } from '@test';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import { ORG_VARIABLE_MUTATE_CAPABILITIES } from './orgVariableMutateCapabilities';
 
@@ -355,6 +355,31 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 				() => cap('buddy_delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx),
 				/returned no id/,
 			);
+		});
+
+		test('surfaces GraphQL errors from the org-variable lookup instead of treating them as not-found', async () => {
+			// The byId lookup returns an errors-carrying response (not a thrown error).
+			// A wrong migration that returns undefined from fetch() on errors would
+			// convert this into the misleading "not in org" message, masking an auth/outage.
+			// This test forces rawGraphqlOrThrow (or equivalent) to be used inside fetch.
+			const { ctx, calls } = makeCtx({ byId: { data: undefined, errors: [{ message: 'denied' }] } });
+			let approverCalled = false;
+			setMcpMutationApprover(async () => {
+				approverCalled = true;
+				return true;
+			});
+
+			await assert.rejects(
+				() => cap('buddy_update_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1', value: 'x' }, ctx),
+				(err: unknown) => {
+					const msg = err instanceof Error ? err.message : String(err);
+					assert.ok(/GraphQL error/i.test(msg), `expected GraphQL error, got: ${msg}`);
+					assert.ok(msg.includes('denied'), `expected 'denied' in message, got: ${msg}`);
+					return true;
+				},
+			);
+			assert.strictEqual(approverCalled, false, 'approver must not be called before org check');
+			assert.strictEqual(callsFor(calls, 'update').length, 0);
 		});
 	});
 });

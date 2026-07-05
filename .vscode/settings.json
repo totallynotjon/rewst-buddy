@@ -45,5 +45,6 @@
 	"git.allowNoVerifyCommit": true,
 	"chat.extensionUnification.enabled": false,
 	"chat.disableAIFeatures": false,
-	"chat.editing.autoAccept": true
+	"chat.editing.autoAcceptDelay": 0.01,
+	"chat.editing.revealNextChangeOnResolve": false
 }

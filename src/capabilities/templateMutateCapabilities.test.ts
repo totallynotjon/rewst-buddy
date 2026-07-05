@@ -1,12 +1,12 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import {
 	_resetMcpMutationApproverForTesting,
 	setMcpMutationApprover,
 	type Capability,
 	type CapabilityContext,
 } from '@capabilities';
+import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import { _resetApprovedMutationScopes, type MutationScope } from '../ui/chat/tools/graphqlTool';
 import { TEMPLATE_MUTATE_CAPABILITIES } from './templateMutateCapabilities';
 
@@ -451,6 +451,34 @@ suite('Unit: templateMutateCapabilities', () => {
 				() => cap('buddy_delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx),
 				/returned no id/,
 			);
+		});
+	});
+
+	suite('requireTemplateInOrg — membership edge cases', () => {
+		test('refuses to mutate when the fetched template has no orgId field', async () => {
+			// Build a getTemplate response where the template node has orgId stripped.
+			// This pins the equivalence between the old `typeof templateOrgId !== 'string'`
+			// check and requireResourceInOrg's default predicate (row.orgId === orgId),
+			// so a sloppy migration that uses `inOrg: () => true` will fail this test.
+			const { ctx, wrapper } = sandboxCtx();
+			const templateWithoutOrgId = Fixtures.fullTemplate({ id: 't-1', name: 'NoOrg' });
+			delete (templateWithoutOrgId as Record<string, unknown>).orgId;
+			wrapper.when('getTemplate', {
+				data: { __typename: 'Query' as const, template: templateWithoutOrgId },
+			});
+			let approverCalled = false;
+			setMcpMutationApprover(async () => {
+				approverCalled = true;
+				return true;
+			});
+
+			await assert.rejects(
+				() =>
+					cap('buddy_update_template_body').run({ orgId: 'org-sandbox', templateId: 't-1', body: 'x' }, ctx),
+				/Template t-1 is not in org org-sandbox/,
+			);
+			assert.strictEqual(approverCalled, false, 'approver must not be called before org check');
+			assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0);
 		});
 	});
 });

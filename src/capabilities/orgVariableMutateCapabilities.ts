@@ -2,8 +2,15 @@ import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
-import { ORG_ID_PROP, requireString } from './inputHelpers';
-import { orgDisplayName, throwOnGraphqlErrors, withMutationApproval } from './mutationApproval';
+import {
+	ORG_ID_PROP,
+	rawGraphqlOrThrow,
+	requireResourceInOrg,
+	requireString,
+	requireStringAllowEmpty,
+	throwOnGraphqlErrors,
+} from './inputHelpers';
+import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
  * Org-variable write capabilities. createOrgVariable carries orgId in its input
@@ -59,13 +66,6 @@ function optionalBoolean(input: Record<string, unknown>, key: string): boolean |
 	return value;
 }
 
-/** Requires a string argument that may be empty (a variable value can be blank). */
-function requireStringAllowEmpty(input: Record<string, unknown>, key: string): string {
-	const value = input[key];
-	if (typeof value !== 'string') throw new Error(`Missing required string argument "${key}".`);
-	return value;
-}
-
 /**
  * Fetches a variable by id and fails closed unless it belongs to the requested
  * org. Returns the fields needed to build a safe update payload. The value is
@@ -76,12 +76,19 @@ async function requireOrgVariableInOrg(
 	variableId: string,
 	orgId: string,
 ): Promise<OrgVariableRow> {
-	const { data, errors } = await ctx.session.rawGraphql(ORG_VARIABLE_BY_ID, { orgId, id: variableId });
-	throwOnGraphqlErrors(errors);
-	const rows = ((data as { orgVariables?: OrgVariableRow[] } | undefined)?.orgVariables ?? []) as OrgVariableRow[];
-	const row = rows.find(r => r.id === variableId);
-	if (!row) throw new Error(`Org variable ${variableId} is not in org ${orgId}.`);
-	return row;
+	return requireResourceInOrg({
+		label: 'Org variable',
+		id: variableId,
+		orgId,
+		fetch: async () => {
+			const data = await rawGraphqlOrThrow(ctx.session, ORG_VARIABLE_BY_ID, { orgId, id: variableId });
+			const rows = ((data as { orgVariables?: OrgVariableRow[] } | undefined)?.orgVariables ??
+				[]) as OrgVariableRow[];
+			return rows.find(r => r.id === variableId);
+		},
+		// The query is already org-filtered, so a returned row is in-org by construction.
+		inOrg: () => true,
+	});
 }
 
 const createOrgVariableSpec: ToolSpec = {
