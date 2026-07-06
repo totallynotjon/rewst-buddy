@@ -13,6 +13,7 @@ working-scope rules that bound what a tool may touch.
 Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`, `mcpServer.ts`,
 `instructions.ts`, `McpDefinitionProvider.ts`, `runtime.ts`, `settings.ts`, `throttle.ts`),
 `src/commands/mcp/`, `src/capabilities/*Capabilities.ts`,
+`src/capabilities/workflowImpactCapability.ts`,
 `src/models/WorkingScopeManager.ts`, `src/ui/chat/tools/graphqlTool.ts`,
 `src/ui/chat/tools/workflowTools.ts`, `src/extension.ts`.
 
@@ -652,8 +653,9 @@ evicted or was never cached.
 The system SHALL report a non-empty `instructions` string in the MCP initialize
 handshake, assembled from the same steering fragments the workflow tool specs
 use — summary-before-full detail, name-based edits, sub-workflow composition
-over flat canvases, render-verify before and after edits, and the
-run-and-check-logs loop — so an external MCP client receives the same
+over flat canvases, crate-and-workflow reuse before building, impact checks
+before sub-workflow contract changes, render-verify before and after edits, and
+the run-and-check-logs loop — so an external MCP client receives the same
 working-method guidance as the in-process chat surface and the wording cannot
 drift between the two.
 
@@ -670,6 +672,13 @@ drift between the two.
 - **WHEN** the instructions are generated
 - **THEN** the fragment text appears verbatim in both the instructions and the
   corresponding workflow tool description
+
+#### Scenario: Reuse and impact guidance included
+
+- **WHEN** the instructions are generated
+- **THEN** they include, verbatim from the shared fragments, the
+  crate-reuse-before-building steering and the run-impact-before-changing-a-
+  sub-workflow-contract steering
 
 ### Requirement: Expose recipe prompts
 
@@ -843,3 +852,93 @@ as `buddy_execution_logs` to locate task logs across active sessions.
 - **THEN** the digest still returns the failing task's logs
 - **AND** it notes which supplementary section is unavailable instead of
   failing the whole call
+
+### Requirement: Report the impact of changing a workflow or pack action
+
+The system SHALL expose `buddy_workflow_impact`, a read capability that lists
+the workflows that would break when a contract changes, in exactly one of two
+modes per call. Given `workflowId` (with `orgId`), it SHALL first verify the
+workflow belongs to the requested org, then list every workflow that calls it
+as a sub-workflow, resolved from the platform's parent-workflow relation and
+deduplicated by calling workflow. Given `actions` (each entry a pack ref with
+one or more action refs), it SHALL list the workflows the platform reports as
+affected by breaking changes to those pack actions. A call supplying neither
+or both of `workflowId` and `actions` SHALL be rejected with a validation
+error. The `buddy_workflow_edit` tool description SHALL steer agents to run
+this tool before `set_inputs` or `set_output` on a workflow other workflows
+may call.
+
+#### Scenario: Sub-workflow callers listed
+
+- **GIVEN** a workflow called as a sub-workflow by tasks in two other
+  workflows
+- **WHEN** `buddy_workflow_impact` is called with that `workflowId` and
+  `orgId`
+- **THEN** both calling workflows are listed with their names, ids, and the
+  calling task names, deduplicated by calling workflow
+
+#### Scenario: No callers
+
+- **GIVEN** a workflow no other workflow calls
+- **WHEN** `buddy_workflow_impact` is called with its `workflowId`
+- **THEN** the result states plainly that no workflows call it, rather than
+  returning an empty string or erroring
+
+#### Scenario: Workflow outside the requested org
+
+- **GIVEN** a `workflowId` whose workflow belongs to a different org than the
+  requested `orgId` (or does not exist)
+- **WHEN** `buddy_workflow_impact` is called
+- **THEN** the call fails closed with an error naming the workflow id and org
+
+#### Scenario: Pack-action impact
+
+- **GIVEN** a set of pack action refs
+- **WHEN** `buddy_workflow_impact` is called with `actions` and `orgId`
+- **THEN** each affected workflow is listed with its name, id, and the
+  affected action names, and an empty platform response is reported as "no
+  affected workflows" rather than an empty string
+
+#### Scenario: Exactly one mode
+
+- **WHEN** `buddy_workflow_impact` is called with both `workflowId` and
+  `actions`, or with neither
+- **THEN** the call is rejected with a validation error naming both fields
+
+### Requirement: Discover prebuilt Crates
+
+The system SHALL expose `buddy_search_crates`, a read capability over the
+Rewst Crate marketplace, so an agent can check whether a prebuilt automation
+already exists before building a workflow. The default source SHALL search
+the crate catalog visible to the authenticated session, matching an optional
+filter case-insensitively against crate names, and SHALL flag crates already
+unpacked in the requested org. A `public` source SHALL list the public crate
+listing instead, applying the name filter client-side. Results SHALL be
+bounded by a clamped limit, and long crate descriptions SHALL be truncated.
+The workflow-creation tool description SHALL steer agents to search Crates
+and existing workflows before building anew.
+
+#### Scenario: Catalog search with install status
+
+- **GIVEN** a crate catalog containing a matching crate that is unpacked in
+  the requested org and one that is not
+- **WHEN** `buddy_search_crates` is called with `orgId` and a name filter
+- **THEN** matching crates are listed with name, id, and category, and only
+  the unpacked crate carries the installed marker
+
+#### Scenario: No matches
+
+- **WHEN** `buddy_search_crates` matches nothing
+- **THEN** the result states plainly that no crates matched, rather than
+  returning an empty string or erroring
+
+#### Scenario: Public listing
+
+- **WHEN** `buddy_search_crates` is called with `source: "public"`
+- **THEN** the public crate listing is returned, filtered client-side by the
+  optional name filter
+
+#### Scenario: Invalid source
+
+- **WHEN** `buddy_search_crates` is called with an unknown `source` value
+- **THEN** the call is rejected with an error naming the valid sources

@@ -4,6 +4,7 @@ import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
 import { ORG_ID_PROP, asString, rawGraphqlOrThrow, requireResourceInOrg, requireString } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
+import { CRATE_REUSE_STEERING } from '@workflow';
 
 /**
  * Workflow create/delete capabilities. buddy_create_workflow makes an empty workflow
@@ -54,7 +55,8 @@ async function requireWorkflowInOrg(ctx: CapabilityContext, workflowId: string, 
 const createWorkflowSpec: ToolSpec = {
 	name: 'buddy_create_workflow',
 	args: '{"orgId": string, "name": string, "description"?: string}',
-	description: `Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code.`,
+	description: `Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code. ${CRATE_REUSE_STEERING}`,
+	// NOTE: CRATE_REUSE_STEERING is embedded verbatim above — do not paraphrase it here.
 	inputSchema: {
 		type: 'object',
 		properties: {

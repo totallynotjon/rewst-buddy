@@ -1,5 +1,9 @@
 import type { Capability } from './Capability';
-import { WORKFLOW_CHAT_CAPABILITIES, WORKSPACE_CHAT_CAPABILITIES, graphqlSchemaCapability } from './chatToolCapabilities';
+import {
+	WORKFLOW_CHAT_CAPABILITIES,
+	WORKSPACE_CHAT_CAPABILITIES,
+	graphqlSchemaCapability,
+} from './chatToolCapabilities';
 import { graphqlMutateCapability } from './graphqlMutateCapability';
 import { resultReadCapability } from './resultReadCapability';
 import { READ_CAPABILITIES } from './rewstReadCapabilities';
@@ -17,6 +21,8 @@ import { TEMPLATE_LINK_CAPABILITIES } from './templateLinkCapabilities';
 import { TEMPLATE_CLONE_CAPABILITIES } from './templateCloneCapabilities';
 import { WORKING_SCOPE_CAPABILITIES } from './workingScopeCapability';
 import { JINJA_DOCS_CAPABILITIES } from './jinjaDocsCapabilities';
+import { CRATE_CAPABILITIES } from './crateCapabilities';
+import { workflowImpactCapability } from './workflowImpactCapability';
 
 /**
  * The single source of truth for Rewst capabilities. Every capability is
@@ -43,6 +49,8 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...TEMPLATE_CLONE_CAPABILITIES,
 	...WORKING_SCOPE_CAPABILITIES,
 	...JINJA_DOCS_CAPABILITIES,
+	...CRATE_CAPABILITIES,
+	workflowImpactCapability,
 	graphqlMutateCapability,
 	resultReadCapability,
 ];

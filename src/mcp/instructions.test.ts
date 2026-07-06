@@ -1,9 +1,11 @@
 import {
+	CRATE_REUSE_STEERING,
 	RENDER_VERIFY_STEERING,
 	WORKFLOW_COMPOSITION_STEERING,
 	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+	WORKFLOW_IMPACT_STEERING,
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SUMMARY_DETAIL_STEERING,
 	WORKFLOW_TOOL_SPECS,
@@ -46,6 +48,22 @@ suite('Unit: mcpInstructions', () => {
 		assert.ok(
 			instructions.includes(RENDER_VERIFY_STEERING),
 			'instructions must contain RENDER_VERIFY_STEERING verbatim',
+		);
+	});
+
+	test('contains WORKFLOW_IMPACT_STEERING verbatim', () => {
+		const instructions = buildMcpInstructions();
+		assert.ok(
+			instructions.includes(WORKFLOW_IMPACT_STEERING),
+			'instructions must contain WORKFLOW_IMPACT_STEERING verbatim',
+		);
+	});
+
+	test('contains CRATE_REUSE_STEERING verbatim', () => {
+		const instructions = buildMcpInstructions();
+		assert.ok(
+			instructions.includes(CRATE_REUSE_STEERING),
+			'instructions must contain CRATE_REUSE_STEERING verbatim',
 		);
 	});
 
