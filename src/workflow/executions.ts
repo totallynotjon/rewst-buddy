@@ -563,14 +563,16 @@ function describePublish(transition: RawTransition): string {
 	return ` (publish: ${rendered.join(', ')})`;
 }
 
+function formatTransitionLine(fromName: string, toName: string, transition: RawTransition): string {
+	return `${fromName} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${toName}${describePublish(transition)}`;
+}
+
 function describeTransitionsInto(workflow: RawWorkflow, task: RawTask): string[] {
 	const lines: string[] = [];
 	for (const candidate of workflow.tasks) {
 		for (const transition of candidate.next ?? []) {
 			if ((transition.do ?? []).includes(task.id)) {
-				lines.push(
-					`${candidate.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${task.name}${describePublish(transition)}`,
-				);
+				lines.push(formatTransitionLine(candidate.name, task.name, transition));
 			}
 		}
 	}
@@ -582,23 +584,27 @@ function describeTransitionsOut(workflow: RawWorkflow, task: RawTask): string[] 
 	return (task.next ?? []).flatMap(transition => {
 		const targets = (transition.do ?? []).map(id => nameById.get(id) ?? id);
 		if (targets.length === 0) return [];
-		return [
-			`${task.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${targets.join(', ')}${describePublish(transition)}`,
-		];
+		return [formatTransitionLine(task.name, targets.join(', '), transition)];
 	});
 }
 
-function formatExecutionTimestamp(createdAt: string | null | undefined): string {
+function parseExecutionTimestamp(createdAt: string | null | undefined): number | undefined {
+	if (createdAt == null || createdAt.trim() === '') return undefined;
 	const ts = Number(createdAt);
-	return Number.isFinite(ts) ? new Date(ts).toISOString() : (createdAt ?? '?');
+	return Number.isFinite(ts) ? ts : undefined;
+}
+
+function formatExecutionTimestamp(createdAt: string | null | undefined): string {
+	const ts = parseExecutionTimestamp(createdAt);
+	return ts === undefined ? '?' : new Date(ts).toISOString();
 }
 
 function compareTaskLogTime(a: TaskLogRow, b: TaskLogRow): number {
-	const left = Number(a.createdAt);
-	const right = Number(b.createdAt);
-	if (Number.isFinite(left) && Number.isFinite(right)) return left - right;
-	if (Number.isFinite(left)) return -1;
-	if (Number.isFinite(right)) return 1;
+	const left = parseExecutionTimestamp(a.createdAt);
+	const right = parseExecutionTimestamp(b.createdAt);
+	if (left !== undefined && right !== undefined) return left - right;
+	if (left !== undefined) return -1;
+	if (right !== undefined) return 1;
 	return 0;
 }
 
@@ -606,7 +612,7 @@ function describeTransitionBetween(from: RawTask | undefined, to: RawTask | unde
 	if (!from || !to) return '(no matching graph edge: task not found in workflow definition)';
 	for (const transition of from.next ?? []) {
 		if ((transition.do ?? []).includes(to.id)) {
-			return `${from.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${to.name}${describePublish(transition)}`;
+			return formatTransitionLine(from.name, to.name, transition);
 		}
 	}
 	if (!from.id || !to.id) return '(no matching graph edge: task id unavailable)';

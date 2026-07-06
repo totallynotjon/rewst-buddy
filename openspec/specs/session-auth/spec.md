@@ -174,22 +174,29 @@ reloaded. A successful refresh SHALL reset the consecutive-failure counter.
 ### Requirement: Manage multiple organizations per session
 
 The system SHALL treat one login as managing a primary organization plus all of
-its managed sub-organizations, and SHALL resolve the correct session for any
-given organization id by checking both the primary org and all managed orgs. When
-a base URL or region is available, session resolution SHALL first narrow to
-active sessions in that region and then match the requested org against primary
-and managed org ids. More than one active session being able to manage the same
-org id is not an error: resolution SHALL return the first capable session.
-Resolution SHALL only return a session that is still valid (per the
-`Cache validation` requirement) or that becomes valid after one credential
-refresh attempt; a session is skipped in favor of the next capable session
-only if it remains invalid after that refresh attempt.
+its managed sub-organizations, including nested descendants, and SHALL resolve
+the correct session for any given organization id by checking both the primary
+org and all managed orgs. When a base URL or region is available, session
+resolution SHALL first narrow to active sessions in that region and then match
+the requested org against primary and managed org ids. More than one active
+session being able to manage the same org id is not an error: resolution SHALL
+return the first capable session. Resolution SHALL only return a session that
+is still valid (per the `Cache validation` requirement) or that becomes valid
+after one credential refresh attempt; a session is skipped in favor of the
+next capable session only if it remains invalid after that refresh attempt.
 
 #### Scenario: Operation targets a managed sub-org
 
 - **GIVEN** a session whose login manages a parent org and several sub-orgs
 - **WHEN** an operation references a sub-org id
 - **THEN** the extension selects the session that manages that sub-org
+
+#### Scenario: Operation targets a grandchild sub-org
+
+- **GIVEN** a session whose login manages a parent org, a direct child, and a
+  deeper descendant
+- **WHEN** an operation references the grandchild org id
+- **THEN** the extension selects the same session
 
 #### Scenario: Duplicate org id resolves to the first capable session
 

@@ -3400,6 +3400,27 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
+		test('treats missing or empty createdAt values as unknown timestamps', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: [
+					{ originalWorkflowTaskName: 'start', status: 'succeeded', createdAt: '1000' },
+					{ originalWorkflowTaskName: 'normalize', status: 'succeeded', createdAt: '' },
+					{ originalWorkflowTaskName: 'the_failer', status: 'failed' },
+				],
+				childExecutionsWorkflow: { id: 'wf-1', name: 'Sample', orgId: 'org-1' },
+				childExecutionsOrgId: 'org-1',
+				workflow: diagnoseWorkflow(),
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /1\. start\s+succeeded\s+1970-01-01T00:00:01\.000Z/);
+			assert.match(output, /2\. normalize\s+succeeded\s+\?/);
+			assert.match(output, /3\. the_failer\s+failed\s+\?/);
+			assert.ok(!output.includes('1970-01-01T00:00:00.000Z'), 'empty timestamps do not become epoch zero');
+		});
+
 		test('diagnoses by workflowId when executionId is unknown', async () => {
 			const { deps, calls } = makeDiagnoseDeps({
 				findExecutions: [{ id: 'exec-9', status: 'FAILED', createdAt: '1000' }],
