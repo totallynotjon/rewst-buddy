@@ -8,7 +8,15 @@
 import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asBooleanArg, asStringArg, type ToolRequest } from '../ui/chat/tools/toolProtocol';
 import { fetchWorkflow } from './graphMutations';
-import { firstErrorMessage, isPlainObject, type ExecResult, type RawTask, type RawWorkflow } from './types';
+import {
+	firstErrorMessage,
+	isPlainObject,
+	normalizePublish,
+	type ExecResult,
+	type RawTask,
+	type RawTransition,
+	type RawWorkflow,
+} from './types';
 
 // ---------------------------------------------------------------------------
 // GraphQL
@@ -543,12 +551,26 @@ async function findLatestFailedExecutionId(
 	return row?.id ?? undefined;
 }
 
+// Transition crashes are frequently in the publish expression (e.g. reading a
+// field off a null RESULT), not the `when` condition, so the digest surfaces
+// both instead of sending the caller back to buddy_workflow_get for it.
+function describePublish(transition: RawTransition): string {
+	const entries = normalizePublish(transition.publish);
+	if (entries.length === 0) return '';
+	const rendered = entries.map(
+		({ key, value }) => `${key}=${typeof value === 'string' ? value : JSON.stringify(value)}`,
+	);
+	return ` (publish: ${rendered.join(', ')})`;
+}
+
 function describeTransitionsInto(workflow: RawWorkflow, task: RawTask): string[] {
 	const lines: string[] = [];
 	for (const candidate of workflow.tasks) {
 		for (const transition of candidate.next ?? []) {
 			if ((transition.do ?? []).includes(task.id)) {
-				lines.push(`${candidate.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${task.name}`);
+				lines.push(
+					`${candidate.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${task.name}${describePublish(transition)}`,
+				);
 			}
 		}
 	}
@@ -560,7 +582,9 @@ function describeTransitionsOut(workflow: RawWorkflow, task: RawTask): string[] 
 	return (task.next ?? []).flatMap(transition => {
 		const targets = (transition.do ?? []).map(id => nameById.get(id) ?? id);
 		if (targets.length === 0) return [];
-		return [`${task.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${targets.join(', ')}`];
+		return [
+			`${task.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${targets.join(', ')}${describePublish(transition)}`,
+		];
 	});
 }
 

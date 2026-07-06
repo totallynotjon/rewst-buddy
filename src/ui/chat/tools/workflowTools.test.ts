@@ -3,6 +3,7 @@ import { initTestEnvironment } from '@test';
 import {
 	ADD_TASK_FIELD_NAMES,
 	ADVANCED_TASK_FIELD_TABLE,
+	type RawWorkflow,
 	UPDATE_TASK_SET_FIELD_NAMES,
 	workflowEditOperationGrammar,
 } from '@workflow';
@@ -3173,7 +3174,7 @@ suite('Unit: workflowTools', () => {
 			return { deps, calls };
 		}
 
-		const diagnoseWorkflow = () => ({
+		const diagnoseWorkflow = (): RawWorkflow => ({
 			...sampleWorkflow(),
 			tasks: [
 				{
@@ -3223,6 +3224,31 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /Transition path/);
 			assert.match(output, /in:\s+start --\[\{\{ SUCCEEDED \}\}\]--> the_failer/);
 			assert.match(output, /out:\s+\(none — terminal task\)/);
+		});
+
+		test('includes publish expressions on the transition path', async () => {
+			const workflow = diagnoseWorkflow();
+			workflow.tasks[0].next = [
+				{
+					when: '{{ SUCCEEDED }}',
+					do: ['task-b'],
+					publish: [{ key: 'customer_org_id', value: '{{ RESULT.result.org_id }}' }],
+				},
+			];
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutionsWorkflow: { id: 'wf-1', name: 'Sample', orgId: 'org-1' },
+				childExecutionsOrgId: 'org-1',
+				workflow,
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(
+				output,
+				/in:\s+start --\[\{\{ SUCCEEDED \}\}\]--> the_failer \(publish: customer_org_id=\{\{ RESULT\.result\.org_id \}\}\)/,
+			);
 		});
 
 		test('diagnoses by workflowId when executionId is unknown', async () => {
