@@ -1,14 +1,14 @@
 import { FolderLink, LinkManager, Org, SyncOnSaveManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
-import { getHash } from '@utils';
+import { getHash, log } from '@utils';
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as Mocha from 'mocha';
 import * as os from 'os';
 import * as path from 'path';
 import vscode from 'vscode';
-import { SyncManager, orgFromTemplate } from './SyncManager';
+import { resolveConflictChoice, SyncManager, orgFromTemplate } from './SyncManager';
 
 const { suite, test, setup, teardown } = Mocha;
 
@@ -653,6 +653,64 @@ suite('Unit: SyncManager.handleSave (sync on save)', () => {
 		assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 0, 'no fetch without sync-on-save');
 		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload without sync-on-save');
 	});
+
+	test('dismissing a conflict during sync-on-save is a clean no-op, not a scary error notification', async () => {
+		const uri = vscode.Uri.file('/test/save-conflict-file.txt');
+		const templateId = 'template-save-conflict';
+		const org = Fixtures.orgModel({ id: 'org-save-conflict', name: 'Save Conflict Org' });
+
+		const link: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org,
+			template: { id: templateId, name: 'T', updatedAt: 'local-ts' } as any,
+			bodyHash: getHash('// some prior synced content'),
+		};
+		LinkManager.addLink(link);
+
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: templateId,
+				name: 'T',
+				body: '// remote content, different from local',
+				updatedAt: 'remote-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		SessionManager._setSessionsForTesting([session]);
+		SyncOnSaveManager.enableSync(uri);
+
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => vscode.Uri.file('/test/fake-remote'),
+			promptChoice: async () => undefined,
+			closeDiff: async () => {},
+		});
+
+		let notifyErrorCalls = 0;
+		const restoreError = stub(log, 'notifyError', ((message: string) => {
+			notifyErrorCalls++;
+			return new Error(message);
+		}) as typeof log.notifyError);
+		let notifyInfoCalls = 0;
+		const restoreInfo = stub(log, 'notifyInfo', (() => {
+			notifyInfoCalls++;
+		}) as typeof log.notifyInfo);
+
+		const doc = createMockDocument({ uri, content: '// locally edited content' });
+
+		try {
+			await (SyncManager as any)['handleSave'](doc);
+		} finally {
+			restoreError();
+			restoreInfo();
+			SyncManager._resetConflictDepsForTesting();
+		}
+
+		assert.strictEqual(notifyErrorCalls, 0, 'a dismissed conflict is a clean abort, not an error notification');
+		assert.strictEqual(notifyInfoCalls, 0, 'a dismissed conflict did not succeed either');
+	});
 });
 
 // fetchFolder is the mechanism behind "Link Folder to Organization" + "Fetch
@@ -869,11 +927,11 @@ suite('Unit: SyncManager.fetchFolder', () => {
 	});
 });
 
-// Spec: template-sync "Resolve conflicts with explicit user choice". The
+// Spec: template-sync "Resolve conflicts via diff, not a blind modal". The
 // 'conflict' action is only reachable through the public syncTemplate() entry
 // point (computeSyncDecision -> syncTemplateInternal -> handleConflict), which
-// no prior test exercised. These stub the modal vscode.window.showInformationMessage
-// uses to drive each of its three outcomes.
+// no prior test exercised. These inject the showDiff/promptChoice/closeDiff
+// deps via the test seam to drive each outcome without a real diff editor.
 suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 	setup(() => {
 		initTestEnvironment();
@@ -886,6 +944,7 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		SessionManager._resetForTesting();
 		LinkManager._resetForTesting();
 		SyncOnSaveManager._resetForTesting();
+		SyncManager._resetConflictDepsForTesting();
 	});
 
 	function setUpConflict() {
@@ -920,13 +979,30 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		return { uri, doc, wrapper, templateId, org };
 	}
 
-	test('user forces the local version: the local body is uploaded to Rewst', async () => {
+	const fakeRemoteUri = vscode.Uri.parse('rewst-remote:/test/conflict-file.txt?rewst-remote=1');
+
+	test('keeps local: uploads local body and shows a diff first', async () => {
 		const { doc, wrapper, templateId, org } = setUpConflict();
-		let modalMessage = '';
-		const restore = stub(vscode.window, 'showInformationMessage', (async (message: string) => {
-			modalMessage = message;
-			return 'Force Override';
-		}) as unknown as typeof vscode.window.showInformationMessage);
+		const calls: string[] = [];
+		let showDiffArgs: [vscode.TextDocument, string] | undefined;
+		let closeDiffArg: vscode.TextDocument | undefined;
+
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async (d, remoteBody) => {
+				calls.push('showDiff');
+				showDiffArgs = [d, remoteBody];
+				return fakeRemoteUri;
+			},
+			promptChoice: async () => {
+				calls.push('promptChoice');
+				return 'Keep Local';
+			},
+			closeDiff: async d => {
+				calls.push('closeDiff');
+				closeDiffArg = d;
+			},
+		});
+
 		wrapper.when('updateTemplateBody', {
 			data: Fixtures.updateTemplateBodyMutation({
 				id: templateId,
@@ -937,29 +1013,32 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 			}),
 		});
 
-		try {
-			await SyncManager.syncTemplate(doc);
-		} finally {
-			restore();
-		}
+		await SyncManager.syncTemplate(doc);
 
-		assert.match(modalMessage, /out of sync/);
-		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 1, 'force override uploads local body');
+		assert.deepStrictEqual(calls, ['showDiff', 'promptChoice', 'closeDiff']);
+		assert.strictEqual(showDiffArgs?.[0], doc, 'showDiff receives the document');
+		assert.strictEqual(
+			showDiffArgs?.[1],
+			'// remote content, different from local',
+			'showDiff receives the remote body',
+		);
+		assert.strictEqual(closeDiffArg, doc, 'closeDiff runs after the choice is handled');
+
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 1, 'keep local uploads local body');
 		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody')[0].variables.body, '// locally edited content');
-		assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 1, 'no extra download happens');
 
 		const link = LinkManager.getTemplateLink(doc.uri);
 		assert.strictEqual(link.template.updatedAt, 'uploaded-ts', 'link reflects the upload response');
 	});
 
-	test('force override re-resolves the session instead of reusing one captured before the modal', async () => {
+	test('keep local re-resolves session instead of reusing one captured before the prompt', async () => {
 		const { doc, wrapper: staleWrapper, templateId, org } = setUpConflict();
 
 		// A session can be refreshed, removed, or replaced while the user is
-		// staring at the (indefinitely long) conflict modal. Swap in a distinct
-		// session for the same org from inside the modal stub to simulate that,
-		// and assert the upload lands on the new session, not the stale one
-		// captured before the modal was shown.
+		// staring at the (indefinitely long) conflict prompt. Swap in a distinct
+		// session for the same org from inside the promptChoice stub to simulate
+		// that, and assert the upload lands on the new session, not the stale
+		// one captured before the prompt was shown.
 		const { session: freshSession, wrapper: freshWrapper } = createMockSession({
 			profile: { org, allManagedOrgs: [org] },
 		});
@@ -983,45 +1062,45 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 			}),
 		});
 
-		const restore = stub(vscode.window, 'showInformationMessage', (async () => {
-			SessionManager._setSessionsForTesting([freshSession]);
-			return 'Force Override';
-		}) as unknown as typeof vscode.window.showInformationMessage);
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => fakeRemoteUri,
+			promptChoice: async () => {
+				SessionManager._setSessionsForTesting([freshSession]);
+				return 'Keep Local';
+			},
+			closeDiff: async () => {},
+		});
 
-		try {
-			await SyncManager.syncTemplate(doc);
-		} finally {
-			restore();
-		}
+		await SyncManager.syncTemplate(doc);
 
 		assert.strictEqual(
 			staleWrapper.getCallsFor('updateTemplateBody').length,
 			0,
-			'the session captured before the modal must not be used for the upload',
+			'the session captured before the prompt must not be used for the upload',
 		);
 		assert.strictEqual(
 			freshWrapper.getCallsFor('updateTemplateBody').length,
 			1,
-			'the session swapped in during the modal wait should receive the upload',
+			'the session swapped in during the prompt wait should receive the upload',
 		);
 	});
 
-	test('force override surfaces a clear error when no session remains for the org after the modal', async () => {
+	test('keep local surfaces a clear error when no session remains after the prompt', async () => {
 		const { doc, wrapper: staleWrapper } = setUpConflict();
 
 		// The org's only session is removed while the user is staring at the
-		// conflict modal; re-resolution must fail loudly rather than fall back
-		// to the stale session captured before the modal.
-		const restore = stub(vscode.window, 'showInformationMessage', (async () => {
-			SessionManager._setSessionsForTesting([]);
-			return 'Force Override';
-		}) as unknown as typeof vscode.window.showInformationMessage);
+		// conflict prompt; re-resolution must fail loudly rather than fall back
+		// to the stale session captured before the prompt.
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => fakeRemoteUri,
+			promptChoice: async () => {
+				SessionManager._setSessionsForTesting([]);
+				return 'Keep Local';
+			},
+			closeDiff: async () => {},
+		});
 
-		try {
-			await assert.rejects(() => SyncManager.syncTemplate(doc), /no session found/);
-		} finally {
-			restore();
-		}
+		await assert.rejects(() => SyncManager.syncTemplate(doc), /no session found/);
 
 		assert.strictEqual(
 			staleWrapper.getCallsFor('updateTemplateBody').length,
@@ -1030,47 +1109,270 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 		);
 	});
 
-	test('user takes the remote version: the remote body replaces the local file', async () => {
+	test('takes remote: remote body replaces local file', async () => {
 		const { doc, wrapper } = setUpConflict();
-		const restore = stub(
-			vscode.window,
-			'showInformationMessage',
-			(async () => 'Download Latest') as unknown as typeof vscode.window.showInformationMessage,
-		);
+
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => fakeRemoteUri,
+			promptChoice: async () => 'Take Remote',
+			closeDiff: async () => {},
+		});
 
 		try {
 			await SyncManager.syncTemplate(doc);
 		} catch {
 			// expected: vscode.workspace.save of an unopened mock document fails here,
 			// same as the existing applyTemplateToDocument tests above.
-		} finally {
-			restore();
 		}
 
-		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload happens on download');
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload happens on take-remote');
 
 		const link = LinkManager.getTemplateLink(doc.uri);
 		assert.strictEqual(link.template.updatedAt, 'remote-ts', 'link now reflects the downloaded remote template');
 		assert.strictEqual(link.bodyHash, getHash('// remote content, different from local'));
 	});
 
-	test('user dismisses the prompt: the sync aborts and nothing changes', async () => {
+	test('user dismisses: aborts, nothing changes, diff is still closed', async () => {
 		const { doc, wrapper } = setUpConflict();
-		const restore = stub(
-			vscode.window,
-			'showInformationMessage',
-			(async () => undefined) as unknown as typeof vscode.window.showInformationMessage,
+		let closeDiffCalled = false;
+
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => fakeRemoteUri,
+			promptChoice: async () => undefined,
+			closeDiff: async () => {
+				closeDiffCalled = true;
+			},
+		});
+
+		await assert.rejects(() => SyncManager.syncTemplate(doc));
+
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload on dismiss');
+		assert.ok(closeDiffCalled, 'closeDiff must run even when the user dismisses');
+		const link = LinkManager.getTemplateLink(doc.uri);
+		assert.strictEqual(link.template.updatedAt, 'local-ts', 'link is untouched after dismiss');
+	});
+
+	test('showDiff failure aborts without ever prompting', async () => {
+		const { doc } = setUpConflict();
+		let promptCalls = 0;
+
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => {
+				throw new Error('diff failed to open');
+			},
+			promptChoice: async () => {
+				promptCalls++;
+				return 'Keep Local';
+			},
+			closeDiff: async () => {},
+		});
+
+		await assert.rejects(() => SyncManager.syncTemplate(doc), /diff failed to open/);
+		assert.strictEqual(promptCalls, 0, 'promptChoice must never run if the diff never opened');
+	});
+});
+
+// Spec: conflict resolution is button-driven (editor/title toolbar buttons on
+// the diff itself), not a showInformationMessage modal — the modal was the
+// reported source of ambiguity even after the diff panes were labeled. These
+// tests exercise the REAL defaultConflictDeps (no _setConflictDepsForTesting
+// override), driving the choice via the exported resolveConflictChoice(), the
+// same function the toolbar button commands call.
+suite('Unit: SyncManager.syncTemplate (conflict resolution, real button-driven deps)', () => {
+	// The notification is a second, parallel resolution path alongside the diff's
+	// toolbar buttons (see resolveConflictChoice's doc comment) — stub it so tests
+	// don't leave a real, unresolvable notification open in the test extension
+	// host, and so the dedicated test below can drive it explicitly.
+	let notificationResolve: ((choice: string | undefined) => void) | undefined;
+	let restoreNotification: (() => void) | undefined;
+
+	setup(() => {
+		initTestEnvironment();
+		SessionManager._resetForTesting();
+		LinkManager._resetForTesting();
+		SyncOnSaveManager._resetForTesting();
+		SyncManager._resetConflictDepsForTesting();
+		notificationResolve = undefined;
+		restoreNotification = stub(vscode.window, 'showInformationMessage', ((..._args: unknown[]) => {
+			return new Promise<string | undefined>(resolve => {
+				notificationResolve = resolve;
+			});
+		}) as unknown as typeof vscode.window.showInformationMessage);
+	});
+
+	teardown(() => {
+		SessionManager._resetForTesting();
+		LinkManager._resetForTesting();
+		SyncOnSaveManager._resetForTesting();
+		SyncManager._resetConflictDepsForTesting();
+		restoreNotification?.();
+		notificationResolve = undefined;
+	});
+
+	function setUpConflict() {
+		const uri = vscode.Uri.file('/test/real-conflict-file.txt');
+		const localContent = '// locally edited content';
+		const templateId = 'template-real-conflict';
+		const org = Fixtures.orgModel({ id: 'org-real-conflict', name: 'Real Conflict Org' });
+
+		const link: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org,
+			template: { id: templateId, name: 'Conflict Template', updatedAt: 'local-ts' } as any,
+			bodyHash: getHash('// some prior synced content'),
+		};
+		LinkManager.addLink(link);
+
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: templateId,
+				name: 'Conflict Template',
+				body: '// remote content, different from local',
+				updatedAt: 'remote-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		SessionManager._setSessionsForTesting([session]);
+
+		const doc = createMockDocument({ uri, content: localContent });
+		return { uri, doc, wrapper, templateId, org };
+	}
+
+	test('resolveConflictChoice("Keep Local") resolves the pending diff and uploads', async () => {
+		const { doc, wrapper, templateId, org } = setUpConflict();
+		wrapper.when('updateTemplateBody', {
+			data: Fixtures.updateTemplateBodyMutation({
+				id: templateId,
+				name: 'Conflict Template',
+				updatedAt: 'uploaded-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		const restoreExec = stub(
+			vscode.commands,
+			'executeCommand',
+			(async () => undefined) as typeof vscode.commands.executeCommand,
 		);
 
 		try {
-			await assert.rejects(() => SyncManager.syncTemplate(doc));
+			const syncPromise = SyncManager.syncTemplate(doc);
+			await new Promise(resolve => setTimeout(resolve, 0));
+			resolveConflictChoice('Keep Local');
+			await syncPromise;
 		} finally {
-			restore();
+			restoreExec();
 		}
 
-		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload on cancel');
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 1);
 		const link = LinkManager.getTemplateLink(doc.uri);
-		assert.strictEqual(link.template.updatedAt, 'local-ts', 'link is untouched after cancel');
+		assert.strictEqual(link.template.updatedAt, 'uploaded-ts');
+	});
+
+	test('sets the conflictDiffActive context key while the diff is open and clears it after', async () => {
+		const { doc, wrapper, templateId, org } = setUpConflict();
+		wrapper.when('updateTemplateBody', {
+			data: Fixtures.updateTemplateBodyMutation({
+				id: templateId,
+				name: 'Conflict Template',
+				updatedAt: 'uploaded-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		const setContextCalls: unknown[][] = [];
+		const restoreExec = stub(vscode.commands, 'executeCommand', (async (...args: unknown[]) => {
+			if (args[0] === 'setContext') setContextCalls.push(args);
+			return undefined;
+		}) as typeof vscode.commands.executeCommand);
+
+		try {
+			const syncPromise = SyncManager.syncTemplate(doc);
+			await new Promise(resolve => setTimeout(resolve, 0));
+			resolveConflictChoice('Keep Local');
+			await syncPromise;
+		} finally {
+			restoreExec();
+		}
+
+		assert.deepStrictEqual(setContextCalls, [
+			['setContext', 'rewst-buddy.conflictDiffActive', true],
+			['setContext', 'rewst-buddy.conflictDiffActive', false],
+		]);
+	});
+
+	test('closing the diff tab without a choice aborts, same as an explicit dismiss', async () => {
+		const { doc } = setUpConflict();
+		let closeHandler: ((doc: vscode.TextDocument) => void) | undefined;
+		const restoreClose = stub(vscode.workspace, 'onDidCloseTextDocument', ((
+			listener: (doc: vscode.TextDocument) => void,
+		) => {
+			closeHandler = listener;
+			return { dispose() {} };
+		}) as typeof vscode.workspace.onDidCloseTextDocument);
+
+		let capturedRemoteUri: vscode.Uri | undefined;
+		const restoreExec = stub(vscode.commands, 'executeCommand', (async (...args: unknown[]) => {
+			if (args[0] === 'vscode.diff') capturedRemoteUri = args[2] as vscode.Uri;
+			return undefined;
+		}) as typeof vscode.commands.executeCommand);
+
+		try {
+			const syncPromise = SyncManager.syncTemplate(doc);
+			await new Promise(resolve => setTimeout(resolve, 0));
+			assert.ok(closeHandler, 'expected promptChoice to register a close listener');
+			assert.ok(capturedRemoteUri, 'expected showDiff to have opened the diff');
+			closeHandler!({ uri: capturedRemoteUri! } as vscode.TextDocument);
+			await assert.rejects(() => syncPromise);
+		} finally {
+			restoreClose();
+			restoreExec();
+		}
+
+		const link = LinkManager.getTemplateLink(doc.uri);
+		assert.strictEqual(
+			link.template.updatedAt,
+			'local-ts',
+			'nothing changes when the tab is closed without a choice',
+		);
+	});
+
+	test('clicking the notification button also resolves the pending diff, same as the toolbar buttons', async () => {
+		const { doc, wrapper, templateId, org } = setUpConflict();
+		wrapper.when('updateTemplateBody', {
+			data: Fixtures.updateTemplateBodyMutation({
+				id: templateId,
+				name: 'Conflict Template',
+				updatedAt: 'uploaded-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		const restoreExec = stub(
+			vscode.commands,
+			'executeCommand',
+			(async () => undefined) as typeof vscode.commands.executeCommand,
+		);
+
+		try {
+			const syncPromise = SyncManager.syncTemplate(doc);
+			await new Promise(resolve => setTimeout(resolve, 0));
+			assert.ok(
+				notificationResolve,
+				'expected promptChoice to show a notification with Keep Local/Take Remote buttons',
+			);
+			notificationResolve!('Keep Local');
+			await syncPromise;
+		} finally {
+			restoreExec();
+		}
+
+		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 1);
+		const link = LinkManager.getTemplateLink(doc.uri);
+		assert.strictEqual(link.template.updatedAt, 'uploaded-ts');
 	});
 });
 

@@ -12,6 +12,7 @@ export const vitestSuites = [
 	'src/models/syncDecision.test.ts',
 	'src/models/templateLinkFactory.test.ts',
 	'src/providers/templatePatternUtils.test.ts',
+	'src/providers/jinjaPatternUtils.test.ts',
 	'src/utils/getHash.test.ts',
 	'src/capabilities/inputHelpers.test.ts',
 	'src/sessions/conversation/conversationEvents.test.ts',

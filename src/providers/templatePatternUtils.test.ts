@@ -1,5 +1,10 @@
 import * as assert from 'assert';
-import { findAllTemplateReferences, findTemplateAtPosition, TEMPLATE_PATTERN } from './templatePatternUtils';
+import {
+	findAllTemplateReferences,
+	findTemplateAtPosition,
+	isInsideTemplateCallPrefix,
+	TEMPLATE_PATTERN,
+} from './templatePatternUtils';
 
 import { suite, test } from '../test/tdd';
 
@@ -151,5 +156,52 @@ suite('Unit: findAllTemplateReferences()', () => {
 		].join('\n');
 		const refs = findAllTemplateReferences(text);
 		assert.deepStrictEqual(refs, ['11111111-1111-1111-1111-111111111111']);
+	});
+});
+
+suite('Unit: isInsideTemplateCallPrefix()', () => {
+	test('true when cursor is inside template(" with the quote unclosed', () => {
+		const line = 'template("';
+		assert.strictEqual(isInsideTemplateCallPrefix(line, line.length), true);
+	});
+
+	test('true for single-quote variant', () => {
+		const line = "template('";
+		assert.strictEqual(isInsideTemplateCallPrefix(line, line.length), true);
+	});
+
+	test('false once the closing quote/paren is present before cursor', () => {
+		const line = 'template("550e8400-e29b-41d4-a716-446655440000")';
+		assert.strictEqual(isInsideTemplateCallPrefix(line, line.length), false);
+	});
+
+	test('false when cursor is outside any template( call', () => {
+		const line = 'no template call here';
+		assert.strictEqual(isInsideTemplateCallPrefix(line, 5), false);
+	});
+
+	test('true when cursor is mid-string, before the closing quote', () => {
+		const line = 'template("550e8400-e29b-41d4-a716-446655440000")';
+		const character = line.indexOf('e29b');
+		assert.strictEqual(isInsideTemplateCallPrefix(line, character), true);
+	});
+
+	test('false when cursor sits between template( and the opening quote', () => {
+		const line = 'template( "550e8400-e29b-41d4-a716-446655440000")';
+		const character = line.indexOf('(') + 1;
+		assert.strictEqual(isInsideTemplateCallPrefix(line, character), false);
+	});
+
+	test('true inside the second of multiple template( calls on the same line', () => {
+		const line =
+			'template("11111111-1111-1111-1111-111111111111") template("22222222-2222-2222-2222-222222222222")';
+		const character = line.lastIndexOf('22222222');
+		assert.strictEqual(isInsideTemplateCallPrefix(line, character), true);
+	});
+
+	test('false between two template( calls, after the first closes', () => {
+		const line = 'template("11111111-1111-1111-1111-111111111111") template("';
+		const character = line.indexOf(') ') + 1;
+		assert.strictEqual(isInsideTemplateCallPrefix(line, character), false);
 	});
 });

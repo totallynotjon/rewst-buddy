@@ -23,6 +23,21 @@ You can also use `Enable Sync-On-Save` and `Disable Sync-On-Save` commands from 
 
 Sync is safer than editing in browser tabs — before pushing, the extension pulls the template and verifies it hasn't changed since your last fetch. (The browser would just overwrite.)
 
+## Diff Against Rewst & Conflict Resolution
+
+When a sync detects a conflict — both the local file and the Rewst template changed since the last sync — Rewst Buddy opens a native diff (local file ↔ current Rewst version, the remote side marked "(Rewst)") so you can see exactly what changed before deciding. You can resolve it two equivalent ways — whichever you click first wins:
+
+- Buttons right on the diff's own toolbar, and the equivalent Command Palette entries while the diff is open
+- Buttons on a notification shown alongside the diff
+
+Either path offers the same choice:
+
+- **Keep Local** uploads your local version to Rewst
+- **Take Remote** replaces the local file with the Rewst version
+- Closing the diff tab without clicking either aborts the sync — nothing changes
+
+You don't need a conflict to compare versions: run `Rewst Buddy: Diff Against Rewst` on any linked file to open the same diff at any time, with no risk of changing local or remote state.
+
 ## Auto-Fetch on Open
 
 When you open a linked template file with sync-on-save enabled, the extension automatically checks if there are newer changes in Rewst and downloads them if:
@@ -61,6 +76,15 @@ When editing linked template files, you can navigate between templates:
 - Works with both single and double quoted UUIDs: `template("UUID")` or `template('UUID')`
 
 Note: Navigation only works when both the current file and the referenced template are linked locally.
+
+## Jinja IntelliSense
+
+Linked files get authoring support for Rewst's built-in Jinja filters and dialect:
+
+- **Filter completion** — Type `|` inside a `{{ }}` or `{% %}` span to see Rewst's built-in Jinja filters, with signatures and documentation
+- **Filter hover** — Hover a filter name to see its signature and documentation
+- **Template-name completion** — Inside `template("...")`, get completions for the current org's templates, labeled by name and inserting the id
+- **Dialect keyword highlighting** — `{% try %}` / `{% catch %}` / `{% endtry %}` and comprehension keywords (`for`, `in`, `if`, `elif`, `else`, `endif`) are highlighted when they appear inside a Jinja span
 
 ## Template Bundles
 

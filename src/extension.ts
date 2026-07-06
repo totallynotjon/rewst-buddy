@@ -4,13 +4,22 @@ import { extPrefix, context as globalVSContext } from '@global';
 import { McpDefinitionProvider, McpServerController } from '@mcp';
 import {
 	LinkManager,
+	RewstContentProvider,
+	RewstQuickDiffProvider,
 	SyncManager,
 	SyncOnSaveManager,
 	TemplateBundleManager,
 	TemplateMetadataStore,
 	WorkingScopeManager,
 } from '@models';
-import { TemplateDefinitionProvider, TemplateHoverProvider } from './providers';
+import {
+	JINJA_SEMANTIC_TOKENS_LEGEND,
+	JinjaFilterProvider,
+	JinjaSemanticTokensProvider,
+	TemplateDefinitionProvider,
+	TemplateHoverProvider,
+	TemplateNameCompletionProvider,
+} from './providers';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
 import {
@@ -76,6 +85,25 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.languages.registerHoverProvider({ scheme: 'file' }, new TemplateHoverProvider()),
 	);
 
+	// Register Jinja IntelliSense providers for linked files: filter completion/hover,
+	// template-name completion inside template("..."), and dialect keyword highlighting.
+	const jinjaFilterProvider = new JinjaFilterProvider();
+	context.subscriptions.push(
+		vscode.languages.registerHoverProvider({ scheme: 'file' }, jinjaFilterProvider),
+		vscode.languages.registerCompletionItemProvider({ scheme: 'file' }, jinjaFilterProvider, '|'),
+		vscode.languages.registerCompletionItemProvider(
+			{ scheme: 'file' },
+			new TemplateNameCompletionProvider(),
+			'"',
+			"'",
+		),
+		vscode.languages.registerDocumentSemanticTokensProvider(
+			{ scheme: 'file' },
+			new JinjaSemanticTokensProvider(),
+			JINJA_SEMANTIC_TOKENS_LEGEND,
+		),
+	);
+
 	// Register managers (self-register for their respective VS Code events).
 	// SessionManager.init() kicks off session loading in the background;
 	// consumers react via onSessionChange when sessions arrive.
@@ -110,6 +138,11 @@ export async function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(new RoboRewstyChatModelProvider().init());
 	context.subscriptions.push(ProposedContentProvider.init());
+	context.subscriptions.push(RewstContentProvider.init());
+	// Best-effort: quick-diff gutter decorations for linked files against the
+	// remote baseline. Registration/disposal is required; visible gutter
+	// decorations from a non-primary SourceControl are not guaranteed by VS Code.
+	context.subscriptions.push(RewstQuickDiffProvider.init());
 	context.subscriptions.push(WorkingScopeManager);
 	context.subscriptions.push(new StatusBar());
 	context.subscriptions.push(new WorkingScopeStatusBar());

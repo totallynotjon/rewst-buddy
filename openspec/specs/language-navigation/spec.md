@@ -8,7 +8,8 @@ what a referenced template is, and Ctrl+Click jumps to it. This capability cover
 the hover and definition providers and their matching rules.
 
 Source: `src/providers/` (`templatePatternUtils.ts`, `TemplateHoverProvider.ts`,
-`TemplateDefinitionProvider.ts`), `src/models/TemplateMetadataStore.ts`.
+`TemplateDefinitionProvider.ts`, `TemplateNameCompletionProvider.ts`),
+`src/models/TemplateMetadataStore.ts`.
 
 ## Requirements
 
@@ -87,3 +88,31 @@ local file when one exists, and otherwise — when the template is known from ca
 - **WHEN** the user Ctrl+Clicks it
 - **THEN** the template is fetched, saved, and linked in the background, and the
   new file opens
+
+### Requirement: Complete template names inside template() calls
+
+Inside an in-progress `template("...")` call, the system SHALL offer
+completion items for the current org's templates, showing each template's
+name and inserting its id.
+
+#### Scenario: Completion triggered inside an open template() call
+
+- **GIVEN** a linked file with the cursor inside `template("` with the quote
+  not yet closed
+- **WHEN** completion is triggered
+- **THEN** each of the org's templates is offered, labeled by name, inserting
+  the template id on accept
+
+#### Scenario: Not inside a template() call
+
+- **GIVEN** a linked file with the cursor outside any template() call
+- **WHEN** completion is triggered
+- **THEN** no template-name completions are offered
+
+#### Scenario: Org has no indexed templates yet
+
+- **GIVEN** a linked file whose org has no templates loaded in
+  `TemplateMetadataStore` yet
+- **WHEN** completion is triggered inside an open `template("` call
+- **THEN** the provider returns an empty completion list, not no list at all
+  — it recognizes the trigger position even with nothing to offer

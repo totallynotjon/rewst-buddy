@@ -576,4 +576,88 @@ suite('Unit: TemplateMetadataStore', () => {
 			);
 		});
 	});
+
+	suite('getTemplatesForOrg()', () => {
+		test('returns all templates loaded for an org, sorted by name', async () => {
+			const org = Fixtures.orgModel({ id: 'org-1', name: 'Test Org' });
+			const templates = [
+				Fixtures.template({ id: 't-b', name: 'Bravo', orgId: org.id }),
+				Fixtures.template({ id: 't-a', name: 'Alpha', orgId: org.id }),
+				Fixtures.template({ id: 't-c', name: 'Charlie', orgId: org.id }),
+			];
+
+			const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
+			LinkManager.addLink(makeTemplateLink(org.id, org.name, 'link-1'));
+			SessionManager._setSessionsForTesting([session]);
+
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			const names = TemplateMetadataStore.getTemplatesForOrg(org.id).map(t => t.name);
+			assert.deepStrictEqual(names, ['Alpha', 'Bravo', 'Charlie']);
+		});
+
+		test('returns an empty array for an org with nothing loaded', () => {
+			assert.deepStrictEqual(TemplateMetadataStore.getTemplatesForOrg('unknown-org'), []);
+		});
+
+		test('excludes templates belonging to other orgs', async () => {
+			const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
+			const org2 = Fixtures.orgModel({ id: 'org-2', name: 'Org 2' });
+
+			const { session, wrapper } = createMockSession({
+				profile: { org: org1, allManagedOrgs: [org1, org2] },
+			});
+			wrapper.when('listTemplates', (vars: any) => {
+				const templates = [
+					Fixtures.template({ id: `t-${vars.orgId}`, name: `T ${vars.orgId}`, orgId: vars.orgId }),
+				];
+				return { data: Fixtures.listTemplatesQuery(templates) };
+			});
+
+			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
+			LinkManager.addLink(makeTemplateLink(org2.id, org2.name, 'link-org2'));
+			SessionManager._setSessionsForTesting([session]);
+
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			const org1Ids = TemplateMetadataStore.getTemplatesForOrg(org1.id).map(t => t.id);
+			assert.deepStrictEqual(org1Ids, [`t-${org1.id}`]);
+			assert.ok(!org1Ids.includes(`t-${org2.id}`));
+		});
+
+		test('reflects pruning after the last session managing that org is removed', async () => {
+			const org1 = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
+			const org2 = Fixtures.orgModel({ id: 'org-2', name: 'Org 2' });
+
+			const { session: session1, wrapper: wrapper1 } = createMockSession({
+				profile: { user: Fixtures.userFragment({ id: 'user-1' }), org: org1, allManagedOrgs: [org1] },
+			});
+			wrapper1.when('listTemplates', {
+				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-org1', name: 'T1', orgId: org1.id })]),
+			});
+			const { session: session2, wrapper: wrapper2 } = createMockSession({
+				profile: { user: Fixtures.userFragment({ id: 'user-2' }), org: org2, allManagedOrgs: [org2] },
+			});
+			wrapper2.when('listTemplates', {
+				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-org2', name: 'T2', orgId: org2.id })]),
+			});
+
+			LinkManager.addLink(makeTemplateLink(org1.id, org1.name, 'link-org1'));
+			LinkManager.addLink(makeTemplateLink(org2.id, org2.name, 'link-org2'));
+			SessionManager._setSessionsForTesting([session1, session2]);
+
+			TemplateMetadataStore.init();
+			await new Promise(resolve => setTimeout(resolve, 100));
+			assert.strictEqual(TemplateMetadataStore.getTemplatesForOrg(org1.id).length, 1);
+
+			await SessionManager.removeSession('user-1');
+			await new Promise(resolve => setTimeout(resolve, 100));
+
+			assert.deepStrictEqual(TemplateMetadataStore.getTemplatesForOrg(org1.id), []);
+			assert.strictEqual(TemplateMetadataStore.getTemplatesForOrg(org2.id).length, 1);
+		});
+	});
 });

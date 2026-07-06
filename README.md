@@ -36,7 +36,8 @@ Want to pull in **every template** from an organization at once? See the [Bulk F
 
 ## Features at a glance
 
-- Auto-sync on save with conflict detection
+- Auto-sync on save with conflict detection — conflicts open a diff instead of a blind modal, and `Diff Against Rewst` compares any linked file any time
+- Jinja IntelliSense — filter completion/hover, template-name completion inside `template("...")`, and dialect keyword highlighting
 - Cage-Free Rewsty chat model — Rewst's AI assistant (RoboRewsty) right in VS Code's chat model picker, **no GitHub account or Copilot plan needed**; it can read, search, and edit your workspace files to ground its answers
 - Opt-in workflow tools — let Cage-Free Rewsty find workflows by name across your orgs, read one as a node/edge graph, search actions, edit with high-level operations, and run and debug them from execution logs (approval-gated, reversible)
 - Working scope — pin which orgs (and workflows) Rewst tools may touch so an AI assistant can't operate on the wrong org; writes are blocked until you set one

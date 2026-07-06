@@ -1,5 +1,7 @@
 export { LinkManager } from './LinkManager';
-export { SyncManager, type SyncDecisionContext } from './SyncManager';
+export { REWST_REMOTE_SCHEME, RewstContentProvider, showRewstDiff } from './RewstContentProvider';
+export { RewstQuickDiffProvider } from './RewstQuickDiffProvider';
+export { ConflictDismissedError, resolveConflictChoice, SyncManager, type SyncDecisionContext } from './SyncManager';
 export { SyncOnSaveManager } from './SyncOnSaveManager';
 export { TemplateBundleManager } from './TemplateBundleManager';
 export { TemplateMetadataStore, type TemplateMetadata } from './TemplateMetadataStore';
