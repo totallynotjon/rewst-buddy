@@ -173,10 +173,13 @@ reloaded. A successful refresh SHALL reset the consecutive-failure counter.
 
 ### Requirement: Manage multiple organizations per session
 
-The system SHALL treat one login as managing a primary organization plus all of
-its managed sub-organizations, including nested descendants, and SHALL resolve
-the correct session for any given organization id by checking both the primary
-org and all managed orgs. When a base URL or region is available, session
+The system SHALL treat one login as managing a primary organization plus the
+union of two org sets from the login profile: every organization the user
+directly manages (which can span orgs outside the primary org's tree) and the
+primary organization's recursive sub-org tree, including nested descendants.
+Neither set is a superset of the other, so dropping either narrows reach. The
+system SHALL resolve the correct session for any given organization id by
+checking both the primary org and all managed orgs. When a base URL or region is available, session
 resolution SHALL first narrow to active sessions in that region and then match
 the requested org against primary and managed org ids. More than one active
 session being able to manage the same org id is not an error: resolution SHALL
@@ -196,6 +199,13 @@ next capable session only if it remains invalid after that refresh attempt.
 - **GIVEN** a session whose login manages a parent org, a direct child, and a
   deeper descendant
 - **WHEN** an operation references the grandchild org id
+- **THEN** the extension selects the same session
+
+#### Scenario: Operation targets a directly managed org outside the primary org's tree
+
+- **GIVEN** a login whose directly managed orgs include an org that is not in
+  the primary organization's sub-org tree
+- **WHEN** an operation references that org id
 - **THEN** the extension selects the same session
 
 #### Scenario: Duplicate org id resolves to the first capable session
