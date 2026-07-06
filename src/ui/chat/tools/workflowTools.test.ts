@@ -3304,7 +3304,7 @@ suite('Unit: workflowTools', () => {
 				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
 				deps,
 			);
-			assert.match(output, /likely deeper cause/);
+			assert.match(output, /Likely deeper cause/);
 			assert.match(output, /exec-child/);
 			assert.match(output, /buddy_workflow_diagnose \{"executionId": "exec-child"\}/);
 		});
@@ -3328,7 +3328,7 @@ suite('Unit: workflowTools', () => {
 			);
 			assert.match(output, /Other sub-workflow execution/);
 			assert.match(output, /exec-orphan/);
-			assert.ok(!output.includes('likely deeper cause'), 'orphan is not described as the deeper cause');
+			assert.ok(!output.includes('Likely deeper cause'), 'orphan is not described as the deeper cause');
 		});
 
 		test('includes the merged execution context top-level keys', async () => {

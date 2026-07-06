@@ -159,6 +159,9 @@ suite('Unit: capability registry', () => {
 			]) {
 				assert.strictEqual(getCapability(name)?.requiresOrg, false, `${name} does not require org`);
 			}
+			for (const name of [WORKFLOW_EXECUTION_LOGS_TOOL_NAME, WORKFLOW_DIAGNOSE_TOOL_NAME]) {
+				assert.strictEqual(getCapability(name)?.scopedSessions, true, `${name} keeps scopedSessions`);
+			}
 			for (const name of [
 				'buddy_workflow_get',
 				'buddy_action_search',

@@ -68,7 +68,7 @@ suite('Unit: mcpInstructions', () => {
 	test('contains WORKFLOW_DIAGNOSE_TOOL_NAME', () => {
 		const instructions = buildMcpInstructions();
 		assert.ok(
-			instructions.includes(WORKFLOW_DIAGNOSE_TOOL_NAME),
+			instructions.includes(`in one call with ${WORKFLOW_DIAGNOSE_TOOL_NAME}`),
 			`instructions must reference ${WORKFLOW_DIAGNOSE_TOOL_NAME}`,
 		);
 	});

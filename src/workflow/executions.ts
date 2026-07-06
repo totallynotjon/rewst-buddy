@@ -629,7 +629,7 @@ export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToo
 	const failedChild = childrenOfFailingTask.find(child => isFailedStatus(child.status));
 	if (failedChild) {
 		sections.push(
-			`likely deeper cause: sub-execution ${describeChildExecution(failedChild)} — drill in with buddy_workflow_diagnose {"executionId": "${failedChild.id}"}.`,
+			`Likely deeper cause: sub-execution ${describeChildExecution(failedChild)} — drill in with buddy_workflow_diagnose {"executionId": "${failedChild.id}"}.`,
 		);
 	}
 	if (otherChildren.length > 0) {
@@ -640,44 +640,41 @@ export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToo
 
 	const workflowId = workflowIdArg ?? detail?.workflow?.id ?? undefined;
 	const orgId = orgIdArg ?? detail?.orgId ?? detail?.workflow?.orgId ?? undefined;
-	if (workflowId && orgId) {
+
+	const workflowSection = (async (): Promise<string | undefined> => {
+		if (!(workflowId && orgId)) return undefined;
 		try {
 			const workflow = await fetchWorkflow(sourceDeps, workflowId, orgId);
 			const task = workflow.tasks.find(t => t.name === failingTask.originalWorkflowTaskName);
-			if (task) {
-				const incoming = describeTransitionsInto(workflow, task);
-				const outgoing = describeTransitionsOut(workflow, task);
-				sections.push(
-					[
-						`Transition path (action ${task.action?.ref ?? task.actionId ?? '?'}):`,
-						incoming.length > 0
-							? incoming.map(l => `  in:  ${l}`).join('\n')
-							: '  in:  (none — start task)',
-						outgoing.length > 0
-							? outgoing.map(l => `  out: ${l}`).join('\n')
-							: '  out: (none — terminal task)',
-					].join('\n'),
-				);
-			} else {
-				sections.push(
-					`Workflow definition unavailable: task "${failingTask.originalWorkflowTaskName}" not found in workflow ${workflowId}.`,
-				);
+			if (!task) {
+				return `Workflow definition unavailable: task "${failingTask.originalWorkflowTaskName}" not found in workflow ${workflowId}.`;
 			}
+			const incoming = describeTransitionsInto(workflow, task);
+			const outgoing = describeTransitionsOut(workflow, task);
+			return [
+				`Transition path (action ${task.action?.ref ?? task.actionId ?? '?'}):`,
+				incoming.length > 0 ? incoming.map(l => `  in:  ${l}`).join('\n') : '  in:  (none — start task)',
+				outgoing.length > 0 ? outgoing.map(l => `  out: ${l}`).join('\n') : '  out: (none — terminal task)',
+			].join('\n');
 		} catch (error) {
-			sections.push(`Workflow definition unavailable: ${error instanceof Error ? error.message : String(error)}`);
+			return `Workflow definition unavailable: ${error instanceof Error ? error.message : String(error)}`;
 		}
-	}
+	})();
 
-	try {
-		const snapshots = await fetchExecutionContextSnapshots(sourceDeps, executionId);
-		const merged = Object.assign({}, ...snapshots.filter(isPlainObject)) as Record<string, unknown>;
-		const keys = Object.keys(merged).sort();
-		sections.push(
-			`Execution context (merged from ${snapshots.length} snapshot(s)), top-level keys: ${keys.join(', ') || '(none)'}. Inspect one with buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<key> }}"}.`,
-		);
-	} catch (error) {
-		sections.push(`Execution context unavailable: ${error instanceof Error ? error.message : String(error)}`);
-	}
+	const contextSection = (async (): Promise<string> => {
+		try {
+			const snapshots = await fetchExecutionContextSnapshots(sourceDeps, executionId);
+			const merged = Object.assign({}, ...snapshots.filter(isPlainObject)) as Record<string, unknown>;
+			const keys = Object.keys(merged).sort();
+			return `Execution context (merged from ${snapshots.length} snapshot(s)), top-level keys: ${keys.join(', ') || '(none)'}. Inspect one with buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<key> }}"}.`;
+		} catch (error) {
+			return `Execution context unavailable: ${error instanceof Error ? error.message : String(error)}`;
+		}
+	})();
+
+	const [resolvedWorkflowSection, resolvedContextSection] = await Promise.all([workflowSection, contextSection]);
+	if (resolvedWorkflowSection) sections.push(resolvedWorkflowSection);
+	sections.push(resolvedContextSection);
 
 	sections.push(`Full task-by-task list: buddy_execution_logs {"executionId": "${executionId}"}.`);
 	return sections.join('\n\n');
