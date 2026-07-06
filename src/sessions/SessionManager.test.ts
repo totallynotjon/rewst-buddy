@@ -467,6 +467,60 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(await SessionManager.getSessionForOrg('org-grandchild'), session);
 		});
 
+		test('managed org set is the union of managedOrgs and the recursive sub-org tree', async () => {
+			const server = createServer((request, response) => {
+				request.on('data', () => {});
+				request.on('end', () => {
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(
+						JSON.stringify({
+							data: {
+								user: {
+									id: 'user-union',
+									username: 'union-user',
+									organization: {
+										id: 'org-root',
+										name: 'Root',
+										managedAndSubOrgs: [{ id: 'org-own-sub', name: 'Own Sub-Org' }],
+									},
+									allManagedOrgs: [{ id: 'org-managed-only', name: 'Managed Elsewhere' }],
+									roleIds: [],
+								},
+							},
+						}),
+					);
+				});
+			});
+			servers.push(server);
+			const port = await listen(server);
+
+			await vscode.workspace.getConfiguration('rewst-buddy').update(
+				'regions',
+				[
+					{
+						name: 'Local Test',
+						cookieName: 'appSession',
+						graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+						loginUrl: `http://127.0.0.1:${port}`,
+					},
+				],
+				vscode.ConfigurationTarget.Global,
+			);
+
+			const session = await SessionManager.createSession('raw-test-token');
+
+			assert.strictEqual(
+				await SessionManager.getSessionForOrg('org-managed-only'),
+				session,
+				'an org present only in managedOrgs must stay reachable when managedAndSubOrgs is also returned',
+			);
+			assert.strictEqual(
+				await SessionManager.getSessionForOrg('org-own-sub'),
+				session,
+				'a sub-org present only in the recursive tree must be reachable',
+			);
+		});
+
 		test('empty input is rejected and no session is created', async () => {
 			const unstub = stubShowInputBox(async () => '');
 

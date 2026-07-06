@@ -111,10 +111,14 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			throw log.notifyError('createSession: user has no organization');
 		}
 
-		const managedOrgRows = user.organization?.managedAndSubOrgs ?? user.allManagedOrgs;
-		if (managedOrgRows === undefined) {
+		// Two distinct scopes that only overlap partially: allManagedOrgs is every
+		// org the user directly manages (flat, can span other MSP trees), while
+		// managedAndSubOrgs is the recursive sub-org tree of the user's own org.
+		// Sessions must reach both, so index their union.
+		if (user.allManagedOrgs === undefined && user.organization?.managedAndSubOrgs === undefined) {
 			throw log.notifyError('createSession: user has no managed orgs');
 		}
+		const managedOrgRows = [...(user.allManagedOrgs ?? []), ...(user.organization?.managedAndSubOrgs ?? [])];
 
 		const org: Org = {
 			id: user.organization?.id ?? '',
