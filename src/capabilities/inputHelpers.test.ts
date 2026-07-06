@@ -1,11 +1,17 @@
 import * as assert from 'assert';
+import { z } from 'zod';
 import { suite, test } from '../test/tdd';
 import {
 	mapWithConcurrency,
+	optionalClampedInt,
+	optionalStringField,
+	parseCapabilityInput,
 	rawGraphqlOrThrow,
 	requireResourceInOrg,
 	requireStringAllowEmpty,
+	requiredStringField,
 	throwOnGraphqlErrors,
+	toInputSchema,
 } from './inputHelpers';
 
 function delay(ms: number): Promise<void> {
@@ -263,5 +269,186 @@ suite('Unit: inputHelpers — requireStringAllowEmpty', () => {
 
 	test('throws when the value is a non-string (number)', () => {
 		assert.throws(() => requireStringAllowEmpty({ body: 42 }, 'body'), /Missing required string argument "body"/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// New Zod-based helpers
+// ---------------------------------------------------------------------------
+
+suite('Unit: inputHelpers — parseCapabilityInput', () => {
+	test('returns parsed data on success', () => {
+		const schema = z.object({ a: z.string() });
+		const result = parseCapabilityInput(schema, { a: 'x' });
+		assert.deepStrictEqual(result, { a: 'x' });
+	});
+
+	test('throws the first issue message, not the raw ZodError JSON', () => {
+		const schema = z.object({ a: z.string({ error: 'Missing required string argument "a".' }) });
+		let thrown: unknown;
+		try {
+			parseCapabilityInput(schema, {});
+		} catch (e) {
+			thrown = e;
+		}
+		assert.ok(thrown instanceof Error, 'should throw an Error');
+		const msg = (thrown as Error).message;
+		// Must be a clean single-line message, not a JSON blob
+		assert.match(msg, /^Missing/);
+		assert.ok(!msg.includes('"code"'), 'message must not contain JSON "code" key');
+		assert.ok(!msg.startsWith('['), 'message must not start with [ (JSON array)');
+	});
+});
+
+suite('Unit: inputHelpers — requiredStringField', () => {
+	test('rejects missing key with the keyed message', () => {
+		const schema = z.object({ x: requiredStringField('x') });
+		assert.throws(() => parseCapabilityInput(schema, {}), /Missing required string argument "x"\./);
+	});
+
+	test('rejects wrong type (number) with the keyed message', () => {
+		const schema = z.object({ x: requiredStringField('x') });
+		assert.throws(() => parseCapabilityInput(schema, { x: 123 }), /Missing required string argument "x"\./);
+	});
+
+	test('rejects empty string with the keyed message', () => {
+		const schema = z.object({ x: requiredStringField('x') });
+		assert.throws(() => parseCapabilityInput(schema, { x: '' }), /Missing required string argument "x"\./);
+	});
+
+	test('rejects whitespace-only string with the keyed message', () => {
+		const schema = z.object({ x: requiredStringField('x') });
+		assert.throws(() => parseCapabilityInput(schema, { x: '   ' }), /Missing required string argument "x"\./);
+	});
+
+	test('trims and accepts a valid string', () => {
+		const schema = z.object({ x: requiredStringField('x') });
+		const result = parseCapabilityInput(schema, { x: '  hi  ' });
+		assert.strictEqual(result.x, 'hi');
+	});
+});
+
+suite('Unit: inputHelpers — optionalStringField', () => {
+	test('resolves undefined for missing key (no throw)', () => {
+		const schema = z.object({ x: optionalStringField() });
+		const result = parseCapabilityInput(schema, {});
+		assert.strictEqual(result.x, undefined);
+	});
+
+	test('resolves undefined for wrong type (number, no throw)', () => {
+		const schema = z.object({ x: optionalStringField() });
+		const result = parseCapabilityInput(schema, { x: 123 });
+		assert.strictEqual(result.x, undefined);
+	});
+
+	test('resolves undefined for empty string (no throw)', () => {
+		const schema = z.object({ x: optionalStringField() });
+		const result = parseCapabilityInput(schema, { x: '' });
+		assert.strictEqual(result.x, undefined);
+	});
+
+	test('resolves undefined for whitespace-only string (no throw)', () => {
+		const schema = z.object({ x: optionalStringField() });
+		const result = parseCapabilityInput(schema, { x: '   ' });
+		assert.strictEqual(result.x, undefined);
+	});
+
+	test('resolves undefined for null (no throw)', () => {
+		const schema = z.object({ x: optionalStringField() });
+		const result = parseCapabilityInput(schema, { x: null });
+		assert.strictEqual(result.x, undefined);
+	});
+
+	test('trims and accepts a valid string', () => {
+		const schema = z.object({ x: optionalStringField() });
+		const result = parseCapabilityInput(schema, { x: '  hi  ' });
+		assert.strictEqual(result.x, 'hi');
+	});
+});
+
+suite('Unit: inputHelpers — optionalClampedInt', () => {
+	test('resolves undefined for 0 (no throw)', () => {
+		const schema = z.object({ n: optionalClampedInt(500) });
+		const result = parseCapabilityInput(schema, { n: 0 });
+		assert.strictEqual(result.n, undefined);
+	});
+
+	test('resolves undefined for a negative value (no throw)', () => {
+		const schema = z.object({ n: optionalClampedInt(500) });
+		const result = parseCapabilityInput(schema, { n: -5 });
+		assert.strictEqual(result.n, undefined);
+	});
+
+	test('resolves undefined for a non-number string (no throw)', () => {
+		const schema = z.object({ n: optionalClampedInt(500) });
+		const result = parseCapabilityInput(schema, { n: '10' });
+		assert.strictEqual(result.n, undefined);
+	});
+
+	test('resolves undefined for a floor-to-zero fraction (0.5, no throw)', () => {
+		const schema = z.object({ n: optionalClampedInt(500) });
+		const result = parseCapabilityInput(schema, { n: 0.5 });
+		assert.strictEqual(result.n, undefined);
+	});
+
+	test('floors a fractional value instead of rejecting it', () => {
+		const schema = z.object({ n: optionalClampedInt(500) });
+		const result = parseCapabilityInput(schema, { n: 2.5 });
+		assert.strictEqual(result.n, 2);
+	});
+
+	test('clamps an over-max value instead of rejecting it', () => {
+		const schema = z.object({ n: optionalClampedInt(500) });
+		const result = parseCapabilityInput(schema, { n: 999 });
+		assert.strictEqual(result.n, 500);
+	});
+
+	test('passes through a valid in-range value unchanged', () => {
+		const schema = z.object({ n: optionalClampedInt(500) });
+		const result = parseCapabilityInput(schema, { n: 42 });
+		assert.strictEqual(result.n, 42);
+	});
+});
+
+suite('Unit: inputHelpers — toInputSchema', () => {
+	test('strips the $schema key', () => {
+		const schema = z.object({ a: z.string() });
+		const result = toInputSchema(schema) as Record<string, unknown>;
+		assert.ok(!('$schema' in result), '$schema must be stripped');
+	});
+
+	test('derives type and required from the schema', () => {
+		const schema = z.object({
+			requiredField: z.string(),
+			optionalField: z.string().optional(),
+		});
+		const result = toInputSchema(schema) as {
+			properties: Record<string, { type: string }>;
+			required?: string[];
+		};
+		assert.ok(Array.isArray(result.required), 'required should be an array');
+		assert.ok(result.required!.includes('requiredField'), 'requiredField must be in required');
+		assert.ok(!result.required!.includes('optionalField'), 'optionalField must not be in required');
+		assert.strictEqual(result.properties['requiredField'].type, 'string');
+		assert.strictEqual(result.properties['optionalField'].type, 'string');
+	});
+
+	test('derives schema from the real capability field helpers', () => {
+		const schema = z.object({
+			orgId: requiredStringField('orgId'),
+			search: optionalStringField(),
+			limit: optionalClampedInt(500),
+		});
+
+		const result = toInputSchema(schema) as {
+			properties: Record<string, { type: string }>;
+			required?: string[];
+		};
+
+		assert.ok(!('$schema' in result), '$schema must be stripped');
+		assert.deepStrictEqual(new Set(result.required), new Set(['orgId']));
+		assert.strictEqual(result.properties['orgId'].type, 'string');
+		assert.strictEqual(result.properties['search'].type, 'string');
+		assert.strictEqual(result.properties['limit'].type, 'number');
 	});
 });

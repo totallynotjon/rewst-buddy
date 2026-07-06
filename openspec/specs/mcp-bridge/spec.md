@@ -446,16 +446,42 @@ NOT be able to widen `alwaysAllowedOrgs`.
 
 ### Requirement: Validate tool inputs defensively
 
-Because tool inputs are not validated against the advertised `inputSchema`, each
-capability SHALL validate and coerce every input itself (required strings,
-clamped numbers, enum checks) rather than trusting the schema.
+Because tool inputs are not validated against the advertised `inputSchema` by
+the MCP transport, each capability SHALL validate and coerce its own input
+before use. Where a capability's input is defined as a schema object, that
+schema SHALL be the single source for both the runtime parse and the
+advertised `inputSchema` (derived from the schema), so the two can never drift
+independently. A validation failure SHALL surface one clear, human-readable
+message -- never a raw serialized list of every issue.
 
 #### Scenario: Out-of-range numeric input
 
 - **GIVEN** a tool that accepts a `limit`
 - **WHEN** a caller passes a value past the maximum
 - **THEN** the capability clamps it to the allowed maximum rather than honoring
-  the raw value
+  the raw value or rejecting the call
+
+#### Scenario: Invalid enum argument is rejected with a clear message
+
+- **GIVEN** a tool argument constrained to a fixed set of values
+- **WHEN** a caller passes a value outside that set
+- **THEN** the capability rejects the call with a single message naming the
+  invalid value and the allowed values, not a raw validation-error dump
+
+#### Scenario: Missing required argument is rejected with a clear message
+
+- **GIVEN** a tool argument that is required
+- **WHEN** a caller omits it or passes the wrong type
+- **THEN** the capability rejects the call with a single message naming the
+  missing argument
+
+Implementation status: as of this requirement's schema-based rewrite,
+`src/capabilities/rewstReadCapabilities.ts` validates through per-capability
+Zod schemas per the contract above (`inputHelpers.ts`'s
+`parseCapabilityInput` + `toInputSchema`). The remaining capability files
+still validate via the hand-rolled `asString`/`requireString`/`asPositiveInt`
+helpers in `inputHelpers.ts`; they migrate to the same schema-based contract
+incrementally in follow-up PRs (epic #129 C2).
 
 ### Requirement: Verify saved task inputs after a workflow edit
 
