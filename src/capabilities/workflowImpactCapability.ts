@@ -81,11 +81,11 @@ const workflowImpactInputSchema = z.object({
 				packRef: requiredStringField('packRef').describe('Pack reference string.'),
 				actionRefs: z
 					.array(z.string().trim().min(1))
-					.min(1)
+					.min(1, { error: 'actions entries must include at least one actionRefs value.' })
 					.describe('Action reference strings within the pack.'),
 			}),
 		)
-		.min(1)
+		.min(1, { error: 'actions must include at least one entry.' })
 		.optional()
 		.describe('Pack actions to check for breaking-change impact instead of a workflowId.'),
 });

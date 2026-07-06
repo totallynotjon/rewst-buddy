@@ -30,7 +30,7 @@ suite('Unit: crateCapabilities', () => {
 			required: string[];
 			properties: Record<string, unknown>;
 		};
-		assert.ok(schema.required.includes('orgId'), 'orgId is required');
+		assert.deepStrictEqual(schema.required, ['orgId'], 'only orgId is required');
 		assert.ok('search' in schema.properties, 'search property exists');
 		assert.ok('source' in schema.properties, 'source property exists');
 		assert.ok('limit' in schema.properties, 'limit property exists');

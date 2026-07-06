@@ -1,16 +1,13 @@
-import type { Capability, CapabilityContext } from '@capabilities';
+import { getCapability, type Capability, type CapabilityContext } from '@capabilities';
 import type { Session } from '@sessions';
 import { clearCachedSession, getTestSession, hasTestToken, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { CRATE_CAPABILITIES } from '../../capabilities/crateCapabilities';
-import { workflowImpactCapability } from '../../capabilities/workflowImpactCapability';
 
 const { suite, test, suiteSetup, suiteTeardown } = Mocha;
 
 function cap(name: string): Capability {
-	const all: Capability[] = [...CRATE_CAPABILITIES, workflowImpactCapability];
-	const capability = all.find(c => c.spec.name === name);
+	const capability = getCapability(name);
 	if (!capability) throw new Error(`missing capability ${name}`);
 	return capability;
 }
@@ -90,10 +87,7 @@ suite('Integration: crate and impact probes', function () {
 			throw new Error(`LIST_WORKFLOWS_QUERY error: ${JSON.stringify(errors)}`);
 		}
 		const workflows = (data as { workflows?: { id: string; name: string }[] } | undefined)?.workflows ?? [];
-		if (workflows.length === 0) {
-			console.log('[itest] buddy_workflow_impact workflowId: no workflows in sandbox, skipping');
-			return;
-		}
+		assert.ok(workflows.length > 0, 'sandbox must have a workflow to probe parentWorkflows');
 		const workflowId = workflows[0].id;
 		console.log(`[itest] probing parentWorkflows for workflow ${workflowId}`);
 

@@ -36,7 +36,7 @@ suite('Unit: workflowImpactCapability', () => {
 			required: string[];
 			properties: Record<string, unknown>;
 		};
-		assert.ok(schema.required.includes('orgId'), 'orgId is required');
+		assert.deepStrictEqual(schema.required, ['orgId'], 'only orgId is required');
 		assert.ok('workflowId' in schema.properties, 'workflowId property exists');
 		assert.ok('actions' in schema.properties, 'actions property exists');
 		assert.strictEqual(cap.spec.args, JSON.stringify(cap.spec.inputSchema), 'args are generated from inputSchema');
@@ -282,10 +282,33 @@ suite('Unit: workflowImpactCapability', () => {
 		const cap = getCapability('buddy_workflow_impact');
 		assert.ok(cap);
 		const ctx: CapabilityContext = { session, orgId: 'org-1', sessions: [session] };
-		// Empty packRef and empty actionRefs
-		await assert.rejects(() => cap.run({ orgId: 'org-1', actions: [{ packRef: '', actionRefs: [] }] }, ctx));
-		// Empty actions array
-		await assert.rejects(() => cap.run({ orgId: 'org-1', actions: [] }, ctx));
+		await assert.rejects(
+			() => cap.run({ orgId: 'org-1', actions: [{ packRef: '', actionRefs: [] }] }, ctx),
+			(err: Error) => {
+				assert.ok(
+					err.message.includes('Missing required string argument "packRef".'),
+					'error names packRef validation',
+				);
+				return true;
+			},
+		);
+		await assert.rejects(
+			() => cap.run({ orgId: 'org-1', actions: [{ packRef: 'p', actionRefs: [] }] }, ctx),
+			(err: Error) => {
+				assert.ok(err.message.includes('at least one'), 'error names non-empty actionRefs validation');
+				assert.ok(err.message.includes('actionRefs'), 'error identifies actionRefs');
+				return true;
+			},
+		);
+		await assert.rejects(
+			() => cap.run({ orgId: 'org-1', actions: [] }, ctx),
+			(err: Error) => {
+				assert.ok(err.message.includes('at least one'), 'error names non-empty actions validation');
+				assert.ok(err.message.includes('actions'), 'error identifies actions');
+				return true;
+			},
+		);
+		assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 0, 'no GraphQL call made');
 	});
 
 	test('GraphQL errors propagate with context', async () => {
