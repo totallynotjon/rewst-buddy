@@ -1,18 +1,19 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
 import { MCP_MAX_OUTPUT_CHARS, RESULT_READ_TOOL_NAME, _resetMcpResultCacheForTesting } from '@capabilities';
 import { WorkingScopeManager } from '@models';
 import { SessionManager, type Session } from '@sessions';
-import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import { Fixtures, createMockSession, initTestEnvironment } from '@test';
 import { log } from '@utils';
-import { _resetMcpMutationApproverForTesting, setMcpMutationApprover } from '../capabilities/graphqlMutateCapability';
-import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 } from '@workflow';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
+import { _resetMcpMutationApproverForTesting, setMcpMutationApprover } from '../capabilities/graphqlMutateCapability';
+import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import { McpError, _resetMcpThrottleForTesting, callTool, listResources, listTools, readResource } from './McpActions';
 import type { McpSettings } from './settings';
 
@@ -618,6 +619,51 @@ suite('Unit: McpActions', () => {
 
 			const result = await callTool(
 				{ name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, arguments: { executionId: 'exec-1' } },
+				settings(),
+			);
+
+			assert.ok(result.text.includes('other_org_task'), 'the alternate session recovers the logs');
+			assert.match(result.text, /found via another active session/);
+			assert.ok(calls['org-2'] > 0, 'the sweep reaches the other session');
+		});
+
+		test('buddy_workflow_diagnose with an out-of-scope orgId is rejected under strict scope', async () => {
+			const { calls } = useTaskLogSessions({ 'org-1': [], 'org-2': [OTHER_ORG_ROW] });
+			WorkingScopeManager.setOrgs(['org-1']);
+
+			await assert.rejects(
+				callTool(
+					{
+						name: WORKFLOW_DIAGNOSE_TOOL_NAME,
+						arguments: { executionId: 'exec-1', orgId: 'org-2' },
+					},
+					settings(),
+				),
+				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
+			);
+			assert.strictEqual(calls['org-2'] ?? 0, 0, 'no traffic to the out-of-scope org');
+		});
+
+		test('the buddy_workflow_diagnose sweep skips sessions outside the working scope under strict scope', async () => {
+			const { calls } = useTaskLogSessions({ 'org-1': [], 'org-2': [OTHER_ORG_ROW] });
+			WorkingScopeManager.setOrgs(['org-1']);
+
+			const result = await callTool(
+				{ name: WORKFLOW_DIAGNOSE_TOOL_NAME, arguments: { executionId: 'exec-1' } },
+				settings({ alwaysAllowedOrgs: ['org-1'] }),
+			);
+
+			assert.ok(!result.isError, 'call succeeds for the in-scope session');
+			assert.strictEqual(calls['org-2'] ?? 0, 0, 'out-of-scope session is not swept');
+			assert.ok(!result.text.includes('other_org_task'), 'out-of-scope task row is not returned');
+		});
+
+		test('the buddy_workflow_diagnose sweep stays cross-session when no working org is pinned', async () => {
+			const failedOtherOrgRow = { ...OTHER_ORG_ROW, status: 'failed' };
+			const { calls } = useTaskLogSessions({ 'org-1': [], 'org-2': [failedOtherOrgRow] });
+
+			const result = await callTool(
+				{ name: WORKFLOW_DIAGNOSE_TOOL_NAME, arguments: { executionId: 'exec-1' } },
 				settings(),
 			);
 

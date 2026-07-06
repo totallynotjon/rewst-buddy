@@ -1,18 +1,19 @@
 import {
-	createGraphqlDeps,
-	runGraphqlTool,
-	GRAPHQL_TOOL_SPECS,
-	type GraphqlToolDeps,
-} from '../ui/chat/tools/graphqlTool';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
-import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_TOOL_SPECS,
 } from '@workflow';
+import {
+	createGraphqlDeps,
+	GRAPHQL_TOOL_SPECS,
+	runGraphqlTool,
+	type GraphqlToolDeps,
+} from '../ui/chat/tools/graphqlTool';
+import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import { runToolRequests, WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
 import type { Capability, CapabilityAccess, CapabilityContext } from './Capability';
 import { readCapability, writeCapability } from './capabilityFactories';
@@ -28,12 +29,14 @@ const workflowAccess: Record<string, CapabilityAccess> = {
 	buddy_workflow_executions: 'read',
 	[WORKFLOW_EXECUTION_LOGS_TOOL_NAME]: 'read',
 	buddy_render_jinja: 'read',
+	[WORKFLOW_DIAGNOSE_TOOL_NAME]: 'read',
 };
 
 const doesNotRequireOrg = new Set<string>([
 	'buddy_search_template_links',
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+	WORKFLOW_DIAGNOSE_TOOL_NAME,
 ]);
 
 function workflowAccessFor(spec: ToolSpec): CapabilityAccess {
@@ -93,7 +96,7 @@ export const WORKFLOW_CHAT_CAPABILITIES: Capability[] = WORKFLOW_TOOL_SPECS.map(
 	if (access === 'write') {
 		return writeCapability(spec, (input, ctx) => runWorkflowMutationWithApproval(spec, input, ctx));
 	}
-	if (spec.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME) {
+	if (spec.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME || spec.name === WORKFLOW_DIAGNOSE_TOOL_NAME) {
 		return readCapability(
 			spec,
 			async (input, ctx) => runViaChatToolPath(spec, input, ctx, await executionLogsDeps(input, ctx)),

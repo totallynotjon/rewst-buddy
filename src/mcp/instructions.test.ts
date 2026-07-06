@@ -1,6 +1,7 @@
 import {
 	RENDER_VERIFY_STEERING,
 	WORKFLOW_COMPOSITION_STEERING,
+	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
@@ -61,6 +62,14 @@ suite('Unit: mcpInstructions', () => {
 		assert.ok(
 			instructions.includes(WORKFLOW_EXECUTION_LOGS_TOOL_NAME),
 			`instructions must reference ${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}`,
+		);
+	});
+
+	test('contains WORKFLOW_DIAGNOSE_TOOL_NAME', () => {
+		const instructions = buildMcpInstructions();
+		assert.ok(
+			instructions.includes(WORKFLOW_DIAGNOSE_TOOL_NAME),
+			`instructions must reference ${WORKFLOW_DIAGNOSE_TOOL_NAME}`,
 		);
 	});
 
@@ -139,6 +148,15 @@ suite('Unit: mcpInstructions', () => {
 			`rendered text must reference ${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}`,
 		);
 		assert.ok(text.includes(WORKFLOW_EDIT_TOOL_NAME), `rendered text must reference ${WORKFLOW_EDIT_TOOL_NAME}`);
+	});
+
+	test('debug-execution step 1 uses buddy_workflow_diagnose', () => {
+		const text = renderRegisteredPrompt('debug-execution', { executionId: 'e-1' });
+		assert.ok(
+			text.includes(`1. Call \`${WORKFLOW_DIAGNOSE_TOOL_NAME}\``),
+			`step 1 must instruct callers to use ${WORKFLOW_DIAGNOSE_TOOL_NAME}`,
+		);
+		assert.ok(text.includes('e-1'), 'step 1 path must keep the executionId');
 	});
 
 	test('debug-execution without executionId renders the generic execution path', () => {

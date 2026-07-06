@@ -8,7 +8,7 @@
 import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asBooleanArg, asStringArg, type ToolRequest } from '../ui/chat/tools/toolProtocol';
 import { fetchWorkflow } from './graphMutations';
-import { type ExecResult, firstErrorMessage, isPlainObject } from './types';
+import { firstErrorMessage, isPlainObject, type ExecResult, type RawTask, type RawWorkflow } from './types';
 
 // ---------------------------------------------------------------------------
 // GraphQL
@@ -45,7 +45,8 @@ const TASK_LOGS_QUERY = `query RewstBuddyTaskLogs($where: TaskLogWhereInput) {
 // points back at the spawning task's taskExecutionId.
 const CHILD_EXECUTIONS_QUERY = `query RewstBuddyChildExecutions($where: WorkflowExecutionWhereInput) {
 	workflowExecution(where: $where) {
-		id
+		id status orgId
+		workflow { id name orgId }
 		childExecutions { id status createdAt parentTaskExecutionId workflow { id name } }
 	}
 }`;
@@ -54,7 +55,7 @@ const CHILD_EXECUTIONS_QUERY = `query RewstBuddyChildExecutions($where: Workflow
 // Types
 // ---------------------------------------------------------------------------
 
-interface TaskLogRow {
+export interface TaskLogRow {
 	id?: string | null;
 	originalWorkflowTaskName?: string | null;
 	status?: string | null;
@@ -65,7 +66,7 @@ interface TaskLogRow {
 	taskExecutionId?: string | null;
 }
 
-interface ChildExecutionRow {
+export interface ChildExecutionRow {
 	id?: string | null;
 	status?: string | null;
 	createdAt?: string | null;
@@ -81,6 +82,13 @@ export interface ExecutionRow {
 	orgId?: string | null;
 	originatingExecutionId?: string | null;
 	parentExecutionId?: string | null;
+}
+
+export interface ExecutionDetail {
+	id?: string | null;
+	status?: string | null;
+	orgId?: string | null;
+	workflow?: { id?: string | null; name?: string | null; orgId?: string | null } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,23 +118,31 @@ export async function fetchTaskLogs(deps: GraphqlToolDeps, executionId: string):
 	);
 }
 
-async function fetchChildExecutions(
+export async function fetchChildExecutions(
 	deps: GraphqlToolDeps,
 	executionId: string,
-): Promise<{ children: ChildExecutionRow[]; error?: string }> {
+): Promise<{ execution?: ExecutionDetail; children: ChildExecutionRow[]; error?: string }> {
 	try {
 		const result = await deps.execute(CHILD_EXECUTIONS_QUERY, { where: { id: executionId } });
 		const error = firstErrorMessage(result as ExecResult);
 		if (error) return { children: [], error };
-		const parent = (result.data as { workflowExecution?: { childExecutions?: (ChildExecutionRow | null)[] } })
-			?.workflowExecution;
-		return { children: (parent?.childExecutions ?? []).filter((row): row is ChildExecutionRow => !!row) };
+		const parent = (
+			result.data as
+				| { workflowExecution?: (ExecutionDetail & { childExecutions?: (ChildExecutionRow | null)[] }) | null }
+				| undefined
+		)?.workflowExecution;
+		return {
+			execution: parent
+				? { id: parent.id, status: parent.status, orgId: parent.orgId, workflow: parent.workflow }
+				: undefined,
+			children: (parent?.childExecutions ?? []).filter((row): row is ChildExecutionRow => !!row),
+		};
 	} catch (error) {
 		return { children: [], error: error instanceof Error ? error.message : String(error) };
 	}
 }
 
-function describeChildExecution(child: ChildExecutionRow): string {
+export function describeChildExecution(child: ChildExecutionRow): string {
 	return `${child.workflow?.name ?? '(unknown workflow)'} (${child.id ?? '?'}, ${child.status ?? '?'})`;
 }
 
@@ -149,12 +165,13 @@ export async function assertExecutionBelongsToOrg(
 	}
 }
 
-async function fetchTaskLogsForVisibleExecution(
+function fetchTaskLogsForVisibleExecution(
 	deps: GraphqlToolDeps,
 	executionId: string,
 	orgId: string | undefined,
 ): Promise<TaskLogRow[]> {
-	if (orgId) await assertExecutionBelongsToOrg(deps, executionId, orgId);
+	if (orgId)
+		return assertExecutionBelongsToOrg(deps, executionId, orgId).then(() => fetchTaskLogs(deps, executionId));
 	return fetchTaskLogs(deps, executionId);
 }
 
@@ -219,12 +236,7 @@ export async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps
 	const executionId = asStringArg(request.args, 'executionId');
 	if (executionId) {
 		await assertExecutionBelongsToOrg(deps, executionId, orgId);
-		const result = await deps.execute(EXECUTION_CONTEXTS_QUERY, { id: executionId });
-		const error = firstErrorMessage(result as ExecResult);
-		if (error) throw new Error(`Failed to read execution context: ${error}`);
-		const raw = (result.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts;
-		const snapshots = Array.isArray(raw) ? raw : raw ? [raw] : [];
-		if (snapshots.length === 0) throw new Error(`Execution ${executionId} has no context to render against.`);
+		const snapshots = await fetchExecutionContextSnapshots(deps, executionId);
 		if (typeof request.args.contextIndex === 'number') {
 			// Coerce to integer before indexing: a non-integer like 2.5 would survive
 			// Math.max/min and produce snapshots[2.5] === undefined, causing a
@@ -263,16 +275,36 @@ export async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps
 }
 
 // ---------------------------------------------------------------------------
-// buddy_execution_logs runner
+// Shared context-snapshot fetcher
 // ---------------------------------------------------------------------------
 
-export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
-	const executionId = asStringArg(request.args, 'executionId');
-	if (!executionId) throw new Error('buddy_execution_logs requires "executionId".');
-	const orgId = asStringArg(request.args, 'orgId');
-	const failedOnly = asBooleanArg(request.args, 'failedOnly') ?? false;
-	const includeResult = asBooleanArg(request.args, 'includeResult') ?? false;
-	const includeSubExecutions = asBooleanArg(request.args, 'includeSubExecutions') ?? false;
+export async function fetchExecutionContextSnapshots(deps: GraphqlToolDeps, executionId: string): Promise<unknown[]> {
+	const result = await deps.execute(EXECUTION_CONTEXTS_QUERY, { id: executionId });
+	const error = firstErrorMessage(result as ExecResult);
+	if (error) throw new Error(`Failed to read execution context: ${error}`);
+	const raw = (result.data as { workflowExecutionContexts?: unknown } | undefined)?.workflowExecutionContexts;
+	const snapshots = Array.isArray(raw) ? raw : raw ? [raw] : [];
+	if (snapshots.length === 0) throw new Error(`Execution ${executionId} has no context to render against.`);
+	return snapshots;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-session sweep helper
+// ---------------------------------------------------------------------------
+
+export interface TaskLogSweepResult {
+	rows: TaskLogRow[];
+	sourceDeps: GraphqlToolDeps;
+	sourceNote: string;
+	hadVisibleSession: boolean;
+	firstError?: unknown;
+}
+
+export async function sweepTaskLogs(
+	deps: GraphqlToolDeps,
+	executionId: string,
+	orgId: string | undefined,
+): Promise<TaskLogSweepResult> {
 	let rows: TaskLogRow[] = [];
 	let sourceDeps = deps;
 	let sourceNote = '';
@@ -302,6 +334,23 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 			}
 		}
 	}
+	return { rows, sourceDeps, sourceNote, hadVisibleSession, firstError };
+}
+
+// ---------------------------------------------------------------------------
+// buddy_execution_logs runner
+// ---------------------------------------------------------------------------
+
+export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
+	const executionId = asStringArg(request.args, 'executionId');
+	if (!executionId) throw new Error('buddy_execution_logs requires "executionId".');
+	const orgId = asStringArg(request.args, 'orgId');
+	const failedOnly = asBooleanArg(request.args, 'failedOnly') ?? false;
+	const includeResult = asBooleanArg(request.args, 'includeResult') ?? false;
+	const includeSubExecutions = asBooleanArg(request.args, 'includeSubExecutions') ?? false;
+	const sweep = await sweepTaskLogs(deps, executionId, orgId);
+	const { rows, sourceDeps, sourceNote, hadVisibleSession, firstError } = sweep;
+	const alternates = deps.alternates ?? [];
 	if (rows.length === 0 && !hadVisibleSession && firstError) {
 		throw firstError instanceof Error ? firstError : new Error(String(firstError));
 	}
@@ -430,7 +479,7 @@ export async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps
 	const head = `Run of "${name}" finished: ${(status ?? 'unknown').toUpperCase()}. executionId: ${executionId}`;
 	if (isFailedStatus(status)) {
 		const rows = await fetchTaskLogs(deps, executionId);
-		return `${head}\n\nFailing task(s):\n${formatTaskLogs(rows, { failedOnly: true })}\n\nFull logs: buddy_execution_logs {"executionId": "${executionId}"}.`;
+		return `${head}\n\nFailing task(s):\n${formatTaskLogs(rows, { failedOnly: true })}\n\nFull logs: buddy_execution_logs {"executionId": "${executionId}"}. For a one-call root-cause digest (transition path + sub-executions + context), use buddy_workflow_diagnose {"executionId": "${executionId}"}.`;
 	}
 	return `${head}\n\nInspect what it produced with buddy_execution_logs {"executionId": "${executionId}", "includeResult": true} or buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<field> }}"}. `;
 }
@@ -470,6 +519,168 @@ export async function runWorkflowExecutions(request: ToolRequest, deps: GraphqlT
 		return `- ${e.id}  ${e.status}  ${when}  (${e.numSuccessfulTasks ?? '?'} task(s) ok)${links ? `  ${links}` : ''}`;
 	};
 	return `${rows.length} ${status ?? 'recent'} execution(s), newest first:\n${rows.map(fmt).join('\n')}\n\nInspect one with buddy_render_jinja {"executionId": "<id>", "template": "{{ CTX.<field> }}"}. `;
+}
+
+// ---------------------------------------------------------------------------
+// buddy_workflow_diagnose runner
+// ---------------------------------------------------------------------------
+
+async function findLatestFailedExecutionId(
+	deps: GraphqlToolDeps,
+	workflowId: string,
+	orgId: string,
+): Promise<string | undefined> {
+	const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, {
+		where: { workflowId, orgId, status: 'FAILED' },
+		order: [['createdAt', 'desc']],
+		limit: 1,
+	});
+	const error = firstErrorMessage(result as ExecResult);
+	if (error) throw new Error(`Failed to find a failed execution for workflow ${workflowId}: ${error}`);
+	const row = (
+		(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
+	).find((entry): entry is ExecutionRow => !!entry);
+	return row?.id ?? undefined;
+}
+
+function describeTransitionsInto(workflow: RawWorkflow, task: RawTask): string[] {
+	const lines: string[] = [];
+	for (const candidate of workflow.tasks) {
+		for (const transition of candidate.next ?? []) {
+			if ((transition.do ?? []).includes(task.id)) {
+				lines.push(`${candidate.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${task.name}`);
+			}
+		}
+	}
+	return lines;
+}
+
+function describeTransitionsOut(workflow: RawWorkflow, task: RawTask): string[] {
+	const nameById = new Map(workflow.tasks.map(t => [t.id, t.name]));
+	return (task.next ?? []).flatMap(transition => {
+		const targets = (transition.do ?? []).map(id => nameById.get(id) ?? id);
+		if (targets.length === 0) return [];
+		return [`${task.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${targets.join(', ')}`];
+	});
+}
+
+export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
+	const explicitExecutionId = asStringArg(request.args, 'executionId');
+	const workflowIdArg = asStringArg(request.args, 'workflowId');
+	const orgIdArg = asStringArg(request.args, 'orgId');
+	if (!explicitExecutionId && !workflowIdArg) {
+		throw new Error(
+			'buddy_workflow_diagnose requires "executionId", or "workflowId" (with "orgId") to find its latest failed execution.',
+		);
+	}
+
+	let executionId = explicitExecutionId;
+	if (!executionId) {
+		if (!orgIdArg) throw new Error('buddy_workflow_diagnose requires "orgId" together with "workflowId".');
+		const found = await findLatestFailedExecutionId(deps, workflowIdArg as string, orgIdArg);
+		if (!found) return `No FAILED executions found for workflow ${workflowIdArg} in org ${orgIdArg}.`;
+		executionId = found;
+	}
+
+	const sweep = await sweepTaskLogs(deps, executionId, orgIdArg);
+	if (sweep.rows.length === 0 && !sweep.hadVisibleSession && sweep.firstError) {
+		throw sweep.firstError instanceof Error ? sweep.firstError : new Error(String(sweep.firstError));
+	}
+	const { rows, sourceDeps, sourceNote } = sweep;
+	const alternates = deps.alternates ?? [];
+	const failedCount = rows.filter(r => isFailedStatus(r.status)).length;
+	const sections: string[] = [
+		`Diagnosis for execution ${executionId}: ${rows.length} task(s), ${failedCount} failed.${sourceNote}`,
+	];
+	if (rows.length === 0 && alternates.length > 0) {
+		sections.push(
+			`None of the ${alternates.length + 1} active session(s) can see task logs for this execution — check the execution id, or sign in to the Rewst account whose org owns it.`,
+		);
+	}
+
+	const failingTask = rows.find(r => isFailedStatus(r.status));
+	const {
+		execution: detail,
+		children,
+		error: childLookupError,
+	} = await fetchChildExecutions(sourceDeps, executionId);
+
+	if (!failingTask) {
+		const statusNote = detail?.status ? ` (execution status: ${detail.status})` : '';
+		sections.push(
+			`No failing task found in this execution${statusNote}. If the run is still in progress, retry once it finishes.`,
+		);
+		return sections.join('\n\n');
+	}
+
+	const childrenOfFailingTask = failingTask.taskExecutionId
+		? children.filter(child => child.parentTaskExecutionId === failingTask.taskExecutionId)
+		: [];
+	const otherChildren = children.filter(child => !childrenOfFailingTask.includes(child));
+	const childrenByTask = new Map<string, ChildExecutionRow[]>();
+	if (failingTask.taskExecutionId && childrenOfFailingTask.length > 0) {
+		childrenByTask.set(failingTask.taskExecutionId, childrenOfFailingTask);
+	}
+	sections.push(
+		`Failing task (likely root cause):\n${formatTaskLogs([failingTask], { includeResult: true }, childrenByTask)}`,
+	);
+
+	if (childLookupError) sections.push(`Sub-workflow executions could not be checked: ${childLookupError}`);
+	const failedChild = childrenOfFailingTask.find(child => isFailedStatus(child.status));
+	if (failedChild) {
+		sections.push(
+			`likely deeper cause: sub-execution ${describeChildExecution(failedChild)} — drill in with buddy_workflow_diagnose {"executionId": "${failedChild.id}"}.`,
+		);
+	}
+	if (otherChildren.length > 0) {
+		sections.push(
+			`Other sub-workflow execution(s) not tied to the failing task: ${otherChildren.map(describeChildExecution).join(', ')}`,
+		);
+	}
+
+	const workflowId = workflowIdArg ?? detail?.workflow?.id ?? undefined;
+	const orgId = orgIdArg ?? detail?.orgId ?? detail?.workflow?.orgId ?? undefined;
+	if (workflowId && orgId) {
+		try {
+			const workflow = await fetchWorkflow(sourceDeps, workflowId, orgId);
+			const task = workflow.tasks.find(t => t.name === failingTask.originalWorkflowTaskName);
+			if (task) {
+				const incoming = describeTransitionsInto(workflow, task);
+				const outgoing = describeTransitionsOut(workflow, task);
+				sections.push(
+					[
+						`Transition path (action ${task.action?.ref ?? task.actionId ?? '?'}):`,
+						incoming.length > 0
+							? incoming.map(l => `  in:  ${l}`).join('\n')
+							: '  in:  (none — start task)',
+						outgoing.length > 0
+							? outgoing.map(l => `  out: ${l}`).join('\n')
+							: '  out: (none — terminal task)',
+					].join('\n'),
+				);
+			} else {
+				sections.push(
+					`Workflow definition unavailable: task "${failingTask.originalWorkflowTaskName}" not found in workflow ${workflowId}.`,
+				);
+			}
+		} catch (error) {
+			sections.push(`Workflow definition unavailable: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+
+	try {
+		const snapshots = await fetchExecutionContextSnapshots(sourceDeps, executionId);
+		const merged = Object.assign({}, ...snapshots.filter(isPlainObject)) as Record<string, unknown>;
+		const keys = Object.keys(merged).sort();
+		sections.push(
+			`Execution context (merged from ${snapshots.length} snapshot(s)), top-level keys: ${keys.join(', ') || '(none)'}. Inspect one with buddy_render_jinja {"executionId": "${executionId}", "template": "{{ CTX.<key> }}"}.`,
+		);
+	} catch (error) {
+		sections.push(`Execution context unavailable: ${error instanceof Error ? error.message : String(error)}`);
+	}
+
+	sections.push(`Full task-by-task list: buddy_execution_logs {"executionId": "${executionId}"}.`);
+	return sections.join('\n\n');
 }
 
 // Re-export fetchWorkflow for use by runWorkflowGet in the adapter

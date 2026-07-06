@@ -14,8 +14,8 @@
  * See epic issue #129 (D1) for the full split rationale.
  */
 
-import { workflowEditScope, type WorkflowMutationScope } from '../../../workflow/mutationScope';
 import { type WorkflowOperation } from '../../../workflow/graphMutations';
+import { workflowEditScope, type WorkflowMutationScope } from '../../../workflow/mutationScope';
 import { workflowToolAlwaysPrompts } from '../../../workflow/specs';
 import { asObject, str } from '../../../workflow/types';
 import { isMutationScopeApproved } from './graphqlTool';
@@ -24,14 +24,15 @@ import { isMutationScopeApproved } from './graphqlTool';
 // Re-exports: specs
 // ---------------------------------------------------------------------------
 export {
+	isWorkflowTool,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_TOOL_NAMES,
 	WORKFLOW_TOOL_SPECS,
-	isWorkflowTool,
 	workflowToolAlwaysPrompts,
 } from '../../../workflow/specs';
 
@@ -73,6 +74,7 @@ export {
 	isFailedStatus,
 	runExecutionLogs,
 	runRenderJinja,
+	runWorkflowDiagnose,
 	runWorkflowExecutions,
 	runWorkflowRun,
 } from '../../../workflow/executions';
@@ -80,8 +82,8 @@ export {
 // ---------------------------------------------------------------------------
 // Re-exports: adapter (workflow_get + action_search)
 // ---------------------------------------------------------------------------
-export { runActionSearch, runWorkflowGet, summarizeWorkflow } from '../../../workflow/workflowAdapter';
 export { runWorkflowTool } from '../../../workflow/toolRunner';
+export { runActionSearch, runWorkflowGet, summarizeWorkflow } from '../../../workflow/workflowAdapter';
 
 // ---------------------------------------------------------------------------
 // workflowEditConfirmation — approval prompt text for the UI adapter
