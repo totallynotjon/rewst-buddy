@@ -689,4 +689,205 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.deepStrictEqual(JSON.parse(output), workflowPatch);
 		assert.strictEqual(output, JSON.stringify(workflowPatch, null, 2));
 	});
+
+	// -------------------------------------------------------------------------
+	// C2 migration tests — input validation via Zod schemas
+	// -------------------------------------------------------------------------
+
+	test('buddy_list_workflows rejects a missing orgId', async () => {
+		const { session } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		const listWorkflows = getCapability('buddy_list_workflows');
+		assert.ok(listWorkflows, 'buddy_list_workflows is registered');
+
+		await assert.rejects(
+			() => listWorkflows.run({}, { session, orgId: 'org-1', sessions: [session] } satisfies CapabilityContext),
+			/Missing required string argument "orgId"\./,
+		);
+	});
+
+	test('buddy_list_workflows clamps an over-max limit instead of erroring', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', { data: { data: { workflows: [] } } });
+		const listWorkflows = getCapability('buddy_list_workflows');
+		assert.ok(listWorkflows, 'buddy_list_workflows is registered');
+
+		await listWorkflows.run({ orgId: 'org-1', limit: 99999 }, {
+			session,
+			orgId: 'org-1',
+			sessions: [session],
+		} satisfies CapabilityContext);
+
+		const calls = wrapper.getCallsFor('rawGraphql');
+		assert.strictEqual(calls.length, 1);
+		// limit must be clamped to MAX_WORKFLOW_LIMIT (500), not the raw 99999
+		assert.ok(
+			(calls[0].variables.variables as { limit?: number }).limit! <= 500,
+			`expected limit clamped to <=500, got ${(calls[0].variables.variables as { limit?: number }).limit}`,
+		);
+	});
+
+	test('buddy_list_workflows treats a negative limit as absent (falls back to default)', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', { data: { data: { workflows: [] } } });
+		const listWorkflows = getCapability('buddy_list_workflows');
+		assert.ok(listWorkflows, 'buddy_list_workflows is registered');
+
+		await listWorkflows.run({ orgId: 'org-1', limit: -3 }, {
+			session,
+			orgId: 'org-1',
+			sessions: [session],
+		} satisfies CapabilityContext);
+
+		const calls = wrapper.getCallsFor('rawGraphql');
+		assert.strictEqual(calls.length, 1);
+		// invalid limit silently becomes the default (100)
+		assert.strictEqual((calls[0].variables.variables as { limit?: number }).limit, 100);
+	});
+
+	test('buddy_list_workflows treats a fractional limit as floored (2.5 → 2)', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', { data: { data: { workflows: [] } } });
+		const listWorkflows = getCapability('buddy_list_workflows');
+		assert.ok(listWorkflows, 'buddy_list_workflows is registered');
+
+		await listWorkflows.run({ orgId: 'org-1', limit: 2.5 }, {
+			session,
+			orgId: 'org-1',
+			sessions: [session],
+		} satisfies CapabilityContext);
+
+		const calls = wrapper.getCallsFor('rawGraphql');
+		assert.strictEqual(calls.length, 1);
+		// 2.5 floors to 2, not rejected
+		assert.strictEqual((calls[0].variables.variables as { limit?: number }).limit, 2);
+	});
+
+	test('buddy_find_executions_by_variable falls back to kind "input" for an invalid kind value', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', {
+			data: {
+				data: {
+					workflowExecutions: [
+						{
+							id: 'exec-1',
+							status: 'succeeded',
+							createdAt: '1700000000000',
+							conductor: { input: { myVar: 'hello' }, output: {} },
+						},
+					],
+				},
+			},
+		});
+		const findExec = getCapability('buddy_find_executions_by_variable');
+		assert.ok(findExec, 'buddy_find_executions_by_variable is registered');
+
+		// 'bogus' is not a valid kind — must silently fall back to 'input', not reject
+		const output = await findExec.run({ orgId: 'org-1', workflowId: 'wf-1', name: 'myVar', kind: 'bogus' }, {
+			session,
+			orgId: 'org-1',
+			sessions: [session],
+		} satisfies CapabilityContext);
+		// Should have matched the input variable (kind fell back to 'input')
+		assert.ok(output.includes('exec-1'), 'should match exec-1 via input kind fallback');
+		assert.ok(output.includes('myVar=hello'), 'should show the matched input variable');
+	});
+
+	test('buddy_get_workflow_execution_stats rejects epoch-millisecond createdSince', async () => {
+		const { session } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		const getStats = getCapability('buddy_get_workflow_execution_stats');
+		assert.ok(getStats, 'buddy_get_workflow_execution_stats is registered');
+
+		await assert.rejects(
+			() =>
+				getStats.run({ orgId: 'org-1', createdSince: '1700000000000' }, {
+					session,
+					orgId: 'org-1',
+					sessions: [session],
+				} satisfies CapabilityContext),
+			/epoch milliseconds are not supported/,
+		);
+	});
+
+	test('buddy_get_workflow_execution_stats accepts a bare ISO date', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', {
+			data: {
+				data: {
+					workflowExecutionStats: {
+						succeeded: 1,
+						failed: 0,
+						running: 0,
+						pending: 0,
+						paused: 0,
+						delayed: 0,
+						humanSecondsSaved: 0,
+					},
+				},
+			},
+		});
+		const getStats = getCapability('buddy_get_workflow_execution_stats');
+		assert.ok(getStats, 'buddy_get_workflow_execution_stats is registered');
+
+		// Must NOT reject — bare ISO date is a valid input
+		const output = await getStats.run({ orgId: 'org-1', createdSince: '2025-01-01' }, {
+			session,
+			orgId: 'org-1',
+			sessions: [session],
+		} satisfies CapabilityContext);
+		assert.ok(output.includes('succeeded: 1'), 'should return stats output');
+	});
+
+	test('buddy_resolve_reference rejects a missing modelType with the generic message', async () => {
+		const { session } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		const resolveReference = getCapability('buddy_resolve_reference');
+		assert.ok(resolveReference, 'buddy_resolve_reference is registered');
+
+		await assert.rejects(
+			() =>
+				resolveReference.run({ orgId: 'org-1' }, {
+					session,
+					orgId: 'org-1',
+					sessions: [session],
+				} satisfies CapabilityContext),
+			/Missing required string argument "modelType"\./,
+		);
+	});
+
+	test('buddy_get_template rejects a missing templateId', async () => {
+		const { session } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		const getTemplate = getCapability('buddy_get_template');
+		assert.ok(getTemplate, 'buddy_get_template is registered');
+
+		await assert.rejects(
+			() =>
+				getTemplate.run({ orgId: 'org-1' }, {
+					session,
+					orgId: 'org-1',
+					sessions: [session],
+				} satisfies CapabilityContext),
+			/Missing required string argument "templateId"\./,
+		);
+	});
+
+	test('buddy_graphql_query rejects a non-object variables value (array)', async () => {
+		const { session } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		const graphqlQuery = getCapability('buddy_graphql_query');
+		assert.ok(graphqlQuery, 'buddy_graphql_query is registered');
+
+		await assert.rejects(
+			() =>
+				graphqlQuery.run({ orgId: 'org-1', query: '{ workflows { id } }', variables: ['a'] }, {
+					session,
+					orgId: 'org-1',
+					sessions: [session],
+				} satisfies CapabilityContext),
+			/./,
+			'should reject when variables is an array',
+		);
+	});
 });

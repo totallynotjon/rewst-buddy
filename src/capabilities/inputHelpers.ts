@@ -5,6 +5,7 @@
  */
 
 import type { FullTemplateFragment, Session } from '@sessions';
+import { z } from 'zod';
 
 /** Pretty-prints a value as the JSON string capabilities return to callers. */
 export function json(value: unknown): string {
@@ -136,3 +137,75 @@ export async function mapWithConcurrency<T, R>(
 export const ORG_ID_PROP = {
 	orgId: { type: 'string', description: 'Rewst organization id the operation runs against (from buddy_list_orgs).' },
 } as const;
+
+// ---------------------------------------------------------------------------
+// Zod-based helpers (C2 migration)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parses input through a capability's Zod schema, throwing a single clean
+ * message (the first validation issue) instead of ZodError's default
+ * JSON-dump message.
+ */
+export function parseCapabilityInput<T>(schema: z.ZodType<T>, input: Record<string, unknown>): T {
+	const result = schema.safeParse(input);
+	if (result.success) return result.data;
+	throw new Error(result.error.issues[0]?.message ?? 'Invalid input.');
+}
+
+const JSON_SCHEMA_TARGET = 'draft-07';
+
+/**
+ * Derives an MCP inputSchema from a Zod object schema, stripping the
+ * `$schema` meta key `z.toJSONSchema` always adds (noise for our purposes).
+ */
+export function toInputSchema(schema: z.ZodObject<z.ZodRawShape>): object {
+	const { $schema: _schema, ...rest } = z.toJSONSchema(schema, { target: JSON_SCHEMA_TARGET }) as Record<
+		string,
+		unknown
+	>;
+	return rest;
+}
+
+/**
+ * Zod counterpart to requireString: required, trimmed, non-empty string.
+ * Missing key, wrong type, and empty-after-trim all produce the same
+ * message, matching requireString's behavior exactly.
+ */
+export function requiredStringField(key: string): z.ZodString {
+	const message = `Missing required string argument "${key}".`;
+	return z.string({ error: message }).trim().min(1, { error: message });
+}
+
+/**
+ * Zod counterpart to asString: optional, trimmed string. Missing key, wrong
+ * type, and empty-after-trim all silently resolve to undefined — never
+ * throws — matching asString's behavior exactly.
+ */
+export function optionalStringField(): z.ZodType<string | undefined> {
+	return z
+		.preprocess(raw => (typeof raw === 'string' ? raw.trim() : raw), z.string().min(1).optional())
+		.catch(undefined);
+}
+
+/**
+ * Zod counterpart to `Math.min(asPositiveInt(input, key) ?? DEFAULT, MAX)`.
+ * Reproduces asPositiveInt exactly: non-number, non-finite, <= 0, and
+ * floor-to-<=0 inputs all silently resolve to undefined (never throw); a
+ * valid value is floored then clamped to `max`. Callers still apply
+ * `?? DEFAULT` after parsing, exactly as today.
+ */
+export function optionalClampedInt(max: number): z.ZodType<number | undefined> {
+	return z.preprocess(raw => {
+		if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return undefined;
+		const floored = Math.floor(raw);
+		return floored > 0 ? Math.min(floored, max) : undefined;
+	}, z.number().int().positive().max(max).optional());
+}
+
+/**
+ * Shared orgId field for read-capability schemas; description text matches
+ * the existing ORG_ID_PROP so the two stay in sync until every capability
+ * migrates.
+ */
+export const ORG_ID_FIELD: z.ZodString = requiredStringField('orgId').describe(ORG_ID_PROP.orgId.description);

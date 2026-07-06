@@ -1,14 +1,17 @@
+import { z } from 'zod';
 import { runReadonlyGraphql } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
 import {
-	asPositiveInt,
-	asString,
 	mapWithConcurrency,
-	ORG_ID_PROP,
+	optionalClampedInt,
+	optionalStringField,
+	ORG_ID_FIELD,
+	parseCapabilityInput,
 	rawGraphqlOrThrow,
-	requireString,
+	requiredStringField,
+	toInputSchema,
 } from './inputHelpers';
 
 /**
@@ -56,279 +59,228 @@ const LOCAL_REFERENCE_MODELS = [
 ] as const;
 
 /** Lists every org reachable through the active sessions; needs no org id. */
+const listOrgsInputSchema = z.object({});
 const listOrgsSpec: ToolSpec = {
 	name: 'buddy_list_orgs',
 	args: '{}',
 	description:
 		'List the Rewst organizations reachable through the signed-in VS Code sessions, with their ids and names. Call this first to learn which orgId to pass to the other tools.',
-	inputSchema: { type: 'object', properties: {} },
+	inputSchema: toInputSchema(listOrgsInputSchema),
 };
 
+const listTemplatesInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+});
 const listTemplatesSpec: ToolSpec = {
 	name: 'buddy_list_templates',
 	args: '{"orgId": string}',
 	description: 'List the templates in one Rewst organization (id and name). Use buddy_get_template for a full body.',
-	inputSchema: { type: 'object', properties: { ...ORG_ID_PROP }, required: ['orgId'] },
+	inputSchema: toInputSchema(listTemplatesInputSchema),
 };
 
+const getTemplateInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	templateId: requiredStringField('templateId').describe('Template id to fetch.'),
+});
 const getTemplateSpec: ToolSpec = {
 	name: 'buddy_get_template',
 	args: '{"orgId": string, "templateId": string}',
 	description: 'Get one Rewst template, including its body, by org and template id.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			templateId: { type: 'string', description: 'Template id to fetch.' },
-		},
-		required: ['orgId', 'templateId'],
-	},
+	inputSchema: toInputSchema(getTemplateInputSchema),
 };
 
+const listWorkflowsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	search: optionalStringField().describe('Optional case-insensitive name filter.'),
+	limit: optionalClampedInt(MAX_WORKFLOW_LIMIT).describe(
+		`Max workflows to return (default ${DEFAULT_WORKFLOW_LIMIT}).`,
+	),
+});
 const listWorkflowsSpec: ToolSpec = {
 	name: 'buddy_list_workflows',
 	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
 		'List workflows in one Rewst organization (id, name, description). Optionally filter by a name search and cap the count.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			search: { type: 'string', description: 'Optional case-insensitive name filter.' },
-			limit: { type: 'number', description: `Max workflows to return (default ${DEFAULT_WORKFLOW_LIMIT}).` },
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listWorkflowsInputSchema),
 };
 
+const listOrgVariablesInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	search: optionalStringField().describe('Optional case-insensitive name substring filter.'),
+	limit: optionalClampedInt(MAX_ORG_VARIABLE_LIMIT).describe(
+		`Max variables to return (default ${DEFAULT_ORG_VARIABLE_LIMIT}, max ${MAX_ORG_VARIABLE_LIMIT}).`,
+	),
+});
 const listOrgVariablesSpec: ToolSpec = {
 	name: 'buddy_list_org_variables',
 	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
 		'List configuration variables for one Rewst organization (name, value, category, cascade). Secret-category values are returned masked. Optionally filter by a case-insensitive name substring.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			search: { type: 'string', description: 'Optional case-insensitive name substring filter.' },
-			limit: {
-				type: 'number',
-				description: `Max variables to return (default ${DEFAULT_ORG_VARIABLE_LIMIT}, max ${MAX_ORG_VARIABLE_LIMIT}).`,
-			},
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listOrgVariablesInputSchema),
 };
 
+const listWorkflowExecutionsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	status: optionalStringField().describe('Optional exact execution status filter.'),
+	limit: optionalClampedInt(MAX_EXECUTION_LIMIT).describe(
+		`Max executions to return (default ${DEFAULT_EXECUTION_LIMIT}, max ${MAX_EXECUTION_LIMIT}).`,
+	),
+});
 const listWorkflowExecutionsSpec: ToolSpec = {
 	name: 'buddy_list_workflow_executions',
 	args: '{"orgId": string, "status"?: string, "limit"?: number}',
 	description:
 		'List recent workflow executions for one Rewst organization (id, status, workflowId, createdAt, numSuccessfulTasks), newest first. Optionally filter by an exact status (e.g. succeeded, failed, running). createdAt is an epoch-millisecond string.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			status: { type: 'string', description: 'Optional exact execution status filter.' },
-			limit: {
-				type: 'number',
-				description: `Max executions to return (default ${DEFAULT_EXECUTION_LIMIT}, max ${MAX_EXECUTION_LIMIT}).`,
-			},
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listWorkflowExecutionsInputSchema),
 };
 
+const findExecutionsByVariableInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	workflowId: requiredStringField('workflowId').describe('The workflow whose executions to scan.'),
+	name: requiredStringField('name').describe('Case-insensitive substring matched against variable names.'),
+	kind: z
+		.enum(['input', 'output', 'context'])
+		.catch('input')
+		.describe("Which variable surface to search: input (default), output, or context (the run's CTX)."),
+	value: optionalStringField().describe(
+		"Optional case-insensitive substring the matched variable's value must contain.",
+	),
+	limit: optionalClampedInt(MAX_EXECUTION_LIMIT).describe(
+		`Max executions to scan, most-recent first (default ${DEFAULT_EXECUTION_LIMIT}, max ${MAX_EXECUTION_LIMIT}). For kind=context this is also the number of extra context requests issued.`,
+	),
+});
 const findExecutionsByVariableSpec: ToolSpec = {
 	name: 'buddy_find_executions_by_variable',
 	args: '{"orgId": string, "workflowId": string, "name": string, "kind"?: "input"|"output"|"context", "value"?: string, "limit"?: number}',
 	description:
 		"Find executions of ONE Rewst workflow whose input, output, or context variable matches a name (and optionally a value). Scans the most-recently-created executions of the given workflow and filters client-side. kind selects which variable surface to search: input (the values the run was started with), output (the values it produced — absent until a run completes), or context (the run's CTX). name is matched case-insensitively as a substring against variable names; pass value to also require the variable's value to contain that text. Returns one line per matching execution with its id, status, created time, and the matched variable(s). Both orgId and workflowId are required — there is no way to search executions across a whole org by variable, and kind=context issues one extra request per scanned execution.",
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			workflowId: { type: 'string', description: 'The workflow whose executions to scan.' },
-			name: { type: 'string', description: 'Case-insensitive substring matched against variable names.' },
-			kind: {
-				type: 'string',
-				enum: ['input', 'output', 'context'],
-				description: "Which variable surface to search: input (default), output, or context (the run's CTX).",
-			},
-			value: {
-				type: 'string',
-				description: "Optional case-insensitive substring the matched variable's value must contain.",
-			},
-			limit: {
-				type: 'number',
-				description: `Max executions to scan, most-recent first (default ${DEFAULT_EXECUTION_LIMIT}, max ${MAX_EXECUTION_LIMIT}). For kind=context this is also the number of extra context requests issued.`,
-			},
-		},
-		required: ['orgId', 'workflowId', 'name'],
-	},
+	inputSchema: toInputSchema(findExecutionsByVariableInputSchema),
 };
 
+const listWorkflowTasksInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	workflowId: requiredStringField('workflowId').describe('Workflow id whose tasks to list.'),
+	limit: optionalClampedInt(MAX_TASK_LIMIT).describe(
+		`Max tasks to return (default ${DEFAULT_TASK_LIMIT}, max ${MAX_TASK_LIMIT}).`,
+	),
+});
 const listWorkflowTasksSpec: ToolSpec = {
 	name: 'buddy_list_workflow_tasks',
 	args: '{"orgId": string, "workflowId": string, "limit"?: number}',
 	description:
 		'List the tasks (steps) in one Rewst workflow (id, name, actionId, mocked marker only when a task is mocked, timeout, description). Task ids are dash-less hex strings.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			workflowId: { type: 'string', description: 'Workflow id whose tasks to list.' },
-			limit: {
-				type: 'number',
-				description: `Max tasks to return (default ${DEFAULT_TASK_LIMIT}, max ${MAX_TASK_LIMIT}).`,
-			},
-		},
-		required: ['orgId', 'workflowId'],
-	},
+	inputSchema: toInputSchema(listWorkflowTasksInputSchema),
 };
 
+const listWorkflowPatchesInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	workflowId: requiredStringField('workflowId').describe('Workflow id whose patch history to list.'),
+	limit: optionalClampedInt(MAX_PATCH_LIMIT).describe(
+		`Max patches to return (default ${DEFAULT_PATCH_LIMIT}, max ${MAX_PATCH_LIMIT}).`,
+	),
+});
 const listWorkflowPatchesSpec: ToolSpec = {
 	name: 'buddy_list_workflow_patches',
 	args: '{"orgId": string, "workflowId": string, "limit"?: number}',
 	description:
 		'List the revision history (patch metadata) for one Rewst workflow, newest first (id, patchType, comment, createdAt). Use buddy_get_workflow_patch with a patch id to see the actual change. createdAt is an epoch-millisecond string.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			workflowId: { type: 'string', description: 'Workflow id whose patch history to list.' },
-			limit: {
-				type: 'number',
-				description: `Max patches to return (default ${DEFAULT_PATCH_LIMIT}, max ${MAX_PATCH_LIMIT}).`,
-			},
-		},
-		required: ['orgId', 'workflowId'],
-	},
+	inputSchema: toInputSchema(listWorkflowPatchesInputSchema),
 };
 
+const getWorkflowPatchInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	patchId: requiredStringField('patchId').describe('Workflow patch id to fetch.'),
+});
 const getWorkflowPatchSpec: ToolSpec = {
 	name: 'buddy_get_workflow_patch',
 	args: '{"orgId": string, "patchId": string}',
 	description:
 		'Get one Rewst workflow patch by id, including `patch` — the actual change as an RFC-6902 JSON Patch array. Pair with buddy_list_workflow_patches to find a patch id.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			patchId: { type: 'string', description: 'Workflow patch id to fetch.' },
-		},
-		required: ['orgId', 'patchId'],
-	},
+	inputSchema: toInputSchema(getWorkflowPatchInputSchema),
 };
 
+const latestWorkflowExecutionInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	workflowId: requiredStringField('workflowId').describe('Workflow id to inspect.'),
+	status: optionalStringField().describe('Optional exact execution status constraint.'),
+});
 const latestWorkflowExecutionSpec: ToolSpec = {
 	name: 'buddy_latest_workflow_execution',
 	args: '{"orgId": string, "workflowId": string, "status"?: string}',
 	description:
 		'Get the most recent execution of one workflow in a Rewst organization (id, status, createdAt, task counts). Optionally constrain to a specific status.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			workflowId: { type: 'string', description: 'Workflow id to inspect.' },
-			status: { type: 'string', description: 'Optional exact execution status constraint.' },
-		},
-		required: ['orgId', 'workflowId'],
-	},
+	inputSchema: toInputSchema(latestWorkflowExecutionInputSchema),
 };
 
+const getWorkflowExecutionStatsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	createdSince: requiredStringField('createdSince').describe(
+		'ISO-8601 date string such as 2025-01-01 or 2025-01-01T00:00:00Z.',
+	),
+});
 const getWorkflowExecutionStatsSpec: ToolSpec = {
 	name: 'buddy_get_workflow_execution_stats',
 	args: '{"orgId": string, "createdSince": string}',
 	description:
 		'Get aggregate workflow-execution status counts for one Rewst organization since a date (succeeded, failed, running, pending, paused, delayed, humanSecondsSaved). createdSince must be an ISO-8601 date string (e.g. 2025-01-01 or 2025-01-01T00:00:00Z) — epoch milliseconds are rejected.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			createdSince: {
-				type: 'string',
-				description: 'ISO-8601 date string such as 2025-01-01 or 2025-01-01T00:00:00Z.',
-			},
-		},
-		required: ['orgId', 'createdSince'],
-	},
+	inputSchema: toInputSchema(getWorkflowExecutionStatsInputSchema),
 };
 
+const findActionInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	filter: optionalStringField().describe(
+		"Optional text matched case-insensitively against the action's display name.",
+	),
+	limit: optionalClampedInt(MAX_ACTION_LIMIT).describe(
+		`Max flattened actions to return (default ${DEFAULT_ACTION_LIMIT}, max ${MAX_ACTION_LIMIT}).`,
+	),
+});
 const findActionSpec: ToolSpec = {
 	name: 'buddy_find_action',
 	args: '{"orgId": string, "filter"?: string, "limit"?: number}',
 	description:
 		"Search the actions available in one Rewst organization's installed packs. The filter is matched case-insensitively against each action's display name. Returns one line per match — `<ref> (<id>) — <pack>: <description>` — where `<id>` is the action id and `<ref>` is its callable reference; rows with no ref (workflow-as-action entries) show the action name in place of the ref. Capped to `limit`; omitting the filter returns many results, so prefer a filter. For the platform-wide action catalog rather than this org's installed packs, use buddy_action_search.",
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			filter: {
-				type: 'string',
-				description: "Optional text matched case-insensitively against the action's display name.",
-			},
-			limit: {
-				type: 'number',
-				description: `Max flattened actions to return (default ${DEFAULT_ACTION_LIMIT}, max ${MAX_ACTION_LIMIT}).`,
-			},
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(findActionInputSchema),
 };
 
+const resolveReferenceInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	modelType: z.enum(LOCAL_REFERENCE_MODELS).describe('Which kind of Rewst object to resolve.'),
+	search: optionalStringField().describe('Optional case-insensitive name substring filter.'),
+	limit: optionalClampedInt(MAX_REFERENCE_LIMIT).describe(
+		`Max references to return (default ${DEFAULT_REFERENCE_LIMIT}, max ${MAX_REFERENCE_LIMIT}).`,
+	),
+});
 const resolveReferenceSpec: ToolSpec = {
 	name: 'buddy_resolve_reference',
 	args: '{"orgId": string, "modelType": string, "search"?: string, "limit"?: number}',
 	description:
 		'Resolve Rewst object names to ids for one organization and a model type (Workflow, Template, Trigger, Form, Organization, User, Role, PackConfig, Site, Page, Crate, CustomDatabase, TemplateExport). Optionally filter by a case-insensitive name substring. Returns matching options as name (id). Use this when you have a name and need the id.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			modelType: {
-				type: 'string',
-				enum: LOCAL_REFERENCE_MODELS,
-				description: 'Which kind of Rewst object to resolve.',
-			},
-			search: { type: 'string', description: 'Optional case-insensitive name substring filter.' },
-			limit: {
-				type: 'number',
-				description: `Max references to return (default ${DEFAULT_REFERENCE_LIMIT}, max ${MAX_REFERENCE_LIMIT}).`,
-			},
-		},
-		required: ['orgId', 'modelType'],
-	},
+	inputSchema: toInputSchema(resolveReferenceInputSchema),
 };
 
+const getWorkflowInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	workflowId: requiredStringField('workflowId').describe('Workflow id to fetch.'),
+});
 const getWorkflowSpec: ToolSpec = {
 	name: 'buddy_get_workflow',
 	args: '{"orgId": string, "workflowId": string}',
 	description: 'Get one Rewst workflow (metadata and triggers) by org and workflow id.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			workflowId: { type: 'string', description: 'Workflow id to fetch.' },
-		},
-		required: ['orgId', 'workflowId'],
-	},
+	inputSchema: toInputSchema(getWorkflowInputSchema),
 };
 
+const graphqlQueryInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	query: requiredStringField('query').describe('GraphQL query document (no mutations or subscriptions).'),
+	variables: z.record(z.string(), z.unknown()).optional().describe('Optional GraphQL variables.'),
+});
 const graphqlQuerySpec: ToolSpec = {
 	name: 'buddy_graphql_query',
 	args: '{"orgId": string, "query": string, "variables"?: object}',
 	description:
 		"Run a read-only GraphQL query against one Rewst organization with the user's session. Only query operations are allowed; mutations and subscriptions are rejected. Use this for data the dedicated read tools do not cover (executions, integrations, variables, and so on).",
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			query: { type: 'string', description: 'GraphQL query document (no mutations or subscriptions).' },
-			variables: { type: 'object', description: 'Optional GraphQL variables.' },
-		},
-		required: ['orgId', 'query'],
-	},
+	inputSchema: toInputSchema(graphqlQueryInputSchema),
 };
 
 // GraphQL for workflow reads: the typed SDK has no workflow operations, so these
@@ -489,7 +441,7 @@ async function runListOrgs(_input: Record<string, unknown>, ctx: CapabilityConte
 }
 
 async function runListTemplates(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
+	const { orgId } = parseCapabilityInput(listTemplatesInputSchema, input);
 	const response = await ctx.session.sdk?.listTemplates({ orgId });
 	const templates = response?.templates ?? [];
 	if (templates.length === 0) return 'No templates found for this organization.';
@@ -502,8 +454,7 @@ async function runListTemplates(input: Record<string, unknown>, ctx: CapabilityC
 }
 
 async function runGetTemplate(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const templateId = requireString(input, 'templateId');
+	const { orgId, templateId } = parseCapabilityInput(getTemplateInputSchema, input);
 	const template = await ctx.session.getTemplate(templateId);
 	// A session can manage several orgs, so a bare id lookup can cross org
 	// boundaries; enforce the requested orgId against the returned resource.
@@ -516,9 +467,8 @@ async function runGetTemplate(input: Record<string, unknown>, ctx: CapabilityCon
 }
 
 async function runListWorkflows(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const search = asString(input, 'search');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_WORKFLOW_LIMIT, MAX_WORKFLOW_LIMIT);
+	const { orgId, search, limit: rawLimit } = parseCapabilityInput(listWorkflowsInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_WORKFLOW_LIMIT;
 	const variables: Record<string, unknown> = { orgId, limit };
 	if (search) variables.search = { name: { _ilike: `%${search}%` } };
 	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOWS_QUERY, variables);
@@ -537,9 +487,8 @@ async function runListWorkflows(input: Record<string, unknown>, ctx: CapabilityC
 }
 
 async function runListOrgVariables(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const search = asString(input, 'search');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_ORG_VARIABLE_LIMIT, MAX_ORG_VARIABLE_LIMIT);
+	const { orgId, search, limit: rawLimit } = parseCapabilityInput(listOrgVariablesInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_ORG_VARIABLE_LIMIT;
 	const variables: Record<string, unknown> = { orgId, limit };
 	if (search) variables.search = { name: { _ilike: `%${search}%` } };
 	const data = await rawGraphqlOrThrow(ctx.session, ORG_VARIABLES_QUERY, variables);
@@ -559,9 +508,8 @@ async function runListOrgVariables(input: Record<string, unknown>, ctx: Capabili
 }
 
 async function runListWorkflowExecutions(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_EXECUTION_LIMIT, MAX_EXECUTION_LIMIT);
-	const status = asString(input, 'status');
+	const { orgId, status, limit: rawLimit } = parseCapabilityInput(listWorkflowExecutionsInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_EXECUTION_LIMIT;
 	const variables: Record<string, unknown> = { orgId, limit };
 	if (status) variables.search = { status: { _eq: status } };
 	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_EXECUTIONS_QUERY, variables);
@@ -624,15 +572,17 @@ function matchExecutionVariables(
 }
 
 async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const workflowId = requireString(input, 'workflowId');
-	const rawName = requireString(input, 'name');
+	const {
+		orgId,
+		workflowId,
+		name: rawName,
+		kind,
+		value: valueArg,
+		limit: rawLimit,
+	} = parseCapabilityInput(findExecutionsByVariableInputSchema, input);
 	const nameNeedle = rawName.toLowerCase();
-	const valueArg = asString(input, 'value');
 	const valueNeedle = valueArg ? valueArg.toLowerCase() : undefined;
-	const rawKind = asString(input, 'kind') ?? 'input';
-	const kind: ExecutionVariableKind = rawKind === 'output' || rawKind === 'context' ? rawKind : 'input';
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_EXECUTION_LIMIT, MAX_EXECUTION_LIMIT);
+	const limit = rawLimit ?? DEFAULT_EXECUTION_LIMIT;
 
 	const data = await rawGraphqlOrThrow(ctx.session, EXECUTIONS_WITH_IO_QUERY, { orgId, workflowId, limit });
 	const executions = ((data as { workflowExecutions?: unknown[] } | undefined)?.workflowExecutions ?? []) as {
@@ -685,9 +635,8 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 
 // orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by workflow id alone.
 async function runListWorkflowTasks(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	requireString(input, 'orgId');
-	const workflowId = requireString(input, 'workflowId');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_TASK_LIMIT, MAX_TASK_LIMIT);
+	const { workflowId, limit: rawLimit } = parseCapabilityInput(listWorkflowTasksInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_TASK_LIMIT;
 	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_TASKS_QUERY, { workflowId, limit });
 	const workflowTasks = ((data as { workflowTasks?: unknown[] } | undefined)?.workflowTasks ?? []) as {
 		id?: string;
@@ -711,9 +660,8 @@ async function runListWorkflowTasks(input: Record<string, unknown>, ctx: Capabil
 
 // orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by workflow id alone.
 async function runListWorkflowPatches(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	requireString(input, 'orgId');
-	const workflowId = requireString(input, 'workflowId');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_PATCH_LIMIT, MAX_PATCH_LIMIT);
+	const { workflowId, limit: rawLimit } = parseCapabilityInput(listWorkflowPatchesInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_PATCH_LIMIT;
 	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_PATCHES_QUERY, { workflowId, limit });
 	const workflowPatches = ((data as { workflowPatches?: unknown[] } | undefined)?.workflowPatches ?? []) as {
 		id?: string;
@@ -736,8 +684,7 @@ async function runListWorkflowPatches(input: Record<string, unknown>, ctx: Capab
 
 // orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by patch id alone.
 async function runGetWorkflowPatch(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	requireString(input, 'orgId');
-	const patchId = requireString(input, 'patchId');
+	const { patchId } = parseCapabilityInput(getWorkflowPatchInputSchema, input);
 	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_PATCH_QUERY, { id: patchId });
 	const workflowPatch = (data as { workflowPatch?: unknown | null } | undefined)?.workflowPatch;
 	if (!workflowPatch) return `No workflow patch found for patch id ${patchId}.`;
@@ -745,9 +692,7 @@ async function runGetWorkflowPatch(input: Record<string, unknown>, ctx: Capabili
 }
 
 async function runLatestWorkflowExecution(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const workflowId = requireString(input, 'workflowId');
-	const status = asString(input, 'status');
+	const { orgId, workflowId, status } = parseCapabilityInput(latestWorkflowExecutionInputSchema, input);
 	const variables: Record<string, unknown> = { orgId, workflowId };
 	if (status) variables.status = status;
 	const data = await rawGraphqlOrThrow(ctx.session, LATEST_WORKFLOW_EXECUTION_QUERY, variables);
@@ -771,11 +716,7 @@ async function runLatestWorkflowExecution(input: Record<string, unknown>, ctx: C
 }
 
 async function runGetWorkflowExecutionStats(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const createdSince = requireString(input, 'createdSince');
-	if (/^\d+$/.test(createdSince)) {
-		throw new Error('createdSince must be an ISO-8601 date string; epoch milliseconds are not supported.');
-	}
+	const { orgId, createdSince } = parseCapabilityInput(getWorkflowExecutionStatsInputSchema, input);
 	const variables = { orgId, createdSince };
 	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_EXECUTION_STATS_QUERY, variables);
 	const stats = (
@@ -806,9 +747,8 @@ async function runGetWorkflowExecutionStats(input: Record<string, unknown>, ctx:
 }
 
 async function runFindAction(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const filter = asString(input, 'filter');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_ACTION_LIMIT, MAX_ACTION_LIMIT);
+	const { orgId, filter, limit: rawLimit } = parseCapabilityInput(findActionInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_ACTION_LIMIT;
 	const variables: Record<string, unknown> = { orgId };
 	if (filter) variables.filter = filter;
 	const data = await rawGraphqlOrThrow(ctx.session, FIND_ACTION_QUERY, variables);
@@ -851,15 +791,8 @@ async function runFindAction(input: Record<string, unknown>, ctx: CapabilityCont
 }
 
 async function runResolveReference(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const modelType = requireString(input, 'modelType');
-	if (!LOCAL_REFERENCE_MODELS.includes(modelType as (typeof LOCAL_REFERENCE_MODELS)[number])) {
-		throw new Error(
-			`Invalid modelType "${modelType}". Valid modelType values: ${LOCAL_REFERENCE_MODELS.join(', ')}`,
-		);
-	}
-	const search = asString(input, 'search');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_REFERENCE_LIMIT, MAX_REFERENCE_LIMIT);
+	const { orgId, modelType, search, limit: rawLimit } = parseCapabilityInput(resolveReferenceInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_REFERENCE_LIMIT;
 	const variables: Record<string, unknown> = { orgId, modelName: modelType, limit };
 	if (search) variables.search = search;
 	const data = await rawGraphqlOrThrow(ctx.session, RESOLVE_REFERENCE_QUERY, variables);
@@ -874,8 +807,7 @@ async function runResolveReference(input: Record<string, unknown>, ctx: Capabili
 }
 
 async function runGetWorkflow(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const workflowId = requireString(input, 'workflowId');
+	const { orgId, workflowId } = parseCapabilityInput(getWorkflowInputSchema, input);
 	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_QUERY, { id: workflowId });
 	const workflow = (data as { workflow?: { orgId?: unknown } } | undefined)?.workflow;
 	if (!workflow) throw new Error(`Workflow not found: ${workflowId}`);
@@ -888,8 +820,7 @@ async function runGetWorkflow(input: Record<string, unknown>, ctx: CapabilityCon
 }
 
 async function runGraphqlQuery(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const query = requireString(input, 'query');
+	const { orgId, query, variables: parsedVariables } = parseCapabilityInput(graphqlQueryInputSchema, input);
 	const rawVariables = input.variables;
 	if (
 		rawVariables !== undefined &&
