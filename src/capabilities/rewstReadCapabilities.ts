@@ -140,8 +140,11 @@ const findExecutionsByVariableInputSchema = z.object({
 	name: requiredStringField('name').describe('Case-insensitive substring matched against variable names.'),
 	kind: z
 		.enum(['input', 'output', 'context'])
-		.catch('input')
+		.optional()
+		.catch('input' as 'input' | 'output' | 'context')
 		.describe("Which variable surface to search: input (default), output, or context (the run's CTX)."),
+	// Note: .optional() before .catch() keeps 'kind' out of the JSON Schema
+	// required array while still defaulting to 'input' at runtime via .catch().
 	value: optionalStringField().describe(
 		"Optional case-insensitive substring the matched variable's value must contain.",
 	),
@@ -576,10 +579,11 @@ async function runFindExecutionsByVariable(input: Record<string, unknown>, ctx: 
 		orgId,
 		workflowId,
 		name: rawName,
-		kind,
+		kind: rawKind,
 		value: valueArg,
 		limit: rawLimit,
 	} = parseCapabilityInput(findExecutionsByVariableInputSchema, input);
+	const kind: ExecutionVariableKind = rawKind ?? 'input';
 	const nameNeedle = rawName.toLowerCase();
 	const valueNeedle = valueArg ? valueArg.toLowerCase() : undefined;
 	const limit = rawLimit ?? DEFAULT_EXECUTION_LIMIT;
@@ -717,6 +721,12 @@ async function runLatestWorkflowExecution(input: Record<string, unknown>, ctx: C
 
 async function runGetWorkflowExecutionStats(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	const { orgId, createdSince } = parseCapabilityInput(getWorkflowExecutionStatsInputSchema, input);
+	// Reject epoch-millisecond strings (all-digit, 13+ chars) — the API only accepts ISO-8601.
+	if (/^\d{13,}$/.test(createdSince)) {
+		throw new Error(
+			'epoch milliseconds are not supported; use an ISO-8601 date string such as 2025-01-01 or 2025-01-01T00:00:00Z.',
+		);
+	}
 	const variables = { orgId, createdSince };
 	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_EXECUTION_STATS_QUERY, variables);
 	const stats = (
@@ -791,6 +801,16 @@ async function runFindAction(input: Record<string, unknown>, ctx: CapabilityCont
 }
 
 async function runResolveReference(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	// Provide friendly errors for missing/invalid modelType before Zod's generic enum message.
+	const rawModelType = input.modelType;
+	if (rawModelType === undefined || rawModelType === null || rawModelType === '') {
+		throw new Error('Missing required string argument "modelType".');
+	}
+	if (!LOCAL_REFERENCE_MODELS.includes(rawModelType as (typeof LOCAL_REFERENCE_MODELS)[number])) {
+		throw new Error(
+			`Invalid modelType "${rawModelType}". Valid modelType values: ${LOCAL_REFERENCE_MODELS.join(', ')}`,
+		);
+	}
 	const { orgId, modelType, search, limit: rawLimit } = parseCapabilityInput(resolveReferenceInputSchema, input);
 	const limit = rawLimit ?? DEFAULT_REFERENCE_LIMIT;
 	const variables: Record<string, unknown> = { orgId, modelName: modelType, limit };

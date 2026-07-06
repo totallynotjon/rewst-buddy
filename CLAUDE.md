@@ -292,10 +292,11 @@ All components implement `vscode.Disposable` and push to `context.subscriptions`
 
 Capabilities live in `src/capabilities/*Capabilities.ts` and are surfaced to the MCP server and chat. Most review round-trips on these tools trace to a few rules — apply them up front instead of in follow-up commits.
 
-- **MCP inputs are NOT validated against `inputSchema`.** `McpActions` passes the raw `arguments` straight to `capability.run()` (see `src/mcp/McpActions.ts`); the schema is only advertised to the client, never enforced. So `run()` must defensively validate/coerce **every** input:
-    - Strings: `requireString` (required) / `asString` (optional) — never read `input.x` directly.
-    - Numbers: clamp — `Math.min(asPositiveInt(input, 'limit') ?? DEFAULT, MAX)`. `asPositiveInt` already rejects `0`, negatives, and fractions (returns `undefined`); preserve that property in any new numeric helper (e.g. `mapWithConcurrency` throws on a non-positive limit).
-    - Enums: validate against the allowed set before use — never blind-cast `input.kind as Kind`. An unexpected value must fall back to a safe default or throw, not slip through.
+- **MCP inputs are validated at the `run()` boundary via `parseCapabilityInput`.** `McpActions` passes the raw `arguments` straight to `capability.run()` (see `src/mcp/McpActions.ts`); the schema is advertised to the client AND enforced at runtime. Each capability defines a Zod schema and calls `parseCapabilityInput(schema, input)` at the top of its `run()` function — this replaces the old `requireString`/`asString`/`asPositiveInt` helpers. The advertised `inputSchema` is derived from the same Zod schema via `toInputSchema`, keeping advertisement and enforcement in sync. Key patterns:
+    - Strings: `requiredStringField('key')` (required) / `optionalStringField()` (optional) in the schema.
+    - Numbers: `optionalClampedInt(MAX)` in the schema — floors, clamps, and rejects non-positive values; callers apply `?? DEFAULT` after parsing.
+    - Enums: `z.enum([...])` in the schema; add a pre-parse guard in `run()` for friendly error messages (see `runResolveReference`).
+    - Domain constraints (e.g. rejecting epoch-ms dates): add explicit checks after `parseCapabilityInput`, before the API call.
 - **GraphQL error handling:** after every `rawGraphql`, check `errors` and throw _with context_ — include the serialized errors in the message (`GraphQL error: ...`), never a bare `throw new Error()` (which discards the failure).
 - **Description ↔ behavior parity:** if a tool's `description`/`inputSchema` says it returns or accepts a field, the handler must actually surface/use it. Drift (e.g. fetching `roleIds` but dropping them from the output) gets flagged.
 - **Build list output from the requested inputs, not the response keys.** Iterate the requested `ids`/`triggerIds` and look each up, so a missing or empty (`{}`) response yields deterministic rows (`unknown`) instead of dropped entries or a blank line.

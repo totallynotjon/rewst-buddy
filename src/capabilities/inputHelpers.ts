@@ -200,7 +200,7 @@ export function optionalClampedInt(max: number): z.ZodType<number | undefined> {
 		if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) return undefined;
 		const floored = Math.floor(raw);
 		return floored > 0 ? Math.min(floored, max) : undefined;
-	}, z.number().int().positive().max(max).optional());
+	}, z.number().positive().max(max).optional());
 }
 
 /**

@@ -446,9 +446,13 @@ NOT be able to widen `alwaysAllowedOrgs`.
 
 ### Requirement: Validate tool inputs defensively
 
-Because tool inputs are not validated against the advertised `inputSchema`, each
-capability SHALL validate and coerce every input itself (required strings,
-clamped numbers, enum checks) rather than trusting the schema.
+Each capability SHALL validate and coerce every input at the `run()` boundary
+using `parseCapabilityInput` against its Zod schema (required strings, clamped
+integers, enum checks). The advertised `inputSchema` is derived from the same
+Zod schema via `toInputSchema`, so the schema and the enforcement are always in
+sync. Capabilities with domain-specific constraints (e.g. rejecting epoch-ms
+dates, providing friendly enum error messages) MAY add pre-parse guards before
+calling `parseCapabilityInput`.
 
 #### Scenario: Out-of-range numeric input
 
@@ -456,6 +460,19 @@ clamped numbers, enum checks) rather than trusting the schema.
 - **WHEN** a caller passes a value past the maximum
 - **THEN** the capability clamps it to the allowed maximum rather than honoring
   the raw value
+
+#### Scenario: Invalid enum value
+
+- **GIVEN** a tool that accepts an enum field (e.g. `modelType`)
+- **WHEN** a caller passes a value not in the enum
+- **THEN** the capability throws with a human-readable message naming the
+  invalid value and listing the valid options
+
+#### Scenario: Missing required field
+
+- **GIVEN** a tool that requires a field (e.g. `modelType`)
+- **WHEN** a caller omits it
+- **THEN** the capability throws with a message identifying the missing field
 
 ### Requirement: Verify saved task inputs after a workflow edit
 

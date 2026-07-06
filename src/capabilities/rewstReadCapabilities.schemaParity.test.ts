@@ -19,7 +19,9 @@
  */
 
 import * as assert from 'assert';
-import { suite, test } from '../test/tdd';
+import * as Mocha from 'mocha';
+
+const { suite, test } = Mocha;
 
 // ---------------------------------------------------------------------------
 // Frozen legacy schemas — verbatim copy of the pre-migration inputSchema
