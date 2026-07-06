@@ -871,7 +871,8 @@ suite('Unit: workflowTools', () => {
 		});
 
 		test('mockInput rejects non-string leaves under mock_result', () => {
-			for (const value of [42, true, ['raw'], { nested: false }]) {
+			// Arrays are containers — recurse into them; non-string elements inside still throw
+			for (const value of [42, true, [42], { nested: false }]) {
 				assert.throws(
 					() =>
 						applyOperations(
@@ -888,6 +889,20 @@ suite('Unit: workflowTools', () => {
 					/mockInput\.mock_result.*leaf values must be strings/,
 				);
 			}
+		});
+
+		test('mockInput accepts arrays of string leaves under mock_result', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'update_task',
+					name: 'start',
+					set: { mockInput: { mock_result: { items: ['{{ CTX.a }}', '{{ CTX.b }}'] } } },
+				},
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.mockInput, {
+				mock_result: { items: ['{{ CTX.a }}', '{{ CTX.b }}'] },
+			});
 		});
 
 		test('retry.count rejects non-scalar values instead of stringifying garbage', () => {

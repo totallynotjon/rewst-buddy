@@ -328,9 +328,10 @@ function coerceRetry(value: unknown): RawTask['retry'] {
 function assertStringLeaves(value: unknown, path: string): void {
 	if (typeof value === 'string') return;
 	if (Array.isArray(value)) {
-		throw new Error(
-			`${path} leaf values must be strings; use Jinja strings like "{{ 42 }}" or "{{ true }}" for non-string mock data.`,
-		);
+		for (const [i, entry] of value.entries()) {
+			assertStringLeaves(entry, `${path}[${i}]`);
+		}
+		return;
 	}
 	if (isPlainObject(value)) {
 		for (const [key, entry] of Object.entries(value)) {

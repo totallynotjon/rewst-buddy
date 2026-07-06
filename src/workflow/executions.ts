@@ -632,7 +632,7 @@ function describeExecutedPath(workflow: RawWorkflow, rows: TaskLogRow[]): string
 		if (index > 0) {
 			lines.push(`   via ${describeTransitionBetween(previousTask, task)}`);
 		}
-		previousTask = task;
+		if (task !== undefined) previousTask = task;
 	}
 	return lines.join('\n');
 }
