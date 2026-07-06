@@ -373,10 +373,12 @@ CodeRabbit enforces this: `openspec/specs/**` is registered as authoritative gui
 ```bash
 npm test              # Run all tests
 npm run test:unit     # Run unit tests only (no auth required)
-npm run test:integration  # Run integration tests (requires REWST_TEST_TOKEN)
+unset REWST_TEST_TOKEN && npm run test:integration  # Run integration tests (token from .env)
 npm run test:grep -- "Unit: toolProtocol"  # Run a targeted unit grep
-npm run test:grep:integration -- "an explicit insert edit tool request"  # Run a targeted live integration grep
+unset REWST_TEST_TOKEN && npm run test:grep:integration -- "an explicit insert edit tool request"  # Run a targeted live integration grep
 ```
+
+**Always `unset REWST_TEST_TOKEN` before integration runs.** `.vscode-test.mjs` loads the token from `.env`, but an already-exported `REWST_TEST_TOKEN` (often a stale copy inherited from the VS Code process tree) silently wins over the file. A stale exported token makes every session fail with `newSdk: could not initialize with any region` even when `.env` is fresh. `unset` in the same command line, as shown above, so the `.env` value is the one the tests see.
 
 Use `vscode-test --grep`, not `vscode-test -- --grep`. The extra `--` prevents the VS Code test CLI from applying Mocha's grep and can accidentally run the full suite. `.vscode-test.mjs` defines labeled configs: `unit` and `integration` carry a config-level `mocha.grep` (which silently wins over CLI `--grep`), so the targeted scripts run the grep-dedicated labels instead — `test:grep` uses `--label grep` (offline, no `.env`) and `test:grep:integration` uses `--label grep-integration` (loads `.env` / `REWST_TEST_TOKEN` for live runs). Never run the grep labels without a `--grep` pattern.
 
