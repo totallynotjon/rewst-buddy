@@ -3,8 +3,8 @@ import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
 import {
-	ORG_ID_FIELD,
 	optionalStringField,
+	ORG_ID_FIELD,
 	parseCapabilityInput,
 	rawGraphqlOrThrow,
 	requiredStringField,

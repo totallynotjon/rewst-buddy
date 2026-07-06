@@ -1,6 +1,3 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
 import {
 	_resetMcpMutationApproverForTesting,
 	setMcpMutationApprover,
@@ -8,10 +5,13 @@ import {
 	type CapabilityContext,
 } from '@capabilities';
 import type { Session } from '@sessions';
+import { initTestEnvironment } from '@test';
 import { CRATE_REUSE_STEERING } from '@workflow';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
-import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 import { getCapability } from './registry';
+import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 
 const { suite, test, setup, teardown } = Mocha;
 

@@ -1,8 +1,8 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
+import type { Capability, CapabilityContext } from '@capabilities';
 import type { Session } from '@sessions';
 import { clearCachedSession, getTestSession, hasTestToken, initTestEnvironment } from '@test';
-import type { Capability, CapabilityContext } from '@capabilities';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import { CRATE_CAPABILITIES } from '../../capabilities/crateCapabilities';
 import { workflowImpactCapability } from '../../capabilities/workflowImpactCapability';
 

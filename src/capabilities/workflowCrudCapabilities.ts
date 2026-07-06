@@ -1,10 +1,10 @@
+import { CRATE_REUSE_STEERING } from '@workflow';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
 import { ORG_ID_PROP, asString, rawGraphqlOrThrow, requireResourceInOrg, requireString } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
-import { CRATE_REUSE_STEERING } from '@workflow';
 
 /**
  * Workflow create/delete capabilities. buddy_create_workflow makes an empty workflow

@@ -3,14 +3,14 @@ import { initTestEnvironment } from '@test';
 import {
 	ADD_TASK_FIELD_NAMES,
 	ADVANCED_TASK_FIELD_TABLE,
-	type RawWorkflow,
 	UPDATE_TASK_SET_FIELD_NAMES,
 	WORKFLOW_IMPACT_STEERING,
 	workflowEditOperationGrammar,
+	type RawWorkflow,
 } from '@workflow';
-import { getCapability } from '../../../capabilities/registry';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { getCapability } from '../../../capabilities/registry';
 import { _resetApprovedMutationScopes, approveMutationScope, type GraphqlToolDeps } from './graphqlTool';
 import {
 	_resetWorkflowIndexForTesting,
