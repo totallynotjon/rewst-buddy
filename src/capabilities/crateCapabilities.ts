@@ -44,8 +44,8 @@ query RewstBuddyMcpCrates($selectedOrgId: ID, $search: CrateSearchInput, $limit:
 `.trim();
 
 const PUBLIC_QUERY = `
-query RewstBuddyMcpPublicCrates($limit: Int) {
-  publicCrates(limit: $limit) {
+query RewstBuddyMcpPublicCrates($limit: Int, $offset: Int) {
+  publicCrates(limit: $limit, offset: $offset) {
     id
     name
     category
@@ -138,17 +138,21 @@ async function runPublicSearch(
 	limit: number,
 	ctx: CapabilityContext,
 ): Promise<string> {
-	const data = await rawGraphqlOrThrow(ctx.session, PUBLIC_QUERY, { limit: PUBLIC_CRATES_PAGE });
-	let crates = (data as { publicCrates?: CrateRow[] | null } | undefined)?.publicCrates ?? [];
+	const lowerSearch = search?.toLowerCase();
+	const crates: CrateRow[] = [];
+	let offset = 0;
 
-	// Client-side name filter
-	if (search !== undefined) {
-		const lower = search.toLowerCase();
-		crates = crates.filter(c => (c.name ?? '').toLowerCase().includes(lower));
+	while (crates.length < limit) {
+		const data = await rawGraphqlOrThrow(ctx.session, PUBLIC_QUERY, { limit: PUBLIC_CRATES_PAGE, offset });
+		const page = (data as { publicCrates?: CrateRow[] | null } | undefined)?.publicCrates ?? [];
+		for (const crate of page) {
+			if (lowerSearch !== undefined && !(crate.name ?? '').toLowerCase().includes(lowerSearch)) continue;
+			crates.push(crate);
+			if (crates.length >= limit) break;
+		}
+		if (page.length < PUBLIC_CRATES_PAGE) break;
+		offset += PUBLIC_CRATES_PAGE;
 	}
-
-	// Slice to the requested limit
-	crates = crates.slice(0, limit);
 
 	if (crates.length === 0) {
 		return search ? `No crates found matching "${search}".` : 'No crates found.';

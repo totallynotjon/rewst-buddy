@@ -219,6 +219,48 @@ suite('Unit: crateCapabilities', () => {
 		assert.ok(!output.includes('[installed in this org]'), 'no installed markers for public source');
 	});
 
+	test('public source keeps paging until a search match is found after the first page', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		const firstPage = Array.from({ length: 200 }, (_, i) => ({
+			id: `p-${i}`,
+			name: `Notify ${i}`,
+			category: 'Ops',
+			description: null,
+		}));
+		wrapper.when('rawGraphql', (call: { variables: Record<string, unknown> }): { data: unknown } => {
+			const variables = call.variables;
+			if (variables.offset === 0) {
+				return { data: { data: { publicCrates: firstPage } } };
+			}
+			if (variables.offset === 200) {
+				return {
+					data: {
+						data: {
+							publicCrates: [
+								{ id: 'p-late', name: 'Late Alpha Sync', category: 'Ops', description: 'd' },
+							],
+						},
+					},
+				};
+			}
+			return { data: { data: { publicCrates: [] } } };
+		});
+		const cap = getCapability('buddy_search_crates');
+		assert.ok(cap);
+		const ctx: CapabilityContext = { session, orgId: 'org-1', sessions: [session] };
+		const output = await cap.run({ orgId: 'org-1', source: 'public', search: 'alpha', limit: 1 }, ctx);
+
+		const calls = wrapper.getCallsFor('rawGraphql');
+		assert.strictEqual(calls.length, 2, 'search advances to the second publicCrates page');
+		assert.deepStrictEqual(
+			calls.map(call => (call.variables as { variables: Record<string, unknown> }).variables.offset),
+			[0, 200],
+			'publicCrates offsets advance by page size',
+		);
+		assert.ok(output.includes('Late Alpha Sync (p-late)'), 'match after first page is listed');
+	});
+
 	test('invalid source rejected with the valid set', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);

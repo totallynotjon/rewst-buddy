@@ -79,15 +79,19 @@ suite('Unit: workflowImpactCapability', () => {
 		const output = await cap.run({ orgId: 'org-1', workflowId: 'wf-1' }, ctx);
 
 		const calls = wrapper.getCallsFor('rawGraphql');
-		assert.strictEqual(calls.length, 1);
+		assert.strictEqual(calls.length, 2);
 		assert.strictEqual(
 			(calls[0].variables as { variables: { id: string } }).variables.id,
 			'wf-1',
 			'query passes workflowId as id variable',
 		);
 		assert.ok(
-			(calls[0].variables as { query: string }).query.includes('parentWorkflows'),
-			'query includes parentWorkflows',
+			!(calls[0].variables as { query: string }).query.includes('parentWorkflows'),
+			'first query verifies org without reading parentWorkflows',
+		);
+		assert.ok(
+			(calls[1].variables as { query: string }).query.includes('parentWorkflows'),
+			'second query reads parentWorkflows',
 		);
 		assert.ok(output.includes('2 workflow'), 'output mentions 2 workflows');
 		// Caller A appears once (deduped)
@@ -123,7 +127,7 @@ suite('Unit: workflowImpactCapability', () => {
 		assert.ok(output.length > 0, 'output is non-empty');
 	});
 
-	test('org re-check fails closed when workflow is in a different org', async () => {
+	test('org re-check fails closed before reading callers when workflow is in a different org', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
@@ -148,6 +152,12 @@ suite('Unit: workflowImpactCapability', () => {
 				assert.ok(err.message.includes('org-1'), 'error names the org id');
 				return true;
 			},
+		);
+		const calls = wrapper.getCallsFor('rawGraphql');
+		assert.strictEqual(calls.length, 1, 'only the org verification query runs');
+		assert.ok(
+			!(calls[0].variables as { query: string }).query.includes('parentWorkflows'),
+			'org verification query does not read parentWorkflows',
 		);
 	});
 

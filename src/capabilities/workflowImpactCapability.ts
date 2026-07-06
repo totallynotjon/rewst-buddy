@@ -18,12 +18,19 @@ import {
  *   actions mode:    lists workflows affected by breaking changes to pack actions
  */
 
-const IMPACT_QUERY = `
-query RewstBuddyMcpWorkflowImpact($id: ID!) {
+const WORKFLOW_ORG_QUERY = `
+query RewstBuddyMcpWorkflowImpactOrg($id: ID!) {
   workflow(where: { id: $id }) {
     id
     name
     orgId
+  }
+}
+`.trim();
+
+const WORKFLOW_CALLERS_QUERY = `
+query RewstBuddyMcpWorkflowImpactCallers($id: ID!) {
+  workflow(where: { id: $id }) {
     parentWorkflows {
       name
       workflowId
@@ -98,13 +105,16 @@ async function runWorkflowIdMode(workflowId: string, orgId: string, ctx: Capabil
 		id: workflowId,
 		orgId,
 		fetch: async () => {
-			const data = await rawGraphqlOrThrow(ctx.session, IMPACT_QUERY, { id: workflowId });
+			const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_ORG_QUERY, { id: workflowId });
 			return (data as { workflow?: WorkflowRow | null } | undefined)?.workflow ?? undefined;
 		},
 	});
 
 	const name = workflow.name ?? '(unnamed)';
-	const tasks = workflow.parentWorkflows ?? [];
+	const callerData = await rawGraphqlOrThrow(ctx.session, WORKFLOW_CALLERS_QUERY, { id: workflowId });
+	const tasks =
+		(callerData as { workflow?: Pick<WorkflowRow, 'parentWorkflows'> | null } | undefined)?.workflow
+			?.parentWorkflows ?? [];
 
 	if (tasks.length === 0) {
 		return `No workflows call "${name}" (${workflowId}) as a sub-workflow. No callers break if its inputs or output change.`;
