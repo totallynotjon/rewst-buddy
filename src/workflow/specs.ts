@@ -11,6 +11,7 @@ export const WORKFLOW_EDIT_TOOL_NAME = 'buddy_workflow_edit';
 export const WORKFLOW_AUTOLAYOUT_TOOL_NAME = 'buddy_workflow_autolayout';
 export const WORKFLOW_RUN_TOOL_NAME = 'buddy_workflow_run';
 export const WORKFLOW_EXECUTION_LOGS_TOOL_NAME = 'buddy_execution_logs';
+export const WORKFLOW_DIAGNOSE_TOOL_NAME = 'buddy_workflow_diagnose';
 export const WORKFLOW_SEARCH_TOOL_NAME = 'buddy_workflow_search';
 
 /**
@@ -210,6 +211,41 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 				},
 			},
 			required: ['executionId'],
+		},
+	},
+	{
+		name: WORKFLOW_DIAGNOSE_TOOL_NAME,
+		description:
+			'One-call root-cause digest for a failed workflow execution — use this BEFORE the ' +
+			'buddy_workflow_executions → buddy_execution_logs → buddy_workflow_get → buddy_render_jinja ' +
+			"round trip. Pass executionId directly, or workflowId (with orgId) to diagnose that workflow's " +
+			'most recent FAILED execution. Returns, in one response: the EARLIEST failing task (the likely ' +
+			'root cause — a later failure can just be a cascading effect) with its message, input, and ' +
+			"result; that task's transition path from the workflow definition (which task(s) lead into it " +
+			'and what it was set to do next); a flag if it spawned a sub-workflow execution that itself ' +
+			'failed (the deeper cause may be there — call this tool again with that execution id); and the ' +
+			"merged execution context's top-level keys so you know what CTX.<field> paths are available. " +
+			"Each signed-in Rewst session only sees its own org hierarchy: if the first session can't see " +
+			'the execution, other active sessions are checked automatically, same as buddy_execution_logs; ' +
+			'pass orgId to route directly. For the full task-by-task list instead of just the failing task, ' +
+			'use buddy_execution_logs.',
+		inputSchema: {
+			type: 'object',
+			properties: {
+				executionId: { type: 'string', description: 'The workflow execution id to diagnose.' },
+				workflowId: {
+					type: 'string',
+					description:
+						"A workflow id — used with orgId to find and diagnose that workflow's most recent " +
+						'FAILED execution when executionId is not known.',
+				},
+				orgId: {
+					type: 'string',
+					description:
+						'Required together with workflowId. Optional together with executionId: routes the ' +
+						'lookup to the session managing that org (useful with several signed-in accounts).',
+				},
+			},
 		},
 	},
 	{

@@ -1,10 +1,17 @@
 import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asStringArg, type ToolRequest } from '../ui/chat/tools/toolProtocol';
-import { runExecutionLogs, runRenderJinja, runWorkflowExecutions, runWorkflowRun } from './executions';
+import {
+	runExecutionLogs,
+	runRenderJinja,
+	runWorkflowDiagnose,
+	runWorkflowExecutions,
+	runWorkflowRun,
+} from './executions';
 import { applyWorkflowMutation, requireScopeFields, type WorkflowOperation } from './graphMutations';
 import { runWorkflowSearch } from './searchIndex';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
@@ -48,6 +55,8 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 			return runWorkflowExecutions(request, bound);
 		case WORKFLOW_EXECUTION_LOGS_TOOL_NAME:
 			return runExecutionLogs(request, bound);
+		case WORKFLOW_DIAGNOSE_TOOL_NAME:
+			return runWorkflowDiagnose(request, bound);
 		case WORKFLOW_SEARCH_TOOL_NAME:
 			return runWorkflowSearch(request, bound);
 		default:

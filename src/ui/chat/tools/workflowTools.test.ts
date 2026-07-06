@@ -1,33 +1,35 @@
+import { SessionManager } from '@sessions';
+import { initTestEnvironment } from '@test';
+import {
+	ADD_TASK_FIELD_NAMES,
+	ADVANCED_TASK_FIELD_TABLE,
+	type RawWorkflow,
+	UPDATE_TASK_SET_FIELD_NAMES,
+	workflowEditOperationGrammar,
+} from '@workflow';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
-import { SessionManager } from '@sessions';
 import { _resetApprovedMutationScopes, approveMutationScope, type GraphqlToolDeps } from './graphqlTool';
 import {
+	_resetWorkflowIndexForTesting,
 	applyOperations,
 	autoLayout,
 	isWorkflowTool,
 	normalizePublish,
 	runWorkflowTool,
+	sentValueDivergences,
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_TOOL_SPECS,
-	_resetWorkflowIndexForTesting,
-	sentValueDivergences,
 	workflowEditConfirmation,
 	workflowEditScope,
 	workflowToInput,
 	type WorkflowOperation,
 } from './workflowTools';
-import {
-	ADVANCED_TASK_FIELD_TABLE,
-	ADD_TASK_FIELD_NAMES,
-	UPDATE_TASK_SET_FIELD_NAMES,
-	workflowEditOperationGrammar,
-} from '@workflow';
 
 const { suite, test, setup } = Mocha;
 
@@ -3119,6 +3121,427 @@ suite('Unit: workflowTools', () => {
 					),
 				/requires non-empty/,
 			);
+		});
+	});
+
+	suite('buddy_workflow_diagnose', () => {
+		function makeDiagnoseDeps(
+			over: Partial<{
+				taskLogs: unknown[];
+				findExecutions: unknown[];
+				childExecutions: unknown[];
+				childExecutionsWorkflow: { id: string; name: string; orgId: string } | null;
+				childExecutionsOrgId: string;
+				childExecutionsError: string;
+				workflow: unknown;
+				workflowError: string;
+				contexts: Record<string, unknown>[];
+				contextsError: string;
+			}> = {},
+		): { deps: GraphqlToolDeps; calls: { query: string; variables?: Record<string, unknown> }[] } {
+			const calls: { query: string; variables?: Record<string, unknown> }[] = [];
+			const execute: GraphqlToolDeps['execute'] = async (query, variables) => {
+				calls.push({ query, variables });
+				if (query.includes('RewstBuddyTaskLogs')) return { data: { taskLogs: over.taskLogs ?? [] } };
+				if (query.includes('RewstBuddyExecutions')) {
+					return { data: { workflowExecutions: over.findExecutions ?? [] } };
+				}
+				if (query.includes('RewstBuddyChildExecutions')) {
+					if (over.childExecutionsError) return { errors: [{ message: over.childExecutionsError }] };
+					return {
+						data: {
+							workflowExecution: {
+								id: 'exec-1',
+								status: 'FAILED',
+								orgId: over.childExecutionsOrgId,
+								workflow: over.childExecutionsWorkflow,
+								childExecutions: over.childExecutions ?? [],
+							},
+						},
+					};
+				}
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					if (over.workflowError) return { errors: [{ message: over.workflowError }] };
+					return { data: { workflow: over.workflow } };
+				}
+				if (query.includes('RewstBuddyExecutionContexts')) {
+					if (over.contextsError) return { errors: [{ message: over.contextsError }] };
+					return { data: { workflowExecutionContexts: over.contexts ?? [{ some_key: 1 }] } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+			return { deps, calls };
+		}
+
+		const diagnoseWorkflow = (): RawWorkflow => ({
+			...sampleWorkflow(),
+			tasks: [
+				{
+					id: 'task-a',
+					name: 'start',
+					actionId: 'noop-id',
+					action: { ref: 'core.noop' },
+					input: {},
+					next: [{ when: '{{ SUCCEEDED }}', do: ['task-b'] }],
+				},
+				{
+					id: 'task-b',
+					name: 'the_failer',
+					actionId: 'noop-id',
+					action: { ref: 'core.http' },
+					input: {},
+					next: [{ when: '{{ SUCCEEDED }}', do: [] }],
+				},
+			],
+		});
+
+		const failingTaskLogs = [
+			{ originalWorkflowTaskName: 'start', status: 'succeeded' },
+			{
+				originalWorkflowTaskName: 'the_failer',
+				status: 'failed',
+				message: 'boom',
+				input: { x: 1 },
+				result: { e: 1 },
+				taskExecutionId: 'te-1',
+			},
+		];
+
+		test('finds the earliest failing task and its transition path', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutionsWorkflow: { id: 'wf-1', name: 'Sample', orgId: 'org-1' },
+				childExecutionsOrgId: 'org-1',
+				workflow: diagnoseWorkflow(),
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /the_failer: failed/);
+			assert.match(output, /message: boom/);
+			assert.match(output, /Transition path/);
+			assert.match(output, /in:\s+start --\[\{\{ SUCCEEDED \}\}\]--> the_failer/);
+			assert.match(output, /out:\s+\(none — terminal task\)/);
+		});
+
+		test('includes publish expressions on the transition path', async () => {
+			const workflow = diagnoseWorkflow();
+			workflow.tasks[0].next = [
+				{
+					when: '{{ SUCCEEDED }}',
+					do: ['task-b'],
+					publish: [{ key: 'customer_org_id', value: '{{ RESULT.result.org_id }}' }],
+				},
+			];
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutionsWorkflow: { id: 'wf-1', name: 'Sample', orgId: 'org-1' },
+				childExecutionsOrgId: 'org-1',
+				workflow,
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(
+				output,
+				/in:\s+start --\[\{\{ SUCCEEDED \}\}\]--> the_failer \(publish: customer_org_id=\{\{ RESULT\.result\.org_id \}\}\)/,
+			);
+		});
+
+		test('diagnoses by workflowId when executionId is unknown', async () => {
+			const { deps, calls } = makeDiagnoseDeps({
+				findExecutions: [{ id: 'exec-9', status: 'FAILED', createdAt: '1000' }],
+				taskLogs: failingTaskLogs,
+				childExecutionsWorkflow: { id: 'wf-1', name: 'Sample', orgId: 'org-1' },
+				childExecutionsOrgId: 'org-1',
+				workflow: diagnoseWorkflow(),
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { workflowId: 'wf-1', orgId: 'org-1' } },
+				deps,
+			);
+			assert.match(output, /exec-9/);
+			assert.match(output, /the_failer: failed/);
+			const execCall = calls.find(c => c.query.includes('RewstBuddyExecutions'));
+			assert.ok(execCall, 'made a RewstBuddyExecutions call');
+			assert.deepStrictEqual((execCall.variables as { where?: unknown })?.where, {
+				workflowId: 'wf-1',
+				orgId: 'org-1',
+				status: 'FAILED',
+			});
+		});
+
+		test('reports no failed executions for a workflow instead of erroring', async () => {
+			const { deps, calls } = makeDiagnoseDeps({ findExecutions: [] });
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { workflowId: 'wf-1', orgId: 'org-1' } },
+				deps,
+			);
+			assert.match(output, /No FAILED executions found for workflow wf-1/);
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyTaskLogs')), 'no task log query fired');
+		});
+
+		test('requires orgId together with workflowId', async () => {
+			const { deps } = makeDiagnoseDeps();
+			await assert.rejects(
+				() => runWorkflowTool({ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { workflowId: 'wf-1' } }, deps),
+				/requires "orgId" together with "workflowId"/,
+			);
+		});
+
+		test('requires executionId or workflowId', async () => {
+			const { deps } = makeDiagnoseDeps();
+			await assert.rejects(
+				() => runWorkflowTool({ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: {} }, deps),
+				/requires "executionId", or "workflowId"/,
+			);
+		});
+
+		test('reports no failing task when the execution succeeded', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: [{ originalWorkflowTaskName: 'start', status: 'succeeded' }],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /No failing task found/);
+			assert.ok(!output.includes('Transition path'), 'no transition path section for a non-failing run');
+			assert.ok(!/Execution context/i.test(output), 'execution context is not fetched after a non-failing run');
+		});
+
+		test('flags a failed child execution as the likely deeper cause', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutions: [
+					{
+						id: 'exec-child',
+						status: 'failed',
+						parentTaskExecutionId: 'te-1',
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+				childExecutionsOrgId: 'org-1',
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /Likely deeper cause/);
+			assert.match(output, /exec-child/);
+			assert.match(output, /buddy_workflow_diagnose \{"executionId": "exec-child"\}/);
+		});
+
+		test('lists sub-executions not tied to the failing task separately', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutions: [
+					{
+						id: 'exec-orphan',
+						status: 'running',
+						parentTaskExecutionId: null,
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+				childExecutionsOrgId: 'org-1',
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /Other sub-workflow execution/);
+			assert.match(output, /exec-orphan/);
+			assert.ok(!output.includes('Likely deeper cause'), 'orphan is not described as the deeper cause');
+		});
+
+		test('includes the merged execution context top-level keys', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutionsOrgId: 'org-1',
+				contexts: [{ a: 1 }, { b: 2 }],
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /top-level keys: a, b/);
+			assert.match(output, /merged from 2 snapshot\(s\)/);
+		});
+
+		test('treats only the earliest failing row as the root cause when a later task also failed', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: [...failingTaskLogs, { originalWorkflowTaskName: 'downstream', status: 'failed' }],
+				childExecutionsOrgId: 'org-1',
+				workflow: diagnoseWorkflow(),
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /Failing task \(likely root cause\)[\s\S]*the_failer: failed/);
+			const rootCauseSection = output.split('\n\n')[1] ?? '';
+			assert.ok(!rootCauseSection.includes('downstream'), 'downstream failure is not the root cause section');
+		});
+
+		test('keeps the digest when the execution context lookup fails', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutionsOrgId: 'org-1',
+				contextsError: 'context resolver broke',
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /the_failer: failed/);
+			assert.match(output, /Execution context unavailable:.*context resolver broke/);
+		});
+
+		test('keeps the digest when the workflow definition fetch errors', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutionsWorkflow: { id: 'wf-1', name: 'Sample', orgId: 'org-1' },
+				childExecutionsOrgId: 'org-1',
+				workflowError: 'schema broke',
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /the_failer: failed/);
+			assert.match(output, /Workflow definition unavailable:.*schema broke/);
+		});
+
+		test('omits the transition path section when no workflow or org is resolvable', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutionsWorkflow: null,
+				// no childExecutionsOrgId, no orgId arg
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /the_failer: failed/);
+			assert.ok(!output.includes('Transition path'), 'no transition path when workflow/org unavailable');
+		});
+
+		test('verifies an explicit orgId owns the execution before reading task logs', async () => {
+			const calls: { query: string; variables?: Record<string, unknown> }[] = [];
+			const execute: GraphqlToolDeps['execute'] = async (query, variables) => {
+				calls.push({ query, variables });
+				if (query.includes('RewstBuddyExecutions')) return { data: { workflowExecutions: [] } };
+				if (query.includes('RewstBuddyTaskLogs')) {
+					throw new Error('task logs must not be read before org ownership is proven');
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+
+			await assert.rejects(
+				() =>
+					runWorkflowTool(
+						{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1', orgId: 'org-1' } },
+						deps,
+					),
+				/execution exec-1.*org org-1/i,
+			);
+			assert.ok(!calls.some(c => c.query.includes('RewstBuddyTaskLogs')), 'task logs were never queried');
+		});
+
+		test('sweeps alternate sessions when the primary sees no rows', async () => {
+			const primaryCalls: string[] = [];
+			const alternateCalls: string[] = [];
+			const primaryExecute: GraphqlToolDeps['execute'] = async query => {
+				primaryCalls.push(query);
+				if (query.includes('RewstBuddyTaskLogs')) return { data: { taskLogs: [] } };
+				if (query.includes('RewstBuddyChildExecutions'))
+					return {
+						data: {
+							workflowExecution: {
+								id: 'exec-1',
+								status: 'FAILED',
+								orgId: 'org-1',
+								workflow: { id: 'wf-1', name: 'Sample', orgId: 'org-1' },
+								childExecutions: [],
+							},
+						},
+					};
+				if (query.includes('RewstBuddyExecutionContexts'))
+					return { data: { workflowExecutionContexts: [{ ctx_key: 1 }] } };
+				return { data: {} };
+			};
+			const alternateExecute: GraphqlToolDeps['execute'] = async query => {
+				alternateCalls.push(query);
+				if (query.includes('RewstBuddyTaskLogs'))
+					return {
+						data: {
+							taskLogs: [
+								{
+									originalWorkflowTaskName: 'alt_task',
+									status: 'failed',
+									message: 'alt error',
+								},
+							],
+						},
+					};
+				return { data: {} };
+			};
+			const alternateDeps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: alternateExecute,
+			};
+			const primaryDeps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: primaryExecute,
+				alternates: [alternateDeps],
+			};
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				primaryDeps,
+			);
+			assert.match(output, /alt_task: failed/);
+			assert.match(output, /found via another active session/i);
+		});
+
+		test('explains visibility when no session can see the execution', async () => {
+			const emptyExecute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyTaskLogs')) return { data: { taskLogs: [] } };
+				if (query.includes('RewstBuddyChildExecutions'))
+					return {
+						data: {
+							workflowExecution: {
+								id: 'exec-1',
+								status: null,
+								orgId: null,
+								workflow: null,
+								childExecutions: [],
+							},
+						},
+					};
+				return { data: {} };
+			};
+			const alternateDeps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: emptyExecute,
+			};
+			const primaryDeps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: emptyExecute,
+				alternates: [alternateDeps],
+			};
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				primaryDeps,
+			);
+			assert.match(output, /None of the 2 active session\(s\) can see task logs/i);
 		});
 	});
 });

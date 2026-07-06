@@ -761,3 +761,59 @@ the risky action, such as running a workflow.
 - **GIVEN** a workflow run was approved previously
 - **WHEN** the same workflow is run again
 - **THEN** the user is prompted again before the run starts
+
+### Requirement: Diagnose a failed execution in one call
+
+The system SHALL expose `buddy_workflow_diagnose`, a read capability that
+composes an execution's failing-task logs, its workflow definition's
+transition path, any sub-workflow executions it spawned, and its merged
+Jinja render context into one ordered digest, so an agent does not need the
+usual `buddy_workflow_executions` → `buddy_execution_logs` →
+`buddy_workflow_get` → `buddy_render_jinja` round trip. It SHALL accept an
+`executionId` directly, or a `workflowId` (with `orgId`) to find that
+workflow's most recent `FAILED` execution. It is `requiresOrg:false` with
+`scopedSessions:true`, and SHALL use the same multi-session sweep semantics
+as `buddy_execution_logs` to locate task logs across active sessions.
+
+#### Scenario: Root cause found
+
+- **GIVEN** an execution with one earlier failing task followed by a later
+  cascading failure
+- **WHEN** `buddy_workflow_diagnose` is called with that execution's id
+- **THEN** the digest names the EARLIEST failing task as the likely root
+  cause, with its message, input, and result
+- **AND** it includes that task's incoming and outgoing transitions from the
+  workflow definition
+
+#### Scenario: No failing task
+
+- **GIVEN** an execution whose task logs contain no failed status
+- **WHEN** `buddy_workflow_diagnose` is called with that execution's id
+- **THEN** the digest reports that no failing task was found instead of
+  erroring
+
+#### Scenario: Failure originates in a sub-workflow call
+
+- **GIVEN** the earliest failing task spawned a child execution that itself
+  failed
+- **WHEN** `buddy_workflow_diagnose` is called
+- **THEN** the digest flags the child execution as the likely deeper cause
+  and names its id for a follow-up `buddy_workflow_diagnose` call
+
+#### Scenario: Diagnose by workflow id
+
+- **GIVEN** no `executionId` is known
+- **WHEN** `buddy_workflow_diagnose` is called with `workflowId` and `orgId`
+- **THEN** it finds and diagnoses that workflow's most recent `FAILED`
+  execution
+- **AND** it reports plainly when no `FAILED` execution exists rather than
+  erroring
+
+#### Scenario: Best-effort supplementary sections
+
+- **GIVEN** the workflow definition or the merged execution context cannot
+  be fetched (e.g. a GraphQL error)
+- **WHEN** `buddy_workflow_diagnose` is called
+- **THEN** the digest still returns the failing task's logs
+- **AND** it notes which supplementary section is unavailable instead of
+  failing the whole call

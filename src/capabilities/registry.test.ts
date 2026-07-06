@@ -1,20 +1,21 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { readdirSync, readFileSync } from 'fs';
-import { join } from 'path';
 import { SessionManager } from '@sessions';
 import { initTestEnvironment } from '@test';
-import { CAPABILITY_REGISTRY, getCapability, mcpCapabilities } from './registry';
-import { RESULT_READ_TOOL_NAME } from './resultReadCapability';
 import {
 	WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
 	WORKFLOW_SEARCH_TOOL_NAME,
 	WORKFLOW_TOOL_SPECS,
 } from '@workflow';
+import * as assert from 'assert';
+import { readdirSync, readFileSync } from 'fs';
+import * as Mocha from 'mocha';
+import { join } from 'path';
 import { WORKSPACE_TOOL_SPECS } from '../ui/chat/tools/workspaceTools';
+import { CAPABILITY_REGISTRY, getCapability, mcpCapabilities } from './registry';
+import { RESULT_READ_TOOL_NAME } from './resultReadCapability';
 
 const { suite, test, setup } = Mocha;
 
@@ -151,8 +152,15 @@ suite('Unit: capability registry', () => {
 		});
 
 		test('promoted workflow helpers keep their existing org requirements', () => {
-			for (const name of [WORKFLOW_SEARCH_TOOL_NAME, WORKFLOW_EXECUTION_LOGS_TOOL_NAME]) {
+			for (const name of [
+				WORKFLOW_SEARCH_TOOL_NAME,
+				WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+				WORKFLOW_DIAGNOSE_TOOL_NAME,
+			]) {
 				assert.strictEqual(getCapability(name)?.requiresOrg, false, `${name} does not require org`);
+			}
+			for (const name of [WORKFLOW_EXECUTION_LOGS_TOOL_NAME, WORKFLOW_DIAGNOSE_TOOL_NAME]) {
+				assert.strictEqual(getCapability(name)?.scopedSessions, true, `${name} keeps scopedSessions`);
 			}
 			for (const name of [
 				'buddy_workflow_get',

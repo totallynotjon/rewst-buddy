@@ -14,6 +14,7 @@
 import {
 	RENDER_VERIFY_STEERING,
 	WORKFLOW_COMPOSITION_STEERING,
+	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_RUN_TOOL_NAME,
@@ -44,11 +45,11 @@ export function buildMcpInstructions(): string {
 		RENDER_VERIFY_STEERING,
 		'',
 		'## Run-and-check-logs loop',
-		`After editing, run the workflow with ${WORKFLOW_RUN_TOOL_NAME} (wait:true),` +
-			` then inspect the result with ${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}.` +
-			' If a task failed, read its message, input, and result before making further edits.' +
+		`After editing, run the workflow with ${WORKFLOW_RUN_TOOL_NAME} (wait:true), then diagnose a failure` +
+			` in one call with ${WORKFLOW_DIAGNOSE_TOOL_NAME} (root cause, transition path, sub-executions, context).` +
+			` For the full task-by-task list instead, use ${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}.` +
 			' For sub-workflow failures, drill into the sub-execution id with a second' +
-			` ${WORKFLOW_EXECUTION_LOGS_TOOL_NAME} call.`,
+			` ${WORKFLOW_DIAGNOSE_TOOL_NAME} or ${WORKFLOW_EXECUTION_LOGS_TOOL_NAME} call.`,
 		'',
 		'## Oversized results',
 		'When a tool result is truncated, use buddy_result_read with the returned cache id' +
@@ -134,12 +135,14 @@ export function renderMcpPrompt(name: string, args: Record<string, string>): str
 			return [
 				`Debug ${target} using the following tool sequence:`,
 				'',
-				`1. Call \`${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}\`${
+				`1. Call \`${WORKFLOW_DIAGNOSE_TOOL_NAME}\`${
 					executionId ? ` with executionId "${executionId}"` : ''
-				} to list all task statuses.`,
-				'2. For each failed task, read its message, input, and result.',
+				} for a one-call root-cause digest.`,
+				`2. Call \`${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}\`${
+					executionId ? ` with executionId "${executionId}"` : ''
+				} for the full task-by-task list.`,
 				'3. If a task spawned a sub-execution, call ' +
-					`\`${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}\` again with the sub-execution id.`,
+					`\`${WORKFLOW_DIAGNOSE_TOOL_NAME}\` again with the sub-execution id.`,
 				'4. Use `buddy_render_jinja` to verify any suspect Jinja expressions against the execution context.',
 				`5. Propose a targeted fix and apply it with \`${WORKFLOW_EDIT_TOOL_NAME}\`.`,
 			].join('\n');
