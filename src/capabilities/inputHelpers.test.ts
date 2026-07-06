@@ -432,4 +432,23 @@ suite('Unit: inputHelpers — toInputSchema', () => {
 		assert.strictEqual(result.properties['requiredField'].type, 'string');
 		assert.strictEqual(result.properties['optionalField'].type, 'string');
 	});
+
+	test('derives schema from the real capability field helpers', () => {
+		const schema = z.object({
+			orgId: requiredStringField('orgId'),
+			search: optionalStringField(),
+			limit: optionalClampedInt(500),
+		});
+
+		const result = toInputSchema(schema) as {
+			properties: Record<string, { type: string }>;
+			required?: string[];
+		};
+
+		assert.ok(!('$schema' in result), '$schema must be stripped');
+		assert.deepStrictEqual(new Set(result.required), new Set(['orgId']));
+		assert.strictEqual(result.properties['orgId'].type, 'string');
+		assert.strictEqual(result.properties['search'].type, 'string');
+		assert.strictEqual(result.properties['limit'].type, 'number');
+	});
 });
