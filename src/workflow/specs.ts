@@ -29,6 +29,20 @@ export const WORKFLOW_COMPOSITION_STEERING =
 	'PREFER COMPOSITION over one giant canvas: repeated sequences, independently testable sections, or many tasks doing one business operation are a sign to split; give the reusable sequence (ticket lifecycle, user lookup, license handling) its own workflow with set_inputs for its run inputs and set_output for its return values, then call it as a sub-workflow task.';
 
 /**
+ * Steering fragment: check callers before changing a sub-workflow contract.
+ * Appears verbatim in buddy_workflow_edit's description and in the MCP server instructions.
+ */
+export const WORKFLOW_IMPACT_STEERING =
+	'Changing a sub-workflow contract affects every workflow that calls it: before set_inputs or set_output on a workflow that other workflows may call, run buddy_workflow_impact with that workflowId to list the callers that would break.';
+
+/**
+ * Steering fragment: search Crates and existing workflows before building anew.
+ * Appears verbatim in buddy_create_workflow's description and in the MCP server instructions.
+ */
+export const CRATE_REUSE_STEERING =
+	'Before building a new workflow, check whether a prebuilt automation already exists: search Rewst-maintained Crates with buddy_search_crates and existing workflows with your workflow-search tool; when a Crate already covers the request, report that instead of rebuilding it.';
+
+/**
  * Steering fragment: render-verify Jinja before and after edits.
  * Appears verbatim in buddy_render_jinja description and in the MCP server instructions.
  */
@@ -103,8 +117,8 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	},
 	{
 		name: WORKFLOW_EDIT_TOOL_NAME,
-		description: `Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. ${workflowEditOperationGrammar()}. Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. Loop inputs use with: {items, concurrency}; inside the loop body, {{ item() }} is the current element. At most one outgoing transition runs: the first condition that evaluates true in listed order. publish entries apply whenever that transition is taken, including on {{ FAILED }}. This tool does not expose parallel task controls. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. A caller reads that sub-workflow task result as RESULT.<name>, matching the callee's set_output contract. ${WORKFLOW_COMPOSITION_STEERING}`,
-		// NOTE: WORKFLOW_COMPOSITION_STEERING is embedded verbatim above — do not paraphrase it here.
+		description: `Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. ${workflowEditOperationGrammar()}. Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. Loop inputs use with: {items, concurrency}; inside the loop body, {{ item() }} is the current element. At most one outgoing transition runs: the first condition that evaluates true in listed order. publish entries apply whenever that transition is taken, including on {{ FAILED }}. This tool does not expose parallel task controls. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. A caller reads that sub-workflow task result as RESULT.<name>, matching the callee's set_output contract. ${WORKFLOW_COMPOSITION_STEERING} ${WORKFLOW_IMPACT_STEERING}`,
+		// NOTE: WORKFLOW_COMPOSITION_STEERING and WORKFLOW_IMPACT_STEERING are embedded verbatim above — do not paraphrase them here.
 		inputSchema: {
 			type: 'object',
 			properties: {

@@ -1,22 +1,28 @@
 import type { Capability } from './Capability';
-import { WORKFLOW_CHAT_CAPABILITIES, WORKSPACE_CHAT_CAPABILITIES, graphqlSchemaCapability } from './chatToolCapabilities';
+import {
+	WORKFLOW_CHAT_CAPABILITIES,
+	WORKSPACE_CHAT_CAPABILITIES,
+	graphqlSchemaCapability,
+} from './chatToolCapabilities';
+import { CRATE_CAPABILITIES } from './crateCapabilities';
 import { graphqlMutateCapability } from './graphqlMutateCapability';
+import { JINJA_DOCS_CAPABILITIES } from './jinjaDocsCapabilities';
+import { ORG_USER_CAPABILITIES } from './orgUserCapabilities';
+import { ORG_VARIABLE_MUTATE_CAPABILITIES } from './orgVariableMutateCapabilities';
+import { PACK_INTEGRATION_CAPABILITIES } from './packIntegrationCapabilities';
+import { PAGE_TEMPLATE_CAPABILITIES } from './pageTemplateCapabilities';
 import { resultReadCapability } from './resultReadCapability';
 import { READ_CAPABILITIES } from './rewstReadCapabilities';
-import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
-import { PACK_INTEGRATION_CAPABILITIES } from './packIntegrationCapabilities';
-import { ORG_USER_CAPABILITIES } from './orgUserCapabilities';
-import { PAGE_TEMPLATE_CAPABILITIES } from './pageTemplateCapabilities';
-import { ORG_VARIABLE_MUTATE_CAPABILITIES } from './orgVariableMutateCapabilities';
 import { TAG_MUTATE_CAPABILITIES } from './tagMutateCapabilities';
-import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
-import { TRIGGER_MUTATE_CAPABILITIES } from './triggerMutateCapabilities';
+import { TEMPLATE_CLONE_CAPABILITIES } from './templateCloneCapabilities';
+import { TEMPLATE_LINK_CAPABILITIES } from './templateLinkCapabilities';
 import { TEMPLATE_MUTATE_CAPABILITIES } from './templateMutateCapabilities';
 import { TEMPLATE_SYNC_CAPABILITIES } from './templateSyncCapabilities';
-import { TEMPLATE_LINK_CAPABILITIES } from './templateLinkCapabilities';
-import { TEMPLATE_CLONE_CAPABILITIES } from './templateCloneCapabilities';
+import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
+import { TRIGGER_MUTATE_CAPABILITIES } from './triggerMutateCapabilities';
+import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
+import { workflowImpactCapability } from './workflowImpactCapability';
 import { WORKING_SCOPE_CAPABILITIES } from './workingScopeCapability';
-import { JINJA_DOCS_CAPABILITIES } from './jinjaDocsCapabilities';
 
 /**
  * The single source of truth for Rewst capabilities. Every capability is
@@ -43,6 +49,8 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...TEMPLATE_CLONE_CAPABILITIES,
 	...WORKING_SCOPE_CAPABILITIES,
 	...JINJA_DOCS_CAPABILITIES,
+	...CRATE_CAPABILITIES,
+	workflowImpactCapability,
 	graphqlMutateCapability,
 	resultReadCapability,
 ];

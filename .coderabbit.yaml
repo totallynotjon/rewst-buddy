@@ -19,6 +19,11 @@ reviews:
     auto_review:
         enabled: true
         drafts: false
+        # Don't re-review on every push: a push while a review is in progress
+        # cancels it, and the rate limit can then block the replacement — leaving
+        # the PR with no review at all. Reviews run when the PR is marked ready;
+        # after pushing follow-ups, re-review with an `@coderabbitai review` comment.
+        auto_incremental_review: false
 
     # Skip generated and build artifacts so review focuses on hand-written source.
     path_filters:

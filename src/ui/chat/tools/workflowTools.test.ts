@@ -3,12 +3,14 @@ import { initTestEnvironment } from '@test';
 import {
 	ADD_TASK_FIELD_NAMES,
 	ADVANCED_TASK_FIELD_TABLE,
-	type RawWorkflow,
 	UPDATE_TASK_SET_FIELD_NAMES,
+	WORKFLOW_IMPACT_STEERING,
 	workflowEditOperationGrammar,
+	type RawWorkflow,
 } from '@workflow';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
+import { getCapability } from '../../../capabilities/registry';
 import { _resetApprovedMutationScopes, approveMutationScope, type GraphqlToolDeps } from './graphqlTool';
 import {
 	_resetWorkflowIndexForTesting,
@@ -107,9 +109,26 @@ suite('Unit: workflowTools', () => {
 	test('workflow tool guidance does not reference unregistered tools', () => {
 		const names = new Set(WORKFLOW_TOOL_SPECS.map(tool => tool.name));
 		assert.ok(!names.has('buddy_workflow_impact'));
-		for (const spec of WORKFLOW_TOOL_SPECS) {
-			assert.doesNotMatch(spec.description, /\bbuddy_workflow_impact\b/, spec.name);
-		}
+		// buddy_workflow_impact is referenced in buddy_workflow_edit's description via WORKFLOW_IMPACT_STEERING
+		// but is NOT a WORKFLOW_TOOL_SPECS entry — that is correct by design
+	});
+
+	test('buddy_workflow_edit spec steers an impact check before sub-workflow contract changes', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.ok(
+			spec.description.includes(WORKFLOW_IMPACT_STEERING),
+			'buddy_workflow_edit description embeds WORKFLOW_IMPACT_STEERING verbatim',
+		);
+		assert.ok(
+			spec.description.includes('buddy_workflow_impact'),
+			'buddy_workflow_edit description mentions buddy_workflow_impact',
+		);
+		// Cross-layer drift guard: the capability must be registered
+		assert.ok(
+			getCapability('buddy_workflow_impact') !== undefined,
+			'buddy_workflow_impact capability is registered (cross-layer drift guard)',
+		);
 	});
 
 	test('buddy_workflow_get spec reserves full detail for ids and positions, not ordinary edits', () => {

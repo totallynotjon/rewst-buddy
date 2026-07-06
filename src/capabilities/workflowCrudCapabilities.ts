@@ -1,3 +1,4 @@
+import { CRATE_REUSE_STEERING } from '@workflow';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
@@ -54,7 +55,8 @@ async function requireWorkflowInOrg(ctx: CapabilityContext, workflowId: string, 
 const createWorkflowSpec: ToolSpec = {
 	name: 'buddy_create_workflow',
 	args: '{"orgId": string, "name": string, "description"?: string}',
-	description: `Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code.`,
+	description: `Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code. ${CRATE_REUSE_STEERING}`,
+	// NOTE: CRATE_REUSE_STEERING is embedded verbatim above — do not paraphrase it here.
 	inputSchema: {
 		type: 'object',
 		properties: {

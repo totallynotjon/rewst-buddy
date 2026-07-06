@@ -1,6 +1,3 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
 import {
 	_resetMcpMutationApproverForTesting,
 	setMcpMutationApprover,
@@ -8,7 +5,12 @@ import {
 	type CapabilityContext,
 } from '@capabilities';
 import type { Session } from '@sessions';
+import { initTestEnvironment } from '@test';
+import { CRATE_REUSE_STEERING } from '@workflow';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
+import { getCapability } from './registry';
 import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -238,5 +240,22 @@ suite('Unit: workflowCrudCapabilities', () => {
 				/returned no id/,
 			);
 		});
+	});
+
+	test('buddy_create_workflow spec steers crate and workflow reuse before building', () => {
+		const c = cap('buddy_create_workflow');
+		assert.ok(
+			c.spec.description.includes(CRATE_REUSE_STEERING),
+			'buddy_create_workflow description embeds CRATE_REUSE_STEERING verbatim',
+		);
+		assert.ok(
+			c.spec.description.includes('buddy_search_crates'),
+			'buddy_create_workflow description mentions buddy_search_crates',
+		);
+		// Cross-layer drift guard: the capability must be registered
+		assert.ok(
+			getCapability('buddy_search_crates') !== undefined,
+			'buddy_search_crates capability is registered (cross-layer drift guard)',
+		);
 	});
 });
