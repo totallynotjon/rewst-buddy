@@ -446,33 +446,42 @@ NOT be able to widen `alwaysAllowedOrgs`.
 
 ### Requirement: Validate tool inputs defensively
 
-Each capability SHALL validate and coerce every input at the `run()` boundary
-using `parseCapabilityInput` against its Zod schema (required strings, clamped
-integers, enum checks). The advertised `inputSchema` is derived from the same
-Zod schema via `toInputSchema`, so the schema and the enforcement are always in
-sync. Capabilities with domain-specific constraints (e.g. rejecting epoch-ms
-dates, providing friendly enum error messages) MAY add pre-parse guards before
-calling `parseCapabilityInput`.
+Because tool inputs are not validated against the advertised `inputSchema` by
+the MCP transport, each capability SHALL validate and coerce its own input
+before use. Where a capability's input is defined as a schema object, that
+schema SHALL be the single source for both the runtime parse and the
+advertised `inputSchema` (derived from the schema), so the two can never drift
+independently. A validation failure SHALL surface one clear, human-readable
+message -- never a raw serialized list of every issue.
 
 #### Scenario: Out-of-range numeric input
 
 - **GIVEN** a tool that accepts a `limit`
 - **WHEN** a caller passes a value past the maximum
 - **THEN** the capability clamps it to the allowed maximum rather than honoring
-  the raw value
+  the raw value or rejecting the call
 
-#### Scenario: Invalid enum value
+#### Scenario: Invalid enum argument is rejected with a clear message
 
-- **GIVEN** a tool that accepts an enum field (e.g. `modelType`)
-- **WHEN** a caller passes a value not in the enum
-- **THEN** the capability throws with a human-readable message naming the
-  invalid value and listing the valid options
+- **GIVEN** a tool argument constrained to a fixed set of values
+- **WHEN** a caller passes a value outside that set
+- **THEN** the capability rejects the call with a single message naming the
+  invalid value and the allowed values, not a raw validation-error dump
 
-#### Scenario: Missing required field
+#### Scenario: Missing required argument is rejected with a clear message
 
-- **GIVEN** a tool that requires a field (e.g. `modelType`)
-- **WHEN** a caller omits it
-- **THEN** the capability throws with a message identifying the missing field
+- **GIVEN** a tool argument that is required
+- **WHEN** a caller omits it or passes the wrong type
+- **THEN** the capability rejects the call with a single message naming the
+  missing argument
+
+Implementation status: as of this requirement's schema-based rewrite,
+`src/capabilities/rewstReadCapabilities.ts` validates through per-capability
+Zod schemas per the contract above (`inputHelpers.ts`'s
+`parseCapabilityInput` + `toInputSchema`). The remaining capability files
+still validate via the hand-rolled `asString`/`requireString`/`asPositiveInt`
+helpers in `inputHelpers.ts`; they migrate to the same schema-based contract
+incrementally in follow-up PRs (epic #129 C2).
 
 ### Requirement: Verify saved task inputs after a workflow edit
 

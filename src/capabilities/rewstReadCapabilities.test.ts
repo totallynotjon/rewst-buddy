@@ -720,11 +720,7 @@ suite('Unit: rewstReadCapabilities', () => {
 
 		const calls = wrapper.getCallsFor('rawGraphql');
 		assert.strictEqual(calls.length, 1);
-		// limit must be clamped to MAX_WORKFLOW_LIMIT (500), not the raw 99999
-		assert.ok(
-			(calls[0].variables.variables as { limit?: number }).limit! <= 500,
-			`expected limit clamped to <=500, got ${(calls[0].variables.variables as { limit?: number }).limit}`,
-		);
+		assert.strictEqual((calls[0].variables.variables as { limit?: number }).limit, 500);
 	});
 
 	test('buddy_list_workflows treats a negative limit as absent (falls back to default)', async () => {
@@ -812,6 +808,24 @@ suite('Unit: rewstReadCapabilities', () => {
 		);
 	});
 
+	test('buddy_get_workflow_execution_stats rejects any all-digit createdSince string', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', { data: { data: { workflowExecutionStats: { succeeded: 1 } } } });
+		const getStats = getCapability('buddy_get_workflow_execution_stats');
+		assert.ok(getStats, 'buddy_get_workflow_execution_stats is registered');
+
+		await assert.rejects(
+			() =>
+				getStats.run({ orgId: 'org-1', createdSince: '20250101' }, {
+					session,
+					orgId: 'org-1',
+					sessions: [session],
+				} satisfies CapabilityContext),
+			/createdSince must be an ISO-8601 date string; epoch milliseconds are not supported\./,
+		);
+	});
+
 	test('buddy_get_workflow_execution_stats accepts a bare ISO date', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
@@ -858,6 +872,36 @@ suite('Unit: rewstReadCapabilities', () => {
 		);
 	});
 
+	test('buddy_resolve_reference trims modelType before enum validation', async () => {
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', {
+			data: {
+				data: {
+					localReferenceOptions: [
+						{
+							label: 'Foo workflow',
+							value: 'wf-1',
+						},
+					],
+				},
+			},
+		});
+		const resolveReference = getCapability('buddy_resolve_reference');
+		assert.ok(resolveReference, 'buddy_resolve_reference is registered');
+
+		const output = await resolveReference.run({ orgId: 'org-1', modelType: ' Workflow ' }, {
+			session,
+			orgId: 'org-1',
+			sessions: [session],
+		} satisfies CapabilityContext);
+
+		const calls = wrapper.getCallsFor('rawGraphql');
+		assert.strictEqual(calls.length, 1);
+		assert.strictEqual(calls[0].variables.variables.modelName, 'Workflow');
+		assert.strictEqual(output, 'Foo workflow (wf-1)');
+	});
+
 	test('buddy_get_template rejects a missing templateId', async () => {
 		const { session } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		const getTemplate = getCapability('buddy_get_template');
@@ -875,7 +919,9 @@ suite('Unit: rewstReadCapabilities', () => {
 	});
 
 	test('buddy_graphql_query rejects a non-object variables value (array)', async () => {
-		const { session } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', { data: { data: { workflows: [] } } });
 		const graphqlQuery = getCapability('buddy_graphql_query');
 		assert.ok(graphqlQuery, 'buddy_graphql_query is registered');
 
@@ -886,8 +932,9 @@ suite('Unit: rewstReadCapabilities', () => {
 					orgId: 'org-1',
 					sessions: [session],
 				} satisfies CapabilityContext),
-			/./,
+			/expected record|JSON object|received array/i,
 			'should reject when variables is an array',
 		);
+		assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 0);
 	});
 });

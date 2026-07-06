@@ -58,6 +58,11 @@ const LOCAL_REFERENCE_MODELS = [
 	'Page',
 ] as const;
 
+const modelTypeMessage = (received: unknown) =>
+	received === undefined || received === null || received === ''
+		? 'Missing required string argument "modelType".'
+		: `Invalid modelType "${String(received)}". Valid modelType values: ${LOCAL_REFERENCE_MODELS.join(', ')}`;
+
 /** Lists every org reachable through the active sessions; needs no org id. */
 const listOrgsInputSchema = z.object({});
 const listOrgsSpec: ToolSpec = {
@@ -217,9 +222,11 @@ const latestWorkflowExecutionSpec: ToolSpec = {
 
 const getWorkflowExecutionStatsInputSchema = z.object({
 	orgId: ORG_ID_FIELD,
-	createdSince: requiredStringField('createdSince').describe(
-		'ISO-8601 date string such as 2025-01-01 or 2025-01-01T00:00:00Z.',
-	),
+	createdSince: requiredStringField('createdSince')
+		.refine(value => !/^\d+$/.test(value), {
+			error: 'createdSince must be an ISO-8601 date string; epoch milliseconds are not supported.',
+		})
+		.describe('ISO-8601 date string such as 2025-01-01 or 2025-01-01T00:00:00Z.'),
 });
 const getWorkflowExecutionStatsSpec: ToolSpec = {
 	name: 'buddy_get_workflow_execution_stats',
@@ -248,7 +255,12 @@ const findActionSpec: ToolSpec = {
 
 const resolveReferenceInputSchema = z.object({
 	orgId: ORG_ID_FIELD,
-	modelType: z.enum(LOCAL_REFERENCE_MODELS).describe('Which kind of Rewst object to resolve.'),
+	modelType: z
+		.preprocess(
+			raw => (typeof raw === 'string' ? raw.trim() : raw),
+			z.enum(LOCAL_REFERENCE_MODELS, { error: issue => modelTypeMessage(issue.input) }),
+		)
+		.describe('Which kind of Rewst object to resolve.'),
 	search: optionalStringField().describe('Optional case-insensitive name substring filter.'),
 	limit: optionalClampedInt(MAX_REFERENCE_LIMIT).describe(
 		`Max references to return (default ${DEFAULT_REFERENCE_LIMIT}, max ${MAX_REFERENCE_LIMIT}).`,
@@ -721,12 +733,6 @@ async function runLatestWorkflowExecution(input: Record<string, unknown>, ctx: C
 
 async function runGetWorkflowExecutionStats(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	const { orgId, createdSince } = parseCapabilityInput(getWorkflowExecutionStatsInputSchema, input);
-	// Reject epoch-millisecond strings (all-digit, 13+ chars) — the API only accepts ISO-8601.
-	if (/^\d{13,}$/.test(createdSince)) {
-		throw new Error(
-			'epoch milliseconds are not supported; use an ISO-8601 date string such as 2025-01-01 or 2025-01-01T00:00:00Z.',
-		);
-	}
 	const variables = { orgId, createdSince };
 	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_EXECUTION_STATS_QUERY, variables);
 	const stats = (
@@ -801,16 +807,6 @@ async function runFindAction(input: Record<string, unknown>, ctx: CapabilityCont
 }
 
 async function runResolveReference(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	// Provide friendly errors for missing/invalid modelType before Zod's generic enum message.
-	const rawModelType = input.modelType;
-	if (rawModelType === undefined || rawModelType === null || rawModelType === '') {
-		throw new Error('Missing required string argument "modelType".');
-	}
-	if (!LOCAL_REFERENCE_MODELS.includes(rawModelType as (typeof LOCAL_REFERENCE_MODELS)[number])) {
-		throw new Error(
-			`Invalid modelType "${rawModelType}". Valid modelType values: ${LOCAL_REFERENCE_MODELS.join(', ')}`,
-		);
-	}
 	const { orgId, modelType, search, limit: rawLimit } = parseCapabilityInput(resolveReferenceInputSchema, input);
 	const limit = rawLimit ?? DEFAULT_REFERENCE_LIMIT;
 	const variables: Record<string, unknown> = { orgId, modelName: modelType, limit };
