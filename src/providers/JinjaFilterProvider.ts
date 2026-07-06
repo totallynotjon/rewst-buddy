@@ -30,6 +30,19 @@ function toCompletionItem(filter: JinjaFilterDoc): vscode.CompletionItem {
 	return item;
 }
 
+/** Cache-only lookup for a linked document's filter catalog; primes on a miss, never fetches. */
+function resolveCachedFilters(uri: vscode.Uri): JinjaFilterDoc[] | undefined {
+	const base = engineBaseForLinkedDocument(uri);
+	if (!base) return undefined;
+
+	const cached = getCachedFilters(base);
+	if (!cached) {
+		primeFilters(base);
+		return undefined;
+	}
+	return cached;
+}
+
 export class JinjaFilterProvider implements vscode.HoverProvider, vscode.CompletionItemProvider {
 	provideHover(
 		document: vscode.TextDocument,
@@ -42,14 +55,8 @@ export class JinjaFilterProvider implements vscode.HoverProvider, vscode.Complet
 		const name = findJinjaFilterNameAtPosition(line, position.character);
 		if (!name) return undefined;
 
-		const base = engineBaseForLinkedDocument(document.uri);
-		if (!base) return undefined;
-
-		const cached = getCachedFilters(base);
-		if (!cached) {
-			primeFilters(base);
-			return undefined;
-		}
+		const cached = resolveCachedFilters(document.uri);
+		if (!cached) return undefined;
 
 		const filter = cached.find(f => f.name === name);
 		if (!filter) return undefined;
@@ -72,14 +79,8 @@ export class JinjaFilterProvider implements vscode.HoverProvider, vscode.Complet
 		const trigger = findJinjaFilterTriggerAtPosition(line, position.character);
 		if (!trigger) return undefined;
 
-		const base = engineBaseForLinkedDocument(document.uri);
-		if (!base) return undefined;
-
-		const cached = getCachedFilters(base);
-		if (!cached) {
-			primeFilters(base);
-			return undefined;
-		}
+		const cached = resolveCachedFilters(document.uri);
+		if (!cached) return undefined;
 
 		return cached.map(toCompletionItem);
 	}

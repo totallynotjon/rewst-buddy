@@ -19,6 +19,14 @@ import { nonEmptyString } from './types';
 
 export { orgFromTemplate } from './templateLinkFactory';
 
+/**
+ * Thrown when the user closes a conflict diff without choosing Keep Local or
+ * Take Remote. Distinct from a real failure so callers (`handleSave`,
+ * `SyncTemplate`) can abort quietly instead of showing a red error
+ * notification for what is an intentional, clean no-op.
+ */
+export class ConflictDismissedError extends Error {}
+
 type ConflictChoice = 'Keep Local' | 'Take Remote' | undefined;
 
 /** Injectable seam for conflict resolution: real diff/prompt/cleanup vs. test doubles. */
@@ -251,6 +259,10 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			await this.syncTemplate(document);
 			log.notifyInfo('SUCCESS: Synced template');
 		} catch (e) {
+			if (e instanceof ConflictDismissedError) {
+				log.debug('handleSave: sync aborted, conflict dismissed');
+				return;
+			}
 			log.notifyError('Failed to sync template:', e);
 		}
 	}
@@ -300,6 +312,7 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 			await this.syncTemplateInternal(doc);
 			log.trace('syncTemplate: completed successfully');
 		} catch (e) {
+			if (e instanceof ConflictDismissedError) throw e;
 			throw log.error('syncTemplate: failed', e);
 		} finally {
 			this.syncingUris.delete(uriKey);
@@ -473,7 +486,8 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 					break;
 
 				case undefined:
-					throw log.error('handleConflict: operation aborted by user');
+					log.debug('handleConflict: dismissed without a choice');
+					throw new ConflictDismissedError('Conflict diff closed without a choice');
 			}
 		} finally {
 			await this.conflictDeps.closeDiff(doc);

@@ -179,4 +179,29 @@ suite('Unit: isInsideTemplateCallPrefix()', () => {
 		const line = 'no template call here';
 		assert.strictEqual(isInsideTemplateCallPrefix(line, 5), false);
 	});
+
+	test('true when cursor is mid-string, before the closing quote', () => {
+		const line = 'template("550e8400-e29b-41d4-a716-446655440000")';
+		const character = line.indexOf('e29b');
+		assert.strictEqual(isInsideTemplateCallPrefix(line, character), true);
+	});
+
+	test('false when cursor sits between template( and the opening quote', () => {
+		const line = 'template( "550e8400-e29b-41d4-a716-446655440000")';
+		const character = line.indexOf('(') + 1;
+		assert.strictEqual(isInsideTemplateCallPrefix(line, character), false);
+	});
+
+	test('true inside the second of multiple template( calls on the same line', () => {
+		const line =
+			'template("11111111-1111-1111-1111-111111111111") template("22222222-2222-2222-2222-222222222222")';
+		const character = line.lastIndexOf('22222222');
+		assert.strictEqual(isInsideTemplateCallPrefix(line, character), true);
+	});
+
+	test('false between two template( calls, after the first closes', () => {
+		const line = 'template("11111111-1111-1111-1111-111111111111") template("';
+		const character = line.indexOf(') ') + 1;
+		assert.strictEqual(isInsideTemplateCallPrefix(line, character), false);
+	});
 });

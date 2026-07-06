@@ -76,6 +76,26 @@ suite('Unit: RewstQuickDiffProvider', () => {
 		assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 1);
 	});
 
+	test('reuses the same rewst-remote uri across repeated calls within the TTL (no unbounded growth)', async () => {
+		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery({ id: 't1', body: '// remote body' }) });
+		SessionManager._setSessionsForTesting([session]);
+		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
+
+		const first = await RewstQuickDiffProvider.provideOriginalResource(uri);
+		const second = await RewstQuickDiffProvider.provideOriginalResource(uri);
+		const third = await RewstQuickDiffProvider.provideOriginalResource(uri);
+
+		assert.ok(first);
+		assert.strictEqual(
+			first!.toString(),
+			second!.toString(),
+			'repeated decorations-pipeline polls must not allocate a new virtual document each time',
+		);
+		assert.strictEqual(second!.toString(), third!.toString());
+	});
+
 	test('refetches after the TTL expires', async () => {
 		RewstQuickDiffProvider._setTtlForTesting(1);
 		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
@@ -111,6 +131,56 @@ suite('Unit: RewstQuickDiffProvider', () => {
 		assert.ok(second, 'should fall back to the stale cache instead of returning undefined');
 		assert.strictEqual(second!.scheme, REWST_REMOTE_SCHEME);
 		assert.strictEqual(calls, 2, 'a refetch was attempted and failed');
+	});
+
+	test('evicts the cache entry when the file is unlinked', async () => {
+		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getTemplate', { data: Fixtures.getTemplateQuery({ id: 't1', body: '// remote body' }) });
+		SessionManager._setSessionsForTesting([session]);
+		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
+
+		RewstQuickDiffProvider.init();
+		try {
+			await RewstQuickDiffProvider.provideOriginalResource(uri);
+			assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 1);
+
+			LinkManager.removeLink(uri.toString());
+
+			const result = await RewstQuickDiffProvider.provideOriginalResource(uri);
+			assert.strictEqual(result, undefined, 'unlinked file resolves no original resource');
+		} finally {
+			RewstQuickDiffProvider.dispose();
+		}
+	});
+
+	test('evicts the cache entry when relinked to a different template within the TTL', async () => {
+		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getTemplate', (vars: any) => ({
+			data: Fixtures.getTemplateQuery({ id: vars.id, body: `// body for ${vars.id}` }),
+		}));
+		SessionManager._setSessionsForTesting([session]);
+		LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't1'));
+
+		RewstQuickDiffProvider.init();
+		try {
+			const first = await RewstQuickDiffProvider.provideOriginalResource(uri);
+			assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 1);
+
+			// Relink the same uri to a different template, well within the TTL window.
+			LinkManager.addLink(makeTemplateLink(uri, org.id, org.name, 't2'));
+
+			const second = await RewstQuickDiffProvider.provideOriginalResource(uri);
+			assert.strictEqual(
+				wrapper.getCallsFor('getTemplate').length,
+				2,
+				'a relink to a different template must not keep serving the previous template body from cache',
+			);
+			assert.notStrictEqual(first!.toString(), second!.toString());
+		} finally {
+			RewstQuickDiffProvider.dispose();
+		}
 	});
 
 	test('dispose() clears the cache and disposes the SourceControl', async () => {

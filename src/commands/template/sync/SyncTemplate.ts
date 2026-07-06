@@ -1,4 +1,4 @@
-import { SyncManager } from '@models';
+import { ConflictDismissedError, SyncManager } from '@models';
 import { getDocumentFromArgs, log } from '@utils';
 import GenericCommand from '../../GenericCommand';
 
@@ -14,6 +14,10 @@ export class SyncTemplate extends GenericCommand {
 			await SyncManager.syncTemplate(document);
 			log.notifyInfo('SUCCESS: Synced template');
 		} catch (e) {
+			if (e instanceof ConflictDismissedError) {
+				log.debug('SyncTemplate: sync aborted, conflict dismissed');
+				return;
+			}
 			log.notifyError('Failed to sync template:', e);
 		}
 	}

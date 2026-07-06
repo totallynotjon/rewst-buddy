@@ -1,7 +1,7 @@
 import { FolderLink, LinkManager, Org, SyncOnSaveManager, TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
-import { getHash } from '@utils';
+import { getHash, log } from '@utils';
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as Mocha from 'mocha';
@@ -652,6 +652,64 @@ suite('Unit: SyncManager.handleSave (sync on save)', () => {
 
 		assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 0, 'no fetch without sync-on-save');
 		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload without sync-on-save');
+	});
+
+	test('dismissing a conflict during sync-on-save is a clean no-op, not a scary error notification', async () => {
+		const uri = vscode.Uri.file('/test/save-conflict-file.txt');
+		const templateId = 'template-save-conflict';
+		const org = Fixtures.orgModel({ id: 'org-save-conflict', name: 'Save Conflict Org' });
+
+		const link: TemplateLink = {
+			type: 'Template',
+			uriString: uri.toString(),
+			org,
+			template: { id: templateId, name: 'T', updatedAt: 'local-ts' } as any,
+			bodyHash: getHash('// some prior synced content'),
+		};
+		LinkManager.addLink(link);
+
+		const { session, wrapper } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		wrapper.when('getTemplate', {
+			data: Fixtures.getTemplateQuery({
+				id: templateId,
+				name: 'T',
+				body: '// remote content, different from local',
+				updatedAt: 'remote-ts',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			}),
+		});
+		SessionManager._setSessionsForTesting([session]);
+		SyncOnSaveManager.enableSync(uri);
+
+		SyncManager._setConflictDepsForTesting({
+			showDiff: async () => vscode.Uri.file('/test/fake-remote'),
+			promptChoice: async () => undefined,
+			closeDiff: async () => {},
+		});
+
+		let notifyErrorCalls = 0;
+		const restoreError = stub(log, 'notifyError', ((message: string) => {
+			notifyErrorCalls++;
+			return new Error(message);
+		}) as typeof log.notifyError);
+		let notifyInfoCalls = 0;
+		const restoreInfo = stub(log, 'notifyInfo', (() => {
+			notifyInfoCalls++;
+		}) as typeof log.notifyInfo);
+
+		const doc = createMockDocument({ uri, content: '// locally edited content' });
+
+		try {
+			await (SyncManager as any)['handleSave'](doc);
+		} finally {
+			restoreError();
+			restoreInfo();
+			SyncManager._resetConflictDepsForTesting();
+		}
+
+		assert.strictEqual(notifyErrorCalls, 0, 'a dismissed conflict is a clean abort, not an error notification');
+		assert.strictEqual(notifyInfoCalls, 0, 'a dismissed conflict did not succeed either');
 	});
 });
 

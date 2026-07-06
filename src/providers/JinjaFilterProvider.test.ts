@@ -120,6 +120,20 @@ suite('Unit: JinjaFilterProvider', () => {
 			const second = provider.provideHover(doc, new vscode.Position(0, character), dummyToken);
 			assert.ok(second instanceof vscode.Hover, 'background prime should have populated the cache by now');
 		});
+
+		test('linked but no session for the org → undefined, no throw', () => {
+			const org = Fixtures.orgModel({ id: 'org-1', name: 'Org 1' });
+			LinkManager.addLink(makeTemplateLink(uri, org.id, org.name));
+			SessionManager._setSessionsForTesting([]);
+
+			const line = '{{ name | center }}';
+			const doc = makeDoc(uri, line);
+			const character = line.indexOf('center') + 2;
+			assert.doesNotThrow(() => {
+				const result = provider.provideHover(doc, new vscode.Position(0, character), dummyToken);
+				assert.strictEqual(result, undefined);
+			});
+		});
 	});
 
 	suite('provideCompletionItems()', () => {

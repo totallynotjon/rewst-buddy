@@ -47,6 +47,22 @@ suite('Unit: findJinjaFilterTriggerAtPosition()', () => {
 		assert.ok(trigger);
 		assert.strictEqual(trigger!.partial, 'tri');
 	});
+
+	test('detects a trigger inside a {% %}-closed span', () => {
+		const line = '{% if x | up %}';
+		const character = line.indexOf('up') + 2;
+		const trigger = findJinjaFilterTriggerAtPosition(line, character);
+		assert.ok(trigger);
+		assert.strictEqual(trigger!.partial, 'up');
+	});
+
+	test('picks the enclosing span on a line with two separate Jinja spans', () => {
+		const line = '{{ a | b }} text {{ c | up }}';
+		const character = line.indexOf('up') + 2;
+		const trigger = findJinjaFilterTriggerAtPosition(line, character);
+		assert.ok(trigger);
+		assert.strictEqual(trigger!.partial, 'up');
+	});
 });
 
 suite('Unit: findJinjaFilterNameAtPosition()', () => {
@@ -66,6 +82,12 @@ suite('Unit: findJinjaFilterNameAtPosition()', () => {
 		const line = 'upper case text';
 		const character = line.indexOf('upper') + 2;
 		assert.strictEqual(findJinjaFilterNameAtPosition(line, character), null);
+	});
+
+	test('finds filter name inside a {% %}-closed span', () => {
+		const line = '{% if x | upper %}';
+		const character = line.indexOf('upper') + 2;
+		assert.strictEqual(findJinjaFilterNameAtPosition(line, character), 'upper');
 	});
 });
 
