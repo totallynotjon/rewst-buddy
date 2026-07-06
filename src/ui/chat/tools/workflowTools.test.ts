@@ -3,6 +3,7 @@ import { initTestEnvironment } from '@test';
 import {
 	ADD_TASK_FIELD_NAMES,
 	ADVANCED_TASK_FIELD_TABLE,
+	RESULT_SHAPE_STEERING,
 	UPDATE_TASK_SET_FIELD_NAMES,
 	WORKFLOW_IMPACT_STEERING,
 	workflowEditOperationGrammar,
@@ -156,6 +157,8 @@ suite('Unit: workflowTools', () => {
 		assert.match(spec.description, /packOverrides/, 'documents integration override edits');
 		assert.match(spec.description, /isMocked/, 'documents task mocking edits');
 		assert.match(spec.description, /mockInput/, 'documents mock input edits');
+		assert.match(spec.description, /mock_result/, 'documents the required mock_result wrapper');
+		assert.match(spec.description, /leaf value.*string/i, 'documents string-leaf mock result validation');
 		assert.match(spec.description, /with:\s*\{items, concurrency\}/, 'documents loop concurrency shape');
 		assert.match(spec.description, /add_task \{[^}]*description\?[^}]*runAsOrgId\?/, 'enumerates add_task fields');
 	});
@@ -195,7 +198,13 @@ suite('Unit: workflowTools', () => {
 		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
 		assert.ok(spec, 'buddy_workflow_edit spec exists');
 		assert.match(spec.description, /set_output \{outputs/, 'set_output is listed as an operation');
-		assert.match(spec.description, /RESULT\.<name>/, 'ties a sub-workflow call result to the set_output contract');
+		assert.match(
+			spec.description,
+			/RESULT\.<output-key>/,
+			'ties a sub-workflow call result to the set_output contract',
+		);
+		assert.ok(spec.description.includes(RESULT_SHAPE_STEERING), 'RESULT shape steering appears verbatim');
+		assert.match(spec.description, /RESULT\.result\.<field>/, 'teaches built-in action result shape');
 		assert.match(spec.description, /prefer composition/i, 'recommends composing over one giant canvas');
 		assert.match(
 			spec.description,
@@ -676,7 +685,7 @@ suite('Unit: workflowTools', () => {
 							{ packId: 'pack-1', packConfigId: 'cfg-1', configSelectionMode: 'USE_SELECTED_ID' },
 						],
 						isMocked: true,
-						mockInput: { id: 'mocked' },
+						mockInput: { mock_result: { id: '{{ "mocked" }}' } },
 						retry: { count: '3', delay: '5', when: '{{ FAILED }}' },
 					},
 				},
@@ -688,7 +697,7 @@ suite('Unit: workflowTools', () => {
 				{ packId: 'pack-1', packConfigId: 'cfg-1', configSelectionMode: 'USE_SELECTED_ID' },
 			]);
 			assert.strictEqual(start.isMocked, true);
-			assert.deepStrictEqual(start.mockInput, { id: 'mocked' });
+			assert.deepStrictEqual(start.mockInput, { mock_result: { id: '{{ "mocked" }}' } });
 			assert.deepStrictEqual(start.retry, { count: '3', delay: '5', when: '{{ FAILED }}' });
 		});
 
@@ -701,7 +710,7 @@ suite('Unit: workflowTools', () => {
 					runAsOrgId: '{{ CTX.org_id }}',
 					packOverrides: [{ packId: 'pack-1', configSelectionMode: 'USE_DEFAULT' }],
 					isMocked: true,
-					mockInput: { ok: true },
+					mockInput: { mock_result: { ok: '{{ true }}' } },
 					retry: { count: '2' },
 				},
 			];
@@ -710,7 +719,7 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(notify.runAsOrgId, '{{ CTX.org_id }}');
 			assert.deepStrictEqual(notify.packOverrides, [{ packId: 'pack-1', configSelectionMode: 'USE_DEFAULT' }]);
 			assert.strictEqual(notify.isMocked, true);
-			assert.deepStrictEqual(notify.mockInput, { ok: true });
+			assert.deepStrictEqual(notify.mockInput, { mock_result: { ok: '{{ true }}' } });
 			assert.deepStrictEqual(notify.retry, { count: '2' });
 		});
 
@@ -808,20 +817,92 @@ suite('Unit: workflowTools', () => {
 			assert.strictEqual(tasks.find(t => t.name === 'notify')!.description, 'Sends the alert');
 		});
 
-		test('mockInput parses a JSON-string payload back to an object (not a char-indexed blob)', () => {
+		test('mockInput parses a JSON-string payload back to a mock_result object', () => {
 			const ops: WorkflowOperation[] = [
 				{
 					op: 'add_task',
 					name: 'notify',
 					action: 'core.noop',
 					isMocked: true,
-					mockInput: '{"ok": true}',
+					mockInput: '{"mock_result": {"ok": "{{ true }}"}}',
 				},
-				{ op: 'update_task', name: 'start', set: { isMocked: true, mockInput: '{"id": "mocked"}' } },
+				{
+					op: 'update_task',
+					name: 'start',
+					set: { isMocked: true, mockInput: '{"mock_result": {"id": "{{ \\"mocked\\" }}"}}' },
+				},
 			];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
-			assert.deepStrictEqual(tasks.find(t => t.name === 'notify')!.mockInput, { ok: true });
-			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.mockInput, { id: 'mocked' });
+			assert.deepStrictEqual(tasks.find(t => t.name === 'notify')!.mockInput, {
+				mock_result: { ok: '{{ true }}' },
+			});
+			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.mockInput, {
+				mock_result: { id: '{{ "mocked" }}' },
+			});
+		});
+
+		test('mockInput rejects payloads without the mock_result wrapper', () => {
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[
+							{
+								op: 'add_task',
+								name: 'notify',
+								action: 'core.noop',
+								isMocked: true,
+								mockInput: { ok: 'yes' },
+							},
+						],
+						NOOP_REF,
+					),
+				/mockInput\.mock_result must be present/,
+			);
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[{ op: 'update_task', name: 'start', set: { mockInput: { ok: 'yes' } } }],
+						NO_ACTIONS,
+					),
+				/mockInput\.mock_result must be present/,
+			);
+		});
+
+		test('mockInput rejects non-string leaves under mock_result', () => {
+			// Arrays are containers — recurse into them; non-string elements inside still throw
+			for (const value of [42, true, [42], { nested: false }]) {
+				assert.throws(
+					() =>
+						applyOperations(
+							sampleTasks() as never,
+							[
+								{
+									op: 'update_task',
+									name: 'start',
+									set: { mockInput: { mock_result: { value } } },
+								},
+							],
+							NO_ACTIONS,
+						),
+					/mockInput\.mock_result.*leaf values must be strings/,
+				);
+			}
+		});
+
+		test('mockInput accepts arrays of string leaves under mock_result', () => {
+			const ops: WorkflowOperation[] = [
+				{
+					op: 'update_task',
+					name: 'start',
+					set: { mockInput: { mock_result: { items: ['{{ CTX.a }}', '{{ CTX.b }}'] } } },
+				},
+			];
+			const { tasks } = applyOperations(sampleTasks() as never, ops, NO_ACTIONS);
+			assert.deepStrictEqual(tasks.find(t => t.name === 'start')!.mockInput, {
+				mock_result: { items: ['{{ CTX.a }}', '{{ CTX.b }}'] },
+			});
 		});
 
 		test('retry.count rejects non-scalar values instead of stringifying garbage', () => {
@@ -1275,9 +1356,17 @@ suite('Unit: workflowTools', () => {
 			assert.match(confirmation!.message, /add_task notify/);
 		});
 
-		test('undefined once the workflow scope is approved this session', () => {
+		test('still prompts after the workflow scope was approved this session', () => {
 			approveMutationScope({ scopeId: 'wf-1', scopeName: 'WF', orgId: 'org-1', orgName: 'Acme' });
-			assert.strictEqual(workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, fullArgs), undefined);
+			const confirmation = workflowEditConfirmation(WORKFLOW_EDIT_TOOL_NAME, fullArgs);
+			assert.ok(confirmation, 'each edit is a distinct graph change and requires approval every time');
+			assert.match(confirmation!.message, /WF/);
+		});
+
+		test('autolayout confirmation is skipped once the workflow scope is approved', () => {
+			approveMutationScope({ scopeId: 'wf-1', scopeName: 'WF', orgId: 'org-1', orgName: 'Acme' });
+			const args = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme' };
+			assert.strictEqual(workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, args), undefined);
 		});
 
 		test('the autolayout tool shares the per-workflow scope and prompt', () => {
@@ -1461,6 +1550,13 @@ suite('Unit: workflowTools', () => {
 				'outputs are surfaced as name/value pairs in the workflow header',
 			);
 			assert.match(parsed.note, /set_output/, 'the note points at set_output for changing the contract');
+			assert.match(parsed.note, /RESULT\.result\.<field>/, 'the note teaches built-in action results');
+			assert.match(parsed.note, /RESULT\.<output-key>/, 'the note teaches sub-workflow output keys');
+			assert.doesNotMatch(
+				parsed.note,
+				/RESULT\.<name>|RESULT\.<field>/,
+				'the note avoids ambiguous result placeholders',
+			);
 		});
 
 		test('buddy_workflow_get surfaces non-default advanced task fields only when behavior changes', async () => {
@@ -3268,6 +3364,76 @@ suite('Unit: workflowTools', () => {
 				output,
 				/in:\s+start --\[\{\{ SUCCEEDED \}\}\]--> the_failer \(publish: customer_org_id=\{\{ RESULT\.result\.org_id \}\}\)/,
 			);
+		});
+
+		test('includes a full executed path reconstructed from task logs and graph transitions', async () => {
+			const workflow = diagnoseWorkflow();
+			workflow.tasks.splice(1, 0, {
+				id: 'task-mid',
+				name: 'normalize',
+				actionId: 'noop-id',
+				action: { ref: 'core.transform' },
+				input: {},
+				next: [
+					{
+						when: '{{ CTX.ready }}',
+						do: ['task-b'],
+						publish: [{ key: 'normalized_id', value: '{{ RESULT.result.id }}' }],
+					},
+				],
+			});
+			workflow.tasks[0].next = [{ when: '{{ SUCCEEDED }}', do: ['task-mid'] }];
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: [
+					{
+						originalWorkflowTaskName: 'the_failer',
+						status: 'failed',
+						createdAt: '3000',
+						message: 'boom',
+						input: {},
+						result: {},
+					},
+					{ originalWorkflowTaskName: 'start', status: 'succeeded', createdAt: '1000' },
+					{ originalWorkflowTaskName: 'normalize', status: 'succeeded', createdAt: '2000' },
+				],
+				childExecutionsWorkflow: { id: 'wf-1', name: 'Sample', orgId: 'org-1' },
+				childExecutionsOrgId: 'org-1',
+				workflow,
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /Executed path/);
+			assert.match(output, /1\. start\s+succeeded\s+1970-01-01T00:00:01\.000Z/);
+			assert.match(output, /2\. normalize\s+succeeded\s+1970-01-01T00:00:02\.000Z/);
+			assert.match(output, /via start --\[\{\{ SUCCEEDED \}\}\]--> normalize/);
+			assert.match(output, /3\. the_failer\s+failed\s+1970-01-01T00:00:03\.000Z/);
+			assert.match(
+				output,
+				/via normalize --\[\{\{ CTX\.ready \}\}\]--> the_failer \(publish: normalized_id=\{\{ RESULT\.result\.id \}\}\)/,
+			);
+		});
+
+		test('treats missing or empty createdAt values as unknown timestamps', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: [
+					{ originalWorkflowTaskName: 'start', status: 'succeeded', createdAt: '1000' },
+					{ originalWorkflowTaskName: 'normalize', status: 'succeeded', createdAt: '' },
+					{ originalWorkflowTaskName: 'the_failer', status: 'failed' },
+				],
+				childExecutionsWorkflow: { id: 'wf-1', name: 'Sample', orgId: 'org-1' },
+				childExecutionsOrgId: 'org-1',
+				workflow: diagnoseWorkflow(),
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /1\. start\s+succeeded\s+1970-01-01T00:00:01\.000Z/);
+			assert.match(output, /2\. normalize\s+succeeded\s+\?/);
+			assert.match(output, /3\. the_failer\s+failed\s+\?/);
+			assert.ok(!output.includes('1970-01-01T00:00:00.000Z'), 'empty timestamps do not become epoch zero');
 		});
 
 		test('diagnoses by workflowId when executionId is unknown', async () => {

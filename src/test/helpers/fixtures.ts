@@ -85,6 +85,10 @@ export const Fixtures = {
 	): NonNullable<UserQuery['user']> {
 		const org = Fixtures.org(overrides?.organization === null ? undefined : overrides?.organization);
 		const allManagedOrgs = overrides?.allManagedOrgs || [org];
+		const organization = {
+			...org,
+			managedAndSubOrgs: overrides?.organization?.managedAndSubOrgs ?? allManagedOrgs,
+		};
 
 		const baseUser = Fixtures.userFragment({
 			orgId: org.id,
@@ -93,7 +97,7 @@ export const Fixtures = {
 
 		return {
 			...baseUser,
-			organization: org,
+			organization,
 			allManagedOrgs,
 		};
 	},

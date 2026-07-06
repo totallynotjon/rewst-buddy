@@ -111,7 +111,8 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			throw log.notifyError('createSession: user has no organization');
 		}
 
-		if (user?.allManagedOrgs === undefined) {
+		const managedOrgRows = user.organization?.managedAndSubOrgs ?? user.allManagedOrgs;
+		if (managedOrgRows === undefined) {
 			throw log.notifyError('createSession: user has no managed orgs');
 		}
 
@@ -123,15 +124,15 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		log.debug('createSession: user info retrieved', {
 			username: user.username,
 			orgName: org.name,
-			managedOrgCount: user.allManagedOrgs.length,
+			managedOrgCount: managedOrgRows.length,
 		});
 
-		const allManagedOrgs: Org[] = user.allManagedOrgs.map(o => {
-			return {
-				id: o.id ?? '',
-				name: o.name ?? '',
-			};
-		});
+		const allManagedOrgMap = new Map<string, Org>();
+		for (const o of [org, ...managedOrgRows]) {
+			const mapped = { id: o.id ?? '', name: o.name ?? '' };
+			if (mapped.id) allManagedOrgMap.set(mapped.id, mapped);
+		}
+		const allManagedOrgs = [...allManagedOrgMap.values()];
 
 		const profile: SessionProfile = {
 			region: regionConfig,

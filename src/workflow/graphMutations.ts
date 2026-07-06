@@ -325,6 +325,38 @@ function coerceRetry(value: unknown): RawTask['retry'] {
 	return out;
 }
 
+function assertStringLeaves(value: unknown, path: string): void {
+	if (typeof value === 'string') return;
+	if (Array.isArray(value)) {
+		for (const [i, entry] of value.entries()) {
+			assertStringLeaves(entry, `${path}[${i}]`);
+		}
+		return;
+	}
+	if (isPlainObject(value)) {
+		for (const [key, entry] of Object.entries(value)) {
+			assertStringLeaves(entry, `${path}.${key}`);
+		}
+		return;
+	}
+	throw new Error(
+		`${path} leaf values must be strings; use Jinja strings like "{{ 42 }}" or "{{ true }}" for non-string mock data.`,
+	);
+}
+
+function coerceMockInput(value: unknown): RawTask['mockInput'] {
+	if (value === null) return null;
+	const record = coerceObjectField(value, 'task "mockInput"');
+	if (!('mock_result' in record)) {
+		throw new Error('mockInput.mock_result must be present; wrap mocked outputs as {"mock_result": {...}}.');
+	}
+	if (!isPlainObject(record.mock_result)) {
+		throw new Error('mockInput.mock_result must be a JSON object whose leaf values are strings.');
+	}
+	assertStringLeaves(record.mock_result, 'mockInput.mock_result');
+	return record;
+}
+
 export function rejectUnsupportedFields(record: Record<string, unknown>, allowed: Set<string>, label: string): void {
 	for (const key of Object.keys(record)) {
 		if (!allowed.has(key)) throw new Error(`Unsupported ${label} field "${key}".`);
@@ -346,7 +378,7 @@ export const ADVANCED_TASK_FIELD_TABLE = {
 	},
 	mockInput: {
 		verifyField: 'mockInput',
-		coerce: (value: unknown) => (value == null ? null : coerceObjectField(value, 'task "mockInput"')),
+		coerce: (value: unknown) => (value == null ? null : coerceMockInput(value)),
 	},
 	retry: {
 		verifyField: 'retry',

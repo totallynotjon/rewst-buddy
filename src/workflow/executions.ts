@@ -563,14 +563,16 @@ function describePublish(transition: RawTransition): string {
 	return ` (publish: ${rendered.join(', ')})`;
 }
 
+function formatTransitionLine(fromName: string, toName: string, transition: RawTransition): string {
+	return `${fromName} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${toName}${describePublish(transition)}`;
+}
+
 function describeTransitionsInto(workflow: RawWorkflow, task: RawTask): string[] {
 	const lines: string[] = [];
 	for (const candidate of workflow.tasks) {
 		for (const transition of candidate.next ?? []) {
 			if ((transition.do ?? []).includes(task.id)) {
-				lines.push(
-					`${candidate.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${task.name}${describePublish(transition)}`,
-				);
+				lines.push(formatTransitionLine(candidate.name, task.name, transition));
 			}
 		}
 	}
@@ -582,10 +584,57 @@ function describeTransitionsOut(workflow: RawWorkflow, task: RawTask): string[] 
 	return (task.next ?? []).flatMap(transition => {
 		const targets = (transition.do ?? []).map(id => nameById.get(id) ?? id);
 		if (targets.length === 0) return [];
-		return [
-			`${task.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${targets.join(', ')}${describePublish(transition)}`,
-		];
+		return [formatTransitionLine(task.name, targets.join(', '), transition)];
 	});
+}
+
+function parseExecutionTimestamp(createdAt: string | null | undefined): number | undefined {
+	if (createdAt == null || createdAt.trim() === '') return undefined;
+	const ts = Number(createdAt);
+	return Number.isFinite(ts) ? ts : undefined;
+}
+
+function formatExecutionTimestamp(createdAt: string | null | undefined): string {
+	const ts = parseExecutionTimestamp(createdAt);
+	return ts === undefined ? '?' : new Date(ts).toISOString();
+}
+
+function compareTaskLogTime(a: TaskLogRow, b: TaskLogRow): number {
+	const left = parseExecutionTimestamp(a.createdAt);
+	const right = parseExecutionTimestamp(b.createdAt);
+	if (left !== undefined && right !== undefined) return left - right;
+	if (left !== undefined) return -1;
+	if (right !== undefined) return 1;
+	return 0;
+}
+
+function describeTransitionBetween(from: RawTask | undefined, to: RawTask | undefined): string {
+	if (!from || !to) return '(no matching graph edge: task not found in workflow definition)';
+	for (const transition of from.next ?? []) {
+		if ((transition.do ?? []).includes(to.id)) {
+			return formatTransitionLine(from.name, to.name, transition);
+		}
+	}
+	if (!from.id || !to.id) return '(no matching graph edge: task id unavailable)';
+	return `(no matching graph edge from ${from.name} to ${to.name})`;
+}
+
+function describeExecutedPath(workflow: RawWorkflow, rows: TaskLogRow[]): string {
+	const taskByName = new Map(workflow.tasks.map(task => [task.name, task]));
+	const orderedRows = [...rows].sort(compareTaskLogTime);
+	if (orderedRows.length === 0) return 'Executed path: (no task logs)';
+	const lines = ['Executed path:'];
+	let previousTask: RawTask | undefined;
+	for (const [index, row] of orderedRows.entries()) {
+		const name = row.originalWorkflowTaskName ?? '(unnamed task)';
+		const task = taskByName.get(name);
+		lines.push(`${index + 1}. ${name}  ${row.status ?? '?'}  ${formatExecutionTimestamp(row.createdAt)}`);
+		if (index > 0) {
+			lines.push(`   via ${describeTransitionBetween(previousTask, task)}`);
+		}
+		if (task !== undefined) previousTask = task;
+	}
+	return lines.join('\n');
 }
 
 export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
@@ -676,6 +725,8 @@ export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToo
 			const incoming = describeTransitionsInto(workflow, task);
 			const outgoing = describeTransitionsOut(workflow, task);
 			return [
+				describeExecutedPath(workflow, rows),
+				'',
 				`Transition path (action ${task.action?.ref ?? task.actionId ?? '?'}):`,
 				incoming.length > 0 ? incoming.map(l => `  in:  ${l}`).join('\n') : '  in:  (none — start task)',
 				outgoing.length > 0 ? outgoing.map(l => `  out: ${l}`).join('\n') : '  out: (none — terminal task)',

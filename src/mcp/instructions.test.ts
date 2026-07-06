@@ -1,6 +1,7 @@
 import {
 	CRATE_REUSE_STEERING,
 	RENDER_VERIFY_STEERING,
+	RESULT_SHAPE_STEERING,
 	WORKFLOW_COMPOSITION_STEERING,
 	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
@@ -67,6 +68,14 @@ suite('Unit: mcpInstructions', () => {
 		);
 	});
 
+	test('contains RESULT_SHAPE_STEERING verbatim', () => {
+		const instructions = buildMcpInstructions();
+		assert.ok(
+			instructions.includes(RESULT_SHAPE_STEERING),
+			'instructions must contain RESULT_SHAPE_STEERING verbatim',
+		);
+	});
+
 	test('contains WORKFLOW_RUN_TOOL_NAME', () => {
 		const instructions = buildMcpInstructions();
 		assert.ok(
@@ -120,6 +129,15 @@ suite('Unit: mcpInstructions', () => {
 		assert.ok(
 			spec.description.includes(WORKFLOW_COMPOSITION_STEERING),
 			'buddy_workflow_edit description must contain WORKFLOW_COMPOSITION_STEERING verbatim',
+		);
+	});
+
+	test('buddy_workflow_edit description contains RESULT_SHAPE_STEERING', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(s => s.name === 'buddy_workflow_edit');
+		assert.ok(spec, 'buddy_workflow_edit spec must exist');
+		assert.ok(
+			spec.description.includes(RESULT_SHAPE_STEERING),
+			'buddy_workflow_edit description must contain RESULT_SHAPE_STEERING verbatim',
 		);
 	});
 
@@ -216,6 +234,8 @@ suite('Unit: mcpInstructions', () => {
 		assert.ok(text.includes('`set_inputs`'), 'rendered text must mention defining sub-workflow inputs');
 		assert.ok(text.includes('`set_output`'), 'rendered text must mention defining sub-workflow outputs');
 		assert.ok(text.includes('`subWorkflowId`'), 'rendered text must mention the sub-workflow task link');
+		assert.ok(text.includes('`RESULT.<output-key>`'), 'rendered text must use set_output output-key notation');
+		assert.ok(!text.includes('RESULT.<publishResultAs>'), 'rendered text must avoid publishResultAs notation');
 		assert.ok(text.includes(WORKFLOW_EDIT_TOOL_NAME), `rendered text must reference ${WORKFLOW_EDIT_TOOL_NAME}`);
 	});
 

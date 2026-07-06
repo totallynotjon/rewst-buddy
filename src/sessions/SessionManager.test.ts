@@ -415,6 +415,58 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(await context.secrets.get('org-create'), 'appSession=raw-test-token');
 		});
 
+		test('user query asks for recursive managed sub-orgs and indexes deep descendants', async () => {
+			let graphqlBody = '';
+			const server = createServer((request, response) => {
+				request.on('data', chunk => {
+					graphqlBody += String(chunk);
+				});
+				request.on('end', () => {
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(
+						JSON.stringify({
+							data: {
+								user: {
+									id: 'user-deep',
+									username: 'deep-user',
+									organization: {
+										id: 'org-root',
+										name: 'Root',
+										managedAndSubOrgs: [
+											{ id: 'org-direct', name: 'Direct Child' },
+											{ id: 'org-grandchild', name: 'Grandchild' },
+										],
+									},
+									allManagedOrgs: [{ id: 'org-direct', name: 'Direct Child' }],
+									roleIds: [],
+								},
+							},
+						}),
+					);
+				});
+			});
+			servers.push(server);
+			const port = await listen(server);
+
+			await vscode.workspace.getConfiguration('rewst-buddy').update(
+				'regions',
+				[
+					{
+						name: 'Local Test',
+						cookieName: 'appSession',
+						graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+						loginUrl: `http://127.0.0.1:${port}`,
+					},
+				],
+				vscode.ConfigurationTarget.Global,
+			);
+
+			const session = await SessionManager.createSession('raw-test-token');
+
+			assert.match(graphqlBody, /managedAndSubOrgs/, 'login profile query must request the recursive org tree');
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-grandchild'), session);
+		});
+
 		test('empty input is rejected and no session is created', async () => {
 			const unstub = stubShowInputBox(async () => '');
 

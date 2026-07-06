@@ -50,7 +50,7 @@ export function createMockSession(options: MockSessionOptions = {}): { session: 
 		const org = Fixtures.org(profile?.org);
 		const user = Fixtures.user({
 			orgId: org.id ?? undefined,
-			organization: org,
+			organization: { ...org, managedAndSubOrgs: [org] },
 			allManagedOrgs: [org],
 		});
 
