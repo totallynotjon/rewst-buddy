@@ -766,14 +766,16 @@ from a cached error.
 
 The system SHALL remember approval for mutation scopes that are safe to reuse
 within the current extension session, such as repeated writes to the same
-approved GraphQL or workflow-edit scope, in a single process-global cache keyed
-by organization id and resource id. This cache is not transport-specific: it
-is shared by both the in-process Cage-Free Rewsty chat tool path and the
-external MCP transport, behind the one mutation-approval modal both paths
-call — see ai-chat's `Run in-process Buddy tools with a per-response cap`
-requirement for the chat-side description of this same mechanism. The system
-SHALL still require fresh approval for operations whose execution itself is
-the risky action, such as running a workflow.
+approved GraphQL scope or repeated auto-layouts of the same workflow, in a
+single process-global cache keyed by organization id and resource id. This
+cache is not transport-specific: it is shared by both the in-process Cage-Free
+Rewsty chat tool path and the external MCP transport, behind the one
+mutation-approval modal both paths call — see ai-chat's `Run in-process Buddy
+tools with a per-response cap` requirement for the chat-side description of
+this same mechanism. The system SHALL still require fresh approval for
+operations whose execution itself is the risky action: running a workflow, and
+editing a workflow's definition (each edit is a distinct graph change the user
+has not seen).
 
 #### Scenario: Reused raw GraphQL mutation approval
 
@@ -796,6 +798,12 @@ the risky action, such as running a workflow.
 - **GIVEN** a workflow run was approved previously
 - **WHEN** the same workflow is run again
 - **THEN** the user is prompted again before the run starts
+
+#### Scenario: Workflow edit approval is always fresh
+
+- **GIVEN** a workflow edit was approved previously for a workflow
+- **WHEN** another edit to the same workflow is requested in the same session
+- **THEN** the user is prompted again before the edit is saved
 
 ### Requirement: Diagnose a failed execution in one call
 

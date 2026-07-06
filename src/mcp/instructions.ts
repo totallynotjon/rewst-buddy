@@ -14,6 +14,7 @@
 import {
 	CRATE_REUSE_STEERING,
 	RENDER_VERIFY_STEERING,
+	RESULT_SHAPE_STEERING,
 	WORKFLOW_COMPOSITION_STEERING,
 	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
@@ -44,6 +45,9 @@ export function buildMcpInstructions(): string {
 		WORKFLOW_COMPOSITION_STEERING,
 		CRATE_REUSE_STEERING,
 		WORKFLOW_IMPACT_STEERING,
+		'',
+		'## RESULT shape',
+		RESULT_SHAPE_STEERING,
 		'',
 
 		'## Verifying Jinja before and after edits',
@@ -181,7 +185,7 @@ export function renderMcpPrompt(name: string, args: Record<string, string>): str
 				`4. In the parent workflow, apply edits with \`${WORKFLOW_EDIT_TOOL_NAME}\` ` +
 					'to replace the inline tasks with a single sub-workflow task ' +
 					'(set `subWorkflowId` to the new workflow id).',
-				'5. Read the sub-workflow result in the parent as `RESULT.<publishResultAs>`.',
+				'5. Read the sub-workflow result in the parent as `RESULT.<output-key>`.',
 				`6. Run and verify with \`${WORKFLOW_RUN_TOOL_NAME}\` + \`${WORKFLOW_EXECUTION_LOGS_TOOL_NAME}\`.`,
 			].join('\n');
 		}

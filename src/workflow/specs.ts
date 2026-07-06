@@ -43,6 +43,13 @@ export const CRATE_REUSE_STEERING =
 	'Before building a new workflow, check whether a prebuilt automation already exists: search Rewst-maintained Crates with buddy_search_crates and existing workflows with your workflow-search tool; when a Crate already covers the request, report that instead of rebuilding it.';
 
 /**
+ * Steering fragment: how a task's RESULT is shaped, by task type.
+ * Appears verbatim in buddy_workflow_edit's description and in the MCP server instructions.
+ */
+export const RESULT_SHAPE_STEERING =
+	"RESULT shape depends on the task type: a built-in action task usually wraps its payload under a result key — read RESULT.result.<field> in transitions and publishes (and CTX.<publishResultAs>.result.<field> after a publish) — while a sub-workflow task returns its set_output keys directly — read RESULT.<output-key> (and CTX.<publishResultAs>.<output-key>). When unsure, read the task's result in buddy_execution_logs from a real run; it shows the exact shape.";
+
+/**
  * Steering fragment: render-verify Jinja before and after edits.
  * Appears verbatim in buddy_render_jinja description and in the MCP server instructions.
  */
@@ -50,11 +57,13 @@ export const RENDER_VERIFY_STEERING =
 	"Use this to CONFIRM a transition condition, task input, or publish expression evaluates the way you expect BEFORE editing a workflow — the agent otherwise guesses wrong (e.g. comparing a boolean to the string 'true', or reading a sub-workflow result from CTX.<field> instead of CTX.<publishResultAs>.<field>).";
 
 /**
- * Running a workflow actually executes its automation, so it requires a fresh
- * approval every time and is never remembered per-session — unlike edit/autolayout.
+ * Running a workflow executes its automation and each edit is a distinct graph
+ * change the user has not seen, so both require a fresh approval every time and
+ * are never remembered per-session — unlike autolayout, whose effect is the
+ * same on every call.
  */
 export function workflowToolAlwaysPrompts(name: string): boolean {
-	return name === WORKFLOW_RUN_TOOL_NAME;
+	return name === WORKFLOW_RUN_TOOL_NAME || name === WORKFLOW_EDIT_TOOL_NAME;
 }
 
 export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
@@ -117,8 +126,8 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	},
 	{
 		name: WORKFLOW_EDIT_TOOL_NAME,
-		description: `Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. ${workflowEditOperationGrammar()}. Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. Loop inputs use with: {items, concurrency}; inside the loop body, {{ item() }} is the current element. At most one outgoing transition runs: the first condition that evaluates true in listed order. publish entries apply whenever that transition is taken, including on {{ FAILED }}. This tool does not expose parallel task controls. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. A caller reads that sub-workflow task result as RESULT.<name>, matching the callee's set_output contract. ${WORKFLOW_COMPOSITION_STEERING} ${WORKFLOW_IMPACT_STEERING}`,
-		// NOTE: WORKFLOW_COMPOSITION_STEERING and WORKFLOW_IMPACT_STEERING are embedded verbatim above — do not paraphrase them here.
+		description: `Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. ${workflowEditOperationGrammar()}. Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. Loop inputs use with: {items, concurrency}; inside the loop body, {{ item() }} is the current element. At most one outgoing transition runs: the first condition that evaluates true in listed order. publish entries apply whenever that transition is taken, including on {{ FAILED }}. This tool does not expose parallel task controls. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. A caller reads that sub-workflow task result as RESULT.<output-key>, matching the callee's set_output contract. ${RESULT_SHAPE_STEERING} Saving an edit is a mutation and requires user approval every time. ${WORKFLOW_COMPOSITION_STEERING} ${WORKFLOW_IMPACT_STEERING}`,
+		// NOTE: RESULT_SHAPE_STEERING, WORKFLOW_COMPOSITION_STEERING, and WORKFLOW_IMPACT_STEERING are embedded verbatim above — do not paraphrase them here.
 		inputSchema: {
 			type: 'object',
 			properties: {

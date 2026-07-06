@@ -588,6 +588,49 @@ function describeTransitionsOut(workflow: RawWorkflow, task: RawTask): string[] 
 	});
 }
 
+function formatExecutionTimestamp(createdAt: string | null | undefined): string {
+	const ts = Number(createdAt);
+	return Number.isFinite(ts) ? new Date(ts).toISOString() : (createdAt ?? '?');
+}
+
+function compareTaskLogTime(a: TaskLogRow, b: TaskLogRow): number {
+	const left = Number(a.createdAt);
+	const right = Number(b.createdAt);
+	if (Number.isFinite(left) && Number.isFinite(right)) return left - right;
+	if (Number.isFinite(left)) return -1;
+	if (Number.isFinite(right)) return 1;
+	return 0;
+}
+
+function describeTransitionBetween(from: RawTask | undefined, to: RawTask | undefined): string {
+	if (!from || !to) return '(no matching graph edge: task not found in workflow definition)';
+	for (const transition of from.next ?? []) {
+		if ((transition.do ?? []).includes(to.id)) {
+			return `${from.name} --[${transition.when ?? '{{ SUCCEEDED }}'}]--> ${to.name}${describePublish(transition)}`;
+		}
+	}
+	if (!from.id || !to.id) return '(no matching graph edge: task id unavailable)';
+	return `(no matching graph edge from ${from.name} to ${to.name})`;
+}
+
+function describeExecutedPath(workflow: RawWorkflow, rows: TaskLogRow[]): string {
+	const taskByName = new Map(workflow.tasks.map(task => [task.name, task]));
+	const orderedRows = [...rows].sort(compareTaskLogTime);
+	if (orderedRows.length === 0) return 'Executed path: (no task logs)';
+	const lines = ['Executed path:'];
+	let previousTask: RawTask | undefined;
+	for (const [index, row] of orderedRows.entries()) {
+		const name = row.originalWorkflowTaskName ?? '(unnamed task)';
+		const task = taskByName.get(name);
+		lines.push(`${index + 1}. ${name}  ${row.status ?? '?'}  ${formatExecutionTimestamp(row.createdAt)}`);
+		if (index > 0) {
+			lines.push(`   via ${describeTransitionBetween(previousTask, task)}`);
+		}
+		previousTask = task;
+	}
+	return lines.join('\n');
+}
+
 export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToolDeps): Promise<string> {
 	const explicitExecutionId = asStringArg(request.args, 'executionId');
 	const workflowIdArg = asStringArg(request.args, 'workflowId');
@@ -676,6 +719,8 @@ export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToo
 			const incoming = describeTransitionsInto(workflow, task);
 			const outgoing = describeTransitionsOut(workflow, task);
 			return [
+				describeExecutedPath(workflow, rows),
+				'',
 				`Transition path (action ${task.action?.ref ?? task.actionId ?? '?'}):`,
 				incoming.length > 0 ? incoming.map(l => `  in:  ${l}`).join('\n') : '  in:  (none — start task)',
 				outgoing.length > 0 ? outgoing.map(l => `  out: ${l}`).join('\n') : '  out: (none — terminal task)',
