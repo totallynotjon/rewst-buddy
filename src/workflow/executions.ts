@@ -491,7 +491,26 @@ export async function runWorkflowRun(request: ToolRequest, deps: GraphqlToolDeps
 	const workflowId = asStringArg(request.args, 'workflowId');
 	const orgId = asStringArg(request.args, 'orgId');
 	if (!workflowId || !orgId) throw new Error('buddy_workflow_run requires "workflowId" and "orgId".');
-	const input = request.args.input && typeof request.args.input === 'object' ? request.args.input : undefined;
+
+	const profileName = asStringArg(request.args, 'profile');
+	const inlineInput = request.args.input && typeof request.args.input === 'object' ? request.args.input : undefined;
+
+	if (profileName !== undefined && inlineInput !== undefined) {
+		throw new Error('Pass either "profile" or "input", not both.');
+	}
+
+	let input: Record<string, unknown> | undefined = inlineInput as Record<string, unknown> | undefined;
+	if (profileName !== undefined) {
+		const { WorkflowInputProfileStore } = await import('../models/WorkflowInputProfileStore');
+		const profile = WorkflowInputProfileStore.get(orgId, workflowId, profileName);
+		if (!profile) {
+			throw new Error(
+				`No input profile named "${profileName}" found for workflow ${workflowId} (org ${orgId}). ` +
+					`Save one first with buddy_save_workflow_input_profile.`,
+			);
+		}
+		input = profile.input;
+	}
 	const result = await deps.execute(TEST_WORKFLOW_MUTATION, { id: workflowId, orgId, input });
 	const error = firstErrorMessage(result as ExecResult);
 	if (error) throw new Error(`testWorkflow failed: ${error}`);

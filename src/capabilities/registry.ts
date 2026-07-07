@@ -23,6 +23,11 @@ import { TRIGGER_MUTATE_CAPABILITIES } from './triggerMutateCapabilities';
 import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 import { workflowImpactCapability } from './workflowImpactCapability';
 import { workflowLintCapability } from './workflowLintCapability';
+import {
+	deleteWorkflowInputProfileCapability,
+	listWorkflowInputProfilesCapability,
+	saveWorkflowInputProfileCapability,
+} from './workflowInputProfileCapabilities';
 import { WORKING_SCOPE_CAPABILITIES } from './workingScopeCapability';
 
 /**
@@ -53,6 +58,9 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...CRATE_CAPABILITIES,
 	workflowImpactCapability,
 	workflowLintCapability,
+	saveWorkflowInputProfileCapability,
+	listWorkflowInputProfilesCapability,
+	deleteWorkflowInputProfileCapability,
 	graphqlMutateCapability,
 	resultReadCapability,
 ];
