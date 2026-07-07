@@ -118,6 +118,21 @@ Templates that reference other templates via `{{ template('UUID') }}` are automa
 - **Auto-rebuild** — Bundles automatically update when templates are fetched or links change
 - **Manual rebuild** — Use `Rewst Buddy: Bundle Templates` from the command palette to refresh
 
+## Crate Installer
+
+Install prebuilt Rewst Crates without leaving VS Code. Run `Rewst Buddy: Install Crate` from the command palette:
+
+1. **Pick an organization** — the crate installs into the org you choose.
+2. **Browse the catalog** — a searchable list of every Crate visible to your session, with category and description; crates already installed in that org are marked with a check.
+3. **Configure dynamically** — each Crate declares its own configuration (free-text values, single- and multi-select options). The wizard is generated from that metadata: option tokens become pickers (defaults preselected), text tokens become input boxes (defaults prefilled), in the same order as Rewst's own unpack dialog.
+4. **Name the workflow** — defaults to the crate name.
+5. **Choose trigger state** — triggers install **disabled by default** so nothing fires until you review it in Rewst; you can opt into installing them enabled.
+6. **Confirm and watch progress** — a summary modal shows the org, workflow name, trigger choice, and any org variables the Crate requires; the install then streams progress in a notification.
+
+Cancelling any step aborts the install without changing anything.
+
+The same capability is available to AI assistants as the `buddy_unpack_crate` tool (behind the MCP write-tools setting and per-call approval): called without configuration values it reports exactly which tokens the crate needs — with their options and defaults — so an assistant can gather them and retry.
+
 ## Ask Rewst AI (Cage-Free Rewsty)
 
 Talk to Rewst's AI assistant directly from VS Code's chat — as its own model, **Cage-Free Rewsty** (the same RoboRewsty that powers the in-app chat, free-range in your editor), in the model picker. **No GitHub account or Copilot plan is required**: Cage-Free Rewsty carries the chat itself (VS Code 1.122+).

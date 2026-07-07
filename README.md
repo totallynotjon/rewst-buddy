@@ -45,6 +45,7 @@ Want to pull in **every template** from an organization at once? See the [Bulk F
 - Auto-fetch on open — picks up remote changes when you open a file
 - `Ctrl+Click` template navigation + hover info on `template('UUID')` calls
 - Template bundles — dependency-based grouping in the Explorer sidebar
+- Crate installer — browse the Crate catalog and install one into an org, with a config wizard built from the crate's own options (triggers install disabled by default)
 - Smart template opening — reuses existing linked files instead of creating untitled docs
 - File rename support + automatic stale link cleanup
 - Browser extension integration (sideload — not yet on the Chrome Web Store)
