@@ -25,6 +25,7 @@ capability points at the implementation for traceability.
 | [credential-server](credential-server/spec.md)     | Local HTTP server that receives session cookies from the browser extension                  | Drafted |
 | [language-navigation](language-navigation/spec.md) | Hover info and Ctrl+Click navigation for `template()` references                            | Drafted |
 | [jinja-intellisense](jinja-intellisense/spec.md)   | Jinja filter completion, hover, and dialect keyword highlighting for linked files           | Drafted |
+| [jinja-preview](jinja-preview/spec.md)             | Live Jinja render preview panel for linked files                                            | Drafted |
 
 Each capability above is written out in full. Together they form a behavioral
 baseline of the extension as it exists today.

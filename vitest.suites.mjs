@@ -18,4 +18,5 @@ export const vitestSuites = [
 	'src/sessions/conversation/conversationEvents.test.ts',
 	'src/test/tdd.test.ts',
 	'src/sessions/graphql/sdk.test.ts',
+	'src/ui/jinja/jinjaPreviewRender.test.ts',
 ];

@@ -20,6 +20,8 @@ import {
 	TemplateHoverProvider,
 	TemplateNameCompletionProvider,
 } from './providers';
+import { JinjaPreviewSession } from './ui/jinja/JinjaPreviewSession';
+import { JinjaRenderedContentProvider } from './ui/jinja/JinjaRenderedContentProvider';
 import { Server } from '@server';
 import { SessionManager } from '@sessions';
 import {
@@ -139,6 +141,8 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(new RoboRewstyChatModelProvider().init());
 	context.subscriptions.push(ProposedContentProvider.init());
 	context.subscriptions.push(RewstContentProvider.init());
+	context.subscriptions.push(JinjaRenderedContentProvider.init());
+	context.subscriptions.push(JinjaPreviewSession.init());
 	// Best-effort: quick-diff gutter decorations for linked files against the
 	// remote baseline. Registration/disposal is required; visible gutter
 	// decorations from a non-primary SourceControl are not guaranteed by VS Code.

@@ -86,6 +86,25 @@ Linked files get authoring support for Rewst's built-in Jinja filters and dialec
 - **Template-name completion** — Inside `template("...")`, get completions for the current org's templates, labeled by name and inserting the id
 - **Dialect keyword highlighting** — `{% try %}` / `{% catch %}` / `{% endtry %}` and comprehension keywords (`for`, `in`, `if`, `elif`, `else`, `endif`) are highlighted when they appear inside a Jinja span
 
+## Jinja Live Preview
+
+The `Preview Jinja Render` command opens a native 3-pane layout beside your linked template — a vars/overrides file, the template itself, and a live-updating rendered-output document — so you get full editor features (find, code folding, minimap) instead of a webview panel.
+
+**How it works:**
+
+1. Open a linked template file and run `Preview Jinja Render` from the command palette, the editor title bar (`$(eye)` icon), the right-click context menu, or the `Ctrl+Shift+Enter` / `Cmd+Shift+Enter` keybinding.
+2. Two panes open to the right of the template, stacked top/bottom: a **vars/overrides** file on top and a read-only **rendered output** document below it. Both are named after the template (e.g. `My Template (a1b2c3d4).vars.jsonc`), not a raw id. Click **Pick Jinja Preview Context** (editor title bar `$(target)` icon, or the same menus/keybinding pattern) to select a workflow and one of its recent executions — the execution's context snapshots are fetched and merged once.
+3. Edit the template (or select a sub-expression), or edit the vars/overrides file, and the rendered-output pane re-renders within 300 ms of your last keystroke, calling the same server-side render engine as `buddy_render_jinja`.
+
+**Key behaviours:**
+
+- **One session per file** — running the command again for the same file reveals the existing panes (wherever they currently are, even after a window reload) instead of opening duplicates.
+- **Vars/overrides file** — a real file (persisted under the extension's global storage, one per template) where you can hand-edit or add keys; whatever it defines is merged on top of the picked execution's context, overrides winning on a shared key. It's seeded empty and persists across VS Code restarts.
+- **Remembered context** — the last-picked execution is stored per template and reloaded automatically the next time you open a preview for that file.
+- **Selection rendering** — if you have a non-empty selection in the template, only the selected text is rendered; otherwise the whole file is used.
+- **Errors as comments, not crashes** — Jinja errors, invalid overrides JSON, and network failures appear as a `// Error: ...` (or `// Invalid overrides JSON: ...`) comment line at the top of the rendered-output pane; they never crash the extension host or produce notification storms.
+- **Control-character warning** — if the rendered value contains a non-whitespace control character (a common symptom of a `regex_replace` backreference escaping mistake), a `// WARNING` comment line appears above the rendered output.
+
 ## Template Bundles
 
 Templates that reference other templates via `{{ template('UUID') }}` are automatically grouped into **bundles** — visible in the Explorer sidebar under "Template Bundles".

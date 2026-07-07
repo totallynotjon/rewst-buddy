@@ -268,6 +268,26 @@
 				"icon": "$(diff)"
 			},
 			{
+				"command": "rewst-buddy.prefix.PreviewJinjaRender",
+				"title": "Rewst Buddy: Preview Jinja Render",
+				"icon": "$(eye)"
+			},
+			{
+				"command": "rewst-buddy.PreviewJinjaRender",
+				"title": "Preview Jinja Render",
+				"icon": "$(eye)"
+			},
+			{
+				"command": "rewst-buddy.prefix.PickJinjaPreviewContext",
+				"title": "Rewst Buddy: Pick Jinja Preview Context",
+				"icon": "$(target)"
+			},
+			{
+				"command": "rewst-buddy.PickJinjaPreviewContext",
+				"title": "Pick Jinja Preview Context",
+				"icon": "$(target)"
+			},
+			{
 				"command": "rewst-buddy.prefix.KeepLocalConflict",
 				"title": "Rewst Buddy: Keep Local",
 				"icon": "$(check)"
@@ -424,6 +444,12 @@
 				"command": "rewst-buddy.prefix.AskRewstAI",
 				"key": "ctrl+alt+r",
 				"mac": "cmd+alt+r"
+			},
+			{
+				"command": "rewst-buddy.PreviewJinjaRender",
+				"key": "ctrl+shift+enter",
+				"mac": "cmd+shift+enter",
+				"when": "editorTextFocus && rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
 			}
 		],
 		"viewsContainers": {
@@ -487,6 +513,14 @@
 				},
 				{
 					"command": "rewst-buddy.DiffAgainstRewst",
+					"when": "rewst-buddy.anyActiveSessions && !explorerResourceIsFolder && resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.PreviewJinjaRender",
+					"when": "rewst-buddy.anyActiveSessions && !explorerResourceIsFolder && resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.PickJinjaPreviewContext",
 					"when": "rewst-buddy.anyActiveSessions && !explorerResourceIsFolder && resourcePath in rewst-buddy.linkedTemplates"
 				}
 			],
@@ -569,6 +603,22 @@
 				},
 				{
 					"command": "rewst-buddy.DiffAgainstRewst",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.prefix.PreviewJinjaRender",
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.PreviewJinjaRender",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.prefix.PickJinjaPreviewContext",
+					"when": "rewst-buddy.anyActiveSessions && (resourcePath in rewst-buddy.linkedTemplates || resourceFilename =~ /\\.vars\\.jsonc$/ || resourceScheme == 'rewst-jinja-render')"
+				},
+				{
+					"command": "rewst-buddy.PickJinjaPreviewContext",
 					"when": "false"
 				},
 				{
@@ -731,6 +781,16 @@
 					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
 				},
 				{
+					"command": "rewst-buddy.PreviewJinjaRender",
+					"group": "z_rewst",
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.PickJinjaPreviewContext",
+					"group": "z_rewst",
+					"when": "rewst-buddy.anyActiveSessions && (resourcePath in rewst-buddy.linkedTemplates || resourceFilename =~ /\\.vars\\.jsonc$/ || resourceScheme == 'rewst-jinja-render')"
+				},
+				{
 					"command": "rewst-buddy.SyncTemplate",
 					"group": "z_rewst",
 					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
@@ -757,6 +817,16 @@
 				}
 			],
 			"editor/title": [
+				{
+					"command": "rewst-buddy.PreviewJinjaRender",
+					"group": "navigation",
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.PickJinjaPreviewContext",
+					"group": "navigation",
+					"when": "rewst-buddy.anyActiveSessions && (resourcePath in rewst-buddy.linkedTemplates || resourceFilename =~ /\\.vars\\.jsonc$/ || resourceScheme == 'rewst-jinja-render')"
+				},
 				{
 					"command": "rewst-buddy.KeepLocalConflict",
 					"group": "navigation@1",
