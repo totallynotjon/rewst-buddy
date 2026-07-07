@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { suite, test } from '../test/tdd';
 import {
 	mapWithConcurrency,
+	optionalBooleanField,
 	optionalClampedInt,
 	optionalStringField,
 	parseCapabilityInput,
@@ -409,6 +410,41 @@ suite('Unit: inputHelpers — optionalClampedInt', () => {
 		const schema = z.object({ n: optionalClampedInt(500) });
 		const result = parseCapabilityInput(schema, { n: 42 });
 		assert.strictEqual(result.n, 42);
+	});
+});
+
+suite('Unit: inputHelpers — optionalBooleanField', () => {
+	test('resolves undefined for missing key (no throw)', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		const result = parseCapabilityInput(schema, {});
+		assert.strictEqual(result.flag, undefined);
+	});
+
+	test('accepts true', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		const result = parseCapabilityInput(schema, { flag: true });
+		assert.strictEqual(result.flag, true);
+	});
+
+	test('accepts false', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		const result = parseCapabilityInput(schema, { flag: false });
+		assert.strictEqual(result.flag, false);
+	});
+
+	test('rejects a string value with a clear keyed message', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		assert.throws(() => parseCapabilityInput(schema, { flag: 'true' }), /"flag" must be a boolean/);
+	});
+
+	test('rejects a numeric value with a clear keyed message', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		assert.throws(() => parseCapabilityInput(schema, { flag: 1 }), /"flag" must be a boolean/);
+	});
+
+	test('rejects null with a clear keyed message', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		assert.throws(() => parseCapabilityInput(schema, { flag: null }), /"flag" must be a boolean/);
 	});
 });
 

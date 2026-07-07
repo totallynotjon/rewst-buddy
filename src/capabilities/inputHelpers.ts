@@ -195,9 +195,7 @@ export function optionalBooleanField(key: string): z.ZodType<boolean | undefined
 }
 
 /**
- * Shared orgId field for read-capability schemas; description text matches
- * the existing ORG_ID_PROP so the two stay in sync until every capability
- * migrates.
+ * Shared orgId field for capability schemas.
  */
 export const ORG_ID_FIELD: z.ZodString = requiredStringField('orgId').describe(
 	'Rewst organization id the operation runs against (from buddy_list_orgs).',
