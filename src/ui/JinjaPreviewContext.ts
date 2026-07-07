@@ -44,6 +44,7 @@ export async function mergeExecutionContext(
 
 export interface ExecutionQuickPickItem extends vscode.QuickPickItem {
 	executionId: string;
+	orgId?: string;
 }
 
 /**
@@ -61,6 +62,7 @@ export function buildExecutionQuickPickItems(rows: ExecutionRow[]): ExecutionQui
 		detail: row.createdAt ? new Date(Number(row.createdAt)).toLocaleString() : undefined,
 		description: row.id ?? undefined,
 		executionId: row.id ?? '',
+		orgId: row.orgId ?? undefined,
 	}));
 }
 
@@ -193,7 +195,7 @@ export async function pickJinjaExecutionContext({
 	return {
 		workflowId: pickedWorkflow.workflowId,
 		workflowName: pickedWorkflow.workflowName,
-		orgId: pickedWorkflow.orgId || initialOrgId || pickedOrg.orgId,
+		orgId: pickedExec.orgId || pickedWorkflow.orgId || initialOrgId || pickedOrg.orgId,
 		executionId: pickedExec.executionId,
 	};
 }

@@ -11,7 +11,7 @@
 import { context as extContext } from '@global';
 import { LinkManager, type TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
-import { getLastContext } from '../../models/JinjaPreviewContextStore';
+import { getLastContext, saveLastContext } from '../../models/JinjaPreviewContextStore';
 import { Fixtures, initTestEnvironment, stub } from '@test';
 import * as assert from 'assert';
 import * as fs from 'fs';
@@ -115,6 +115,25 @@ suite('Unit: JinjaPreviewSession', () => {
 				const state = await JinjaPreviewSession.createOrShow(uri, extContext);
 				const written = fs.readFileSync(state.overridesUri.fsPath, 'utf8');
 				assert.strictEqual(written, OVERRIDES_SEED);
+			} finally {
+				restore();
+			}
+		});
+
+		test('reveals the source template before arranging the vars and rendered panes', async () => {
+			const uri = writeTemplateFile('t-source.j2', 'hello');
+			const org = Fixtures.orgModel({ id: 'org-source', name: 'Org Source' });
+			linkFile(uri, org.id, 'tpl-source');
+			const { restore, calls } = stubShowTextDocument();
+
+			try {
+				await JinjaPreviewSession.createOrShow(uri, extContext);
+
+				assert.strictEqual(calls[0]?.toString(), uri.toString(), 'source template should be shown first');
+				assert.ok(
+					calls.some(call => call.toString() !== uri.toString()),
+					'preview should still open the aux panes',
+				);
 			} finally {
 				restore();
 			}
@@ -316,6 +335,133 @@ suite('Unit: JinjaPreviewSession', () => {
 				restoreQuickPick();
 			}
 		});
+
+		test('renders with the picked context org when it differs from the template org', async () => {
+			const uri = writeTemplateFile('t-cross-org.j2', '{{ CTX }}');
+			const templateOrg = Fixtures.orgModel({ id: 'template-org', name: 'Template Org' });
+			const contextOrg = Fixtures.orgModel({ id: 'context-org', name: 'Context Org' });
+			linkFile(uri, templateOrg.id, 'tpl-cross-org');
+			const { restore } = stubShowTextDocument();
+
+			let renderOrgId: unknown;
+			const fakeSessionFor = (orgId: string) =>
+				({
+					rawGraphql: async (query: string, vars?: Record<string, unknown>) => {
+						if (query.includes('RewstBuddyPreviewWorkflows')) {
+							return {
+								data: {
+									workflows: [{ id: 'wf-context', name: 'Context Workflow', orgId: contextOrg.id }],
+								},
+							};
+						}
+						if (query.includes('RewstBuddyExecutions')) {
+							return {
+								data: {
+									workflowExecutions: [
+										{
+											id: 'exec-context',
+											status: 'succeeded',
+											createdAt: '1000',
+											numSuccessfulTasks: 1,
+											orgId: contextOrg.id,
+										},
+									],
+								},
+							};
+						}
+						if (query.includes('RewstBuddyExecutionContexts')) {
+							return { data: { workflowExecutionContexts: [{ picked: true }] } };
+						}
+						if (query.includes('RewstBuddyRenderJinja')) {
+							renderOrgId = vars?.orgId;
+							return { data: { renderJinja: { result: vars?.vars } } };
+						}
+						return { data: {} };
+					},
+					profile: {
+						org: { id: orgId, name: orgId },
+						allManagedOrgs: [
+							{ id: templateOrg.id, name: templateOrg.name },
+							{ id: contextOrg.id, name: contextOrg.name },
+						],
+						user: { id: `user-${orgId}` },
+					},
+				}) as any;
+			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async (orgId: string) =>
+				fakeSessionFor(orgId)) as any);
+			const restoreActiveSessions = stub(SessionManager, 'getActiveSessions', (() => [
+				fakeSessionFor(templateOrg.id),
+			]) as any);
+			const restoreQuickPick = stub(vscode.window, 'showQuickPick', (async (
+				items: unknown,
+				options?: unknown,
+			) => {
+				const title = (options as { title?: string } | undefined)?.title ?? '';
+				const resolved = (await items) as readonly (vscode.QuickPickItem & {
+					orgId?: string;
+					workflowId?: string;
+					executionId?: string;
+				})[];
+				if (title.includes('Org')) return resolved.find(item => item.orgId === contextOrg.id);
+				return resolved[0];
+			}) as unknown as typeof vscode.window.showQuickPick);
+
+			try {
+				await JinjaPreviewSession.pickContext(uri, extContext);
+
+				assert.strictEqual(renderOrgId, contextOrg.id);
+			} finally {
+				restore();
+				restoreGetSession();
+				restoreActiveSessions();
+				restoreQuickPick();
+			}
+		});
+
+		test('renders remembered cross-org contexts with the remembered org', async () => {
+			const uri = writeTemplateFile('t-remembered-cross-org.j2', '{{ CTX }}');
+			const templateOrg = Fixtures.orgModel({ id: 'remember-template-org', name: 'Remember Template Org' });
+			const contextOrg = Fixtures.orgModel({ id: 'remember-context-org', name: 'Remember Context Org' });
+			linkFile(uri, templateOrg.id, 'tpl-remembered-cross-org');
+			saveLastContext(extContext, 'tpl-remembered-cross-org', {
+				workflowId: 'wf-remembered',
+				workflowName: 'Remembered Workflow',
+				orgId: contextOrg.id,
+				executionId: 'exec-remembered',
+			});
+			const { restore } = stubShowTextDocument();
+
+			let renderOrgId: unknown;
+			const fakeSessionFor = (orgId: string) =>
+				({
+					rawGraphql: async (query: string, vars?: Record<string, unknown>) => {
+						if (query.includes('RewstBuddyExecutionContexts')) {
+							return { data: { workflowExecutionContexts: [{ remembered: true }] } };
+						}
+						if (query.includes('RewstBuddyRenderJinja')) {
+							renderOrgId = vars?.orgId;
+							return { data: { renderJinja: { result: vars?.vars } } };
+						}
+						return { data: {} };
+					},
+					profile: {
+						org: { id: orgId, name: orgId },
+						allManagedOrgs: [{ id: orgId, name: orgId }],
+						user: { id: `user-${orgId}` },
+					},
+				}) as any;
+			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async (orgId: string) =>
+				fakeSessionFor(orgId)) as any);
+
+			try {
+				await JinjaPreviewSession.createOrShow(uri, extContext);
+
+				assert.strictEqual(renderOrgId, contextOrg.id);
+			} finally {
+				restore();
+				restoreGetSession();
+			}
+		});
 	});
 
 	suite('disposal', () => {
@@ -354,6 +500,43 @@ suite('Unit: JinjaPreviewSession', () => {
 						JinjaRenderedContentProvider.uriFor('some-other-unrelated-template', 'Unrelated'),
 					),
 					'rendered content should be cleared back to the shared placeholder after both docs close',
+				);
+			} finally {
+				JinjaPreviewSession.dispose();
+				restoreEvent();
+				JinjaPreviewSession.init();
+				restore();
+			}
+		});
+
+		test('clears stale pane-closed flags when revealing an existing session', async () => {
+			const uri = writeTemplateFile('t-reopen.j2', 'hello');
+			const org = Fixtures.orgModel({ id: 'org-reopen', name: 'Org Reopen' });
+			linkFile(uri, org.id, 'tpl-reopen');
+			const { restore } = stubShowTextDocument();
+
+			JinjaPreviewSession.dispose();
+			let closeHandler: ((doc: vscode.TextDocument) => void) | undefined;
+			const restoreEvent = stub(vscode.workspace, 'onDidCloseTextDocument', ((
+				listener: (doc: vscode.TextDocument) => void,
+			) => {
+				closeHandler = listener;
+				return { dispose() {} };
+			}) as typeof vscode.workspace.onDidCloseTextDocument);
+
+			try {
+				JinjaPreviewSession.init();
+				const state = await JinjaPreviewSession.createOrShow(uri, extContext);
+				assert.ok(closeHandler, 'expected JinjaPreviewSession.init() to register a close listener');
+
+				closeHandler!({ uri: state.overridesUri } as vscode.TextDocument);
+				await JinjaPreviewSession.createOrShow(uri, extContext);
+				closeHandler!({ uri: state.renderedUri } as vscode.TextDocument);
+
+				assert.strictEqual(
+					JinjaPreviewSession.resolveTemplateUri(state.overridesUri)?.toString(),
+					uri.toString(),
+					'revealed overrides pane should still belong to a live session',
 				);
 			} finally {
 				JinjaPreviewSession.dispose();

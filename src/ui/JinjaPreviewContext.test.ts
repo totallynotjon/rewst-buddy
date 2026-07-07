@@ -360,6 +360,59 @@ suite('Unit: JinjaPreviewContext', () => {
 			}
 		});
 
+		test('uses the selected fallback execution org for the saved preview context', async () => {
+			const deps = makeDeps(async (query, variables) => {
+				if (query.includes('RewstBuddyPreviewWorkflows')) {
+					return { data: { workflows: [{ id: 'wf-sub', name: 'Sub Workflow', orgId: 'workflow-org' }] } };
+				}
+				if (query.includes('RewstBuddyExecutions')) {
+					if ((variables?.where as { orgId?: string })?.orgId) {
+						return { data: { workflowExecutions: [] } };
+					}
+					return {
+						data: {
+							workflowExecutions: [
+								{
+									id: 'exec-sub-run',
+									status: 'succeeded',
+									createdAt: '1000',
+									numSuccessfulTasks: 1,
+									orgId: 'caller-org',
+								},
+							],
+						},
+					};
+				}
+				return { data: {} };
+			}, 'session-1');
+			const restoreQuickPick = stub(vscode.window, 'showQuickPick', (async (
+				items: unknown,
+				options?: unknown,
+			) => {
+				const title = (options as { title?: string } | undefined)?.title ?? '';
+				const resolved = (await items) as readonly (vscode.QuickPickItem & {
+					orgId?: string;
+					workflowId?: string;
+					executionId?: string;
+				})[];
+				if (title.includes('Org')) return resolved[0];
+				return resolved[0];
+			}) as unknown as typeof vscode.window.showQuickPick);
+
+			try {
+				const entry = await pickJinjaExecutionContext({
+					orgItems: [{ label: 'Workflow Org', orgId: 'workflow-org', orgName: 'Workflow Org' }],
+					depsForOrg: async () => deps,
+					initialOrgId: 'workflow-org',
+				});
+
+				assert.strictEqual(entry?.executionId, 'exec-sub-run');
+				assert.strictEqual(entry?.orgId, 'caller-org');
+			} finally {
+				restoreQuickPick();
+			}
+		});
+
 		test('keeps execution ids attached to their sorted picker rows', async () => {
 			const deps = makeDeps(async query => {
 				if (query.includes('RewstBuddyPreviewWorkflows')) {

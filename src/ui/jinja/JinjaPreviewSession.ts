@@ -194,16 +194,46 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 		state.debounceTimer = setTimeout(() => void this.doRender(state), RENDER_DEBOUNCE_MS);
 	}
 
+	private async revealPanes(state: InternalState): Promise<void> {
+		const templateDoc = await vscode.workspace.openTextDocument(state.templateUri);
+		await vscode.window.showTextDocument(templateDoc, {
+			viewColumn: findOpenTabColumn(state.templateUri) ?? vscode.ViewColumn.Active,
+			preview: false,
+		});
+
+		// Vars/overrides pane: reveal its tab if a window reload left it open
+		// (session map is in-memory only), otherwise open it beside the template.
+		const overridesDoc = await vscode.workspace.openTextDocument(state.overridesUri);
+		const overridesEditor = await vscode.window.showTextDocument(overridesDoc, {
+			viewColumn: findOpenTabColumn(state.overridesUri) ?? vscode.ViewColumn.Beside,
+			preview: false,
+		});
+		state.overridesClosed = false;
+
+		// Rendered pane: same reveal-if-open check; otherwise stack it directly
+		// below the vars pane (top-right / bottom-right) instead of opening a
+		// third side-by-side column.
+		const renderedDoc = await vscode.workspace.openTextDocument(state.renderedUri);
+		await vscode.languages.setTextDocumentLanguage(renderedDoc, 'jsonc');
+		const existingRenderedColumn = findOpenTabColumn(state.renderedUri);
+		if (existingRenderedColumn !== undefined) {
+			await vscode.window.showTextDocument(renderedDoc, { viewColumn: existingRenderedColumn, preview: false });
+		} else {
+			await vscode.commands.executeCommand('workbench.action.splitEditorDown');
+			await vscode.window.showTextDocument(renderedDoc, { viewColumn: vscode.ViewColumn.Active, preview: false });
+		}
+		state.renderedClosed = false;
+
+		// Refocus the vars pane last so the user lands ready to type overrides.
+		await vscode.window.showTextDocument(overridesDoc, { viewColumn: overridesEditor.viewColumn, preview: false });
+		state.overridesClosed = false;
+	}
+
 	async createOrShow(templateUri: vscode.Uri, context: vscode.ExtensionContext): Promise<InternalState> {
 		const key = templateUri.toString();
 		const existing = this.sessions.get(key);
 		if (existing) {
-			await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(existing.overridesUri), {
-				preview: false,
-			});
-			await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(existing.renderedUri), {
-				preview: false,
-			});
+			await this.revealPanes(existing);
 			return existing;
 		}
 
@@ -214,29 +244,6 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 
 		const overridesUri = await ensureOverridesFile(context, templateId, templateName);
 		const renderedUri = JinjaRenderedContentProvider.uriFor(templateId, templateName);
-
-		// Vars/overrides pane: reveal its tab if a window reload left it open
-		// (session map is in-memory only), otherwise open it beside the template.
-		const overridesDoc = await vscode.workspace.openTextDocument(overridesUri);
-		const overridesEditor = await vscode.window.showTextDocument(overridesDoc, {
-			viewColumn: findOpenTabColumn(overridesUri) ?? vscode.ViewColumn.Beside,
-			preview: false,
-		});
-
-		// Rendered pane: same reveal-if-open check; otherwise stack it directly
-		// below the vars pane (top-right / bottom-right) instead of opening a
-		// third side-by-side column.
-		const renderedDoc = await vscode.workspace.openTextDocument(renderedUri);
-		await vscode.languages.setTextDocumentLanguage(renderedDoc, 'jsonc');
-		const existingRenderedColumn = findOpenTabColumn(renderedUri);
-		if (existingRenderedColumn !== undefined) {
-			await vscode.window.showTextDocument(renderedDoc, { viewColumn: existingRenderedColumn, preview: false });
-		} else {
-			await vscode.commands.executeCommand('workbench.action.splitEditorDown');
-			await vscode.window.showTextDocument(renderedDoc, { viewColumn: vscode.ViewColumn.Active, preview: false });
-		}
-		// Refocus the vars pane last so the user lands ready to type overrides.
-		await vscode.window.showTextDocument(overridesDoc, { viewColumn: overridesEditor.viewColumn, preview: false });
 
 		const state: InternalState = {
 			templateUri,
@@ -249,6 +256,9 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 			overridesClosed: false,
 			renderedClosed: false,
 		};
+
+		await this.revealPanes(state);
+
 		this.sessions.set(key, state);
 
 		state.disposables.push(
@@ -266,14 +276,13 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 		const remembered = getLastContext(context, templateId);
 		if (remembered) {
 			try {
-				const rememberedSession =
-					remembered.orgId === org.id
-						? await SessionManager.getSessionForOrg(org.id)
-						: await SessionManager.getSessionForOrg(remembered.orgId);
+				const renderOrgId = remembered.orgId || org.id;
+				const rememberedSession = await SessionManager.getSessionForOrg(renderOrgId);
 				state.mergedVars = await mergeExecutionContext(
 					createGraphqlDeps(rememberedSession),
 					remembered.executionId,
 				);
+				state.orgId = renderOrgId;
 				await this.doRender(state);
 			} catch (e) {
 				JinjaRenderedContentProvider.update(
@@ -329,9 +338,11 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 
 		saveLastContext(context, state.templateId, entry);
 		try {
+			const renderOrgId = entry.orgId || org.id;
 			const contextSession =
-				entry.orgId === org.id ? session : await SessionManager.getSessionForOrg(entry.orgId);
+				renderOrgId === org.id ? session : await SessionManager.getSessionForOrg(renderOrgId);
 			state.mergedVars = await mergeExecutionContext(createGraphqlDeps(contextSession), entry.executionId);
+			state.orgId = renderOrgId;
 			await this.doRender(state);
 		} catch (e) {
 			log.notifyError('Failed to load Jinja preview context:', e);
