@@ -22,6 +22,7 @@ import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
 import { TRIGGER_MUTATE_CAPABILITIES } from './triggerMutateCapabilities';
 import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 import { workflowImpactCapability } from './workflowImpactCapability';
+import { workflowLintCapability } from './workflowLintCapability';
 import { WORKING_SCOPE_CAPABILITIES } from './workingScopeCapability';
 
 /**
@@ -51,6 +52,7 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...JINJA_DOCS_CAPABILITIES,
 	...CRATE_CAPABILITIES,
 	workflowImpactCapability,
+	workflowLintCapability,
 	graphqlMutateCapability,
 	resultReadCapability,
 ];
