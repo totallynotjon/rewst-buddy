@@ -1,9 +1,9 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover, type CapabilityContext } from '@capabilities';
 import { LinkManager, type SyncDecision, type SyncDecisionContext, type TemplateLink } from '@models';
 import { SessionManager, type FullTemplateFragment, type Session } from '@sessions';
+import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import {

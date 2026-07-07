@@ -1,6 +1,6 @@
+import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
 const { suite, test, setup } = Mocha;
 const { fakeCtx, cap } = createCapabilityTestHarness(TRIGGER_FORM_CAPABILITIES);

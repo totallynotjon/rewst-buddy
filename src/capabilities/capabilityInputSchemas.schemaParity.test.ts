@@ -12,15 +12,15 @@
 
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
-import { PACK_INTEGRATION_CAPABILITIES } from './packIntegrationCapabilities';
-import { ORG_USER_CAPABILITIES } from './orgUserCapabilities';
-import { PAGE_TEMPLATE_CAPABILITIES } from './pageTemplateCapabilities';
 import { JINJA_DOCS_CAPABILITIES } from './jinjaDocsCapabilities';
+import { ORG_USER_CAPABILITIES } from './orgUserCapabilities';
+import { PACK_INTEGRATION_CAPABILITIES } from './packIntegrationCapabilities';
+import { PAGE_TEMPLATE_CAPABILITIES } from './pageTemplateCapabilities';
 import { resultReadCapability } from './resultReadCapability';
+import { TEMPLATE_CLONE_CAPABILITIES } from './templateCloneCapabilities';
 import { TEMPLATE_LINK_CAPABILITIES } from './templateLinkCapabilities';
 import { TEMPLATE_SYNC_CAPABILITIES } from './templateSyncCapabilities';
-import { TEMPLATE_CLONE_CAPABILITIES } from './templateCloneCapabilities';
+import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
 
 const { suite, test } = Mocha;
 

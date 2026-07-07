@@ -1,10 +1,10 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
 import type { CapabilityContext } from '@capabilities';
 import { LinkManager, SyncOnSaveManager, type TemplateLink } from '@models';
 import type { FullTemplateFragment, Session } from '@sessions';
+import { initTestEnvironment } from '@test';
 import { getHash } from '@utils';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import {
 	resolvePathToUri,

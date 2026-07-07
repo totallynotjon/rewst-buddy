@@ -1,8 +1,8 @@
 import { buildTemplateLink, LinkManager, orgForTemplateLink, SyncOnSaveManager } from '@models';
 import type { FullTemplateFragment, Session } from '@sessions';
 import { uriExists } from '@utils';
-import { z } from 'zod';
 import vscode from 'vscode';
+import { z } from 'zod';
 import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';

@@ -1,17 +1,17 @@
+import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import type { CapabilityContext } from './Capability';
 import {
 	JINJA_DOCS_CAPABILITIES,
+	_resetJinjaFilterCacheForTesting,
+	_resetJinjaFilterFetcherForTesting,
+	_setJinjaFilterFetcherForTesting,
 	engineBaseFromRegion,
 	formatJinjaFilters,
 	getCachedFilters,
 	parseJinjaFilters,
 	primeFilters,
-	_resetJinjaFilterCacheForTesting,
-	_resetJinjaFilterFetcherForTesting,
-	_setJinjaFilterFetcherForTesting,
 	type JinjaFilterDoc,
 } from './jinjaDocsCapabilities';
 

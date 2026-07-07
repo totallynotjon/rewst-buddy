@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability } from './Capability';
 import { readCapability } from './capabilityFactories';
-import { optionalStringField, parseCapabilityInput, requiredStringField, toInputSchema } from './inputHelpers';
+import { optionalStringField, parseCapabilityInput, toInputSchema } from './inputHelpers';
 
 export const RESULT_READ_TOOL_NAME = 'buddy_result_read';
 export const MCP_MAX_OUTPUT_CHARS = 24_000;

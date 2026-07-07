@@ -1,6 +1,6 @@
+import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import { PACK_INTEGRATION_CAPABILITIES } from './packIntegrationCapabilities';
 const { suite, test, setup } = Mocha;
 

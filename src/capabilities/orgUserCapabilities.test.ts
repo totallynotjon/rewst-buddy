@@ -1,6 +1,6 @@
+import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import { ORG_USER_CAPABILITIES } from './orgUserCapabilities';
 const { suite, test, setup } = Mocha;
 const { fakeCtx, cap } = createCapabilityTestHarness(ORG_USER_CAPABILITIES);

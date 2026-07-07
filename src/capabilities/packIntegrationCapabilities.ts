@@ -5,7 +5,6 @@ import { readCapability } from './capabilityFactories';
 import {
 	ORG_ID_FIELD,
 	optionalClampedInt,
-	optionalStringField,
 	parseCapabilityInput,
 	rawGraphqlOrThrow,
 	requiredStringField,

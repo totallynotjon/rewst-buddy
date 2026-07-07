@@ -1,6 +1,6 @@
+import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
 import type { CapabilityContext } from './Capability';
 import {
 	MCP_MAX_OUTPUT_CHARS,

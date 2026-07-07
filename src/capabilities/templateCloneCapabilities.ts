@@ -7,13 +7,11 @@ import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
 import {
-	asPositiveInt,
-	asString,
 	getTemplateFromAnySession,
 	json,
-	ORG_ID_FIELD,
 	optionalClampedInt,
 	optionalStringField,
+	ORG_ID_FIELD,
 	parseCapabilityInput,
 	requiredStringField,
 	toInputSchema,

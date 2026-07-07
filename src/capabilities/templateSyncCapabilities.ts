@@ -1,8 +1,8 @@
 import {
 	LinkManager,
+	orgForTemplateLink,
 	SyncManager,
 	SyncOnSaveManager,
-	orgForTemplateLink,
 	type SyncDecision,
 	type SyncDecisionContext,
 	type TemplateLink,
