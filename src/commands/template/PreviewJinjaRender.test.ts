@@ -197,4 +197,58 @@ suite('Unit: PreviewJinjaRender', () => {
 		assert.strictEqual(createCount, 1, 'panel should only be created once');
 		assert.strictEqual(revealCount, 1, 'existing panel should be revealed on second call');
 	});
+
+	test('renders the pick-context button as a clean text button', async () => {
+		const uri = writeFile('button.j2', 'hello');
+		const org = Fixtures.orgModel({ id: 'org-button', name: 'Org Button' });
+		linkFile(uri, org.id, 'tpl-button');
+		const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+		SessionManager._setSessionsForTesting([session]);
+
+		let html = '';
+		const fakePanel = {
+			dispose: () => {},
+			onDidDispose: (_cb: () => void) => ({ dispose: () => {} }),
+			webview: {
+				get html() {
+					return html;
+				},
+				set html(value: string) {
+					html = value;
+				},
+				onDidReceiveMessage: () => ({ dispose: () => {} }),
+				asWebviewUri: (u: unknown) => u,
+				cspSource: 'vscode-webview:',
+				postMessage: async () => true,
+			},
+			reveal: () => {},
+		} as any;
+		const restorePanel = stub(vscode.window, 'createWebviewPanel', ((..._args: unknown[]) => {
+			return fakePanel;
+		}) as typeof vscode.window.createWebviewPanel);
+
+		try {
+			await new PreviewJinjaRender().execute([uri]);
+		} finally {
+			restorePanel();
+		}
+
+		assert.doesNotMatch(html, /\$\(eye\)/, 'webview HTML should not contain unexpanded VS Code icon syntax');
+		assert.doesNotMatch(html, /pick-context-icon/, 'button should not render the custom eye icon');
+		assert.doesNotMatch(html, /<svg\b/, 'button should not render a custom inline icon');
+		assert.match(html, /controlCharWarningHtml/, 'warning markup should be defined inside the webview script');
+
+		const cspMatch = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/);
+		assert.ok(cspMatch, 'webview HTML should include a CSP meta tag');
+		const nonceMatch = html.match(/<style nonce="([^"]+)">/);
+		assert.ok(nonceMatch, 'webview HTML should include a nonced inline <style> block');
+		const [, csp] = cspMatch!;
+		const [, nonce] = nonceMatch!;
+		const styleSrcDirective = csp.split(';').find(d => d.trim().startsWith('style-src'));
+		assert.ok(styleSrcDirective, 'CSP should declare a style-src directive');
+		assert.ok(
+			styleSrcDirective!.includes(`'nonce-${nonce}'`),
+			`style-src must allow the inline <style> block's nonce, or all of #pickContextBtn's custom styling is silently dropped by CSP. Got: ${styleSrcDirective}`,
+		);
+	});
 });

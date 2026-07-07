@@ -7,13 +7,13 @@
  */
 
 import { context as extContext } from '@global';
-import { LinkManager, orgForTemplateLink } from '@models';
+import { LinkManager, WorkingScopeManager, orgForTemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import vscode from 'vscode';
 import { getLastContext, saveLastContext } from '../../models/JinjaPreviewContextStore';
 import { evaluateRenderJinja } from '../../workflow/executions';
 import { createGraphqlDeps } from '../chat/tools/graphqlTool';
-import { mergeExecutionContext, pickJinjaExecutionContext } from '../JinjaPreviewContext';
+import { type JinjaPreviewOrgPickItem, mergeExecutionContext, pickJinjaExecutionContext } from '../JinjaPreviewContext';
 
 // Module-level panel registry: one panel per document URI string.
 const panels = new Map<string, vscode.WebviewPanel>();
@@ -40,6 +40,7 @@ export const JinjaPreviewPanel = {
 		const org = orgForTemplateLink(link);
 		const session = await SessionManager.getSessionForOrg(org.id);
 		const deps = createGraphqlDeps(session);
+		const document = await vscode.workspace.openTextDocument(uri);
 
 		// Create the panel.
 		const panel = vscode.window.createWebviewPanel(
@@ -80,7 +81,7 @@ export const JinjaPreviewPanel = {
 			const templateText =
 				editor && !editor.selection.isEmpty
 					? editor.document.getText(editor.selection)
-					: (editor?.document.getText() ?? '');
+					: (editor?.document.getText() ?? document.getText());
 
 			try {
 				const outcome = await evaluateRenderJinja(freshDeps, org.id, templateText, mergedVars);
@@ -105,6 +106,35 @@ export const JinjaPreviewPanel = {
 			}, 300);
 		};
 
+		const buildOrgItems = (): JinjaPreviewOrgPickItem[] => {
+			const orgNames = new Map<string, string>();
+			for (const activeSession of SessionManager.getActiveSessions()) {
+				const { org: primaryOrg, allManagedOrgs } = activeSession.profile;
+				if (primaryOrg?.id) orgNames.set(primaryOrg.id, primaryOrg.name ?? primaryOrg.id);
+				for (const managed of allManagedOrgs ?? []) {
+					if (managed?.id) orgNames.set(managed.id, managed.name ?? managed.id);
+				}
+			}
+
+			const scopedOrgIds = new Set(WorkingScopeManager.getOrgs());
+			const rank = (item: JinjaPreviewOrgPickItem) =>
+				scopedOrgIds.has(item.orgId) ? 0 : item.orgId === org.id ? 1 : 2;
+
+			return [...orgNames]
+				.map(([orgId, orgName]) => ({
+					label: orgName,
+					description: orgId,
+					detail: scopedOrgIds.has(orgId)
+						? 'In working scope'
+						: orgId === org.id
+							? 'Template org'
+							: undefined,
+					orgId,
+					orgName,
+				}))
+				.sort((a, b) => rank(a) - rank(b) || a.label.localeCompare(b.label));
+		};
+
 		// Set initial HTML.
 		panel.webview.html = getHtml(panel.webview, extensionUri);
 
@@ -112,7 +142,9 @@ export const JinjaPreviewPanel = {
 		const remembered = getLastContext(extContext, link.template.id);
 		if (remembered) {
 			try {
-				mergedVars = await mergeExecutionContext(deps, remembered.executionId);
+				const rememberedSession =
+					remembered.orgId === org.id ? session : await SessionManager.getSessionForOrg(remembered.orgId);
+				mergedVars = await mergeExecutionContext(createGraphqlDeps(rememberedSession), remembered.executionId);
 				postState({
 					type: 'contextLoaded',
 					workflowName: remembered.workflowName,
@@ -131,11 +163,24 @@ export const JinjaPreviewPanel = {
 		// Handle messages from the webview.
 		const msgDisposable = panel.webview.onDidReceiveMessage(async (msg: { type: string }) => {
 			if (msg.type === 'pickContext') {
-				const entry = await pickJinjaExecutionContext(deps, org.id);
+				let entry;
+				try {
+					entry = await pickJinjaExecutionContext({
+						orgItems: buildOrgItems(),
+						initialOrgId: org.id,
+						depsForOrg: async selectedOrgId =>
+							createGraphqlDeps(await SessionManager.getSessionForOrg(selectedOrgId)),
+					});
+				} catch (e) {
+					postState({ type: 'error', message: e instanceof Error ? e.message : String(e) });
+					return;
+				}
 				if (!entry) return;
 				saveLastContext(extContext, link.template.id, entry);
 				try {
-					mergedVars = await mergeExecutionContext(deps, entry.executionId);
+					const contextSession =
+						entry.orgId === org.id ? session : await SessionManager.getSessionForOrg(entry.orgId);
+					mergedVars = await mergeExecutionContext(createGraphqlDeps(contextSession), entry.executionId);
 					postState({
 						type: 'contextLoaded',
 						workflowName: entry.workflowName,
@@ -194,13 +239,15 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}';">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link href="${styleUri}" rel="stylesheet">
 	<title>Rewst Jinja Preview</title>
 	<style nonce="${nonce}">
 		.preview-toolbar { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid var(--vscode-panel-border, #444); }
-		.preview-toolbar button { cursor: pointer; }
+		#pickContextBtn { box-sizing: border-box; appearance: none; -webkit-appearance: none; min-height: 26px; padding: 4px 10px; border: 1px solid var(--vscode-button-border, transparent); border-radius: 2px; background: var(--vscode-button-secondaryBackground, var(--vscode-button-background)); color: var(--vscode-button-secondaryForeground, var(--vscode-button-foreground)); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size, 13px); line-height: 1; cursor: pointer; }
+		#pickContextBtn:hover { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-button-hoverBackground)); }
+		#pickContextBtn:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 		.context-label { font-size: 0.85em; color: var(--vscode-descriptionForeground, #888); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 		.preview-output { padding: 12px; font-family: var(--vscode-editor-font-family, monospace); white-space: pre-wrap; word-break: break-all; }
 		.error-banner { padding: 8px 12px; background: var(--vscode-inputValidation-errorBackground, #5a1d1d); color: var(--vscode-inputValidation-errorForeground, #f48771); border-left: 3px solid var(--vscode-inputValidation-errorBorder, #f48771); margin: 8px; }
@@ -210,7 +257,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
 </head>
 <body>
 	<div class="preview-toolbar">
-		<button id="pickContextBtn" type="button">$(eye) Pick Context</button>
+		<button id="pickContextBtn" type="button" title="Pick execution context">Pick Context</button>
 		<span class="context-label" id="contextLabel">No context selected</span>
 	</div>
 	<div id="content">
@@ -218,6 +265,7 @@ function getHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
 	</div>
 	<script nonce="${nonce}">
 		const vscode = acquireVsCodeApi();
+		const controlCharWarningHtml = ${JSON.stringify(controlCharWarningHtml)};
 		document.getElementById('pickContextBtn').addEventListener('click', () => {
 			vscode.postMessage({ type: 'pickContext' });
 		});

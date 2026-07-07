@@ -9,14 +9,18 @@ import type { JinjaPreviewContextEntry } from '../models/JinjaPreviewContextStor
 import type { GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import type { ExecutionRow } from '../workflow/executions';
 import { fetchExecutionContextSnapshots, WORKFLOW_EXECUTIONS_QUERY } from '../workflow/executions';
-import {
-	buildWorkflowIndex,
-	getCachedWorkflowIndex,
-	setCachedWorkflowIndex,
-	workflowSearchCacheKey,
-} from '../workflow/searchIndex';
-import { WORKFLOW_SEARCH_TOOL_NAME } from '../workflow/specs';
-import { isPlainObject } from '../workflow/types';
+import { firstErrorMessage, isPlainObject, type ExecResult } from '../workflow/types';
+
+const WORKFLOWS_QUERY = `query RewstBuddyPreviewWorkflows($orgId: ID!, $limit: Int, $offset: Int) {
+	workflows(where: { orgId: $orgId }, limit: $limit, offset: $offset, order: [["name", "asc"]]) {
+		id
+		name
+		orgId
+	}
+}`;
+
+const WORKFLOW_PICK_LIMIT = 500;
+const WORKFLOW_PICK_MAX_PAGES = 100;
 
 // ---------------------------------------------------------------------------
 // mergeExecutionContext
@@ -38,11 +42,15 @@ export async function mergeExecutionContext(
 // buildExecutionQuickPickItems
 // ---------------------------------------------------------------------------
 
+export interface ExecutionQuickPickItem extends vscode.QuickPickItem {
+	executionId: string;
+}
+
 /**
  * Convert a list of ExecutionRow objects into VS Code QuickPickItems,
  * sorted newest-first by createdAt.
  */
-export function buildExecutionQuickPickItems(rows: ExecutionRow[]): vscode.QuickPickItem[] {
+export function buildExecutionQuickPickItems(rows: ExecutionRow[]): ExecutionQuickPickItem[] {
 	const sorted = [...rows].sort((a, b) => {
 		const ta = Number(a.createdAt ?? 0);
 		const tb = Number(b.createdAt ?? 0);
@@ -52,74 +60,122 @@ export function buildExecutionQuickPickItems(rows: ExecutionRow[]): vscode.Quick
 		label: `$(history) ${row.status ?? 'unknown'} — ${row.id ?? '?'}`,
 		detail: row.createdAt ? new Date(Number(row.createdAt)).toLocaleString() : undefined,
 		description: row.id ?? undefined,
+		executionId: row.id ?? '',
 	}));
 }
 
 // ---------------------------------------------------------------------------
-// workflowIndexCacheKeyForPicker
+// buildWorkflowQuickPickItems
 // ---------------------------------------------------------------------------
 
-/**
- * Returns the same cache key that buddy_workflow_search uses, so the picker
- * shares the warm workflow index instead of rebuilding it.
- */
-export function workflowIndexCacheKeyForPicker(deps: GraphqlToolDeps): string {
-	return workflowSearchCacheKey({ tool: WORKFLOW_SEARCH_TOOL_NAME, args: {} }, deps);
+export interface JinjaPreviewOrgPickItem extends vscode.QuickPickItem {
+	orgId: string;
+	orgName: string;
+}
+
+interface WorkflowRow {
+	id?: string | null;
+	name?: string | null;
+	orgId?: string | null;
+}
+
+interface WorkflowQuickPickItem extends vscode.QuickPickItem {
+	workflowId: string;
+	workflowName: string;
+	orgId: string;
+}
+
+async function fetchWorkflowRows(deps: GraphqlToolDeps, orgId: string): Promise<WorkflowRow[]> {
+	const rows: WorkflowRow[] = [];
+	for (let page = 0; page < WORKFLOW_PICK_MAX_PAGES; page++) {
+		const offset = page * WORKFLOW_PICK_LIMIT;
+		const result = await deps.execute(WORKFLOWS_QUERY, { orgId, limit: WORKFLOW_PICK_LIMIT, offset });
+		const error = firstErrorMessage(result as ExecResult);
+		if (error) throw new Error(`Failed to list workflows: ${error}`);
+		const pageRows = ((result.data as { workflows?: (WorkflowRow | null)[] } | undefined)?.workflows ?? []).filter(
+			(row): row is WorkflowRow => !!row?.id,
+		);
+		rows.push(...pageRows);
+		if (pageRows.length < WORKFLOW_PICK_LIMIT) break;
+	}
+	return rows;
+}
+
+function buildWorkflowQuickPickItems(rows: WorkflowRow[], orgId: string): WorkflowQuickPickItem[] {
+	return rows.map(row => ({
+		label: row.name ?? '(unnamed)',
+		description: row.id ?? undefined,
+		workflowId: row.id ?? '',
+		workflowName: row.name ?? '(unnamed)',
+		orgId: row.orgId ?? orgId,
+	}));
 }
 
 // ---------------------------------------------------------------------------
 // pickJinjaExecutionContext
 // ---------------------------------------------------------------------------
 
+export interface PickJinjaExecutionContextOptions {
+	orgItems: JinjaPreviewOrgPickItem[];
+	depsForOrg(orgId: string): Promise<GraphqlToolDeps>;
+	initialOrgId?: string;
+}
+
 /**
- * Full two-step QuickPick flow: pick a workflow, then pick an execution.
- * Returns undefined if the user cancels either step.
+ * Full three-step QuickPick flow: pick an org, pick one workflow in that org,
+ * then pick an execution. Returns undefined if the user cancels any step.
  */
-export async function pickJinjaExecutionContext(
-	deps: GraphqlToolDeps,
-	orgId: string,
-): Promise<JinjaPreviewContextEntry | undefined> {
-	// Step 1: workflow pick — get or build the cached index.
-	const cacheKey = workflowIndexCacheKeyForPicker(deps);
-	let index = getCachedWorkflowIndex(cacheKey);
-	if (!index) {
-		index = await buildWorkflowIndex(deps);
-		setCachedWorkflowIndex(cacheKey, index);
+export async function pickJinjaExecutionContext({
+	orgItems,
+	depsForOrg,
+	initialOrgId,
+}: PickJinjaExecutionContextOptions): Promise<JinjaPreviewContextEntry | undefined> {
+	if (orgItems.length === 0) {
+		void vscode.window.showWarningMessage('No organizations are available for Jinja preview context.');
+		return undefined;
 	}
 
-	// Filter to the org, fall back to all entries if none match (cross-org sub-workflows).
-	const orgEntries = index.entries.filter(e => e.orgId === orgId);
-	const entries = orgEntries.length > 0 ? orgEntries : index.entries;
+	const pickedOrg = await vscode.window.showQuickPick(orgItems, {
+		placeHolder: 'Select an organization to load workflows from',
+		title: 'Jinja Preview: Pick Org',
+	});
+	if (!pickedOrg) return undefined;
 
-	const workflowItems: (vscode.QuickPickItem & { workflowId: string; workflowName: string })[] = entries.map(e => ({
-		label: e.name,
-		description: e.orgName !== index!.entries.find(x => x.orgId === orgId)?.orgId ? e.orgName : undefined,
-		workflowId: e.id,
-		workflowName: e.name,
-	}));
+	const deps = await depsForOrg(pickedOrg.orgId);
+	const workflowItems = buildWorkflowQuickPickItems(await fetchWorkflowRows(deps, pickedOrg.orgId), pickedOrg.orgId);
+	if (workflowItems.length === 0) {
+		void vscode.window.showWarningMessage(`No workflows found for organization "${pickedOrg.orgName}".`);
+		return undefined;
+	}
 
 	const pickedWorkflow = await vscode.window.showQuickPick(workflowItems, {
 		placeHolder: 'Select a workflow to pick an execution context from',
 		title: 'Jinja Preview: Pick Workflow',
+		matchOnDescription: true,
 	});
 	if (!pickedWorkflow) return undefined;
 
-	// Step 2: execution pick.
-	const execResult = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, {
-		where: { workflowId: pickedWorkflow.workflowId, orgId },
-		order: [['createdAt', 'desc']],
-		limit: 20,
-	});
-	const execRows = (
-		(execResult.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
-	).filter((r): r is ExecutionRow => !!r);
+	// Step 2: execution pick. Root-scoped first (workflowId+orgId); a workflow that
+	// only ever runs as a sub-workflow has its executions recorded under the
+	// caller's orgId, so an empty root query falls back to workflowId alone
+	// (mirrors buddy_workflow_executions' rootOnly:false fallback).
+	const fetchExecRows = async (where: Record<string, string>): Promise<ExecutionRow[]> => {
+		const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, {
+			where,
+			order: [['createdAt', 'desc']],
+			limit: 20,
+		});
+		return (
+			(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
+		).filter((r): r is ExecutionRow => !!r);
+	};
 
-	const execItems: (vscode.QuickPickItem & { executionId: string })[] = buildExecutionQuickPickItems(execRows).map(
-		(item, i) => ({
-			...item,
-			executionId: execRows[i]?.id ?? '',
-		}),
-	);
+	let execRows = await fetchExecRows({ workflowId: pickedWorkflow.workflowId, orgId: pickedWorkflow.orgId });
+	if (execRows.length === 0) {
+		execRows = await fetchExecRows({ workflowId: pickedWorkflow.workflowId });
+	}
+
+	const execItems = buildExecutionQuickPickItems(execRows);
 
 	if (execItems.length === 0) {
 		void vscode.window.showWarningMessage(
@@ -137,7 +193,7 @@ export async function pickJinjaExecutionContext(
 	return {
 		workflowId: pickedWorkflow.workflowId,
 		workflowName: pickedWorkflow.workflowName,
-		orgId,
+		orgId: pickedWorkflow.orgId || initialOrgId || pickedOrg.orgId,
 		executionId: pickedExec.executionId,
 	};
 }
