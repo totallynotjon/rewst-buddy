@@ -86,6 +86,24 @@ Linked files get authoring support for Rewst's built-in Jinja filters and dialec
 - **Template-name completion** — Inside `template("...")`, get completions for the current org's templates, labeled by name and inserting the id
 - **Dialect keyword highlighting** — `{% try %}` / `{% catch %}` / `{% endtry %}` and comprehension keywords (`for`, `in`, `if`, `elif`, `else`, `endif`) are highlighted when they appear inside a Jinja span
 
+## Jinja Live Preview
+
+The `Preview Jinja Render` command opens a side panel that renders the active linked file (or your current selection) against a real workflow execution's context, updating as you type.
+
+**How it works:**
+
+1. Open a linked template file and run `Preview Jinja Render` from the command palette, the editor title bar (`$(eye)` icon), or the right-click context menu.
+2. The panel opens beside your editor. Click **Pick Context** to select a workflow and one of its recent executions — the execution's context snapshots are fetched and merged once.
+3. Edit the file (or select a sub-expression) and the panel re-renders within 300 ms of your last keystroke, calling the same server-side render engine as `buddy_render_jinja`.
+
+**Key behaviours:**
+
+- **One panel per file** — running the command again for the same file reveals the existing panel instead of opening a duplicate.
+- **Remembered context** — the last-picked execution is stored per template in `globalState` (`RewstJinjaPreviewContext`) and reloaded automatically the next time you open a preview for that file.
+- **Selection rendering** — if you have a non-empty selection, only the selected text is rendered; otherwise the whole file is used.
+- **In-panel errors** — Jinja syntax errors and network failures appear as error banners inside the panel; they never crash the extension host or produce notification storms.
+- **Control-character warning** — if the rendered value contains a non-whitespace control character (a common symptom of a `regex_replace` backreference escaping mistake), a warning banner appears alongside the rendered output.
+
 ## Template Bundles
 
 Templates that reference other templates via `{{ template('UUID') }}` are automatically grouped into **bundles** — visible in the Explorer sidebar under "Template Bundles".

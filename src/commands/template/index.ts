@@ -4,6 +4,7 @@ export { OpenInRewst } from './OpenInRewst';
 export { CreateTemplate } from './CreateTemplate';
 export { DeleteTemplate } from './DeleteTemplate';
 export { DiffAgainstRewst } from './DiffAgainstRewst';
+export { PreviewJinjaRender } from './PreviewJinjaRender';
 export * from './link';
 export { OpenTemplateFromURL } from './OpenTemplateFromURL';
 export { OpenTemplateInteractive } from './OpenTemplateInteractive';

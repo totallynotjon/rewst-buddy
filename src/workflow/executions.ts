@@ -216,6 +216,33 @@ export function formatTaskLogs(
 // buddy_render_jinja runner
 // ---------------------------------------------------------------------------
 
+export interface RenderJinjaOutcome {
+	ok: boolean;
+	value?: unknown;
+	jinjaError?: string;
+	hasControlCharacter?: boolean;
+}
+
+export async function evaluateRenderJinja(
+	deps: GraphqlToolDeps,
+	orgId: string,
+	template: string,
+	vars: object,
+): Promise<RenderJinjaOutcome> {
+	const result = await deps.execute(RENDER_JINJA_MUTATION, { orgId, template, vars });
+	const error = firstErrorMessage(result as ExecResult);
+	if (error) throw new Error(`renderJinja failed: ${error}`);
+	const rendered = (result.data as { renderJinja?: { result?: unknown; error?: unknown } } | undefined)?.renderJinja;
+	if (rendered && typeof rendered === 'object' && 'error' in rendered && rendered.error) {
+		return {
+			ok: false,
+			jinjaError: typeof rendered.error === 'string' ? rendered.error : JSON.stringify(rendered.error),
+		};
+	}
+	const value = rendered && typeof rendered === 'object' && 'result' in rendered ? rendered.result : rendered;
+	return { ok: true, value, hasControlCharacter: containsControlCharacter(value) };
+}
+
 function containsControlCharacter(value: unknown): boolean {
 	if (typeof value === 'string') {
 		for (let i = 0; i < value.length; i++) {
@@ -268,15 +295,12 @@ export async function runRenderJinja(request: ToolRequest, deps: GraphqlToolDeps
 		return `Context top-level keys (${keys.length}): ${keys.join(', ') || '(none)'}${contextNote}\n\nDrill in with {{ CTX.<key> }}. System vars: execution id = CTX.execution_id, org id = CTX.organization.id, this workflow's id = CTX.trigger_instance.trigger.workflow_id.`;
 	}
 
-	const result = await deps.execute(RENDER_JINJA_MUTATION, { orgId, template, vars });
-	const error = firstErrorMessage(result as ExecResult);
-	if (error) throw new Error(`renderJinja failed: ${error}`);
-	const rendered = (result.data as { renderJinja?: { result?: unknown; error?: unknown } } | undefined)?.renderJinja;
-	if (rendered && typeof rendered === 'object' && 'error' in rendered && rendered.error) {
-		return `Jinja error: ${typeof rendered.error === 'string' ? rendered.error : JSON.stringify(rendered.error)}`;
+	const outcome = await evaluateRenderJinja(deps, orgId, template!, vars);
+	if (!outcome.ok) {
+		return `Jinja error: ${outcome.jinjaError}`;
 	}
-	const value = rendered && typeof rendered === 'object' && 'result' in rendered ? rendered.result : rendered;
-	const warning = containsControlCharacter(value)
+	const value = outcome.value;
+	const warning = outcome.hasControlCharacter
 		? "\n\nWARNING — rendered result contains a control character. If this came from regex_replace backreference escaping, use '\\\\\\\\1' instead of '\\\\1'."
 		: '';
 	return `Rendered: ${JSON.stringify(value)} (type ${value === null ? 'null' : typeof value})${warning}`;

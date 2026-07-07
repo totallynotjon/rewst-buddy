@@ -268,6 +268,16 @@
 				"icon": "$(diff)"
 			},
 			{
+				"command": "rewst-buddy.prefix.PreviewJinjaRender",
+				"title": "Rewst Buddy: Preview Jinja Render",
+				"icon": "$(eye)"
+			},
+			{
+				"command": "rewst-buddy.PreviewJinjaRender",
+				"title": "Preview Jinja Render",
+				"icon": "$(eye)"
+			},
+			{
 				"command": "rewst-buddy.prefix.KeepLocalConflict",
 				"title": "Rewst Buddy: Keep Local",
 				"icon": "$(check)"
@@ -488,6 +498,10 @@
 				{
 					"command": "rewst-buddy.DiffAgainstRewst",
 					"when": "rewst-buddy.anyActiveSessions && !explorerResourceIsFolder && resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.PreviewJinjaRender",
+					"when": "rewst-buddy.anyActiveSessions && !explorerResourceIsFolder && resourcePath in rewst-buddy.linkedTemplates"
 				}
 			],
 			"commandPalette": [
@@ -569,6 +583,14 @@
 				},
 				{
 					"command": "rewst-buddy.DiffAgainstRewst",
+					"when": "false"
+				},
+				{
+					"command": "rewst-buddy.prefix.PreviewJinjaRender",
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
+					"command": "rewst-buddy.PreviewJinjaRender",
 					"when": "false"
 				},
 				{
@@ -731,6 +753,11 @@
 					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
 				},
 				{
+					"command": "rewst-buddy.PreviewJinjaRender",
+					"group": "z_rewst",
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
+				},
+				{
 					"command": "rewst-buddy.SyncTemplate",
 					"group": "z_rewst",
 					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
@@ -757,6 +784,11 @@
 				}
 			],
 			"editor/title": [
+				{
+					"command": "rewst-buddy.PreviewJinjaRender",
+					"group": "navigation",
+					"when": "rewst-buddy.anyActiveSessions && resourcePath in rewst-buddy.linkedTemplates"
+				},
 				{
 					"command": "rewst-buddy.KeepLocalConflict",
 					"group": "navigation@1",

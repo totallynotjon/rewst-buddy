@@ -89,6 +89,8 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 **Conflict Resolution**
 
 - `Diff Against Rewst` — Open a diff between the current file and its current Rewst version, any time (not just during a conflict)
+- `Preview Jinja Render` — Open a live-render side panel for the active linked file; pick a workflow execution as context and see the template re-render as you type
+- `Rewst Buddy: Preview Jinja Render` — Same as above, prefixed for the command palette
 - `Keep Local` — Upload the local version to Rewst. Appears as a toolbar button on the diff (and here in the palette) only while a conflict diff is open
 - `Take Remote` — Replace the local file with the Rewst version. Same availability as `Keep Local`
 
