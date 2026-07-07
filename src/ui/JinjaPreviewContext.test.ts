@@ -9,14 +9,14 @@ import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import type { GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
-import { WORKFLOW_SEARCH_TOOL_NAME } from '../workflow/specs';
+import type { ExecutionRow } from '../workflow/executions';
 import { workflowSearchCacheKey } from '../workflow/searchIndex';
+import { WORKFLOW_SEARCH_TOOL_NAME } from '../workflow/specs';
 import {
 	buildExecutionQuickPickItems,
 	mergeExecutionContext,
 	workflowIndexCacheKeyForPicker,
 } from './JinjaPreviewContext';
-import type { ExecutionRow } from '../workflow/executions';
 
 const { suite, test, setup } = Mocha;
 

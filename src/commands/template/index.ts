@@ -1,11 +1,11 @@
 export { BundleTemplates } from './BundleTemplates';
 export { CopyTemplateID } from './CopyTemplateID';
-export { OpenInRewst } from './OpenInRewst';
 export { CreateTemplate } from './CreateTemplate';
 export { DeleteTemplate } from './DeleteTemplate';
 export { DiffAgainstRewst } from './DiffAgainstRewst';
-export { PreviewJinjaRender } from './PreviewJinjaRender';
 export * from './link';
+export { OpenInRewst } from './OpenInRewst';
 export { OpenTemplateFromURL } from './OpenTemplateFromURL';
 export { OpenTemplateInteractive } from './OpenTemplateInteractive';
+export { PreviewJinjaRender } from './PreviewJinjaRender';
 export * from './sync';

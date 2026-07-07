@@ -9,12 +9,11 @@
 import { context as extContext } from '@global';
 import { LinkManager, orgForTemplateLink } from '@models';
 import { SessionManager } from '@sessions';
-import { log } from '@utils';
 import vscode from 'vscode';
-import { createGraphqlDeps } from '../chat/tools/graphqlTool';
-import { mergeExecutionContext, pickJinjaExecutionContext } from '../JinjaPreviewContext';
 import { getLastContext, saveLastContext } from '../../models/JinjaPreviewContextStore';
 import { evaluateRenderJinja } from '../../workflow/executions';
+import { createGraphqlDeps } from '../chat/tools/graphqlTool';
+import { mergeExecutionContext, pickJinjaExecutionContext } from '../JinjaPreviewContext';
 
 // Module-level panel registry: one panel per document URI string.
 const panels = new Map<string, vscode.WebviewPanel>();

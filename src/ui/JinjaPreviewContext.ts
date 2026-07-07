@@ -4,9 +4,11 @@
  * that can be unit-tested without a real webview.
  */
 
+import vscode from 'vscode';
+import type { JinjaPreviewContextEntry } from '../models/JinjaPreviewContextStore';
 import type { GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import type { ExecutionRow } from '../workflow/executions';
-import { fetchExecutionContextSnapshots } from '../workflow/executions';
+import { fetchExecutionContextSnapshots, WORKFLOW_EXECUTIONS_QUERY } from '../workflow/executions';
 import {
 	buildWorkflowIndex,
 	getCachedWorkflowIndex,
@@ -15,9 +17,6 @@ import {
 } from '../workflow/searchIndex';
 import { WORKFLOW_SEARCH_TOOL_NAME } from '../workflow/specs';
 import { isPlainObject } from '../workflow/types';
-import type { JinjaPreviewContextEntry } from '../models/JinjaPreviewContextStore';
-import vscode from 'vscode';
-import { WORKFLOW_EXECUTIONS_QUERY } from '../workflow/executions';
 
 // ---------------------------------------------------------------------------
 // mergeExecutionContext
