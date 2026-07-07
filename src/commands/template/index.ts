@@ -7,5 +7,6 @@ export * from './link';
 export { OpenInRewst } from './OpenInRewst';
 export { OpenTemplateFromURL } from './OpenTemplateFromURL';
 export { OpenTemplateInteractive } from './OpenTemplateInteractive';
+export { PickJinjaPreviewContext } from './PickJinjaPreviewContext';
 export { PreviewJinjaRender } from './PreviewJinjaRender';
 export * from './sync';

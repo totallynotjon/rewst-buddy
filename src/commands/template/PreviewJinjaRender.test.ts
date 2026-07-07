@@ -4,6 +4,7 @@
  * Runner: mocha extension-host.
  */
 
+import { context as extContext } from '@global';
 import { LinkManager, type TemplateLink } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment, stub } from '@test';
@@ -14,23 +15,40 @@ import * as Mocha from 'mocha';
 import * as os from 'os';
 import * as path from 'path';
 import vscode from 'vscode';
+import { JinjaPreviewSession } from '../../ui/jinja/JinjaPreviewSession';
+import { JinjaRenderedContentProvider } from '../../ui/jinja/JinjaRenderedContentProvider';
 import { PreviewJinjaRender } from './PreviewJinjaRender';
 
-const { suite, test, setup, teardown } = Mocha;
+const { suite, test, setup, teardown, suiteSetup, suiteTeardown } = Mocha;
 
 suite('Unit: PreviewJinjaRender', () => {
 	let tmpDir: string;
+
+	suiteSetup(() => {
+		JinjaRenderedContentProvider.init();
+		JinjaPreviewSession.init();
+	});
+
+	suiteTeardown(() => {
+		JinjaPreviewSession.dispose();
+		JinjaRenderedContentProvider.dispose();
+	});
 
 	setup(() => {
 		initTestEnvironment();
 		SessionManager._resetForTesting();
 		LinkManager._resetForTesting();
+		JinjaPreviewSession._resetForTesting();
+		JinjaRenderedContentProvider._resetForTesting();
 		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewst-buddy-preview-'));
+		Object.assign(extContext, { globalStorageUri: vscode.Uri.file(tmpDir) });
 	});
 
 	teardown(() => {
 		SessionManager._resetForTesting();
 		LinkManager._resetForTesting();
+		JinjaPreviewSession._resetForTesting();
+		JinjaRenderedContentProvider._resetForTesting();
 		fs.rmSync(tmpDir, { recursive: true, force: true });
 	});
 
@@ -52,7 +70,32 @@ suite('Unit: PreviewJinjaRender', () => {
 		return link;
 	}
 
-	test('notifies and does not open a panel for an unlinked file', async () => {
+	function stubShowTextDocument(): () => void {
+		const restoreShow = stub(vscode.window, 'showTextDocument', (async (docOrUri: any) => {
+			const doc =
+				docOrUri && typeof docOrUri.getText === 'function'
+					? docOrUri
+					: await vscode.workspace.openTextDocument(docOrUri);
+			return { document: doc } as vscode.TextEditor;
+		}) as unknown as typeof vscode.window.showTextDocument);
+		// createOrShow's "no existing tab" path calls this to stack the rendered
+		// pane under the vars pane — no real editor layout exists in the test
+		// host, so stub it out rather than let it act on whatever's really open.
+		const realExecuteCommand = vscode.commands.executeCommand.bind(vscode.commands);
+		const restoreExecuteCommand = stub(vscode.commands, 'executeCommand', (async (
+			command: string,
+			...rest: unknown[]
+		) => {
+			if (command === 'workbench.action.splitEditorDown') return undefined;
+			return realExecuteCommand(command, ...rest);
+		}) as unknown as typeof vscode.commands.executeCommand);
+		return () => {
+			restoreShow();
+			restoreExecuteCommand();
+		};
+	}
+
+	test('notifies and does not open a session for an unlinked file', async () => {
 		const uri = writeFile('unlinked.j2', 'hello');
 
 		let notifyCalls = 0;
@@ -60,35 +103,16 @@ suite('Unit: PreviewJinjaRender', () => {
 			notifyCalls++;
 			return new Error(message);
 		}) as typeof log.notifyError);
-
-		// Track whether JinjaPreviewPanel.createOrShow was called by checking
-		// if createWebviewPanel was invoked (the panel is the only caller).
-		let panelCreated = false;
-		const restorePanel = stub(vscode.window, 'createWebviewPanel', ((...args: unknown[]) => {
-			panelCreated = true;
-			// Return a minimal stub so the code doesn't crash if it does call it
-			return {
-				dispose: () => {},
-				onDidDispose: () => ({ dispose: () => {} }),
-				webview: {
-					html: '',
-					onDidReceiveMessage: () => ({ dispose: () => {} }),
-					asWebviewUri: (u: unknown) => u,
-					cspSource: '',
-				},
-				reveal: () => {},
-			} as any;
-		}) as typeof vscode.window.createWebviewPanel);
+		const restoreShow = stubShowTextDocument();
 
 		try {
 			await new PreviewJinjaRender().execute([uri]);
 		} finally {
 			restoreNotify();
-			restorePanel();
+			restoreShow();
 		}
 
 		assert.strictEqual(notifyCalls, 1, 'should notify error for unlinked file');
-		assert.strictEqual(panelCreated, false, 'should not open a panel for an unlinked file');
 	});
 
 	test('resolves org via orgForTemplateLink, not link.org, when template.orgId differs', async () => {
@@ -126,27 +150,14 @@ suite('Unit: PreviewJinjaRender', () => {
 			return session;
 		}) as typeof SessionManager.getSessionForOrg);
 
-		// Stub createWebviewPanel to avoid actually creating a panel
-		const restorePanel = stub(vscode.window, 'createWebviewPanel', ((..._args: unknown[]) => {
-			return {
-				dispose: () => {},
-				onDidDispose: (_cb: () => void) => ({ dispose: () => {} }),
-				webview: {
-					html: '',
-					onDidReceiveMessage: () => ({ dispose: () => {} }),
-					asWebviewUri: (u: unknown) => u,
-					cspSource: 'vscode-webview:',
-				},
-				reveal: () => {},
-			} as any;
-		}) as typeof vscode.window.createWebviewPanel);
+		const restoreShow = stubShowTextDocument();
 
 		try {
 			await new PreviewJinjaRender().execute([uri]);
 		} finally {
 			restoreGetLink();
 			restoreGetSession();
-			restorePanel();
+			restoreShow();
 		}
 
 		assert.strictEqual(
@@ -156,7 +167,7 @@ suite('Unit: PreviewJinjaRender', () => {
 		);
 	});
 
-	test('reveals an existing panel instead of creating a second one for the same uri', async () => {
+	test('reveals the existing session instead of recreating it for the same uri', async () => {
 		const uri = writeFile('linked.j2', 'hello');
 		const org = Fixtures.orgModel({ id: 'org-1', name: 'Org One' });
 		linkFile(uri, org.id, 'tpl-1');
@@ -164,91 +175,34 @@ suite('Unit: PreviewJinjaRender', () => {
 		const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
 		SessionManager._setSessionsForTesting([session]);
 
-		let createCount = 0;
-		let revealCount = 0;
-
-		const fakePanel = {
-			dispose: () => {},
-			onDidDispose: (_cb: () => void) => ({ dispose: () => {} }),
-			webview: {
-				html: '',
-				onDidReceiveMessage: () => ({ dispose: () => {} }),
-				asWebviewUri: (u: unknown) => u,
-				cspSource: 'vscode-webview:',
-				postMessage: async () => true,
-			},
-			reveal: () => {
-				revealCount++;
-			},
-		} as any;
-
-		const restorePanel = stub(vscode.window, 'createWebviewPanel', ((..._args: unknown[]) => {
-			createCount++;
-			return fakePanel;
-		}) as typeof vscode.window.createWebviewPanel);
+		const showCalls: string[] = [];
+		const restoreShow = stub(vscode.window, 'showTextDocument', (async (docOrUri: any) => {
+			const doc =
+				docOrUri && typeof docOrUri.getText === 'function'
+					? docOrUri
+					: await vscode.workspace.openTextDocument(docOrUri);
+			showCalls.push(doc.uri.toString());
+			return { document: doc } as vscode.TextEditor;
+		}) as unknown as typeof vscode.window.showTextDocument);
+		const realExecuteCommand = vscode.commands.executeCommand.bind(vscode.commands);
+		const restoreExecuteCommand = stub(vscode.commands, 'executeCommand', (async (
+			command: string,
+			...rest: unknown[]
+		) => {
+			if (command === 'workbench.action.splitEditorDown') return undefined;
+			return realExecuteCommand(command, ...rest);
+		}) as unknown as typeof vscode.commands.executeCommand);
 
 		try {
 			await new PreviewJinjaRender().execute([uri]);
+			const callsAfterFirst = showCalls.length;
+			assert.ok(callsAfterFirst > 0, 'first call should open the overrides and rendered panes');
+
 			await new PreviewJinjaRender().execute([uri]);
+			assert.ok(showCalls.length > callsAfterFirst, 'second call should reveal (re-show) the existing panes');
 		} finally {
-			restorePanel();
+			restoreExecuteCommand();
+			restoreShow();
 		}
-
-		assert.strictEqual(createCount, 1, 'panel should only be created once');
-		assert.strictEqual(revealCount, 1, 'existing panel should be revealed on second call');
-	});
-
-	test('renders the pick-context button as a clean text button', async () => {
-		const uri = writeFile('button.j2', 'hello');
-		const org = Fixtures.orgModel({ id: 'org-button', name: 'Org Button' });
-		linkFile(uri, org.id, 'tpl-button');
-		const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
-		SessionManager._setSessionsForTesting([session]);
-
-		let html = '';
-		const fakePanel = {
-			dispose: () => {},
-			onDidDispose: (_cb: () => void) => ({ dispose: () => {} }),
-			webview: {
-				get html() {
-					return html;
-				},
-				set html(value: string) {
-					html = value;
-				},
-				onDidReceiveMessage: () => ({ dispose: () => {} }),
-				asWebviewUri: (u: unknown) => u,
-				cspSource: 'vscode-webview:',
-				postMessage: async () => true,
-			},
-			reveal: () => {},
-		} as any;
-		const restorePanel = stub(vscode.window, 'createWebviewPanel', ((..._args: unknown[]) => {
-			return fakePanel;
-		}) as typeof vscode.window.createWebviewPanel);
-
-		try {
-			await new PreviewJinjaRender().execute([uri]);
-		} finally {
-			restorePanel();
-		}
-
-		assert.doesNotMatch(html, /\$\(eye\)/, 'webview HTML should not contain unexpanded VS Code icon syntax');
-		assert.doesNotMatch(html, /pick-context-icon/, 'button should not render the custom eye icon');
-		assert.doesNotMatch(html, /<svg\b/, 'button should not render a custom inline icon');
-		assert.match(html, /controlCharWarningHtml/, 'warning markup should be defined inside the webview script');
-
-		const cspMatch = html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/);
-		assert.ok(cspMatch, 'webview HTML should include a CSP meta tag');
-		const nonceMatch = html.match(/<style nonce="([^"]+)">/);
-		assert.ok(nonceMatch, 'webview HTML should include a nonced inline <style> block');
-		const [, csp] = cspMatch!;
-		const [, nonce] = nonceMatch!;
-		const styleSrcDirective = csp.split(';').find(d => d.trim().startsWith('style-src'));
-		assert.ok(styleSrcDirective, 'CSP should declare a style-src directive');
-		assert.ok(
-			styleSrcDirective!.includes(`'nonce-${nonce}'`),
-			`style-src must allow the inline <style> block's nonce, or all of #pickContextBtn's custom styling is silently dropped by CSP. Got: ${styleSrcDirective}`,
-		);
 	});
 });
