@@ -3,7 +3,13 @@ import { clearCachedSession, getTestSession, hasTestToken, initTestEnvironment }
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { rawGraphqlOrThrow } from '../../capabilities/inputHelpers';
-import { buildUnpackInput, CRATE_DETAIL_QUERY, CRATE_LIST_QUERY, parseCrateDetail } from '../../crates/crateUnpack';
+import {
+	buildUnpackInput,
+	CRATE_DETAIL_QUERY,
+	CRATE_LIST_QUERY,
+	parseCrateDetail,
+	resolveTokenArguments,
+} from '../../crates/crateUnpack';
 
 const { suite, test, suiteSetup, suiteTeardown } = Mocha;
 
@@ -47,14 +53,24 @@ suite('Integration: crate unpack planning probes', function () {
 		assert.ok(crates[0].id, 'crates carry ids');
 	});
 
-	test('detail query on a known public crate parses and builds a wizard-shaped input', async () => {
+	test('detail query on a known public crate parses and builds a wizard-shaped input', async function () {
+		// The reference crate is Rewst-maintained and can be edited or withdrawn;
+		// a missing or reshaped catalog entry is an external change, not a
+		// regression — skip rather than fail CI in that case.
 		const data = await rawGraphqlOrThrow(session, CRATE_DETAIL_QUERY, { crateId: KNOWN_CRATE_ID, orgId });
 		const crate = parseCrateDetail(data);
-		assert.ok(crate, 'known crate parses');
+		if (!crate) {
+			console.log(`[itest] known crate ${KNOWN_CRATE_ID} is no longer visible — skipping`);
+			this.skip();
+			return;
+		}
+		if (crate.tokens.length === 0 || crate.crateTriggers.length === 0) {
+			console.log(`[itest] known crate ${KNOWN_CRATE_ID} no longer carries tokens/triggers — skipping`);
+			this.skip();
+			return;
+		}
 		assert.strictEqual(crate.id, KNOWN_CRATE_ID);
 		assert.ok(crate.name.length > 0, 'crate has a name');
-		assert.ok(crate.tokens.length > 0, 'crate carries tokens');
-		assert.ok(crate.crateTriggers.length > 0, 'crate carries at least one trigger');
 		for (const trigger of crate.crateTriggers) {
 			assert.ok(trigger.triggerName, 'each trigger resolves its underlying trigger name');
 		}
@@ -63,7 +79,14 @@ suite('Integration: crate unpack planning probes', function () {
 
 		// This crate's tokens are all display-only in production, so the input
 		// builds with no supplied values — matching the web wizard, which asks
-		// for nothing but workflow name and trigger settings.
+		// for nothing but workflow name and trigger settings. If Rewst later adds
+		// value tokens without defaults, that's an external catalog change: skip.
+		const { missing } = resolveTokenArguments(crate.tokens, {});
+		if (missing.length > 0) {
+			console.log(`[itest] known crate ${KNOWN_CRATE_ID} now requires token values — skipping input build`);
+			this.skip();
+			return;
+		}
 		const input = buildUnpackInput(crate, { orgId });
 		assert.strictEqual(input.crateId, KNOWN_CRATE_ID);
 		assert.strictEqual(input.orgId, orgId);

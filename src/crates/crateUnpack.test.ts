@@ -172,6 +172,28 @@ suite('Unit: crateUnpack planner', () => {
 			assert.deepStrictEqual(missing, []);
 		});
 
+		test('multiselect defaults resolve to the same Jinja-list format as supplied arrays', () => {
+			const tokens = [
+				token({
+					id: 'tok-multi',
+					name: 'Channels',
+					type: 'selectVar',
+					isMultiselect: true,
+					options: [
+						{ id: 'o-1', label: 'General', value: 'general', isDefault: true },
+						{ id: 'o-2', label: 'Alerts', value: 'alerts', isDefault: true },
+						{ id: 'o-3', label: 'Random', value: 'random', isDefault: false },
+					],
+				}),
+			];
+			const { tokenArguments, missing, defaulted } = resolveTokenArguments(tokens, {});
+			assert.deepStrictEqual(tokenArguments, [
+				{ crateTokenId: 'tok-multi', value: '{{ ["general","alerts"] }}' },
+			]);
+			assert.deepStrictEqual(missing, []);
+			assert.strictEqual(defaulted.length, 1, 'reported as default-resolved');
+		});
+
 		test('resolveTokenArguments lists value tokens with no value and no default as missing', () => {
 			const tokens = [token({ id: 'tok-1', name: 'Team Name', type: 'inputVar' })];
 			const { tokenArguments, missing } = resolveTokenArguments(tokens, {});

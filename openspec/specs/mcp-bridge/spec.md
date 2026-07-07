@@ -1037,10 +1037,10 @@ disabled, and a modal confirmation summarizing the install before the unpack
 stream runs with visible progress. Cancelling any step SHALL abort the
 install without mutating anything.
 
-_Implementation status:_ the interactive flow is thin VS Code prompt wiring
-over the same planner the capability uses (`resolveTokenArguments`,
-`buildUnpackInput`, and the unpack stream client), which carries the unit
-coverage; the wizard itself has no automated UI test.
+_Implementation status:_ the interactive command builds the same unpack input
+as `buddy_unpack_crate` and shares its behavior guarantees; the full
+end-to-end wizard interaction (organization pick through confirmation) is
+exercised manually rather than by an automated UI test.
 
 #### Scenario: Dynamic token wizard
 

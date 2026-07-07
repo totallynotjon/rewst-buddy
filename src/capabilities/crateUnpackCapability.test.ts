@@ -282,6 +282,27 @@ suite('Unit: crateUnpackCapability', () => {
 		assert.ok(withWrite.includes('buddy_unpack_crate'), 'listed once write tools are enabled');
 	});
 
+	test('a transport failure after approval rejects with the transport error', async () => {
+		const { ctx, wrapper } = sandboxCtx();
+		wrapper.when('rawGraphql', { data: { data: { crate: CRATE_ROW } } });
+		setMcpMutationApprover(async () => true);
+		_setUnpackTransportForTesting(async () => {
+			throw new Error('websocket closed before the unpack finished');
+		});
+
+		await assert.rejects(
+			() =>
+				crateUnpackCapability.run(
+					{ orgId: 'org-sandbox', crateId: 'crate-1', tokenValues: { 'Team Name': 'Acme' } },
+					ctx,
+				),
+			(err: Error) => {
+				assert.ok(err.message.includes('websocket closed'), 'transport error surfaces to the caller');
+				return true;
+			},
+		);
+	});
+
 	test('unknown crate rejects', async () => {
 		const { ctx, wrapper } = sandboxCtx();
 		wrapper.when('rawGraphql', { data: { data: { crate: null } } });

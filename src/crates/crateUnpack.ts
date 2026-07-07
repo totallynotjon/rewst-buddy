@@ -262,6 +262,23 @@ export function tokenDefault(token: CrateTokenDetail): string | undefined {
 }
 
 /**
+ * A token's raw default before serialization. A multiselect token defaults to
+ * every option marked default (the set the web wizard preselects), so its
+ * default must ride through the same list serialization as supplied arrays.
+ */
+function tokenDefaultRaw(token: CrateTokenDetail): string | string[] | undefined {
+	if (token.value !== undefined) return token.value;
+	if (token.isMultiselect === true) {
+		const defaults = token.options
+			.filter(option => option.isDefault)
+			.map(option => option.value)
+			.filter((value): value is string => value !== undefined);
+		return defaults.length > 0 ? defaults : undefined;
+	}
+	return token.options.find(option => option.isDefault)?.value;
+}
+
+/**
  * How a supplied value is flattened into the single string the API expects.
  * Multiselect values ride as a Jinja-wrapped JSON list (`{{ ["a","b"] }}`) —
  * the exact serialization the web unpack wizard sends.
@@ -295,8 +312,11 @@ export function resolveTokenArguments(tokens: CrateTokenDetail[], provided: Toke
 
 		const suppliedRaw =
 			(token.name !== undefined ? provided[token.name] : undefined) ?? provided[token.id] ?? undefined;
+		// Defaults ride through the same serializer as supplied values, so a
+		// multiselect default emits the identical Jinja-list format.
+		const raw = suppliedRaw ?? tokenDefaultRaw(token);
 		const supplied = suppliedRaw === undefined ? undefined : flattenValue(suppliedRaw);
-		const value = supplied ?? tokenDefault(token);
+		const value = raw === undefined ? undefined : flattenValue(raw);
 		if (value === undefined) {
 			missing.push(token);
 			continue;

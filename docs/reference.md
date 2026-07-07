@@ -79,7 +79,7 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 
 **Crates**
 
-- `Install Crate` — Browse the Crate catalog and install one into an org, with a configuration wizard generated from the crate's own options. See [Crate Installer](features.md#crate-installer).
+- `Install Crate` — Browse the Crate catalog and install one into an org, with a configuration wizard generated from the crate's own options; triggers install disabled by default. See [Crate Installer](features.md#crate-installer).
 
 **Sync & Maintenance**
 

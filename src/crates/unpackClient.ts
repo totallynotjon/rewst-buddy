@@ -42,6 +42,8 @@ export interface UnpackTransportOptions {
 	input: UnpackCrateInput;
 	onProgress?: (label: string) => void;
 	inactivityTimeoutMs?: number;
+	/** Aborting tears down the websocket, ending the stream early. */
+	signal?: AbortSignal;
 }
 
 /**
@@ -75,6 +77,12 @@ export async function runUnpackCrate(options: UnpackTransportOptions): Promise<U
 		Promise.resolve(client.dispose()).catch(() => {});
 	};
 
+	if (options.signal?.aborted) {
+		dispose();
+		throw new Error('Crate unpack was cancelled before it started.');
+	}
+	options.signal?.addEventListener('abort', dispose, { once: true });
+
 	log.debug('unpackCrate: starting subscription', {
 		crateId: options.input.crateId,
 		orgId: options.input.orgId,
@@ -92,6 +100,7 @@ export async function runUnpackCrate(options: UnpackTransportOptions): Promise<U
 			onProgress: options.onProgress,
 		});
 	} finally {
+		options.signal?.removeEventListener('abort', dispose);
 		dispose();
 	}
 }

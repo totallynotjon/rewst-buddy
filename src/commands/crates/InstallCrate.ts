@@ -27,7 +27,7 @@ import GenericCommand from '../GenericCommand';
  * default so nothing fires until reviewed in Rewst.
  */
 
-interface CrateListRow {
+export interface CrateListRow {
 	id?: string | null;
 	name?: string | null;
 	category?: string | null;
@@ -35,22 +35,18 @@ interface CrateListRow {
 	isUnpackedForSelectedOrg?: boolean | null;
 }
 
-interface CrateQuickPickItem extends vscode.QuickPickItem {
+export interface CrateQuickPickItem extends vscode.QuickPickItem {
 	crateId: string;
 }
 
 const CRATE_LIST_LIMIT = 500;
 
-async function pickCrate(session: Session, orgId: string): Promise<string | undefined> {
-	const crates = await vscode.window.withProgress(
-		{ location: vscode.ProgressLocation.Notification, title: 'Loading Crate catalog…' },
-		async () => {
-			const data = await rawGraphqlOrThrow(session, CRATE_LIST_QUERY, { orgId, limit: CRATE_LIST_LIMIT });
-			return (data as { crates?: CrateListRow[] | null } | undefined)?.crates ?? [];
-		},
-	);
-
-	const items: CrateQuickPickItem[] = crates
+/**
+ * Maps catalog rows to QuickPick items: rows without an id are dropped, and
+ * already-installed crates carry a check icon and an "already installed" tag.
+ */
+export function crateQuickPickItems(crates: readonly CrateListRow[]): CrateQuickPickItem[] {
+	return crates
 		.filter((crate): crate is CrateListRow & { id: string } => typeof crate.id === 'string' && crate.id.length > 0)
 		.map(crate => ({
 			crateId: crate.id,
@@ -66,7 +62,18 @@ async function pickCrate(session: Session, orgId: string): Promise<string | unde
 				.join(' — '),
 			detail: crate.description ?? undefined,
 		}));
+}
 
+async function pickCrate(session: Session, orgId: string): Promise<string | undefined> {
+	const crates = await vscode.window.withProgress(
+		{ location: vscode.ProgressLocation.Notification, title: 'Loading Crate catalog…' },
+		async () => {
+			const data = await rawGraphqlOrThrow(session, CRATE_LIST_QUERY, { orgId, limit: CRATE_LIST_LIMIT });
+			return (data as { crates?: CrateListRow[] | null } | undefined)?.crates ?? [];
+		},
+	);
+
+	const items = crateQuickPickItems(crates);
 	if (items.length === 0) {
 		log.notifyInfo('No Crates are visible to this session.');
 		return undefined;
@@ -81,7 +88,7 @@ async function pickCrate(session: Session, orgId: string): Promise<string | unde
 }
 
 /** Collects a value for one select token; undefined means the user backed out. */
-async function promptSelectToken(token: CrateTokenDetail): Promise<string | string[] | undefined> {
+export async function promptSelectToken(token: CrateTokenDetail): Promise<string | string[] | undefined> {
 	const defaultValue = tokenDefault(token);
 	const items = token.options
 		.filter(option => option.value !== undefined)
@@ -107,7 +114,7 @@ async function promptSelectToken(token: CrateTokenDetail): Promise<string | stri
 }
 
 /** Collects a value for one free-text token; undefined means backed out. */
-async function promptInputToken(token: CrateTokenDetail): Promise<string | undefined> {
+export async function promptInputToken(token: CrateTokenDetail): Promise<string | undefined> {
 	return vscode.window.showInputBox({
 		prompt: token.name,
 		value: tokenDefault(token) ?? '',
@@ -120,7 +127,7 @@ async function promptInputToken(token: CrateTokenDetail): Promise<string | undef
  * Walks the crate's value-bearing tokens in wizard order, prompting for each
  * (defaults prefilled). Returns undefined when the user cancels any step.
  */
-async function collectTokenValues(crate: CrateDetail): Promise<TokenValues | undefined> {
+export async function collectTokenValues(crate: CrateDetail): Promise<TokenValues | undefined> {
 	const values: TokenValues = {};
 	const valueTokens = crate.tokens.filter(token => isValueToken(token) && token.id !== undefined);
 	for (const [position, token] of valueTokens.entries()) {
@@ -175,9 +182,18 @@ export class InstallCrate extends GenericCommand {
 			enableTriggers = triggerChoice.enabled;
 		}
 
+		// Build the input before confirming so the preview shows exactly what will
+		// run — including the resolved workflow name when the input box was cleared.
+		const input = buildUnpackInput(crate, {
+			orgId: org.id,
+			workflowName: workflowName || undefined,
+			tokenValues,
+			enableTriggers,
+		});
+
 		const detailLines = [
 			`Organization: ${org.name}`,
-			`Workflow name: ${workflowName || crate.name}`,
+			`Workflow name: ${input.workflow.name}`,
 			crate.crateTriggers.length > 0
 				? `Triggers: ${crate.crateTriggers.length}, installed ${enableTriggers ? 'enabled' : 'disabled'}`
 				: undefined,
@@ -192,22 +208,31 @@ export class InstallCrate extends GenericCommand {
 		);
 		if (confirmed !== 'Install') return;
 
-		const input = buildUnpackInput(crate, {
-			orgId: org.id,
-			workflowName: workflowName || undefined,
-			tokenValues,
-			enableTriggers,
-		});
-
+		let cancelled = false;
 		try {
 			const outcome = await vscode.window.withProgress(
-				{ location: vscode.ProgressLocation.Notification, title: `Installing Crate "${crate.name}"…` },
-				async progress =>
-					runUnpackCrate({
-						session,
-						input,
-						onProgress: label => progress.report({ message: label }),
-					}),
+				{
+					location: vscode.ProgressLocation.Notification,
+					title: `Installing Crate "${crate.name}"…`,
+					cancellable: true,
+				},
+				async (progress, token) => {
+					const controller = new AbortController();
+					const cancelListener = token.onCancellationRequested(() => {
+						cancelled = true;
+						controller.abort();
+					});
+					try {
+						return await runUnpackCrate({
+							session,
+							input,
+							signal: controller.signal,
+							onProgress: label => progress.report({ message: label }),
+						});
+					} finally {
+						cancelListener.dispose();
+					}
+				},
 			);
 			const suffix =
 				crate.requiredOrgVariables.length > 0
@@ -219,6 +244,12 @@ export class InstallCrate extends GenericCommand {
 					`.${suffix}`,
 			);
 		} catch (error) {
+			if (cancelled) {
+				log.notifyInfo(
+					`Cancelled installing Crate "${crate.name}". The unpack may have already started server-side — check the org in Rewst.`,
+				);
+				return;
+			}
 			const message = error instanceof Error ? error.message : String(error);
 			log.notifyError(`Installing Crate "${crate.name}" failed: ${message}`);
 		}
