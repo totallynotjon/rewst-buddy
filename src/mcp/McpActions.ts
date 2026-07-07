@@ -1,6 +1,5 @@
 import {
 	CAPABILITY_REGISTRY,
-	MCP_MAX_OUTPUT_CHARS,
 	formatMcpOutput,
 	getCapability,
 	runWithApprovalOrigin,
@@ -422,7 +421,7 @@ export async function callTool(
 export function listResources(settings: McpSettings = readMcpSettings()): McpResourceDescriptor[] {
 	// Only advertise a collection when its backing list capability is exposed, so
 	// resources honour the same allowlist/exposure gates as tools.
-	const templatesExposed = isCapabilityExposed('buddy_list_templates', settings);
+	const templatesExposed = isCapabilityExposed('buddy_search_templates', settings);
 	const workflowsExposed = isCapabilityExposed('buddy_list_workflows', settings);
 	if (!templatesExposed && !workflowsExposed) return [];
 	const resources: McpResourceDescriptor[] = [];
@@ -460,7 +459,7 @@ export async function readResource(uri: string, settings: McpSettings = readMcpS
 		parsed.collection === 'templates'
 			? parsed.id
 				? 'buddy_get_template'
-				: 'buddy_list_templates'
+				: 'buddy_search_templates'
 			: parsed.id
 				? 'buddy_get_workflow'
 				: 'buddy_list_workflows';

@@ -217,7 +217,7 @@ const getJinjaFilterDocsInputSchema = z.object({
 const getJinjaFilterDocsSpec: ToolSpecDefinition = {
 	name: 'buddy_get_jinja_filter_docs',
 	description:
-		'Read the documentation for Rewst\'s built-in Jinja filters (the same catalog Rewst\'s in-app editor uses, including the prose docs that buddy_list_jinja_filters omits). Pass "name" for one filter\'s full documentation, or "search" to match filters by name or documentation keyword. With no arguments, lists every filter name and signature so you can pick one. Read-only and not org-specific.',
+		'Read the documentation for Rewst\'s built-in Jinja filters from the same catalog Rewst\'s in-app editor uses. Pass "name" for one filter\'s full documentation, or "search" to match filters by name or documentation keyword. With no arguments, lists every filter name and signature so you can pick one. Read-only and not org-specific.',
 	inputSchema: toInputSchema(getJinjaFilterDocsInputSchema),
 };
 

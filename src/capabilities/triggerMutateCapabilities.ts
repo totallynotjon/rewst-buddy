@@ -1,8 +1,15 @@
+import { z } from 'zod';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
-import { ORG_ID_PROP, rawGraphqlOrThrow, requireResourceInOrg, requireString } from './inputHelpers';
+import {
+	ORG_ID_FIELD,
+	parseCapabilityInput,
+	rawGraphqlOrThrow,
+	requireResourceInOrg,
+	toInputSchema,
+} from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
@@ -28,13 +35,6 @@ interface TriggerRow {
 	orgId?: string;
 }
 
-/** Reads a required boolean argument; non-booleans are an error, not coerced. */
-function requireBoolean(input: Record<string, unknown>, key: string): boolean {
-	const value = input[key];
-	if (typeof value !== 'boolean') throw new Error(`Missing required boolean argument "${key}".`);
-	return value;
-}
-
 /**
  * Fetches a trigger by id and fails closed unless it belongs to the requested
  * org. Returns the current name for the approval scope.
@@ -54,26 +54,27 @@ async function requireTriggerInOrg(ctx: CapabilityContext, triggerId: string, or
 	});
 }
 
-const setTriggerEnabledSpec: ToolSpec = {
+const setTriggerEnabledSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	triggerId: z
+		.string({ error: 'Missing required string argument "triggerId".' })
+		.trim()
+		.min(1, { error: 'Missing required string argument "triggerId".' })
+		.describe('Id of the trigger to enable or disable.'),
+	enabled: z
+		.boolean({ error: 'Missing required boolean argument "enabled".' })
+		.describe('true to enable the trigger, false to disable it.'),
+});
+
+const setTriggerEnabledSpec: ToolSpecDefinition = {
 	name: 'buddy_set_trigger_enabled',
-	args: '{"orgId": string, "triggerId": string, "enabled": boolean}',
 	description:
 		'Enable or disable one Rewst workflow trigger, identified by org and trigger id. The trigger must belong to the given org. Pass enabled=true to turn it on, false to turn it off. Requires write tools to be enabled and per-call approval in VS Code.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			triggerId: { type: 'string', description: 'Id of the trigger to enable or disable.' },
-			enabled: { type: 'boolean', description: 'true to enable the trigger, false to disable it.' },
-		},
-		required: ['orgId', 'triggerId', 'enabled'],
-	},
+	inputSchema: toInputSchema(setTriggerEnabledSchema),
 };
 
 async function runSetTriggerEnabled(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const triggerId = requireString(input, 'triggerId');
-	const enabled = requireBoolean(input, 'enabled');
+	const { orgId, triggerId, enabled } = parseCapabilityInput(setTriggerEnabledSchema, input);
 	const orgName = orgDisplayName(ctx);
 	const current = await requireTriggerInOrg(ctx, triggerId, orgId);
 	const name = current.name ?? '(unnamed)';
@@ -94,6 +95,4 @@ async function runSetTriggerEnabled(input: Record<string, unknown>, ctx: Capabil
 	});
 }
 
-export const TRIGGER_MUTATE_CAPABILITIES: Capability[] = [
-	writeCapability(setTriggerEnabledSpec, runSetTriggerEnabled),
-];
+export const TRIGGER_MUTATE_CAPABILITIES: Capability[] = [writeCapability(setTriggerEnabledSpec, runSetTriggerEnabled)];

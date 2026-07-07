@@ -136,7 +136,7 @@ read capabilities and gates as tools. Resource URIs SHALL use the
 - **GIVEN** a `rewst://org-1/templates` resource URI
 - **WHEN** an MCP client reads that resource
 - **THEN** the bridge runs the same gated capability used by
-  `buddy_list_templates`
+  `buddy_search_templates`
 - **AND** the read is subject to the same scope and rate-limit rules as a tool
   call
 

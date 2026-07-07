@@ -104,7 +104,7 @@ external clients, `CopyMcpConfig` copies a credential-free client config JSON: t
 `/mcp` URL plus the `REWST_BUDDY_MCP_TOKEN` Bearer placeholder. No `node`, no
 spawned process, no discovery file.
 
-Initial read tools: `buddy_list_orgs`, `buddy_list_templates`, `buddy_get_template`,
+Initial read tools: `buddy_list_orgs`, `buddy_search_templates`, `buddy_get_template`,
 `buddy_list_workflows`, `buddy_get_workflow`, `buddy_graphql_query` (read-only), `buddy_get_bundle`.
 Resources: `rewst://{org}/templates`, `…/templates/{id}`, `…/workflows`.
 

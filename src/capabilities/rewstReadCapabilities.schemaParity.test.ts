@@ -45,9 +45,11 @@ const LEGACY_SCHEMAS: Record<string, LegacySchema> = {
 	buddy_list_orgs: {
 		properties: {},
 	},
-	buddy_list_templates: {
+	buddy_search_templates: {
 		properties: {
 			orgId: { type: 'string', description: ORG_ID_DESC },
+			search: { type: 'string', description: 'Optional case-insensitive name substring.' },
+			limit: { type: 'number', description: 'Max templates to return (default 50, max 200).' },
 		},
 		required: ['orgId'],
 	},
@@ -74,14 +76,7 @@ const LEGACY_SCHEMAS: Record<string, LegacySchema> = {
 		},
 		required: ['orgId'],
 	},
-	buddy_list_workflow_executions: {
-		properties: {
-			orgId: { type: 'string', description: ORG_ID_DESC },
-			status: { type: 'string', description: 'Optional exact execution status filter.' },
-			limit: { type: 'number', description: 'Max executions to return (default 25, max 100).' },
-		},
-		required: ['orgId'],
-	},
+
 	buddy_find_executions_by_variable: {
 		properties: {
 			orgId: { type: 'string', description: ORG_ID_DESC },
@@ -123,14 +118,7 @@ const LEGACY_SCHEMAS: Record<string, LegacySchema> = {
 		},
 		required: ['orgId', 'patchId'],
 	},
-	buddy_latest_workflow_execution: {
-		properties: {
-			orgId: { type: 'string', description: ORG_ID_DESC },
-			workflowId: { type: 'string', description: 'Workflow id to inspect.' },
-			status: { type: 'string', description: 'Optional exact execution status constraint.' },
-		},
-		required: ['orgId', 'workflowId'],
-	},
+
 	buddy_get_workflow_execution_stats: {
 		properties: {
 			orgId: { type: 'string', description: ORG_ID_DESC },
@@ -141,17 +129,7 @@ const LEGACY_SCHEMAS: Record<string, LegacySchema> = {
 		},
 		required: ['orgId', 'createdSince'],
 	},
-	buddy_find_action: {
-		properties: {
-			orgId: { type: 'string', description: ORG_ID_DESC },
-			filter: {
-				type: 'string',
-				description: "Optional text matched case-insensitively against the action's display name.",
-			},
-			limit: { type: 'number', description: 'Max flattened actions to return (default 25, max 100).' },
-		},
-		required: ['orgId'],
-	},
+
 	buddy_resolve_reference: {
 		properties: {
 			orgId: { type: 'string', description: ORG_ID_DESC },

@@ -31,18 +31,9 @@ const listSitesInputSchema = z.object({
 	orgId: ORG_ID_FIELD,
 });
 
-const listJinjaFiltersInputSchema = z.object({
-	orgId: ORG_ID_FIELD,
-	search: optionalStringField().describe('Optional case-insensitive name substring.'),
-	limit: optionalClampedInt(MAX_LIMIT).describe(
-		`Max filters to return (default ${DEFAULT_LIMIT}, max ${MAX_LIMIT}).`,
-	),
-});
-
 const SEARCH_TEMPLATES_QUERY = `query($orgId: ID!, $search: TemplateSearch, $limit: Int){ templates(where:{ orgId:$orgId }, search:$search, order:[["updatedAt","desc"]], limit:$limit){ id name language contentType updatedAt } }`;
 const LIST_PAGES_QUERY = `query($orgId: ID!, $limit: Int){ pages(where:{ orgId:$orgId }, limit:$limit){ id name path siteId } }`;
 const LIST_SITES_QUERY = `query($orgId: ID!){ sites(where:{ orgId:$orgId }){ id name domain isLive } }`;
-const LIST_JINJA_FILTERS_QUERY = `query{ jinjaFiltersDocumentation { name signature } }`;
 
 const searchTemplatesSpec: ToolSpecDefinition = {
 	name: 'buddy_search_templates',
@@ -62,13 +53,6 @@ const listSitesSpec: ToolSpecDefinition = {
 	description:
 		'List App Platform sites in one Rewst organization (id, name, domain, isLive). Returns all sites (this field has no pagination).',
 	inputSchema: toInputSchema(listSitesInputSchema),
-};
-
-const listJinjaFiltersSpec: ToolSpecDefinition = {
-	name: 'buddy_list_jinja_filters',
-	description:
-		'List Rewst available Jinja filters with their signatures (global catalog, ~100 entries). Optionally filter by a name substring. Use this instead of the broken singular jinjaFilterDocumentation.',
-	inputSchema: toInputSchema(listJinjaFiltersInputSchema),
 };
 
 async function runSearchTemplates(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
@@ -139,33 +123,8 @@ async function runListSites(input: Record<string, unknown>, ctx: CapabilityConte
 		.join('\n');
 }
 
-async function runListJinjaFilters(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const { search, limit: rawLimit } = parseCapabilityInput(listJinjaFiltersInputSchema, input);
-	const limit = rawLimit ?? DEFAULT_LIMIT;
-	const variables = {};
-	const data = await rawGraphqlOrThrow(ctx.session, LIST_JINJA_FILTERS_QUERY, variables);
-	const filters = ((data as { jinjaFiltersDocumentation?: unknown[] } | undefined)?.jinjaFiltersDocumentation ??
-		[]) as {
-		name?: string | null;
-		signature?: string | null;
-	}[];
-	const matched = search
-		? filters.filter(filter => (filter.name ?? '').toLowerCase().includes(search.toLowerCase()))
-		: filters;
-	const capped = matched.slice(0, limit);
-	if (capped.length === 0) return search ? `No Jinja filters found matching "${search}".` : 'No Jinja filters found.';
-	const lines = capped.map(
-		filter => `${filter.name ?? '(unnamed)'}${filter.signature ? ` - ${filter.signature}` : ''}`,
-	);
-	if (matched.length > limit) {
-		lines.push(`...(${matched.length - limit} more not shown; refine the search)`);
-	}
-	return lines.join('\n');
-}
-
 export const PAGE_TEMPLATE_CAPABILITIES: Capability[] = [
 	readCapability(searchTemplatesSpec, runSearchTemplates),
 	readCapability(listPagesSpec, runListPages),
 	readCapability(listSitesSpec, runListSites),
-	readCapability(listJinjaFiltersSpec, runListJinjaFilters),
 ];

@@ -34,14 +34,14 @@ suite('Unit: resultReadCapability', () => {
 			const cache = new McpResultCache();
 			const text = 'x'.repeat(MCP_MAX_OUTPUT_CHARS);
 
-			assert.strictEqual(formatMcpOutput('buddy_list_templates', text, cache), text);
+			assert.strictEqual(formatMcpOutput('buddy_search_templates', text, cache), text);
 			assert.strictEqual(cache.size, 0);
 		});
 
 		test('caches oversized output and returns preview with paging instructions', () => {
 			const cache = new McpResultCache();
 			const text = `${'x'.repeat(MCP_MAX_OUTPUT_CHARS)}tail`;
-			const formatted = formatMcpOutput('buddy_list_templates', text, cache);
+			const formatted = formatMcpOutput('buddy_search_templates', text, cache);
 
 			assert.ok(formatted.startsWith(text.slice(0, MCP_MAX_OUTPUT_CHARS)));
 			assert.match(formatted, /cached in memory as id "[0-9a-f]{8}"/);
@@ -64,7 +64,7 @@ suite('Unit: resultReadCapability', () => {
 		test('returns a preview with a cache-budget note when the result is too large to store', () => {
 			const cache = new McpResultCache(8);
 			const text = 'x'.repeat(MCP_MAX_OUTPUT_CHARS + 1);
-			const formatted = formatMcpOutput('buddy_list_templates', text, cache);
+			const formatted = formatMcpOutput('buddy_search_templates', text, cache);
 
 			assert.ok(formatted.startsWith(text.slice(0, MCP_MAX_OUTPUT_CHARS)));
 			assert.ok(formatted.includes('exceeds the in-memory cache budget'));
@@ -89,7 +89,7 @@ suite('Unit: resultReadCapability', () => {
 		});
 
 		test('numeric string offset and limit are accepted', async () => {
-			const id = cacheId(mcpResultCache.store('buddy_list_templates', '0123456789abcdef'));
+			const id = cacheId(mcpResultCache.store('buddy_search_templates', '0123456789abcdef'));
 			const output = await resultReadCapability.run({ id, offset: '4', limit: '6' }, ignoredContext());
 			assert.ok(output.includes('456789'));
 		});
@@ -101,17 +101,17 @@ suite('Unit: resultReadCapability', () => {
 		});
 
 		test('returns a requested slice with a continuation footer', async () => {
-			const id = cacheId(mcpResultCache.store('buddy_list_templates', '0123456789abcdef'));
+			const id = cacheId(mcpResultCache.store('buddy_search_templates', '0123456789abcdef'));
 
 			const output = await resultReadCapability.run({ id, offset: '4', limit: '6' }, ignoredContext());
 
-			assert.ok(output.startsWith(`Cached result "${id}" (buddy_list_templates), characters 4-10 of 16.`));
+			assert.ok(output.startsWith(`Cached result "${id}" (buddy_search_templates), characters 4-10 of 16.`));
 			assert.ok(output.includes('\n\n456789\n'));
 			assert.ok(output.includes(`{"id":"${id}","offset":10}`));
 		});
 
 		test('marks the final slice as the end of the result', async () => {
-			const id = cacheId(mcpResultCache.store('buddy_list_templates', '0123456789abcdef'));
+			const id = cacheId(mcpResultCache.store('buddy_search_templates', '0123456789abcdef'));
 
 			const output = await resultReadCapability.run({ id, offset: 10, limit: 100 }, ignoredContext());
 

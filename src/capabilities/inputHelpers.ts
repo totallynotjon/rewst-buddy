@@ -204,6 +204,31 @@ export function optionalClampedInt(max: number): z.ZodType<number | undefined> {
 }
 
 /**
+ * Zod counterpart to requireStringAllowEmpty: required string that may be
+ * empty (e.g. template body, org-variable value). Missing key or non-string
+ * type throws; empty string is accepted.
+ */
+export function requiredStringAllowEmptyField(key: string): z.ZodString {
+	const message = `Missing required string argument "${key}".`;
+	return z.string({ error: message });
+}
+
+/**
+ * Optional boolean field that rejects non-boolean values with a clear message.
+ * Missing key resolves to undefined; wrong type throws.
+ */
+export function optionalBooleanField(key: string): z.ZodType<boolean | undefined> {
+	return z.preprocess(
+		raw => (raw === undefined ? undefined : raw),
+		z
+			.boolean({
+				error: `"${key}" must be a boolean.`,
+			})
+			.optional(),
+	);
+}
+
+/**
  * Shared orgId field for read-capability schemas; description text matches
  * the existing ORG_ID_PROP so the two stay in sync until every capability
  * migrates.

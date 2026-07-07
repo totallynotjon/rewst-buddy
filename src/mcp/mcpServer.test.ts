@@ -86,7 +86,7 @@ suite('Unit: mcpServer', () => {
 			await client.connect(clientTransport);
 
 			try {
-				const result = await client.callTool({ name: 'buddy_list_templates', arguments: {} });
+				const result = await client.callTool({ name: 'buddy_search_templates', arguments: {} });
 				assert.strictEqual(result.isError, true);
 				const text = (result.content as { type: string; text: string }[]).map(part => part.text).join('');
 				assert.ok(/orgId/i.test(text), 'explains the missing orgId');

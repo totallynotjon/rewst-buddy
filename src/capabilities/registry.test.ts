@@ -106,11 +106,36 @@ suite('Unit: capability registry', () => {
 	});
 
 	suite('mcp surface', () => {
+		test('retired Buddy tool aliases are absent from the unified PR', () => {
+			const retiredNames = [
+				'buddy_list_templates',
+				'buddy_list_jinja_filters',
+				'buddy_find_action',
+				'buddy_list_workflow_executions',
+				'buddy_latest_workflow_execution',
+			];
+			const canonicalNames = [
+				'buddy_search_templates',
+				'buddy_get_jinja_filter_docs',
+				'buddy_action_search',
+				'buddy_workflow_executions',
+			];
+			const mcpNames = mcpCapabilities().map(c => c.spec.name);
+			for (const name of retiredNames) {
+				assert.strictEqual(getCapability(name), undefined, `retired tool ${name} must not be registered`);
+				assert.ok(!mcpNames.includes(name), `retired tool ${name} must not appear in MCP tool list`);
+			}
+			for (const name of canonicalNames) {
+				assert.ok(getCapability(name), `canonical tool ${name} must be registered`);
+				assert.ok(mcpNames.includes(name), `canonical tool ${name} must appear in MCP tool list`);
+			}
+		});
+
 		test('read tools and the dedicated mutation tool are exposed to MCP', () => {
 			const names = mcpCapabilities().map(capability => capability.spec.name);
 			for (const expected of [
 				'buddy_list_orgs',
-				'buddy_list_templates',
+				'buddy_search_templates',
 				'buddy_get_template',
 				'buddy_list_workflows',
 				'buddy_get_workflow',

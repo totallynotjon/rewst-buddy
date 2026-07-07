@@ -147,14 +147,6 @@ const LEGACY_SCHEMAS: Record<string, LegacySchema> = {
 		properties: { orgId: { type: 'string', description: ORG_ID_DESC } },
 		required: ['orgId'],
 	},
-	buddy_list_jinja_filters: {
-		properties: {
-			orgId: { type: 'string', description: ORG_ID_DESC },
-			search: { type: 'string', description: 'Optional case-insensitive name substring.' },
-			limit: { type: 'number', description: 'Max filters to return (default 50, max 200).' },
-		},
-		required: ['orgId'],
-	},
 	// --- jinjaDocsCapabilities ---
 	buddy_get_jinja_filter_docs: {
 		properties: {
@@ -187,7 +179,7 @@ const LEGACY_SCHEMAS: Record<string, LegacySchema> = {
 		properties: {
 			templateId: {
 				type: 'string',
-				description: 'Id of the existing Rewst template to link the file to (from buddy_list_templates).',
+				description: 'Id of the existing Rewst template to link the file to (from buddy_search_templates).',
 			},
 			uri: {
 				type: 'string',

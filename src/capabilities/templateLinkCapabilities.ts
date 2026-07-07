@@ -75,7 +75,7 @@ export const defaultTemplateLinkDeps: TemplateLinkDeps = {
 
 const linkInputSchema = z.object({
 	templateId: requiredStringField('templateId').describe(
-		'Id of the existing Rewst template to link the file to (from buddy_list_templates).',
+		'Id of the existing Rewst template to link the file to (from buddy_search_templates).',
 	),
 	uri: requiredStringField('uri').describe(
 		'Absolute path, workspace-relative path, or file:// URI of the existing local file to link.',
