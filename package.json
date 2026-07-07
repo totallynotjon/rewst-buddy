@@ -357,6 +357,10 @@
 				"title": "Rewst Buddy: Open Template"
 			},
 			{
+				"command": "rewst-buddy.prefix.InstallCrate",
+				"title": "Rewst Buddy: Install Crate"
+			},
+			{
 				"command": "rewst-buddy.prefix.UnlinkAllTemplates",
 				"title": "Rewst Buddy: Unlink All Templates"
 			},
@@ -571,6 +575,10 @@
 				},
 				{
 					"command": "rewst-buddy.prefix.OpenTemplateInteractive",
+					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.prefix.InstallCrate",
 					"when": "rewst-buddy.anyActiveSessions"
 				},
 				{
