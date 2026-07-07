@@ -11,10 +11,10 @@ import { SessionManager } from '@sessions';
 import vscode from 'vscode';
 import { z } from 'zod';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
-import type { ToolSpec, ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability, writeCapability } from './capabilityFactories';
-import { ORG_ID_PROP, parseCapabilityInput, requiredStringField, requireString, toInputSchema } from './inputHelpers';
+import { ORG_ID_FIELD, parseCapabilityInput, requiredStringField, toInputSchema } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
@@ -261,9 +261,8 @@ export async function runSync(
 	ctx: CapabilityContext,
 	deps: TemplateSyncDeps = defaultTemplateSyncDeps,
 ): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const uri = requireString(input, 'uri');
-	const direction = parseDirection(input.direction);
+	const { orgId, uri, direction: rawDirection } = parseCapabilityInput(syncInputSchema, input);
+	const direction = parseDirection(rawDirection);
 
 	const prepared = await deps.prepare(uri);
 	if (prepared.kind === 'unlinked') {
@@ -377,28 +376,26 @@ const syncStatusSpec: ToolSpecDefinition = {
 	inputSchema: toInputSchema(syncStatusInputSchema),
 };
 
-const syncSpec: ToolSpec = {
+const syncInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	uri: requiredStringField('uri').describe(
+		'Path or file URI of the linked local file, as shown by buddy_search_template_links.',
+	),
+	direction: z
+		.enum(['auto', 'upload', 'download'], {
+			error: '"direction" must be one of auto, upload, download.',
+		})
+		.optional()
+		.describe(
+			'auto (default) resolves the safe direction and stops on a conflict; upload overwrites Rewst with the local file; download overwrites the local file with Rewst.',
+		),
+});
+
+const syncSpec: ToolSpecDefinition = {
 	name: 'buddy_template_sync',
-	args: '{"orgId": string, "uri": string, "direction"?: "auto" | "upload" | "download"}',
 	description:
 		'Synchronize one linked local file with its Rewst template. Identify the file by the path from buddy_search_template_links or its file URI; orgId must be the org the file is linked to (buddy_template_sync_status returns it). direction defaults to "auto": it uploads when only the local file changed, downloads when the local file is empty, refreshes metadata when the bodies already match, and on a conflict (both changed since the last sync) it changes nothing and asks you to choose. Pass direction:"upload" to overwrite the Rewst template with the local file, or direction:"download" to overwrite the local file with the Rewst template. This is a write tool: every direction (including download) requires write tools to be enabled in VS Code and the org to be on the write allowlist. Only uploading additionally needs per-call approval and changes Rewst; downloading and metadata refreshes rewrite local state only.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			uri: {
-				type: 'string',
-				description: 'Path or file URI of the linked local file, as shown by buddy_search_template_links.',
-			},
-			direction: {
-				type: 'string',
-				enum: ['auto', 'upload', 'download'],
-				description:
-					'auto (default) resolves the safe direction and stops on a conflict; upload overwrites Rewst with the local file; download overwrites the local file with Rewst.',
-			},
-		},
-		required: ['orgId', 'uri'],
-	},
+	inputSchema: toInputSchema(syncInputSchema),
 };
 
 export const TEMPLATE_SYNC_CAPABILITIES: Capability[] = [

@@ -8,7 +8,7 @@ import {
 	parseCapabilityInput,
 	rawGraphqlOrThrow,
 	requireResourceInOrg,
-	requireStringAllowEmpty,
+	requiredStringAllowEmptyField,
 	requiredStringField,
 	throwOnGraphqlErrors,
 	toInputSchema,
@@ -252,23 +252,25 @@ suite('Unit: inputHelpers', () => {
 	});
 });
 
-suite('Unit: inputHelpers — requireStringAllowEmpty', () => {
+suite('Unit: inputHelpers — requiredStringAllowEmptyField', () => {
+	const schema = z.object({ body: requiredStringAllowEmptyField('body') });
+
 	test('returns empty string for an empty-string value', () => {
-		const result = requireStringAllowEmpty({ body: '' }, 'body');
-		assert.strictEqual(result, '');
+		const result = parseCapabilityInput(schema, { body: '' });
+		assert.strictEqual(result.body, '');
 	});
 
-	test('returns the string unchanged (no trimming) for a padded value', () => {
-		const result = requireStringAllowEmpty({ body: '  hello  ' }, 'body');
-		assert.strictEqual(result, '  hello  ');
+	test('returns the string unchanged for a non-empty value', () => {
+		const result = parseCapabilityInput(schema, { body: 'hello' });
+		assert.strictEqual(result.body, 'hello');
 	});
 
 	test('throws when the key is absent', () => {
-		assert.throws(() => requireStringAllowEmpty({}, 'body'), /Missing required string argument "body"/);
+		assert.throws(() => parseCapabilityInput(schema, {}), /Missing required string argument "body"/);
 	});
 
 	test('throws when the value is a non-string (number)', () => {
-		assert.throws(() => requireStringAllowEmpty({ body: 42 }, 'body'), /Missing required string argument "body"/);
+		assert.throws(() => parseCapabilityInput(schema, { body: 42 }), /Missing required string argument "body"/);
 	});
 });
 

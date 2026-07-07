@@ -1,8 +1,16 @@
+import { z } from 'zod';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
-import { ORG_ID_PROP, requireResourceInOrg, requireString, requireStringAllowEmpty } from './inputHelpers';
+import {
+	ORG_ID_FIELD,
+	parseCapabilityInput,
+	requiredStringAllowEmptyField,
+	requiredStringField,
+	requireResourceInOrg,
+	toInputSchema,
+} from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
@@ -40,29 +48,23 @@ async function requireTemplateInOrg(
 	return { name: typeof name === 'string' && name.length > 0 ? name : '(unnamed)' };
 }
 
-const createTemplateSpec: ToolSpec = {
+const createTemplateSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	name: requiredStringField('name').describe('Name for the new template.'),
+	body: requiredStringAllowEmptyField('body').describe(
+		'Template body (Jinja/text); pass an empty string for a blank template.',
+	),
+});
+
+const createTemplateSpec: ToolSpecDefinition = {
 	name: 'buddy_create_template',
-	args: '{"orgId": string, "name": string, "body": string}',
 	description:
 		'Create a new Rewst template in one organization from a name and body, returning the new template id and name. Requires write tools to be enabled and per-call approval in VS Code. Pass an empty string for body to start a blank template.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			name: { type: 'string', description: 'Name for the new template.' },
-			body: {
-				type: 'string',
-				description: 'Template body (Jinja/text); pass an empty string for a blank template.',
-			},
-		},
-		required: ['orgId', 'name', 'body'],
-	},
+	inputSchema: toInputSchema(createTemplateSchema),
 };
 
 async function runCreateTemplate(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const name = requireString(input, 'name');
-	const body = requireStringAllowEmpty(input, 'body');
+	const { orgId, name, body } = parseCapabilityInput(createTemplateSchema, input);
 	const orgName = orgDisplayName(ctx);
 	// No resource id exists before creation, so the approval scope is the org; the
 	// first create in an org prompts and later creates reuse that session approval.
@@ -78,26 +80,21 @@ async function runCreateTemplate(input: Record<string, unknown>, ctx: Capability
 	});
 }
 
-const updateTemplateBodySpec: ToolSpec = {
+const updateTemplateBodySchema = z.object({
+	orgId: ORG_ID_FIELD,
+	templateId: requiredStringField('templateId').describe('Id of the template whose body to replace.'),
+	body: requiredStringAllowEmptyField('body').describe('New template body; pass an empty string to clear it.'),
+});
+
+const updateTemplateBodySpec: ToolSpecDefinition = {
 	name: 'buddy_update_template_body',
-	args: '{"orgId": string, "templateId": string, "body": string}',
 	description:
 		'Replace the body of one existing Rewst template, identified by org and template id. The template must belong to the given org. Requires write tools to be enabled and per-call approval in VS Code. Pass an empty string to clear the body.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			templateId: { type: 'string', description: 'Id of the template whose body to replace.' },
-			body: { type: 'string', description: 'New template body; pass an empty string to clear it.' },
-		},
-		required: ['orgId', 'templateId', 'body'],
-	},
+	inputSchema: toInputSchema(updateTemplateBodySchema),
 };
 
 async function runUpdateTemplateBody(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const templateId = requireString(input, 'templateId');
-	const body = requireStringAllowEmpty(input, 'body');
+	const { orgId, templateId, body } = parseCapabilityInput(updateTemplateBodySchema, input);
 	const orgName = orgDisplayName(ctx);
 	// Verify org ownership before prompting or mutating, so a template in a sibling
 	// org the session also manages can never be reached by id.
@@ -114,26 +111,21 @@ async function runUpdateTemplateBody(input: Record<string, unknown>, ctx: Capabi
 	});
 }
 
-const renameTemplateSpec: ToolSpec = {
+const renameTemplateSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	templateId: requiredStringField('templateId').describe('Id of the template to rename.'),
+	name: requiredStringField('name').describe('New name for the template.'),
+});
+
+const renameTemplateSpec: ToolSpecDefinition = {
 	name: 'buddy_rename_template',
-	args: '{"orgId": string, "templateId": string, "name": string}',
 	description:
 		'Rename one existing Rewst template, identified by org and template id. The template must belong to the given org. Requires write tools to be enabled and per-call approval in VS Code.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			templateId: { type: 'string', description: 'Id of the template to rename.' },
-			name: { type: 'string', description: 'New name for the template.' },
-		},
-		required: ['orgId', 'templateId', 'name'],
-	},
+	inputSchema: toInputSchema(renameTemplateSchema),
 };
 
 async function runRenameTemplate(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const templateId = requireString(input, 'templateId');
-	const name = requireString(input, 'name');
+	const { orgId, templateId, name } = parseCapabilityInput(renameTemplateSchema, input);
 	const orgName = orgDisplayName(ctx);
 	const { name: currentName } = await requireTemplateInOrg(ctx, templateId, orgId);
 	const scope: MutationScope = { scopeId: templateId, scopeName: currentName, orgId, orgName };
@@ -148,24 +140,20 @@ async function runRenameTemplate(input: Record<string, unknown>, ctx: Capability
 	});
 }
 
-const deleteTemplateSpec: ToolSpec = {
+const deleteTemplateSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	templateId: requiredStringField('templateId').describe('Id of the template to delete.'),
+});
+
+const deleteTemplateSpec: ToolSpecDefinition = {
 	name: 'buddy_delete_template',
-	args: '{"orgId": string, "templateId": string}',
 	description:
 		'Permanently delete one Rewst template, identified by org and template id. The template must belong to the given org. This cannot be undone. Requires write tools to be enabled and per-call approval in VS Code.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			templateId: { type: 'string', description: 'Id of the template to delete.' },
-		},
-		required: ['orgId', 'templateId'],
-	},
+	inputSchema: toInputSchema(deleteTemplateSchema),
 };
 
 async function runDeleteTemplate(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const templateId = requireString(input, 'templateId');
+	const { orgId, templateId } = parseCapabilityInput(deleteTemplateSchema, input);
 	const orgName = orgDisplayName(ctx);
 	const { name } = await requireTemplateInOrg(ctx, templateId, orgId);
 	const scope: MutationScope = { scopeId: templateId, scopeName: name, orgId, orgName };

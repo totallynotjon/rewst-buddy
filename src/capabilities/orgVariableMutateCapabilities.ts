@@ -1,13 +1,17 @@
+import { z } from 'zod';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
 import {
-	ORG_ID_PROP,
+	ORG_ID_FIELD,
+	optionalBooleanField,
+	parseCapabilityInput,
 	rawGraphqlOrThrow,
 	requireResourceInOrg,
-	requireString,
-	requireStringAllowEmpty,
+	requiredStringAllowEmptyField,
+	requiredStringField,
+	toInputSchema,
 } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
@@ -21,7 +25,12 @@ import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 // Categories a caller may set. 'system' is reserved for Rewst-managed variables
 // and is rejected rather than offered.
-const SETTABLE_CATEGORIES = new Set(['general', 'contact', 'secret']);
+const SETTABLE_CATEGORIES = ['general', 'contact', 'secret'] as const;
+type SettableCategory = (typeof SETTABLE_CATEGORIES)[number];
+
+const categoryField = z
+	.enum(SETTABLE_CATEGORIES, { error: `"category" must be one of ${SETTABLE_CATEGORIES.join(', ')}.` })
+	.optional();
 
 const CREATE_ORG_VARIABLE = `mutation RewstBuddyMcpCreateOrgVariable($orgVariable: OrgVariableCreateInput!) {
   createOrgVariable(orgVariable: $orgVariable) { id name category cascade orgId }
@@ -45,24 +54,6 @@ interface OrgVariableRow {
 	category?: string;
 	cascade?: boolean;
 	orgId?: string;
-}
-
-/** Reads an optional category argument, rejecting unknown or reserved values. */
-function optionalCategory(input: Record<string, unknown>): string | undefined {
-	const value = input.category;
-	if (value === undefined || value === null) return undefined;
-	if (typeof value !== 'string' || !SETTABLE_CATEGORIES.has(value)) {
-		throw new Error(`"category" must be one of ${[...SETTABLE_CATEGORIES].join(', ')}.`);
-	}
-	return value;
-}
-
-/** Reads an optional boolean argument; non-booleans are an error, not coerced. */
-function optionalBoolean(input: Record<string, unknown>, key: string): boolean | undefined {
-	const value = input[key];
-	if (value === undefined) return undefined;
-	if (typeof value !== 'boolean') throw new Error(`"${key}" must be a boolean.`);
-	return value;
 }
 
 /**
@@ -90,34 +81,31 @@ async function requireOrgVariableInOrg(
 	});
 }
 
-const createOrgVariableSpec: ToolSpec = {
+const createOrgVariableSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	name: requiredStringField('name').describe('Variable name.'),
+	value: requiredStringAllowEmptyField('value').describe('Variable value; may be an empty string.'),
+	category: categoryField.describe('Variable category (default general). secret masks the value in reads.'),
+	cascade: optionalBooleanField('cascade').describe('Whether descendant orgs inherit the variable (default false).'),
+});
+
+const createOrgVariableSpec: ToolSpecDefinition = {
 	name: 'buddy_create_org_variable',
-	args: '{"orgId": string, "name": string, "value": string, "category"?: "general"|"contact"|"secret", "cascade"?: boolean}',
 	description:
 		'Create a configuration variable in one Rewst organization. category defaults to general (use secret for sensitive values); cascade (default false) makes the variable visible to descendant orgs. Requires write tools to be enabled and per-call approval in VS Code.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			name: { type: 'string', description: 'Variable name.' },
-			value: { type: 'string', description: 'Variable value; may be an empty string.' },
-			category: {
-				type: 'string',
-				enum: ['general', 'contact', 'secret'],
-				description: 'Variable category (default general). secret masks the value in reads.',
-			},
-			cascade: { type: 'boolean', description: 'Whether descendant orgs inherit the variable (default false).' },
-		},
-		required: ['orgId', 'name', 'value'],
-	},
+	inputSchema: toInputSchema(createOrgVariableSchema),
 };
 
 async function runCreateOrgVariable(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const name = requireString(input, 'name');
-	const value = requireStringAllowEmpty(input, 'value');
-	const category = optionalCategory(input) ?? 'general';
-	const cascade = optionalBoolean(input, 'cascade') ?? false;
+	const {
+		orgId,
+		name,
+		value,
+		category: categoryInput,
+		cascade: cascadeInput,
+	} = parseCapabilityInput(createOrgVariableSchema, input);
+	const category: SettableCategory = categoryInput ?? 'general';
+	const cascade = cascadeInput ?? false;
 	const orgName = orgDisplayName(ctx);
 	const scope: MutationScope = { scopeId: orgId, scopeName: `new variable "${name}"`, orgId, orgName };
 	const summary = `Create ${category} variable "${name}" in org "${orgName}" (${orgId})`;
@@ -131,34 +119,29 @@ async function runCreateOrgVariable(input: Record<string, unknown>, ctx: Capabil
 	});
 }
 
-const updateOrgVariableSpec: ToolSpec = {
+const updateOrgVariableSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	variableId: requiredStringField('variableId').describe('Id of the variable to update.'),
+	value: requiredStringAllowEmptyField('value').describe('New value; may be an empty string.'),
+	category: categoryField.describe("Optional new category; defaults to the variable's current category."),
+	cascade: optionalBooleanField('cascade').describe('Optional new cascade flag; defaults to the current value.'),
+});
+
+const updateOrgVariableSpec: ToolSpecDefinition = {
 	name: 'buddy_update_org_variable',
-	args: '{"orgId": string, "variableId": string, "value": string, "category"?: "general"|"contact"|"secret", "cascade"?: boolean}',
 	description:
 		'Replace the value of one existing org variable, identified by org and variable id. The variable must belong to the given org. Optionally also change its category or cascade; the name is preserved. Requires write tools to be enabled and per-call approval in VS Code.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			variableId: { type: 'string', description: 'Id of the variable to update.' },
-			value: { type: 'string', description: 'New value; may be an empty string.' },
-			category: {
-				type: 'string',
-				enum: ['general', 'contact', 'secret'],
-				description: 'Optional new category; defaults to the variable’s current category.',
-			},
-			cascade: { type: 'boolean', description: 'Optional new cascade flag; defaults to the current value.' },
-		},
-		required: ['orgId', 'variableId', 'value'],
-	},
+	inputSchema: toInputSchema(updateOrgVariableSchema),
 };
 
 async function runUpdateOrgVariable(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const variableId = requireString(input, 'variableId');
-	const value = requireStringAllowEmpty(input, 'value');
-	const categoryOverride = optionalCategory(input);
-	const cascadeOverride = optionalBoolean(input, 'cascade');
+	const {
+		orgId,
+		variableId,
+		value,
+		category: categoryOverride,
+		cascade: cascadeOverride,
+	} = parseCapabilityInput(updateOrgVariableSchema, input);
 	const orgName = orgDisplayName(ctx);
 	const current = await requireOrgVariableInOrg(ctx, variableId, orgId);
 	const name = current.name ?? '';
@@ -179,24 +162,20 @@ async function runUpdateOrgVariable(input: Record<string, unknown>, ctx: Capabil
 	});
 }
 
-const deleteOrgVariableSpec: ToolSpec = {
+const deleteOrgVariableSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	variableId: requiredStringField('variableId').describe('Id of the variable to delete.'),
+});
+
+const deleteOrgVariableSpec: ToolSpecDefinition = {
 	name: 'buddy_delete_org_variable',
-	args: '{"orgId": string, "variableId": string}',
 	description:
 		'Permanently delete one org variable, identified by org and variable id. The variable must belong to the given org. This cannot be undone. Requires write tools to be enabled and per-call approval in VS Code.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			variableId: { type: 'string', description: 'Id of the variable to delete.' },
-		},
-		required: ['orgId', 'variableId'],
-	},
+	inputSchema: toInputSchema(deleteOrgVariableSchema),
 };
 
 async function runDeleteOrgVariable(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const variableId = requireString(input, 'variableId');
+	const { orgId, variableId } = parseCapabilityInput(deleteOrgVariableSchema, input);
 	const orgName = orgDisplayName(ctx);
 	const current = await requireOrgVariableInOrg(ctx, variableId, orgId);
 	const name = current.name ?? '(unnamed)';

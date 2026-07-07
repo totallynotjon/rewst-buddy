@@ -476,13 +476,12 @@ message -- never a raw serialized list of every issue.
 - **THEN** the capability rejects the call with a single message naming the
   missing argument
 
-Implementation status: as of this requirement's schema-based rewrite,
-`src/capabilities/rewstReadCapabilities.ts` validates through per-capability
-Zod schemas per the contract above (`inputHelpers.ts`'s
-`parseCapabilityInput` + `toInputSchema`). Read/local capabilities outside
-`rewstReadCapabilities.ts` now derive their advertised input schema from the
-same Zod schema that parses runtime input. Write capabilities still use the
-legacy helpers until the follow-up C2 write-capability migration.
+Implementation status: complete. All registry capabilities parse runtime input
+through capability-local Zod schemas and derive advertised input schemas from
+those schemas via `parseCapabilityInput` + `toInputSchema` (`inputHelpers.ts`).
+The legacy hand-written string/integer helper exports (`requireString`,
+`asString`, `asPositiveInt`, `requireStringAllowEmpty`, `ORG_ID_PROP`) have
+been removed from `inputHelpers.ts` and from new capability authoring guidance.
 
 ### Requirement: Verify saved task inputs after a workflow edit
 
