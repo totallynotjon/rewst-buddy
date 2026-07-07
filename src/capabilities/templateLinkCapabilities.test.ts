@@ -105,6 +105,41 @@ function addStaleOrgLink(fsPath: string): vscode.Uri {
 }
 
 suite('Unit: templateLinkCapabilities', () => {
+	// --- Zod parse tests ---
+	test('missing uri throws for buddy_template_link', async () => {
+		const ctx = makeCtx();
+		await assert.rejects(() => runLink({ templateId: 't1' }, ctx, makeLinkDeps().deps), /uri/);
+	});
+
+	test('missing templateId throws for buddy_template_link', async () => {
+		const ctx = makeCtx();
+		await assert.rejects(() => runLink({ uri: '/ws/file.j2' }, ctx, makeLinkDeps().deps), /templateId/);
+	});
+
+	test('optional orgId for buddy_template_link is accepted when absent', async () => {
+		const ctx = makeCtx();
+		const { deps } = makeLinkDeps();
+		// Should not throw on missing orgId (it is optional)
+		const out = JSON.parse(await runLink({ templateId: 't1', uri: '/ws/file.j2' }, ctx, deps));
+		assert.ok(
+			out.status === 'linked' ||
+				out.status === 'already_linked' ||
+				out.status === 'invalid_path' ||
+				out.status === 'file_not_found' ||
+				out.status === 'template_not_found',
+		);
+	});
+
+	test('TEMPLATE_LINK_CAPABILITIES derived schemas have args generated from inputSchema', () => {
+		for (const c of TEMPLATE_LINK_CAPABILITIES) {
+			assert.strictEqual(
+				c.spec.args,
+				JSON.stringify(c.spec.inputSchema),
+				`${c.spec.name}: args must equal JSON.stringify(inputSchema)`,
+			);
+		}
+	});
+
 	setup(() => {
 		initTestEnvironment();
 		LinkManager._resetForTesting();

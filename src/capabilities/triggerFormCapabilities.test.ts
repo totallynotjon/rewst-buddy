@@ -7,6 +7,64 @@ const { fakeCtx, cap } = createCapabilityTestHarness(TRIGGER_FORM_CAPABILITIES);
 suite('Unit: triggerFormCapabilities', () => {
 	setup(() => initTestEnvironment());
 
+	// --- Zod parse tests ---
+	test('missing orgId throws before GraphQL', async () => {
+		const { ctx } = fakeCtx({ data: {} });
+		await assert.rejects(() => cap('buddy_list_triggers').run({}, ctx), /orgId/);
+	});
+
+	test('non-number limit falls back to default (no throw)', async () => {
+		const { ctx } = fakeCtx({ data: { triggers: [] } });
+		await assert.doesNotReject(() => cap('buddy_list_triggers').run({ orgId: 'org-1', limit: 'bad' }, ctx));
+	});
+
+	test('fractional limit is floored', async () => {
+		const { ctx, calls } = fakeCtx({ data: { triggers: [] } });
+		await cap('buddy_list_triggers').run({ orgId: 'org-1', limit: 7.9 }, ctx);
+		assert.strictEqual(calls[0].variables!.limit, 7);
+	});
+
+	test('over-max limit is clamped to 200', async () => {
+		const { ctx, calls } = fakeCtx({ data: { triggers: [] } });
+		await cap('buddy_list_triggers').run({ orgId: 'org-1', limit: 9999 }, ctx);
+		assert.strictEqual(calls[0].variables!.limit, 200);
+	});
+
+	test('buddy_list_triggers derived schema has orgId required and limit optional', () => {
+		const schema = cap('buddy_list_triggers').spec.inputSchema as {
+			required: string[];
+			properties: Record<string, unknown>;
+		};
+		assert.ok(schema.required.includes('orgId'));
+		assert.ok('limit' in schema.properties);
+		assert.strictEqual(cap('buddy_list_triggers').spec.args, JSON.stringify(schema));
+	});
+
+	test('buddy_list_forms derived schema has orgId required', () => {
+		const schema = cap('buddy_list_forms').spec.inputSchema as { required: string[] };
+		assert.ok(schema.required.includes('orgId'));
+		assert.strictEqual(cap('buddy_list_forms').spec.args, JSON.stringify(schema));
+	});
+
+	test('buddy_list_tags derived schema has orgId required', () => {
+		const schema = cap('buddy_list_tags').spec.inputSchema as { required: string[] };
+		assert.ok(schema.required.includes('orgId'));
+		assert.strictEqual(cap('buddy_list_tags').spec.args, JSON.stringify(schema));
+	});
+
+	test('buddy_list_org_trigger_instances derived schema has orgId required', () => {
+		const schema = cap('buddy_list_org_trigger_instances').spec.inputSchema as { required: string[] };
+		assert.ok(schema.required.includes('orgId'));
+		assert.strictEqual(cap('buddy_list_org_trigger_instances').spec.args, JSON.stringify(schema));
+	});
+
+	test('buddy_get_trigger_error_status derived schema has orgId and triggerIds required', () => {
+		const schema = cap('buddy_get_trigger_error_status').spec.inputSchema as { required: string[] };
+		assert.ok(schema.required.includes('orgId'));
+		assert.ok(schema.required.includes('triggerIds'));
+		assert.strictEqual(cap('buddy_get_trigger_error_status').spec.args, JSON.stringify(schema));
+	});
+
 	test('buddy_list_triggers uses triggers query and formats trigger rows', async () => {
 		const { ctx, calls } = fakeCtx({
 			data: {

@@ -127,6 +127,20 @@ suite('Unit: templateSyncCapabilities', () => {
 		_resetMcpMutationApproverForTesting();
 	});
 
+	// --- Zod parse tests ---
+	test('missing uri throws for buddy_template_sync_status', async () => {
+		const { deps } = makeDeps(null);
+		await assert.rejects(() => runSyncStatus({}, makeCtx(), deps), /uri/);
+	});
+
+	test('buddy_template_sync_status derived schema has uri required and args generated', () => {
+		const statusCap = TEMPLATE_SYNC_CAPABILITIES.find(c => c.spec.name === 'buddy_template_sync_status');
+		assert.ok(statusCap);
+		const schema = statusCap.spec.inputSchema as { required: string[] };
+		assert.ok(schema.required.includes('uri'));
+		assert.strictEqual(statusCap.spec.args, JSON.stringify(schema));
+	});
+
 	suite('buddy_template_sync_status', () => {
 		test('reports unlinked files without touching Rewst', async () => {
 			const { deps } = makeDeps(null);

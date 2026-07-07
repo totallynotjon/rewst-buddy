@@ -1,74 +1,79 @@
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import { z } from 'zod';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
-import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
+import {
+	ORG_ID_FIELD,
+	optionalClampedInt,
+	optionalStringField,
+	parseCapabilityInput,
+	rawGraphqlOrThrow,
+	toInputSchema,
+} from './inputHelpers';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
+
+const searchTemplatesInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	search: optionalStringField().describe('Optional case-insensitive name substring.'),
+	limit: optionalClampedInt(MAX_LIMIT).describe(
+		`Max templates to return (default ${DEFAULT_LIMIT}, max ${MAX_LIMIT}).`,
+	),
+});
+
+const listPagesInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	limit: optionalClampedInt(MAX_LIMIT).describe(`Max pages to return (default ${DEFAULT_LIMIT}, max ${MAX_LIMIT}).`),
+});
+
+const listSitesInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+});
+
+const listJinjaFiltersInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	search: optionalStringField().describe('Optional case-insensitive name substring.'),
+	limit: optionalClampedInt(MAX_LIMIT).describe(
+		`Max filters to return (default ${DEFAULT_LIMIT}, max ${MAX_LIMIT}).`,
+	),
+});
 
 const SEARCH_TEMPLATES_QUERY = `query($orgId: ID!, $search: TemplateSearch, $limit: Int){ templates(where:{ orgId:$orgId }, search:$search, order:[["updatedAt","desc"]], limit:$limit){ id name language contentType updatedAt } }`;
 const LIST_PAGES_QUERY = `query($orgId: ID!, $limit: Int){ pages(where:{ orgId:$orgId }, limit:$limit){ id name path siteId } }`;
 const LIST_SITES_QUERY = `query($orgId: ID!){ sites(where:{ orgId:$orgId }){ id name domain isLive } }`;
 const LIST_JINJA_FILTERS_QUERY = `query{ jinjaFiltersDocumentation { name signature } }`;
 
-const searchTemplatesSpec: ToolSpec = {
+const searchTemplatesSpec: ToolSpecDefinition = {
 	name: 'buddy_search_templates',
-	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
 		'Search templates in one Rewst organization by name substring (case-insensitive), newest first (id, name, language, contentType, updatedAt). Use buddy_get_template for a full body.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			search: { type: 'string', description: 'Optional case-insensitive name substring.' },
-			limit: { type: 'number', description: 'Max templates to return (default 50, max 200).' },
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(searchTemplatesInputSchema),
 };
 
-const listPagesSpec: ToolSpec = {
+const listPagesSpec: ToolSpecDefinition = {
 	name: 'buddy_list_pages',
-	args: '{"orgId": string, "limit"?: number}',
 	description: 'List App Platform pages in one Rewst organization (id, name, path, siteId).',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			limit: { type: 'number', description: 'Max pages to return (default 50, max 200).' },
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listPagesInputSchema),
 };
 
-const listSitesSpec: ToolSpec = {
+const listSitesSpec: ToolSpecDefinition = {
 	name: 'buddy_list_sites',
-	args: '{"orgId": string}',
 	description:
 		'List App Platform sites in one Rewst organization (id, name, domain, isLive). Returns all sites (this field has no pagination).',
-	inputSchema: { type: 'object', properties: { ...ORG_ID_PROP }, required: ['orgId'] },
+	inputSchema: toInputSchema(listSitesInputSchema),
 };
 
-const listJinjaFiltersSpec: ToolSpec = {
+const listJinjaFiltersSpec: ToolSpecDefinition = {
 	name: 'buddy_list_jinja_filters',
-	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
 		'List Rewst available Jinja filters with their signatures (global catalog, ~100 entries). Optionally filter by a name substring. Use this instead of the broken singular jinjaFilterDocumentation.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			search: { type: 'string', description: 'Optional case-insensitive name substring.' },
-			limit: { type: 'number', description: 'Max filters to return (default 50, max 200).' },
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listJinjaFiltersInputSchema),
 };
 
 async function runSearchTemplates(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const search = asString(input, 'search');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_LIMIT, MAX_LIMIT);
+	const { orgId, search, limit: rawLimit } = parseCapabilityInput(searchTemplatesInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_LIMIT;
 	const variables: Record<string, unknown> = { orgId, limit };
 	if (search) variables.search = { name: { _ilike: `%${search}%` } };
 	const data = await rawGraphqlOrThrow(ctx.session, SEARCH_TEMPLATES_QUERY, variables);
@@ -95,8 +100,8 @@ async function runSearchTemplates(input: Record<string, unknown>, ctx: Capabilit
 }
 
 async function runListPages(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_LIMIT, MAX_LIMIT);
+	const { orgId, limit: rawLimit } = parseCapabilityInput(listPagesInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_LIMIT;
 	const variables = { orgId, limit };
 	const data = await rawGraphqlOrThrow(ctx.session, LIST_PAGES_QUERY, variables);
 	const pages = ((data as { pages?: unknown[] } | undefined)?.pages ?? []) as {
@@ -115,7 +120,7 @@ async function runListPages(input: Record<string, unknown>, ctx: CapabilityConte
 }
 
 async function runListSites(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
+	const { orgId } = parseCapabilityInput(listSitesInputSchema, input);
 	const variables = { orgId };
 	const data = await rawGraphqlOrThrow(ctx.session, LIST_SITES_QUERY, variables);
 	const sites = ((data as { sites?: unknown[] } | undefined)?.sites ?? []) as {
@@ -135,9 +140,8 @@ async function runListSites(input: Record<string, unknown>, ctx: CapabilityConte
 }
 
 async function runListJinjaFilters(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	requireString(input, 'orgId');
-	const search = asString(input, 'search');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_LIMIT, MAX_LIMIT);
+	const { search, limit: rawLimit } = parseCapabilityInput(listJinjaFiltersInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_LIMIT;
 	const variables = {};
 	const data = await rawGraphqlOrThrow(ctx.session, LIST_JINJA_FILTERS_QUERY, variables);
 	const filters = ((data as { jinjaFiltersDocumentation?: unknown[] } | undefined)?.jinjaFiltersDocumentation ??

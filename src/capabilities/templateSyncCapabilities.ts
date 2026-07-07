@@ -9,11 +9,12 @@ import {
 } from '@models';
 import { SessionManager } from '@sessions';
 import vscode from 'vscode';
+import { z } from 'zod';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import type { ToolSpec, ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability, writeCapability } from './capabilityFactories';
-import { ORG_ID_PROP, requireString } from './inputHelpers';
+import { ORG_ID_PROP, parseCapabilityInput, requiredStringField, requireString, toInputSchema } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
@@ -205,12 +206,18 @@ function resolveEffectiveAction(direction: SyncDirection, action: SyncDecision['
 	return 'conflict';
 }
 
+const syncStatusInputSchema = z.object({
+	uri: requiredStringField('uri').describe(
+		'Path or file URI of the local file, as shown by buddy_search_template_links.',
+	),
+});
+
 export async function runSyncStatus(
 	input: Record<string, unknown>,
 	_ctx: CapabilityContext,
 	deps: TemplateSyncDeps = defaultTemplateSyncDeps,
 ): Promise<string> {
-	const uri = requireString(input, 'uri');
+	const { uri } = parseCapabilityInput(syncStatusInputSchema, input);
 	const prepared = await deps.prepare(uri);
 	if (prepared.kind === 'unlinked') {
 		return JSON.stringify(
@@ -363,21 +370,11 @@ export async function runSync(
 	});
 }
 
-const syncStatusSpec: ToolSpec = {
+const syncStatusSpec: ToolSpecDefinition = {
 	name: 'buddy_template_sync_status',
-	args: '{"uri": string}',
 	description:
 		'Report whether a local file is linked to a Rewst template and how it compares to the remote template, without changing anything. Identify the file by the path shown in buddy_search_template_links (workspace-relative or absolute) or its file URI. Returns linked:false when no template is linked. When linked, returns the org id and template id to pass to buddy_template_sync, whether sync-on-save is on, and a status of "in-sync", "remote-only" (the local file is empty), "local-ahead" (safe to upload), or "conflict" (both changed since the last sync), plus a recommended direction.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			uri: {
-				type: 'string',
-				description: 'Path or file URI of the local file, as shown by buddy_search_template_links.',
-			},
-		},
-		required: ['uri'],
-	},
+	inputSchema: toInputSchema(syncStatusInputSchema),
 };
 
 const syncSpec: ToolSpec = {

@@ -1,8 +1,9 @@
 import { randomUUID } from 'crypto';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import { z } from 'zod';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability } from './Capability';
 import { readCapability } from './capabilityFactories';
-import { asString } from './inputHelpers';
+import { optionalStringField, parseCapabilityInput, requiredStringField, toInputSchema } from './inputHelpers';
 
 export const RESULT_READ_TOOL_NAME = 'buddy_result_read';
 export const MCP_MAX_OUTPUT_CHARS = 24_000;
@@ -95,41 +96,44 @@ export function formatMcpOutput(toolName: string, text: string, cache: McpResult
 	].join('\n');
 }
 
-const resultReadSpec: ToolSpec = {
+const RESULT_READ_ID_ERROR = 'buddy_result_read requires an "id" from a previous oversized Rewst Buddy result.';
+
+const resultReadInputSchema = z.object({
+	id: z
+		.string({ error: RESULT_READ_ID_ERROR })
+		.trim()
+		.min(1, { error: RESULT_READ_ID_ERROR })
+		.describe('Cached result id returned by an oversized Rewst Buddy tool result.'),
+	// Note: id field intentionally uses a custom error message matching the legacy explicit check.
+	offset: z
+		.preprocess(v => (typeof v === 'string' ? Number(v) : v), z.number().optional())
+		.describe('Character offset to start reading from (default 0).'),
+	limit: z
+		.preprocess(v => (typeof v === 'string' ? Number(v) : v), z.number().optional())
+		.describe(`Maximum characters to return (default ${DEFAULT_READ_LIMIT}, max ${MAX_READ_LIMIT}).`),
+	// offset and limit accept numeric strings for backward compatibility (clampInt coerces them downstream).
+	search: optionalStringField().describe('Search text; returns matching lines with line numbers instead of a slice.'),
+});
+
+const resultReadSpec: ToolSpecDefinition = {
 	name: RESULT_READ_TOOL_NAME,
 	description:
 		'Pages or searches an oversized cached Rewst Buddy result by id. The cache is in-memory only; an id can be evicted under memory pressure, so rerun the original tool if it is gone.',
-	args: '{"id": string, "offset"?: number, "limit"?: number, "search"?: string}',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			id: { type: 'string', description: 'Cached result id returned by an oversized Rewst Buddy tool result.' },
-			offset: { type: 'number', description: 'Character offset to start reading from (default 0).' },
-			limit: {
-				type: 'number',
-				description: `Maximum characters to return (default ${DEFAULT_READ_LIMIT}, max ${MAX_READ_LIMIT}).`,
-			},
-			search: {
-				type: 'string',
-				description: 'Search text; returns matching lines with line numbers instead of a slice.',
-			},
-		},
-		required: ['id'],
-	},
+	inputSchema: toInputSchema(resultReadInputSchema),
 };
 
 export const resultReadCapability: Capability = readCapability(
 	resultReadSpec,
 	async (input: Record<string, unknown>, _ctx): Promise<string> => {
-		const id = asString(input, 'id');
-		if (!id) throw new Error('buddy_result_read requires an "id" from a previous oversized Rewst Buddy result.');
+		const parsed = parseCapabilityInput(resultReadInputSchema, input);
+		const id = parsed.id;
 		const entry = mcpResultCache.get(id);
 		if (!entry) {
 			throw new Error(
 				`No cached Rewst Buddy result for id "${id}". The in-memory cache may have evicted it or it may be absent; rerun the original tool to regenerate it.`,
 			);
 		}
-		const search = asString(input, 'search');
+		const search = parsed.search;
 		if (search !== undefined) return searchCachedOutput(entry, search);
 		const offset = clampInt(input.offset, 0, entry.text.length, 0);
 		const limit = clampInt(input.limit, 1, MAX_READ_LIMIT, DEFAULT_READ_LIMIT);

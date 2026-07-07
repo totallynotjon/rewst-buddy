@@ -58,6 +58,32 @@ suite('Unit: jinjaDocsCapabilities', () => {
 		_resetJinjaFilterFetcherForTesting();
 	});
 
+	// --- Zod parse tests ---
+	test('non-string name is ignored (not rejected)', async () => {
+		_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
+		const { ctx } = fakeCtx({ data: {} });
+		await assert.doesNotReject(() => cap('buddy_get_jinja_filter_docs').run({ name: 42 }, ctx));
+	});
+
+	test('non-string search is ignored (not rejected)', async () => {
+		_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
+		const { ctx } = fakeCtx({ data: {} });
+		await assert.doesNotReject(() => cap('buddy_get_jinja_filter_docs').run({ search: 99 }, ctx));
+	});
+
+	test('no-arg call lists filter names', async () => {
+		_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
+		const { ctx } = fakeCtx({ data: {} });
+		const output = await cap('buddy_get_jinja_filter_docs').run({}, ctx);
+		assert.ok(output.includes('abs'));
+	});
+
+	test('buddy_get_jinja_filter_docs derived schema has no required fields and args generated', () => {
+		const schema = cap('buddy_get_jinja_filter_docs').spec.inputSchema as { required?: string[] };
+		assert.ok(!schema.required || schema.required.length === 0);
+		assert.strictEqual(cap('buddy_get_jinja_filter_docs').spec.args, JSON.stringify(schema));
+	});
+
 	suite('parseJinjaFilters()', () => {
 		test('parses names, signatures, and documentation; sorts by name', () => {
 			const filters = parseJinjaFilters(SAMPLE_PAYLOAD);

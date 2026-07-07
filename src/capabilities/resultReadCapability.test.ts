@@ -73,6 +73,33 @@ suite('Unit: resultReadCapability', () => {
 	});
 
 	suite('buddy_result_read run', () => {
+		// --- Zod parse tests ---
+		test('missing id throws with the expected message', async () => {
+			await assert.rejects(
+				() => resultReadCapability.run({}, ignoredContext()),
+				/buddy_result_read requires an "id"/,
+			);
+		});
+
+		test('empty string id throws with the expected message', async () => {
+			await assert.rejects(
+				() => resultReadCapability.run({ id: '' }, ignoredContext()),
+				/buddy_result_read requires an "id"/,
+			);
+		});
+
+		test('numeric string offset and limit are accepted', async () => {
+			const id = cacheId(mcpResultCache.store('buddy_list_templates', '0123456789abcdef'));
+			const output = await resultReadCapability.run({ id, offset: '4', limit: '6' }, ignoredContext());
+			assert.ok(output.includes('456789'));
+		});
+
+		test('buddy_result_read derived schema has id required and args generated', () => {
+			const schema = resultReadCapability.spec.inputSchema as { required: string[] };
+			assert.ok(schema.required.includes('id'));
+			assert.strictEqual(resultReadCapability.spec.args, JSON.stringify(schema));
+		});
+
 		test('returns a requested slice with a continuation footer', async () => {
 			const id = cacheId(mcpResultCache.store('buddy_list_templates', '0123456789abcdef'));
 

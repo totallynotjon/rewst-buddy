@@ -10,10 +10,11 @@
  */
 
 import { log } from '@utils';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import { z } from 'zod';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
-import { asString } from './inputHelpers';
+import { optionalStringField, parseCapabilityInput, toInputSchema } from './inputHelpers';
 
 const FILTERS_PATH = '/jinja/intellisense/filters';
 const DEFAULT_ENGINE_BASE = 'https://engine.rewst.io';
@@ -208,26 +209,22 @@ async function getFilters(ctx: CapabilityContext): Promise<JinjaFilterDoc[]> {
 	return getFiltersForBase(engineBaseFrom(ctx));
 }
 
-const getJinjaFilterDocsSpec: ToolSpec = {
+const getJinjaFilterDocsInputSchema = z.object({
+	name: optionalStringField().describe('Exact filter name to fetch full documentation for (case-insensitive).'),
+	search: optionalStringField().describe('Keyword to match against filter names and documentation.'),
+});
+
+const getJinjaFilterDocsSpec: ToolSpecDefinition = {
 	name: 'buddy_get_jinja_filter_docs',
-	args: '{"name"?: string, "search"?: string}',
 	description:
 		'Read the documentation for Rewst\'s built-in Jinja filters (the same catalog Rewst\'s in-app editor uses, including the prose docs that buddy_list_jinja_filters omits). Pass "name" for one filter\'s full documentation, or "search" to match filters by name or documentation keyword. With no arguments, lists every filter name and signature so you can pick one. Read-only and not org-specific.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			name: {
-				type: 'string',
-				description: 'Exact filter name to fetch full documentation for (case-insensitive).',
-			},
-			search: { type: 'string', description: 'Keyword to match against filter names and documentation.' },
-		},
-	},
+	inputSchema: toInputSchema(getJinjaFilterDocsInputSchema),
 };
 
 async function runGetJinjaFilterDocs(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	const filters = await getFilters(ctx);
-	return formatJinjaFilters(filters, { name: asString(input, 'name'), search: asString(input, 'search') });
+	const { name, search } = parseCapabilityInput(getJinjaFilterDocsInputSchema, input);
+	return formatJinjaFilters(filters, { name, search });
 }
 
 export const JINJA_DOCS_CAPABILITIES: Capability[] = [

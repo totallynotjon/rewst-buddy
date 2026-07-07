@@ -479,10 +479,10 @@ message -- never a raw serialized list of every issue.
 Implementation status: as of this requirement's schema-based rewrite,
 `src/capabilities/rewstReadCapabilities.ts` validates through per-capability
 Zod schemas per the contract above (`inputHelpers.ts`'s
-`parseCapabilityInput` + `toInputSchema`). The remaining capability files
-still validate via the hand-rolled `asString`/`requireString`/`asPositiveInt`
-helpers in `inputHelpers.ts`; they migrate to the same schema-based contract
-incrementally in follow-up PRs (epic #129 C2).
+`parseCapabilityInput` + `toInputSchema`). Read/local capabilities outside
+`rewstReadCapabilities.ts` now derive their advertised input schema from the
+same Zod schema that parses runtime input. Write capabilities still use the
+legacy helpers until the follow-up C2 write-capability migration.
 
 ### Requirement: Verify saved task inputs after a workflow edit
 

@@ -1,7 +1,15 @@
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import { z } from 'zod';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
-import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
+import {
+	ORG_ID_FIELD,
+	optionalClampedInt,
+	optionalStringField,
+	parseCapabilityInput,
+	rawGraphqlOrThrow,
+	toInputSchema,
+} from './inputHelpers';
 
 const SEARCH_ORGANIZATIONS_QUERY =
 	'query($search: String, $limit: Int){ searchManagedOrgs(input:{ search:$search, limit:$limit }){ id name isEnabled } }';
@@ -9,49 +17,45 @@ const LIST_USERS_QUERY =
 	'query($orgId: ID!, $search: UserSearchInput, $limit: Int){ users(where:{ orgId:$orgId }, search:$search, limit:$limit){ id username isApiUser roleIds } }';
 const LIST_ROLES_QUERY = 'query($orgId: ID!){ roles(where:{ orgId:$orgId }){ id name description } }';
 
-const searchOrganizationsSpec: ToolSpec = {
+const searchOrganizationsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	search: optionalStringField().describe('Optional case-insensitive name substring.'),
+	limit: optionalClampedInt(100).describe('Max organizations to return (default 25, max 100).'),
+});
+
+const listUsersInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	search: optionalStringField().describe('Optional username substring.'),
+	limit: optionalClampedInt(200).describe('Max users to return (default 50, max 200).'),
+});
+
+const listRolesInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+});
+
+const searchOrganizationsSpec: ToolSpecDefinition = {
 	name: 'buddy_search_organizations',
-	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
 		'Find organizations by a case-insensitive name substring. orgId only selects which signed-in session to use — results are not limited to that org; they span all organizations the session manages. Returns id, name, isEnabled. Preferred over buddy_list_orgs for finding an org by name (buddy_list_orgs enumerates every managed org).',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			search: { type: 'string', description: 'Optional case-insensitive name substring.' },
-			limit: { type: 'integer', description: 'Max organizations to return (default 25, max 100).' },
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(searchOrganizationsInputSchema),
 };
 
-const listUsersSpec: ToolSpec = {
+const listUsersSpec: ToolSpecDefinition = {
 	name: 'buddy_list_users',
-	args: '{"orgId": string, "search"?: string, "limit"?: number}',
 	description:
 		'List the users directly in one Rewst organization (id, username, isApiUser, roleIds). Only users in the named org are returned; parent-org users are not inherited.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			search: { type: 'string', description: 'Optional username substring.' },
-			limit: { type: 'integer', description: 'Max users to return (default 50, max 200).' },
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listUsersInputSchema),
 };
 
-const listRolesSpec: ToolSpec = {
+const listRolesSpec: ToolSpecDefinition = {
 	name: 'buddy_list_roles',
-	args: '{"orgId": string}',
 	description: 'List the roles defined in one Rewst organization (id, name, description).',
-	inputSchema: { type: 'object', properties: { ...ORG_ID_PROP }, required: ['orgId'] },
+	inputSchema: toInputSchema(listRolesInputSchema),
 };
 
 async function runSearchOrganizations(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	requireString(input, 'orgId');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? 25, 100);
-	const search = asString(input, 'search');
+	const { limit: rawLimit, search } = parseCapabilityInput(searchOrganizationsInputSchema, input);
+	const limit = rawLimit ?? 25;
 	const variables: Record<string, unknown> = { limit };
 	if (search) variables.search = search;
 	const data = await rawGraphqlOrThrow(ctx.session, SEARCH_ORGANIZATIONS_QUERY, variables);
@@ -67,9 +71,8 @@ async function runSearchOrganizations(input: Record<string, unknown>, ctx: Capab
 }
 
 async function runListUsers(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const search = asString(input, 'search');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? 50, 200);
+	const { orgId, search, limit: rawLimit } = parseCapabilityInput(listUsersInputSchema, input);
+	const limit = rawLimit ?? 50;
 	const variables: Record<string, unknown> = { orgId, limit };
 	if (search) variables.search = { username: { _ilike: `%${search}%` } };
 	const data = await rawGraphqlOrThrow(ctx.session, LIST_USERS_QUERY, variables);
@@ -91,7 +94,7 @@ async function runListUsers(input: Record<string, unknown>, ctx: CapabilityConte
 }
 
 async function runListRoles(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
+	const { orgId } = parseCapabilityInput(listRolesInputSchema, input);
 	const variables: Record<string, unknown> = { orgId };
 	const data = await rawGraphqlOrThrow(ctx.session, LIST_ROLES_QUERY, variables);
 	const roles = ((data as { roles?: unknown[] } | undefined)?.roles ?? []) as {

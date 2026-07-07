@@ -1,58 +1,67 @@
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import { z } from 'zod';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
-import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
+import {
+	ORG_ID_FIELD,
+	optionalClampedInt,
+	optionalStringField,
+	parseCapabilityInput,
+	rawGraphqlOrThrow,
+	requiredStringField,
+	toInputSchema,
+} from './inputHelpers';
 
 const MAX_INTEGRATIONS_LIMIT = 200;
 
 function optionalString(value: unknown): string | undefined {
-	return asString({ value }, 'value');
+	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-const listInstalledPacksSpec: ToolSpec = {
+const listInstalledPacksInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+});
+
+const getPackAuthStatusInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	packName: requiredStringField('packName').describe('A pack ref, e.g. microsoft_graph'),
+});
+
+const listPackConfigsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+});
+
+const listIntegrationsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	limit: optionalClampedInt(MAX_INTEGRATIONS_LIMIT).describe('Max integrations to return (default 50, max 200).'),
+});
+
+const listInstalledPacksSpec: ToolSpecDefinition = {
 	name: 'buddy_list_installed_packs',
-	args: '{"orgId": string}',
 	description:
 		'List the integration packs and bundles installed in one Rewst organization (id, name, ref, isBundle, status, packType).',
-	inputSchema: { type: 'object', properties: { ...ORG_ID_PROP }, required: ['orgId'] },
+	inputSchema: toInputSchema(listInstalledPacksInputSchema),
 };
 
-const getPackAuthStatusSpec: ToolSpec = {
+const getPackAuthStatusSpec: ToolSpecDefinition = {
 	name: 'buddy_get_pack_auth_status',
-	args: '{"orgId": string, "packName": string}',
 	description:
 		"Check whether a pack needs OAuth setup in one Rewst organization. packName is a pack ref (e.g. microsoft_graph). Returns 'configured' when already authenticated, or the setup URL when authorization is needed.",
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			packName: { type: 'string', description: 'A pack ref, e.g. microsoft_graph' },
-		},
-		required: ['orgId', 'packName'],
-	},
+	inputSchema: toInputSchema(getPackAuthStatusInputSchema),
 };
 
-const listPackConfigsSpec: ToolSpec = {
+const listPackConfigsSpec: ToolSpecDefinition = {
 	name: 'buddy_list_pack_configs',
-	args: '{"orgId": string}',
 	description:
 		'List the pack (integration) configurations for one Rewst organization (id, name, packId, default). Returns all configs (this field has no pagination).',
-	inputSchema: { type: 'object', properties: { ...ORG_ID_PROP }, required: ['orgId'] },
+	inputSchema: toInputSchema(listPackConfigsInputSchema),
 };
 
-const listIntegrationsSpec: ToolSpec = {
+const listIntegrationsSpec: ToolSpecDefinition = {
 	name: 'buddy_list_integrations',
-	args: '{"orgId": string, "limit"?: number}',
 	description:
 		'List integrations available on the Rewst platform (name, description, numInstalled). Global catalog; the orgId only selects which signed-in session to use.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			limit: { type: 'number', description: 'Max integrations to return (default 50, max 200).' },
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listIntegrationsInputSchema),
 };
 
 async function runListInstalledPacks(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
@@ -68,7 +77,7 @@ async function runListInstalledPacks(input: Record<string, unknown>, ctx: Capabi
     }
   }
 }`;
-	const orgId = requireString(input, 'orgId');
+	const { orgId } = parseCapabilityInput(listInstalledPacksInputSchema, input);
 	const variables = { orgId };
 	const data = await rawGraphqlOrThrow(ctx.session, QUERY, variables);
 	const installedPacksAndBundles = ((
@@ -99,8 +108,7 @@ async function runGetPackAuthStatus(input: Record<string, unknown>, ctx: Capabil
 	const QUERY = `query RewstBuddyMcpPackAuthUrl($orgId: ID!, $packName: String!) {
   packAuthUrl(packName: $packName, orgId: $orgId)
 }`;
-	const orgId = requireString(input, 'orgId');
-	const packName = requireString(input, 'packName');
+	const { orgId, packName } = parseCapabilityInput(getPackAuthStatusInputSchema, input);
 	const variables = { orgId, packName };
 	const data = await rawGraphqlOrThrow(ctx.session, QUERY, variables);
 	const url = (data as { packAuthUrl?: unknown } | undefined)?.packAuthUrl;
@@ -118,7 +126,7 @@ async function runListPackConfigs(input: Record<string, unknown>, ctx: Capabilit
     createdAt
   }
 }`;
-	const orgId = requireString(input, 'orgId');
+	const { orgId } = parseCapabilityInput(listPackConfigsInputSchema, input);
 	const variables = { orgId };
 	const data = await rawGraphqlOrThrow(ctx.session, QUERY, variables);
 	const packConfigs = ((data as { packConfigs?: unknown[] | null } | undefined)?.packConfigs ?? []) as {
@@ -147,8 +155,8 @@ async function runListIntegrations(input: Record<string, unknown>, ctx: Capabili
     isPublic
   }
 }`;
-	requireString(input, 'orgId');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? 50, MAX_INTEGRATIONS_LIMIT);
+	const { limit: rawLimit } = parseCapabilityInput(listIntegrationsInputSchema, input);
+	const limit = rawLimit ?? 50;
 	const variables = { limit };
 	const data = await rawGraphqlOrThrow(ctx.session, QUERY, variables);
 	const integrations = ((data as { integrations?: unknown[] | null } | undefined)?.integrations ?? []) as {

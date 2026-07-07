@@ -1,7 +1,14 @@
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import { z } from 'zod';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
-import { asPositiveInt, asString, ORG_ID_PROP, rawGraphqlOrThrow, requireString } from './inputHelpers';
+import {
+	ORG_ID_FIELD,
+	optionalClampedInt,
+	parseCapabilityInput,
+	rawGraphqlOrThrow,
+	toInputSchema,
+} from './inputHelpers';
 
 const DEFAULT_TRIGGER_LIMIT = 50;
 const MAX_TRIGGER_LIMIT = 200;
@@ -18,107 +25,83 @@ const LIST_TAGS_QUERY = `query($orgId: ID!, $limit: Int){ tags(where:{ orgId:$or
 const LIST_ORG_TRIGGER_INSTANCES_QUERY = `query($orgId: ID!, $limit: Int){ orgTriggerInstances(where:{ orgId:$orgId }, limit:$limit){ id triggerId nextFireTime isManualActivation } }`;
 const GET_TRIGGER_ERROR_STATUS_QUERY = `query($triggerIds: [ID!]){ getTriggerErrorStatus(triggerIds:$triggerIds) }`;
 
-const listTriggersSpec: ToolSpec = {
+const listTriggersInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	limit: optionalClampedInt(MAX_TRIGGER_LIMIT).describe(
+		`Max triggers to return (default ${DEFAULT_TRIGGER_LIMIT}, max ${MAX_TRIGGER_LIMIT}).`,
+	),
+});
+
+const listFormsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	limit: optionalClampedInt(MAX_FORM_LIMIT).describe(
+		`Max forms to return (default ${DEFAULT_FORM_LIMIT}, max ${MAX_FORM_LIMIT}).`,
+	),
+});
+
+const listTagsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	limit: optionalClampedInt(MAX_TAG_LIMIT).describe(
+		`Max tags to return (default ${DEFAULT_TAG_LIMIT}, max ${MAX_TAG_LIMIT}).`,
+	),
+});
+
+const listOrgTriggerInstancesInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	limit: optionalClampedInt(MAX_ORG_TRIGGER_INSTANCE_LIMIT).describe(
+		`Max trigger activation instances to return (default ${DEFAULT_ORG_TRIGGER_INSTANCE_LIMIT}, max ${MAX_ORG_TRIGGER_INSTANCE_LIMIT}).`,
+	),
+});
+
+const TRIGGER_IDS_ERROR = 'Missing required non-empty string array argument "triggerIds".';
+
+const getTriggerErrorStatusInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	triggerIds: z
+		.preprocess(
+			raw => (raw === undefined || raw === null ? [] : raw),
+			z.array(z.string(), { error: TRIGGER_IDS_ERROR }).min(1, { error: TRIGGER_IDS_ERROR }),
+		)
+		.describe('Trigger ids to check.'),
+});
+
+const listTriggersSpec: ToolSpecDefinition = {
 	name: 'buddy_list_triggers',
-	args: '{"orgId": string, "limit"?: number}',
 	description:
 		'List the triggers in one Rewst organization (id, name, enabled, triggerTypeId, workflowId). Triggers are how workflows are invoked.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			limit: {
-				type: 'number',
-				description: `Max triggers to return (default ${DEFAULT_TRIGGER_LIMIT}, max ${MAX_TRIGGER_LIMIT}).`,
-			},
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listTriggersInputSchema),
 };
 
-const listFormsSpec: ToolSpec = {
+const listFormsSpec: ToolSpecDefinition = {
 	name: 'buddy_list_forms',
-	args: '{"orgId": string, "limit"?: number}',
 	description: 'List the forms in one Rewst organization (id, name, updatedAt).',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			limit: {
-				type: 'number',
-				description: `Max forms to return (default ${DEFAULT_FORM_LIMIT}, max ${MAX_FORM_LIMIT}).`,
-			},
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listFormsInputSchema),
 };
 
-const listTagsSpec: ToolSpec = {
+const listTagsSpec: ToolSpecDefinition = {
 	name: 'buddy_list_tags',
-	args: '{"orgId": string, "limit"?: number}',
 	description:
 		'List the tags in one Rewst organization (id, name, color). Use the ids for tag filters on other tools.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			limit: {
-				type: 'number',
-				description: `Max tags to return (default ${DEFAULT_TAG_LIMIT}, max ${MAX_TAG_LIMIT}).`,
-			},
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listTagsInputSchema),
 };
 
-const listOrgTriggerInstancesSpec: ToolSpec = {
+const listOrgTriggerInstancesSpec: ToolSpecDefinition = {
 	name: 'buddy_list_org_trigger_instances',
-	args: '{"orgId": string, "limit"?: number}',
 	description:
 		'List trigger activation instances for one Rewst organization (id, triggerId, nextFireTime, isManualActivation). nextFireTime is an epoch-millisecond string.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			limit: {
-				type: 'number',
-				description: `Max trigger activation instances to return (default ${DEFAULT_ORG_TRIGGER_INSTANCE_LIMIT}, max ${MAX_ORG_TRIGGER_INSTANCE_LIMIT}).`,
-			},
-		},
-		required: ['orgId'],
-	},
+	inputSchema: toInputSchema(listOrgTriggerInstancesInputSchema),
 };
 
-const getTriggerErrorStatusSpec: ToolSpec = {
+const getTriggerErrorStatusSpec: ToolSpecDefinition = {
 	name: 'buddy_get_trigger_error_status',
-	args: '{"orgId": string, "triggerIds": string[]}',
 	description:
 		'Batch health check for triggers: given trigger ids, returns whether each currently has errors (true = has errors).',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			triggerIds: { type: 'array', items: { type: 'string' }, description: 'Trigger ids to check.' },
-		},
-		required: ['orgId', 'triggerIds'],
-	},
+	inputSchema: toInputSchema(getTriggerErrorStatusInputSchema),
 };
 
-function requireStringArray(input: Record<string, unknown>, key: string): string[] {
-	const value = input[key];
-	if (!Array.isArray(value) || value.length === 0) {
-		throw new Error(`Missing required non-empty string array argument "${key}".`);
-	}
-	const strings = value.map((_, index) => asString({ value: value[index] }, 'value'));
-	if (strings.some(value => !value)) {
-		throw new Error(`Missing required non-empty string array argument "${key}".`);
-	}
-	return strings as string[];
-}
-
 async function runListTriggers(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_TRIGGER_LIMIT, MAX_TRIGGER_LIMIT);
+	const { orgId, limit: rawLimit } = parseCapabilityInput(listTriggersInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_TRIGGER_LIMIT;
 	const variables = { orgId, limit };
 	const data = await rawGraphqlOrThrow(ctx.session, LIST_TRIGGERS_QUERY, variables);
 	const triggers = ((data as { triggers?: unknown[] } | undefined)?.triggers ?? []) as {
@@ -141,8 +124,8 @@ async function runListTriggers(input: Record<string, unknown>, ctx: CapabilityCo
 }
 
 async function runListForms(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_FORM_LIMIT, MAX_FORM_LIMIT);
+	const { orgId, limit: rawLimit } = parseCapabilityInput(listFormsInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_FORM_LIMIT;
 	const variables = { orgId, limit };
 	const data = await rawGraphqlOrThrow(ctx.session, LIST_FORMS_QUERY, variables);
 	const forms = ((data as { forms?: unknown[] } | undefined)?.forms ?? []) as {
@@ -155,8 +138,8 @@ async function runListForms(input: Record<string, unknown>, ctx: CapabilityConte
 }
 
 async function runListTags(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const limit = Math.min(asPositiveInt(input, 'limit') ?? DEFAULT_TAG_LIMIT, MAX_TAG_LIMIT);
+	const { orgId, limit: rawLimit } = parseCapabilityInput(listTagsInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_TAG_LIMIT;
 	const variables = { orgId, limit };
 	const data = await rawGraphqlOrThrow(ctx.session, LIST_TAGS_QUERY, variables);
 	const tags = ((data as { tags?: unknown[] } | undefined)?.tags ?? []) as {
@@ -169,11 +152,8 @@ async function runListTags(input: Record<string, unknown>, ctx: CapabilityContex
 }
 
 async function runListOrgTriggerInstances(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const limit = Math.min(
-		asPositiveInt(input, 'limit') ?? DEFAULT_ORG_TRIGGER_INSTANCE_LIMIT,
-		MAX_ORG_TRIGGER_INSTANCE_LIMIT,
-	);
+	const { orgId, limit: rawLimit } = parseCapabilityInput(listOrgTriggerInstancesInputSchema, input);
+	const limit = rawLimit ?? DEFAULT_ORG_TRIGGER_INSTANCE_LIMIT;
 	const variables = { orgId, limit };
 	const data = await rawGraphqlOrThrow(ctx.session, LIST_ORG_TRIGGER_INSTANCES_QUERY, variables);
 	const instances = ((data as { orgTriggerInstances?: unknown[] } | undefined)?.orgTriggerInstances ?? []) as {
@@ -196,8 +176,7 @@ async function runListOrgTriggerInstances(input: Record<string, unknown>, ctx: C
 
 // orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by trigger ids alone.
 async function runGetTriggerErrorStatus(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	requireString(input, 'orgId');
-	const triggerIds = requireStringArray(input, 'triggerIds');
+	const { triggerIds } = parseCapabilityInput(getTriggerErrorStatusInputSchema, input);
 	const variables = { triggerIds };
 	const data = await rawGraphqlOrThrow(ctx.session, GET_TRIGGER_ERROR_STATUS_QUERY, variables);
 	const statuses = ((data as { getTriggerErrorStatus?: Record<string, boolean> } | undefined)

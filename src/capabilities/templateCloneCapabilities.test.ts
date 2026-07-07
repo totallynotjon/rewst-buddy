@@ -108,6 +108,35 @@ suite('Unit: templateCloneCapabilities', () => {
 		LinkManager._resetForTesting();
 	});
 
+	// --- Zod parse tests ---
+	test('missing rootTemplateId throws before any fetch', async () => {
+		const { deps } = makeCloneDeps({});
+		await assert.rejects(() => runBundleClone({ orgId: 'tgt-org' }, makeCtx(), deps), /rootTemplateId/);
+	});
+
+	test('missing orgId throws before any fetch', async () => {
+		const { deps } = makeCloneDeps({});
+		await assert.rejects(() => runBundleClone({ rootTemplateId: A }, makeCtx(), deps), /orgId/);
+	});
+
+	test('maxTemplates floors and clamps to 200', async () => {
+		setMcpMutationApprover(async () => true);
+		const { deps } = makeCloneDeps({ [A]: tmpl(A) });
+		// Should not throw; 9999 clamps to 200
+		await assert.doesNotReject(() =>
+			runBundleClone({ orgId: 'tgt-org', rootTemplateId: A, maxTemplates: 9999 }, makeCtx(), deps),
+		);
+	});
+
+	test('buddy_template_bundle_clone derived schema has orgId and rootTemplateId required and args generated', () => {
+		const c = TEMPLATE_CLONE_CAPABILITIES.find(x => x.spec.name === 'buddy_template_bundle_clone');
+		assert.ok(c);
+		const schema = c.spec.inputSchema as { required: string[] };
+		assert.ok(schema.required.includes('orgId'));
+		assert.ok(schema.required.includes('rootTemplateId'));
+		assert.strictEqual(c.spec.args, JSON.stringify(schema));
+	});
+
 	suite('rewriteReferences', () => {
 		test('rewrites mapped ids, leaves unmapped refs and surrounding Jinja intact', () => {
 			const map = new Map([[A, 'new-1']]);
