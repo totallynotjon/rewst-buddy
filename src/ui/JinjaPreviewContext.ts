@@ -167,6 +167,8 @@ export async function pickJinjaExecutionContext({
 			order: [['createdAt', 'desc']],
 			limit: 20,
 		});
+		const error = firstErrorMessage(result as ExecResult);
+		if (error) throw new Error(`Failed to list executions: ${error}`);
 		return (
 			(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
 		).filter((r): r is ExecutionRow => !!r);

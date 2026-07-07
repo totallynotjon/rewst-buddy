@@ -143,10 +143,11 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 	}
 
 	private async doRender(state: InternalState): Promise<void> {
+		const isLive = () => this.sessions.get(state.templateUri.toString()) === state;
 		const overridesDoc = await vscode.workspace.openTextDocument(state.overridesUri);
 		const parsed = parseOverrides(overridesDoc.getText());
 		if (parsed.error) {
-			JinjaRenderedContentProvider.update(state.renderedUri, formatInvalidOverrides(parsed.error));
+			if (isLive()) JinjaRenderedContentProvider.update(state.renderedUri, formatInvalidOverrides(parsed.error));
 			return;
 		}
 		if (!state.mergedVars) return; // no context picked yet — leave the placeholder up
@@ -157,7 +158,11 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 		try {
 			freshSession = await SessionManager.getSessionForOrg(state.orgId);
 		} catch (e) {
-			JinjaRenderedContentProvider.update(state.renderedUri, formatRenderedError(`Session error: ${errMsg(e)}`));
+			if (isLive())
+				JinjaRenderedContentProvider.update(
+					state.renderedUri,
+					formatRenderedError(`Session error: ${errMsg(e)}`),
+				);
 			return;
 		}
 		const freshDeps = createGraphqlDeps(freshSession);
@@ -173,6 +178,7 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 
 		try {
 			const outcome = await evaluateRenderJinja(freshDeps, state.orgId, templateText, vars);
+			if (!isLive()) return;
 			if (!outcome.ok) {
 				JinjaRenderedContentProvider.update(
 					state.renderedUri,
@@ -185,7 +191,7 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 				);
 			}
 		} catch (e) {
-			JinjaRenderedContentProvider.update(state.renderedUri, formatRenderedError(errMsg(e)));
+			if (isLive()) JinjaRenderedContentProvider.update(state.renderedUri, formatRenderedError(errMsg(e)));
 		}
 	}
 
@@ -320,7 +326,6 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 		const state = await this.createOrShow(templateUri, context);
 		const link = LinkManager.getTemplateLink(templateUri);
 		const org = orgForTemplateLink(link);
-		const session = await SessionManager.getSessionForOrg(org.id);
 
 		let entry;
 		try {
@@ -339,8 +344,7 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 		saveLastContext(context, state.templateId, entry);
 		try {
 			const renderOrgId = entry.orgId || org.id;
-			const contextSession =
-				renderOrgId === org.id ? session : await SessionManager.getSessionForOrg(renderOrgId);
+			const contextSession = await SessionManager.getSessionForOrg(renderOrgId);
 			state.mergedVars = await mergeExecutionContext(createGraphqlDeps(contextSession), entry.executionId);
 			state.orgId = renderOrgId;
 			await this.doRender(state);

@@ -88,7 +88,7 @@ Linked files get authoring support for Rewst's built-in Jinja filters and dialec
 
 ## Jinja Live Preview
 
-The `Preview Jinja Render` command opens a native 3-pane layout beside your linked template — a vars/overrides file, the template itself, and a live-updating rendered-output document — so you get full editor features (find, code folding, minimap) instead of a webview.
+The `Preview Jinja Render` command opens a native 3-pane layout beside your linked template — a vars/overrides file, the template itself, and a live-updating rendered-output document — so you get full editor features (find, code folding, minimap) instead of a webview panel.
 
 **How it works:**
 
@@ -100,7 +100,7 @@ The `Preview Jinja Render` command opens a native 3-pane layout beside your link
 
 - **One session per file** — running the command again for the same file reveals the existing panes (wherever they currently are, even after a window reload) instead of opening duplicates.
 - **Vars/overrides file** — a real file (persisted under the extension's global storage, one per template) where you can hand-edit or add keys; whatever it defines is merged on top of the picked execution's context, overrides winning on a shared key. It's seeded empty and persists across VS Code restarts.
-- **Remembered context** — the last-picked execution is stored per template in `globalState` (`RewstJinjaPreviewContext`) and reloaded automatically the next time you open a preview for that file.
+- **Remembered context** — the last-picked execution is stored per template and reloaded automatically the next time you open a preview for that file.
 - **Selection rendering** — if you have a non-empty selection in the template, only the selected text is rendered; otherwise the whole file is used.
 - **Errors as comments, not crashes** — Jinja errors, invalid overrides JSON, and network failures appear as a `// Error: ...` (or `// Invalid overrides JSON: ...`) comment line at the top of the rendered-output pane; they never crash the extension host or produce notification storms.
 - **Control-character warning** — if the rendered value contains a non-whitespace control character (a common symptom of a `regex_replace` backreference escaping mistake), a `// WARNING` comment line appears above the rendered output.

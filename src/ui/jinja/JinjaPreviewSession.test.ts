@@ -242,6 +242,100 @@ suite('Unit: JinjaPreviewSession', () => {
 			}
 		});
 
+		test('session-lookup failure shows a session error comment and never calls evaluateRenderJinja', async () => {
+			const uri = writeTemplateFile('t-session-err.j2', '{{ CTX }}');
+			const org = Fixtures.orgModel({ id: 'org-session-err', name: 'Org Session Err' });
+			linkFile(uri, org.id, 'tpl-session-err');
+			const { restore } = stubShowTextDocument();
+
+			const renderCalled = false;
+			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async () => {
+				throw new Error('session expired');
+			}) as any);
+
+			try {
+				const state = await JinjaPreviewSession.createOrShow(uri, extContext);
+				JinjaPreviewSession._setMergedVarsForTesting(uri, { a: 1 });
+				await JinjaPreviewSession._renderForTesting(uri);
+
+				assert.strictEqual(renderCalled, false);
+				const rendered = JinjaRenderedContentProvider.provideTextDocumentContent(state.renderedUri);
+				assert.ok(
+					rendered.includes('Session error') && rendered.includes('session expired'),
+					`expected session error in output, got: ${rendered}`,
+				);
+			} finally {
+				restore();
+				restoreGetSession();
+			}
+		});
+
+		test('Jinja error from evaluateRenderJinja shows an error comment in the rendered pane', async () => {
+			const uri = writeTemplateFile('t-jinja-err.j2', '{{ bad jinja');
+			const org = Fixtures.orgModel({ id: 'org-jinja-err', name: 'Org Jinja Err' });
+			linkFile(uri, org.id, 'tpl-jinja-err');
+			const { restore } = stubShowTextDocument();
+
+			const fakeSession = {
+				rawGraphql: async (query: string, vars?: Record<string, unknown>) => {
+					if (query.includes('RewstBuddyRenderJinja')) {
+						return { data: { renderJinja: { error: 'unexpected end of template' } } };
+					}
+					return { data: {} };
+				},
+				profile: { org: { id: org.id, name: org.name }, allManagedOrgs: [{ id: org.id, name: org.name }] },
+			} as any;
+			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async () => fakeSession) as any);
+
+			try {
+				const state = await JinjaPreviewSession.createOrShow(uri, extContext);
+				JinjaPreviewSession._setMergedVarsForTesting(uri, { a: 1 });
+				await JinjaPreviewSession._renderForTesting(uri);
+
+				const rendered = JinjaRenderedContentProvider.provideTextDocumentContent(state.renderedUri);
+				assert.ok(
+					rendered.includes('Jinja error') && rendered.includes('unexpected end of template'),
+					`expected Jinja error in output, got: ${rendered}`,
+				);
+			} finally {
+				restore();
+				restoreGetSession();
+			}
+		});
+
+		test('evaluateRenderJinja throwing shows an error comment in the rendered pane', async () => {
+			const uri = writeTemplateFile('t-throw.j2', '{{ CTX }}');
+			const org = Fixtures.orgModel({ id: 'org-throw', name: 'Org Throw' });
+			linkFile(uri, org.id, 'tpl-throw');
+			const { restore } = stubShowTextDocument();
+
+			const fakeSession = {
+				rawGraphql: async (query: string) => {
+					if (query.includes('RewstBuddyRenderJinja')) {
+						return { errors: [{ message: 'network failure' }] };
+					}
+					return { data: {} };
+				},
+				profile: { org: { id: org.id, name: org.name }, allManagedOrgs: [{ id: org.id, name: org.name }] },
+			} as any;
+			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async () => fakeSession) as any);
+
+			try {
+				const state = await JinjaPreviewSession.createOrShow(uri, extContext);
+				JinjaPreviewSession._setMergedVarsForTesting(uri, { a: 1 });
+				await JinjaPreviewSession._renderForTesting(uri);
+
+				const rendered = JinjaRenderedContentProvider.provideTextDocumentContent(state.renderedUri);
+				assert.ok(
+					rendered.includes('network failure') || rendered.startsWith('// Error:'),
+					`expected error in output, got: ${rendered}`,
+				);
+			} finally {
+				restore();
+				restoreGetSession();
+			}
+		});
+
 		test('invalid overrides JSON shows an error comment and never calls evaluateRenderJinja', async () => {
 			const uri = writeTemplateFile('t4.j2', '{{ CTX }}');
 			const org = Fixtures.orgModel({ id: 'org-4', name: 'Org Four' });
@@ -410,6 +504,51 @@ suite('Unit: JinjaPreviewSession', () => {
 				await JinjaPreviewSession.pickContext(uri, extContext);
 
 				assert.strictEqual(renderOrgId, contextOrg.id);
+			} finally {
+				restore();
+				restoreGetSession();
+				restoreActiveSessions();
+				restoreQuickPick();
+			}
+		});
+
+		test('pickContext cancel (user dismisses picker) exits without persisting context or rendering', async () => {
+			const uri = writeTemplateFile('t-cancel.j2', '{{ CTX }}');
+			const org = Fixtures.orgModel({ id: 'org-cancel', name: 'Org Cancel' });
+			linkFile(uri, org.id, 'tpl-cancel');
+			const { restore } = stubShowTextDocument();
+
+			const fakeSession = {
+				rawGraphql: async (query: string) => {
+					if (query.includes('RewstBuddyPreviewWorkflows')) {
+						return { data: { workflows: [{ id: 'wf-cancel', name: 'Workflow Cancel', orgId: org.id }] } };
+					}
+					return { data: {} };
+				},
+				profile: {
+					org: { id: org.id, name: org.name },
+					allManagedOrgs: [{ id: org.id, name: org.name }],
+					user: { id: 'user-cancel' },
+				},
+			} as any;
+			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async () => fakeSession) as any);
+			const restoreActiveSessions = stub(SessionManager, 'getActiveSessions', (() => [fakeSession]) as any);
+			// User cancels at the org picker — showQuickPick returns undefined
+			const restoreQuickPick = stub(
+				vscode.window,
+				'showQuickPick',
+				(async () => undefined) as unknown as typeof vscode.window.showQuickPick,
+			);
+
+			try {
+				await JinjaPreviewSession.pickContext(uri, extContext);
+
+				// No context should have been saved
+				const remembered = getLastContext(extContext, 'tpl-cancel');
+				assert.strictEqual(remembered, undefined, 'should not persist context when picker is cancelled');
+				// mergedVars should remain unset (no render happened)
+				const state = await JinjaPreviewSession.createOrShow(uri, extContext);
+				assert.strictEqual(state.mergedVars, undefined, 'mergedVars should be unset after cancel');
 			} finally {
 				restore();
 				restoreGetSession();

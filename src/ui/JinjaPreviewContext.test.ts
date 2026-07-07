@@ -360,6 +360,45 @@ suite('Unit: JinjaPreviewContext', () => {
 			}
 		});
 
+		test('throws with context when the executions query returns a GraphQL error', async () => {
+			const deps = makeDeps(async query => {
+				if (query.includes('RewstBuddyPreviewWorkflows')) {
+					return { data: { workflows: [{ id: 'wf-1', name: 'Workflow', orgId: 'org-1' }] } };
+				}
+				if (query.includes('RewstBuddyExecutions')) {
+					return { errors: [{ message: 'boom' }] };
+				}
+				return { data: {} };
+			}, 'session-1');
+			const depsForOrg = async () => deps;
+			const restoreQuickPick = stub(vscode.window, 'showQuickPick', (async (
+				items: unknown,
+				options?: unknown,
+			) => {
+				const title = (options as { title?: string } | undefined)?.title ?? '';
+				const resolved = (await items) as readonly (vscode.QuickPickItem & {
+					orgId?: string;
+					workflowId?: string;
+				})[];
+				if (title.includes('Org')) return resolved[0];
+				return resolved[0];
+			}) as unknown as typeof vscode.window.showQuickPick);
+
+			try {
+				await assert.rejects(
+					() =>
+						pickJinjaExecutionContext({
+							orgItems: [orgItems[0]],
+							depsForOrg,
+							initialOrgId: 'org-1',
+						}),
+					/Failed to list executions: boom/,
+				);
+			} finally {
+				restoreQuickPick();
+			}
+		});
+
 		test('uses the selected fallback execution org for the saved preview context', async () => {
 			const deps = makeDeps(async (query, variables) => {
 				if (query.includes('RewstBuddyPreviewWorkflows')) {

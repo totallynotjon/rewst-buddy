@@ -7,8 +7,8 @@ an expression today means round-tripping through the AI chat's `buddy_render_jin
 capability puts the same render engine in a side panel: pick an execution once, then see the
 active linked file (or selection) re-rendered against that context as you type.
 
-Source: `src/ui/webview/JinjaPreviewPanel.ts`, `src/commands/template/PreviewJinjaRender.ts`,
-`src/models/JinjaPreviewContextStore.ts`, `src/workflow/executions.ts` (`evaluateRenderJinja`).
+Source: `src/commands/template/PreviewJinjaRender.ts`, `src/commands/template/PickJinjaPreviewContext.ts`,
+`src/ui/jinja/JinjaPreviewSession.ts`, `src/models/JinjaPreviewContextStore.ts`, `src/workflow/executions.ts`.
 
 ## Requirements
 
@@ -51,7 +51,7 @@ life of the picked context (re-fetched only on a new pick, never per keystroke).
 
 - **GIVEN** a Jinja Preview panel with no context picked
 - **WHEN** the panel is shown
-- **THEN** it displays a "Pick Context" prompt and does not attempt to render
+- **THEN** it displays a "Pick Jinja Preview Context" prompt and does not attempt to render
 
 ### Requirement: Last-picked context is remembered per template
 
