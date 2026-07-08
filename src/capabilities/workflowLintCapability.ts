@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
-import type { Capability, CapabilityContext } from './Capability';
 import { WORKFLOW_GET_QUERY } from '../workflow/graphMutations';
 import { formatLintReport, lintWorkflow } from '../workflow/lint';
 import type { RawWorkflow } from '../workflow/types';
+import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
 import {
 	ORG_ID_FIELD,

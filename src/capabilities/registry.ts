@@ -22,12 +22,12 @@ import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
 import { TRIGGER_MUTATE_CAPABILITIES } from './triggerMutateCapabilities';
 import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 import { workflowImpactCapability } from './workflowImpactCapability';
-import { workflowLintCapability } from './workflowLintCapability';
 import {
 	deleteWorkflowInputProfileCapability,
 	listWorkflowInputProfilesCapability,
 	saveWorkflowInputProfileCapability,
 } from './workflowInputProfileCapabilities';
+import { workflowLintCapability } from './workflowLintCapability';
 import { WORKING_SCOPE_CAPABILITIES } from './workingScopeCapability';
 
 /**

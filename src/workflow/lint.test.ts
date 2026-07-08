@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { suite, test } from '../test/tdd';
-import type { RawTask, RawWorkflow } from './types';
 import { formatLintReport, lintWorkflow, MONOLITH_DEPTH_THRESHOLD, MONOLITH_TASK_THRESHOLD, rankDepth } from './lint';
+import type { RawTask, RawWorkflow } from './types';
 
 // ---------------------------------------------------------------------------
 // Fixture helpers
