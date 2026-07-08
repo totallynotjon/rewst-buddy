@@ -156,7 +156,7 @@ suite('Unit: McpActions', () => {
 		test('exposes the read tools and hides the GraphQL chat/write tools', () => {
 			const names = listTools(settings()).map(tool => tool.name);
 			assert.ok(names.includes('buddy_list_orgs'));
-			assert.ok(names.includes('buddy_list_templates'));
+			assert.ok(names.includes('buddy_search_templates'));
 			assert.ok(names.includes('buddy_get_template'));
 			assert.ok(names.includes('buddy_list_workflows'));
 			assert.ok(names.includes('buddy_get_workflow'));
@@ -178,27 +178,39 @@ suite('Unit: McpActions', () => {
 			assert.ok(!result.isError);
 		});
 
-		test('buddy_list_templates returns template names for the org', async () => {
-			const { wrapper } = useSession('org-1');
-			wrapper.when('listTemplates', {
-				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
+		test('buddy_search_templates returns template names for the org', async () => {
+			const { session, wrapper } = useSession('org-1');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when('rawGraphql', {
+				data: {
+					data: {
+						templates: [
+							{ id: 't-1', name: 'Welcome', language: 'html', contentType: 'email', updatedAt: null },
+						],
+					},
+				},
 			});
-			const result = await callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings());
+			const result = await callTool(
+				{ name: 'buddy_search_templates', arguments: { orgId: 'org-1' } },
+				settings(),
+			);
 			assert.ok(result.text.includes('Welcome (t-1)'));
-			assert.strictEqual(wrapper.getCallsFor('listTemplates').length, 1);
+			assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 1);
 		});
 
 		test('oversized tool output returns a cached preview that buddy_result_read can page', async () => {
-			const { wrapper } = useSession('org-1');
-			const templates = Array.from({ length: 200 }, (_, i) =>
-				Fixtures.template({
-					id: `template-${i + 1}`,
-					name: `Template ${i + 1} ${'x'.repeat(180)}`,
-				}),
-			);
-			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery(templates) });
+			const { session, wrapper } = useSession('org-1');
+			useRawGraphqlWrapper(session, wrapper);
+			const templates = Array.from({ length: 200 }, (_, i) => ({
+				id: `template-${i + 1}`,
+				name: `Template ${i + 1} ${'x'.repeat(180)}`,
+				language: 'html',
+				contentType: 'email',
+				updatedAt: null,
+			}));
+			wrapper.when('rawGraphql', { data: { data: { templates } } });
 
-			const first = await callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings());
+			const first = await callTool({ name: 'buddy_search_templates', arguments: { orgId: 'org-1' } }, settings());
 			const id = /"id":"([^"]+)"/.exec(first.text)?.[1];
 
 			assert.ok(id, 'oversized output includes a cached result id');
@@ -208,12 +220,12 @@ suite('Unit: McpActions', () => {
 			assert.ok(
 				first.text.length < templates.map(template => `${template.name} (${template.id})`).join('\n').length,
 			);
-			const listCalls = wrapper.getCallsFor('listTemplates');
-			assert.strictEqual(listCalls.length, 1, 'the org templates are fetched once for the oversized call');
+			const rawCalls = wrapper.getCallsFor('rawGraphql');
+			assert.strictEqual(rawCalls.length, 1, 'the org templates are fetched once for the oversized call');
 			assert.strictEqual(
-				listCalls[0].variables.orgId,
+				rawCalls[0].variables.variables.orgId,
 				'org-1',
-				'buddy_list_templates is scoped to the requested org',
+				'buddy_search_templates is scoped to the requested org',
 			);
 
 			const second = await callTool(
@@ -222,11 +234,11 @@ suite('Unit: McpActions', () => {
 			);
 
 			assert.ok(!second.isError);
-			assert.ok(second.text.startsWith(`Cached result "${id}" (buddy_list_templates)`));
+			assert.ok(second.text.startsWith(`Cached result "${id}" (buddy_search_templates)`));
 			assert.ok(second.text.includes(`characters ${MCP_MAX_OUTPUT_CHARS}-`));
 			assert.ok(second.text.includes('Template'));
 			assert.strictEqual(
-				wrapper.getCallsFor('listTemplates').length,
+				wrapper.getCallsFor('rawGraphql').length,
 				1,
 				'paging serves from the in-memory cache without re-hitting the API',
 			);
@@ -444,27 +456,32 @@ suite('Unit: McpActions', () => {
 			WorkingScopeManager.setOrgs(['org-other']);
 
 			await assert.rejects(
-				callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings()),
+				callTool({ name: 'buddy_search_templates', arguments: { orgId: 'org-1' } }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
 			);
 		});
 
 		test('reads stay cross-org when nothing is pinned', async () => {
-			const { wrapper } = useSession('org-1');
-			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery([]) });
+			const { session, wrapper } = useSession('org-1');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when('rawGraphql', { data: { data: { templates: [] } } });
 
-			const result = await callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings());
+			const result = await callTool(
+				{ name: 'buddy_search_templates', arguments: { orgId: 'org-1' } },
+				settings(),
+			);
 
 			assert.ok(!result.isError);
 		});
 
 		test('writes-only scope leaves reads unrestricted even when a working org is pinned', async () => {
-			const { wrapper } = useSession('org-1');
-			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery([]) });
+			const { session, wrapper } = useSession('org-1');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when('rawGraphql', { data: { data: { templates: [] } } });
 			WorkingScopeManager.setOrgs(['org-other']);
 
 			const result = await callTool(
-				{ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } },
+				{ name: 'buddy_search_templates', arguments: { orgId: 'org-1' } },
 				settings({ workingOrgScope: 'writes' }),
 			);
 
@@ -472,16 +489,23 @@ suite('Unit: McpActions', () => {
 		});
 
 		test('omitting orgId targets the sole pinned working org', async () => {
-			const { wrapper } = useSession('org-1');
-			wrapper.when('listTemplates', {
-				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
+			const { session, wrapper } = useSession('org-1');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when('rawGraphql', {
+				data: {
+					data: {
+						templates: [
+							{ id: 't-1', name: 'Welcome', language: 'html', contentType: 'email', updatedAt: null },
+						],
+					},
+				},
 			});
 			WorkingScopeManager.setOrgs(['org-1']);
 
-			const result = await callTool({ name: 'buddy_list_templates' }, settings());
+			const result = await callTool({ name: 'buddy_search_templates' }, settings());
 
 			assert.ok(result.text.includes('Welcome (t-1)'));
-			assert.strictEqual(wrapper.getCallsFor('listTemplates')[0].variables.orgId, 'org-1');
+			assert.strictEqual(wrapper.getCallsFor('rawGraphql')[0].variables.variables.orgId, 'org-1');
 		});
 
 		test('the working scope does not restrict org-discovery tools', async () => {
@@ -504,7 +528,7 @@ suite('Unit: McpActions', () => {
 			};
 
 			await assert.rejects(
-				callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings()),
+				callTool({ name: 'buddy_search_templates', arguments: { orgId: 'org-1' } }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'org_out_of_scope',
 			);
 			assert.strictEqual(validated, 0, 'no authenticated session I/O happens for an out-of-scope request');
@@ -832,7 +856,7 @@ suite('Unit: McpActions', () => {
 		test('an org-scoped tool without orgId throws org_required', async () => {
 			useSession('org-1');
 			await assert.rejects(
-				callTool({ name: 'buddy_list_templates' }, settings()),
+				callTool({ name: 'buddy_search_templates' }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'org_required',
 			);
 		});
@@ -840,7 +864,7 @@ suite('Unit: McpActions', () => {
 		test('an unmanaged org throws org_not_found', async () => {
 			useSession('org-1');
 			await assert.rejects(
-				callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-999' } }, settings()),
+				callTool({ name: 'buddy_search_templates', arguments: { orgId: 'org-999' } }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'org_not_found',
 			);
 		});
@@ -1036,17 +1060,25 @@ suite('Unit: McpActions', () => {
 		});
 
 		test('readResource reads a collection', async () => {
-			const { wrapper } = useSession('org-1');
-			wrapper.when('listTemplates', {
-				data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
+			const { session, wrapper } = useSession('org-1');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when('rawGraphql', {
+				data: {
+					data: {
+						templates: [
+							{ id: 't-1', name: 'Welcome', language: 'html', contentType: 'email', updatedAt: null },
+						],
+					},
+				},
 			});
 			const content = await readResource('rewst://org-1/templates', settings());
 			assert.ok(content.text.includes('Welcome (t-1)'));
 		});
 
 		test('readResource is rate-limited after a burst', async () => {
-			const { wrapper } = useSession('org-1');
-			wrapper.when('listTemplates', { data: Fixtures.listTemplatesQuery([]) });
+			const { session, wrapper } = useSession('org-1');
+			useRawGraphqlWrapper(session, wrapper);
+			wrapper.when('rawGraphql', { data: { data: { templates: [] } } });
 			let limited = false;
 			for (let i = 0; i < 40 && !limited; i++) {
 				try {
@@ -1079,20 +1111,27 @@ suite('Unit: MCP audit logging', () => {
 	});
 
 	test('successful tool call logs tool, resolved orgId, ok outcome, and duration', async () => {
-		const { wrapper } = useSession('org-1');
-		wrapper.when('listTemplates', {
-			data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
+		const { session, wrapper } = useSession('org-1');
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', {
+			data: {
+				data: {
+					templates: [
+						{ id: 't-1', name: 'Welcome', language: 'html', contentType: 'email', updatedAt: null },
+					],
+				},
+			},
 		});
 		const capture = captureInfoLogs();
 		try {
-			await callTool({ name: 'buddy_list_templates', arguments: { orgId: 'org-1' } }, settings());
+			await callTool({ name: 'buddy_search_templates', arguments: { orgId: 'org-1' } }, settings());
 		} finally {
 			capture.restore();
 		}
 
 		const lines = auditLines(capture.messages);
 		assert.strictEqual(lines.length, 1);
-		assert.ok(lines[0].includes('tool=buddy_list_templates'));
+		assert.ok(lines[0].includes('tool=buddy_search_templates'));
 		assert.ok(lines[0].includes('orgId=org-1'));
 		assert.ok(lines[0].includes('outcome=ok'));
 		assert.match(lines[0], /durationMs=\d+/);
@@ -1103,7 +1142,7 @@ suite('Unit: MCP audit logging', () => {
 		const capture = captureInfoLogs();
 		try {
 			await assert.rejects(
-				callTool({ name: 'buddy_list_templates' }, settings()),
+				callTool({ name: 'buddy_search_templates' }, settings()),
 				(error: unknown) => error instanceof McpError && error.code === 'org_required',
 			);
 		} finally {
@@ -1112,7 +1151,7 @@ suite('Unit: MCP audit logging', () => {
 
 		const lines = auditLines(capture.messages);
 		assert.strictEqual(lines.length, 1);
-		assert.ok(lines[0].includes('tool=buddy_list_templates'));
+		assert.ok(lines[0].includes('tool=buddy_search_templates'));
 		assert.ok(lines[0].includes('orgId=—'));
 		assert.ok(lines[0].includes('outcome=error:org_required'));
 		assert.match(lines[0], /durationMs=\d+/);
@@ -1157,15 +1196,22 @@ suite('Unit: MCP audit logging', () => {
 	});
 
 	test('audit logs do not include arguments or secrets', async () => {
-		const { wrapper } = useSession('org-1');
-		wrapper.when('listTemplates', {
-			data: Fixtures.listTemplatesQuery([Fixtures.template({ id: 't-1', name: 'Welcome' })]),
+		const { session, wrapper } = useSession('org-1');
+		useRawGraphqlWrapper(session, wrapper);
+		wrapper.when('rawGraphql', {
+			data: {
+				data: {
+					templates: [
+						{ id: 't-1', name: 'Welcome', language: 'html', contentType: 'email', updatedAt: null },
+					],
+				},
+			},
 		});
 		const capture = captureInfoLogs();
 		try {
 			await callTool(
 				{
-					name: 'buddy_list_templates',
+					name: 'buddy_search_templates',
 					arguments: {
 						orgId: 'org-1',
 						apiToken: 'audit-secret-token',

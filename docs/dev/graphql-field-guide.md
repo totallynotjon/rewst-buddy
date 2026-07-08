@@ -96,15 +96,16 @@ Status: implemented, type-checked, unit-tested (full unit suite green), and live
 - `buddy_list_workflows` (FIX — `workflows(where:{orgId})`, name filter → `_ilike`)
 - `buddy_resolve_reference` — universal name→id over `localReferenceOptions` (13 model types)
 - `buddy_list_org_variables` — `orgVariables` with `maskSecrets:true`
-- `buddy_find_action` — `searchInstalledPackActions`, flatten + cap client-side
-- `buddy_list_workflow_executions`, `buddy_latest_workflow_execution`, `buddy_get_workflow_execution_stats`
+- `buddy_action_search` — installed/catalog action lookup
+- `buddy_workflow_executions`, `buddy_get_workflow_execution_stats`
 - `buddy_list_workflow_tasks`, `buddy_list_workflow_patches`, `buddy_get_workflow_patch`
 - `buddy_find_executions_by_variable` — find a workflow's executions by an input/output/context variable name (+ optional value); input/output inline via `conductor`, context via the N+1 `workflowExecutionContexts` fetch
 
 **`triggerFormCapabilities.ts`**: `buddy_list_triggers`, `buddy_list_forms`, `buddy_list_tags`, `buddy_list_org_trigger_instances`, `buddy_get_trigger_error_status`
 **`packIntegrationCapabilities.ts`**: `buddy_list_installed_packs`, `buddy_get_pack_auth_status`, `buddy_list_pack_configs`, `buddy_list_integrations`
 **`orgUserCapabilities.ts`**: `buddy_search_organizations`, `buddy_list_users`, `buddy_list_roles`
-**`pageTemplateCapabilities.ts`**: `buddy_search_templates`, `buddy_list_pages`, `buddy_list_sites`, `buddy_list_jinja_filters`
+**`pageTemplateCapabilities.ts`**: `buddy_list_pages`, `buddy_list_sites`
+**`rewstReadCapabilities.ts`**: `buddy_search_templates`, workflow/task/patch/stat read helpers, org variables, generic reference resolution
 
 ### Not built (deferred — lower value / informed by Haiku findings)
 
@@ -125,12 +126,12 @@ Status: implemented, type-checked, unit-tested (full unit suite green), and live
 
 A Haiku (weak) model ran 9 realistic tasks against the live tools using **descriptions only** (no field guide). 6 solved cleanly, 2 partial, all completed. Tool-description/narrowing fixes it surfaced:
 
-1. **`buddy_find_action` — filter scope unspecified.** Description doesn't say what the `filter` matches (name? ref? description?). It matches the **display name** only (case-insensitive substring) — `filter:"send email"` finds nothing though "Send Mail…" actions exist. → State the scope explicitly.
-2. **`buddy_find_action` — return format ambiguous.** `"ref-or-name (id) — pack: description"` doesn't say which token is the ref vs the name, or when `ref` is null (workflow-as-action rows show the name). → Spell out the line format + that `id` is the action id, `ref` the callable reference (null ⇒ name shown).
+1. **`buddy_action_search` — query scope should stay explicit.** Description should make clear whether the query searches installed actions, catalog actions, or describe mode.
+2. **`buddy_action_search` — return format should stay explicit.** Spell out which token is the callable ref vs display name, and when describe mode is needed for inputs.
 3. **`buddy_search_organizations` — `orgId` semantics unclear.** It reads as a scope filter but is only session routing; results span **all** managed orgs filtered by name, not sub-orgs of `orgId`. → Say "orgId only selects the session; results span all managed orgs."
-4. **Action `ref` vs `id` usage not documented** — model couldn't tell which to use downstream. → One line in `buddy_find_action`.
+4. **Action `ref` vs `id` usage must stay documented** — model couldn't tell which to use downstream. → Keep one line in `buddy_action_search`.
 5. **`buddy_search_organizations` vs `buddy_list_orgs` overlap** — two ways to find orgs. → Cross-reference: `buddy_search_organizations` is preferred for name lookup; `buddy_list_orgs` is the full enumeration.
-6. **`buddy_find_action` vs existing `buddy_action_search` overlap** — two action finders. → Cross-reference (buddy_find_action = org-scoped installed-pack actions).
+6. **Action finder overlap was removed in D3** — keep `buddy_action_search` as the single action lookup entry point.
 
 Also observed: for "find a workflow by name," Haiku reached for `buddy_workflow_search` over `buddy_resolve_reference(Workflow)` — the generic resolver competes with type-specific tools (acceptable; both work). **No tool removals indicated** — all fixes are description tightenings.
 
@@ -209,7 +210,7 @@ Grouped by domain. `wave` = which explorer batch owns it; `status` updated as fi
 | `orgInterpreterSetting`       | EMPTY      | **Must** pass both `orgId` AND `language` — `language`-less call crashes; by-`id` crashes on not-found.                              |
 | `orgInterpreterSettings`      | EMPTY      | `orgId: ID!` top-level. Safe plural — `[]` not crash.                                                                                |
 
-**Tool candidates:** enhance existing `buddy_list_templates` with `search`+`order`+pagination (currently it just enumerates); a Jinja-filter-docs search wrapper (large payload → searchable, return signature-only); `cratesForTemplate` clean single-arg lookup.
+**Tool candidates:** `buddy_search_templates` already supports `search`+`order`+pagination (D3 consolidated it into `rewstReadCapabilities.ts` with raw GraphQL); a Jinja-filter-docs search wrapper (large payload → searchable, return signature-only); `cratesForTemplate` clean single-arg lookup.
 
 ### Workflows (core) — _wave 1 · done_
 

@@ -83,35 +83,6 @@ export async function getTemplateFromAnySession(
 	return undefined;
 }
 
-export function asString(input: Record<string, unknown>, key: string): string | undefined {
-	const value = input[key];
-	return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
-}
-
-export function requireString(input: Record<string, unknown>, key: string): string {
-	const value = asString(input, key);
-	if (!value) throw new Error(`Missing required string argument "${key}".`);
-	return value;
-}
-
-/**
- * Like requireString but accepts an empty string as a valid value.
- * Throws only when the key is absent or the value is not a string.
- */
-export function requireStringAllowEmpty(input: Record<string, unknown>, key: string): string {
-	if (!(key in input) || typeof input[key] !== 'string') {
-		throw new Error(`Missing required string argument "${key}".`);
-	}
-	return input[key] as string;
-}
-
-export function asPositiveInt(input: Record<string, unknown>, key: string): number | undefined {
-	const value = input[key];
-	if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
-	const normalized = Math.floor(value);
-	return normalized > 0 ? normalized : undefined;
-}
-
 export async function mapWithConcurrency<T, R>(
 	items: readonly T[],
 	limit: number,
@@ -132,11 +103,6 @@ export async function mapWithConcurrency<T, R>(
 	await Promise.all(workers);
 	return results;
 }
-
-/** Standard orgId property block for capability inputSchemas. */
-export const ORG_ID_PROP = {
-	orgId: { type: 'string', description: 'Rewst organization id the operation runs against (from buddy_list_orgs).' },
-} as const;
 
 // ---------------------------------------------------------------------------
 // Zod-based helpers (C2 migration)
@@ -204,8 +170,33 @@ export function optionalClampedInt(max: number): z.ZodType<number | undefined> {
 }
 
 /**
- * Shared orgId field for read-capability schemas; description text matches
- * the existing ORG_ID_PROP so the two stay in sync until every capability
- * migrates.
+ * Zod counterpart to requireStringAllowEmpty: required string that may be
+ * empty (e.g. template body, org-variable value). Missing key or non-string
+ * type throws; empty string is accepted.
  */
-export const ORG_ID_FIELD: z.ZodString = requiredStringField('orgId').describe(ORG_ID_PROP.orgId.description);
+export function requiredStringAllowEmptyField(key: string): z.ZodString {
+	const message = `Missing required string argument "${key}".`;
+	return z.string({ error: message });
+}
+
+/**
+ * Optional boolean field that rejects non-boolean values with a clear message.
+ * Missing key resolves to undefined; wrong type throws.
+ */
+export function optionalBooleanField(key: string): z.ZodType<boolean | undefined> {
+	return z.preprocess(
+		raw => (raw === undefined ? undefined : raw),
+		z
+			.boolean({
+				error: `"${key}" must be a boolean.`,
+			})
+			.optional(),
+	);
+}
+
+/**
+ * Shared orgId field for capability schemas.
+ */
+export const ORG_ID_FIELD: z.ZodString = requiredStringField('orgId').describe(
+	'Rewst organization id the operation runs against (from buddy_list_orgs).',
+);

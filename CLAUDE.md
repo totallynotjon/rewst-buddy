@@ -244,12 +244,13 @@ async execute(...args: unknown[]): Promise<void> {
 
 ## Data Persistence
 
-| Storage       | Key                    | Data                                  |
-| ------------- | ---------------------- | ------------------------------------- |
-| `globalState` | `RewstSessionProfiles` | Session metadata (org, region, label) |
-| `globalState` | `RewstTemplateLinks`   | File-to-template mappings             |
-| `secrets`     | `{orgId}`              | Encrypted cookies/tokens              |
-| `settings`    | `rewst-buddy.*`        | User preferences                      |
+| Storage       | Key                     | Data                                                                              |
+| ------------- | ----------------------- | --------------------------------------------------------------------------------- |
+| `globalState` | `SessionProfiles`       | Active session metadata (org, region, label)                                      |
+| `globalState` | `RewstAllKnownProfiles` | Cache of every known profile, active or not                                       |
+| `globalState` | `RewstTemplateLinks`    | File-to-template mappings                                                         |
+| `secrets`     | `{userId}`              | Encrypted cookies/tokens, keyed by user id (migrated from a legacy `{orgId}` key) |
+| `settings`    | `rewst-buddy.*`         | User preferences                                                                  |
 
 ## Logging
 
@@ -292,10 +293,12 @@ All components implement `vscode.Disposable` and push to `context.subscriptions`
 
 Capabilities live in `src/capabilities/*Capabilities.ts` and are surfaced to the MCP server and chat. Most review round-trips on these tools trace to a few rules — apply them up front instead of in follow-up commits.
 
-- **MCP inputs are NOT validated against `inputSchema`.** `McpActions` passes the raw `arguments` straight to `capability.run()` (see `src/mcp/McpActions.ts`); the schema is only advertised to the client, never enforced. So `run()` must defensively validate/coerce **every** input:
-    - Strings: `requireString` (required) / `asString` (optional) — never read `input.x` directly.
-    - Numbers: clamp — `Math.min(asPositiveInt(input, 'limit') ?? DEFAULT, MAX)`. `asPositiveInt` already rejects `0`, negatives, and fractions (returns `undefined`); preserve that property in any new numeric helper (e.g. `mapWithConcurrency` throws on a non-positive limit).
-    - Enums: validate against the allowed set before use — never blind-cast `input.kind as Kind`. An unexpected value must fall back to a safe default or throw, not slip through.
+- **MCP inputs are NOT validated against `inputSchema`.** `McpActions` passes the raw `arguments` straight to `capability.run()` (see `src/mcp/McpActions.ts`); the schema is only advertised to the client, never enforced. So `run()` must defensively validate/coerce **every** input through a capability-local Zod schema:
+    - Define a `z.object({…})` schema at the top of the capability file and call `parseCapabilityInput(schema, input)` at the start of `run()` — never read `input.x` directly.
+    - Strings: `requiredStringField(key)` (required, trimmed, non-empty) / `optionalStringField()` (optional, trimmed) / `requiredStringAllowEmptyField(key)` (required, empty string accepted — use for template bodies and org-variable values).
+    - Numbers: `optionalClampedInt(MAX)` — silently resolves non-number, non-finite, ≤0, and floor-to-≤0 inputs to `undefined`; apply `?? DEFAULT` after parsing. `mapWithConcurrency` throws on a non-positive limit.
+    - Enums: use `z.enum([…])` with a custom `error:` message — never blind-cast `input.kind as Kind`. An unexpected value must fall back to a safe default or throw, not slip through.
+    - Derive the advertised `inputSchema` from the same Zod schema via `toInputSchema(schema)` so description and behavior stay in sync.
 - **GraphQL error handling:** after every `rawGraphql`, check `errors` and throw _with context_ — include the serialized errors in the message (`GraphQL error: ...`), never a bare `throw new Error()` (which discards the failure).
 - **Description ↔ behavior parity:** if a tool's `description`/`inputSchema` says it returns or accepts a field, the handler must actually surface/use it. Drift (e.g. fetching `roleIds` but dropping them from the output) gets flagged.
 - **Build list output from the requested inputs, not the response keys.** Iterate the requested `ids`/`triggerIds` and look each up, so a missing or empty (`{}`) response yields deterministic rows (`unknown`) instead of dropped entries or a blank line.

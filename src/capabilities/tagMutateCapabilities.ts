@@ -1,8 +1,16 @@
+import { z } from 'zod';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
-import { ORG_ID_PROP, asString, rawGraphqlOrThrow, requireResourceInOrg, requireString } from './inputHelpers';
+import {
+	ORG_ID_FIELD,
+	optionalStringField,
+	parseCapabilityInput,
+	rawGraphqlOrThrow,
+	requireResourceInOrg,
+	toInputSchema,
+} from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
@@ -56,28 +64,26 @@ async function requireTagInOrg(ctx: CapabilityContext, tagId: string, orgId: str
 	});
 }
 
-const createTagSpec: ToolSpec = {
+const createTagSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	name: z
+		.string({ error: 'Missing required string argument "name".' })
+		.trim()
+		.min(1, { error: 'Missing required string argument "name".' })
+		.describe('Tag name.'),
+	color: optionalStringField().describe('Optional color (hex, e.g. #4287f5).'),
+	description: optionalStringField().describe('Optional tag description.'),
+});
+
+const createTagSpec: ToolSpecDefinition = {
 	name: 'buddy_create_tag',
-	args: '{"orgId": string, "name": string, "color"?: string, "description"?: string}',
 	description:
 		'Create a tag in one Rewst organization. color is an optional hex string (e.g. #4287f5). Requires write tools to be enabled and per-call approval in VS Code.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			name: { type: 'string', description: 'Tag name.' },
-			color: { type: 'string', description: 'Optional color (hex, e.g. #4287f5).' },
-			description: { type: 'string', description: 'Optional tag description.' },
-		},
-		required: ['orgId', 'name'],
-	},
+	inputSchema: toInputSchema(createTagSchema),
 };
 
 async function runCreateTag(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const name = requireString(input, 'name');
-	const color = asString(input, 'color');
-	const description = asString(input, 'description');
+	const { orgId, name, color, description } = parseCapabilityInput(createTagSchema, input);
 	const orgName = orgDisplayName(ctx);
 	const scope: MutationScope = { scopeId: orgId, scopeName: `new tag "${name}"`, orgId, orgName };
 	const summary = `Create tag "${name}" in org "${orgName}" (${orgId})`;
@@ -92,30 +98,33 @@ async function runCreateTag(input: Record<string, unknown>, ctx: CapabilityConte
 	});
 }
 
-const updateTagSpec: ToolSpec = {
+const updateTagSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	tagId: z
+		.string({ error: 'Missing required string argument "tagId".' })
+		.trim()
+		.min(1, { error: 'Missing required string argument "tagId".' })
+		.describe('Id of the tag to update.'),
+	name: optionalStringField().describe('Optional new name (defaults to the current name).'),
+	color: optionalStringField().describe('Optional new color (hex).'),
+	description: optionalStringField().describe('Optional new description.'),
+});
+
+const updateTagSpec: ToolSpecDefinition = {
 	name: 'buddy_update_tag',
-	args: '{"orgId": string, "tagId": string, "name"?: string, "color"?: string, "description"?: string}',
 	description:
 		'Update one existing tag (name, color, and/or description), identified by org and tag id. The tag must belong to the given org. Fields not supplied keep their current value. Requires write tools to be enabled and per-call approval in VS Code.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			tagId: { type: 'string', description: 'Id of the tag to update.' },
-			name: { type: 'string', description: 'Optional new name (defaults to the current name).' },
-			color: { type: 'string', description: 'Optional new color (hex).' },
-			description: { type: 'string', description: 'Optional new description.' },
-		},
-		required: ['orgId', 'tagId'],
-	},
+	inputSchema: toInputSchema(updateTagSchema),
 };
 
 async function runUpdateTag(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const tagId = requireString(input, 'tagId');
-	const nameOverride = asString(input, 'name');
-	const colorOverride = asString(input, 'color');
-	const descriptionOverride = asString(input, 'description');
+	const {
+		orgId,
+		tagId,
+		name: nameOverride,
+		color: colorOverride,
+		description: descriptionOverride,
+	} = parseCapabilityInput(updateTagSchema, input);
 	const orgName = orgDisplayName(ctx);
 	const current = await requireTagInOrg(ctx, tagId, orgId);
 	const name = nameOverride ?? current.name ?? '';
@@ -135,24 +144,24 @@ async function runUpdateTag(input: Record<string, unknown>, ctx: CapabilityConte
 	});
 }
 
-const deleteTagSpec: ToolSpec = {
+const deleteTagSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	tagId: z
+		.string({ error: 'Missing required string argument "tagId".' })
+		.trim()
+		.min(1, { error: 'Missing required string argument "tagId".' })
+		.describe('Id of the tag to delete.'),
+});
+
+const deleteTagSpec: ToolSpecDefinition = {
 	name: 'buddy_delete_tag',
-	args: '{"orgId": string, "tagId": string}',
 	description:
 		'Permanently delete one tag, identified by org and tag id. The tag must belong to the given org. This cannot be undone. Requires write tools to be enabled and per-call approval in VS Code.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			tagId: { type: 'string', description: 'Id of the tag to delete.' },
-		},
-		required: ['orgId', 'tagId'],
-	},
+	inputSchema: toInputSchema(deleteTagSchema),
 };
 
 async function runDeleteTag(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const tagId = requireString(input, 'tagId');
+	const { orgId, tagId } = parseCapabilityInput(deleteTagSchema, input);
 	const orgName = orgDisplayName(ctx);
 	const current = await requireTagInOrg(ctx, tagId, orgId);
 	const name = current.name ?? '(unnamed)';

@@ -62,6 +62,10 @@ interface SessionExpirationHarness {
 	handleSessionExpired(session: Session): void;
 }
 
+interface SessionProfileSaver {
+	saveProfiles(): Promise<void>;
+}
+
 suite('Unit: SessionManager', () => {
 	setup(() => {
 		initTestEnvironment();
@@ -188,7 +192,8 @@ suite('Unit: SessionManager', () => {
 			const { server, port } = await createRefreshableSessionServer('user-recovers');
 
 			try {
-				await context.secrets.store(orgId, 'appSession=stale-cookie');
+				// D4: cookies are keyed by user id, not org id.
+				await context.secrets.store('user-recovers', 'appSession=stale-cookie');
 				// No sdk yet: validate() fails immediately, exactly like a session
 				// whose cached User() query previously failed.
 				const session = new Session(undefined, refreshableSessionProfile(orgId, port, 'user-recovers'));
@@ -286,7 +291,8 @@ suite('Unit: SessionManager', () => {
 			const { server, port } = await createRefreshableSessionServer('user-region-recovers');
 
 			try {
-				await context.secrets.store(orgId, 'appSession=stale-cookie');
+				// D4: cookies are keyed by user id, not org id.
+				await context.secrets.store('user-region-recovers', 'appSession=stale-cookie');
 				// No sdk yet: validate() fails immediately, exactly like a session
 				// whose cached User() query previously failed.
 				const session = new Session(undefined, refreshableSessionProfile(orgId, port, 'user-region-recovers'));
@@ -412,7 +418,13 @@ suite('Unit: SessionManager', () => {
 
 			assert.strictEqual(session.profile.label, 'jdoe (Acme Co)');
 			assert.strictEqual(await SessionManager.getSessionForOrg('org-create'), session);
-			assert.strictEqual(await context.secrets.get('org-create'), 'appSession=raw-test-token');
+			// D4: cookies are keyed by user id, and the legacy org-id key is cleaned up.
+			assert.strictEqual(await context.secrets.get('user-1'), 'appSession=raw-test-token');
+			assert.strictEqual(
+				await context.secrets.get('org-create'),
+				undefined,
+				'no live secret should remain under the legacy org-id key',
+			);
 		});
 
 		test('user query asks for recursive managed sub-orgs and indexes deep descendants', async () => {
@@ -532,6 +544,67 @@ suite('Unit: SessionManager', () => {
 
 			assert.strictEqual(SessionManager.getActiveSessions().length, 0);
 		});
+
+		test('two users sharing the same primary org get separate user-keyed secrets', async () => {
+			const users = [
+				{ id: 'user-shared-a', username: 'user-a' },
+				{ id: 'user-shared-b', username: 'user-b' },
+			];
+			// Key the response off the cookie's token rather than call order: each
+			// createSession() call makes two requests (newSdk's internal validation
+			// plus its own explicit User() call), so counting calls would misalign.
+			const server = createServer((request, response) => {
+				const cookieHeader = request.headers.cookie ?? '';
+				const user = cookieHeader.includes('token-a') ? users[0] : users[1];
+				request.on('data', () => {});
+				request.on('end', () => {
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(
+						JSON.stringify({
+							data: {
+								user: {
+									id: user.id,
+									username: user.username,
+									organization: { id: 'org-shared', name: 'Shared Org' },
+									allManagedOrgs: [{ id: 'org-shared', name: 'Shared Org' }],
+								},
+							},
+						}),
+					);
+				});
+			});
+			servers.push(server);
+			const port = await listen(server);
+
+			await vscode.workspace.getConfiguration('rewst-buddy').update(
+				'regions',
+				[
+					{
+						name: 'Local Test',
+						cookieName: 'appSession',
+						graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+						loginUrl: `http://127.0.0.1:${port}`,
+					},
+				],
+				vscode.ConfigurationTarget.Global,
+			);
+
+			await SessionManager.createSession('token-a');
+			const sessionB = await SessionManager.createSession('token-b');
+
+			assert.strictEqual(await context.secrets.get('user-shared-a'), 'appSession=token-a');
+			assert.strictEqual(await context.secrets.get('user-shared-b'), 'appSession=token-b');
+
+			await SessionManager.removeSession('user-shared-a');
+
+			assert.strictEqual(await context.secrets.get('user-shared-a'), undefined);
+			assert.strictEqual(
+				await context.secrets.get('user-shared-b'),
+				'appSession=token-b',
+				"the other user's secret survives even though both share the primary org id",
+			);
+			assert.strictEqual(await SessionManager.getSessionForOrg('org-shared'), sessionB);
+		});
 	});
 
 	suite('loadSessions()', () => {
@@ -595,6 +668,242 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(sessions[0].profile.org.id, 'org-restore');
 			assert.strictEqual(promptCalled, false, 'loadSessions must not prompt for a cookie');
 			assert.strictEqual(await SessionManager.getSessionForOrg('org-restore'), sessions[0]);
+			// D4: a legacy org-keyed cookie is migrated to the user-id key on restore.
+			// (Substring, not exact-equality: newSdk tries several equally-acceptable
+			// cookie-string variants against this always-accepting mock server, so the
+			// winning candidate's exact prefix isn't significant here — only that the
+			// migrated value lives under the user-id key now.)
+			assert.match(
+				(await context.secrets.get('user-1')) ?? '',
+				/restored-cookie/,
+				'legacy org-keyed cookie must be migrated to the user-id key',
+			);
+			assert.strictEqual(
+				await context.secrets.get('org-restore'),
+				undefined,
+				'legacy org-keyed cookie is cleaned up once migrated',
+			);
+		});
+
+		test('prefers a user-keyed cookie over a legacy org-keyed cookie when both exist', async () => {
+			const server = createServer((request, response) => {
+				const cookieHeader = request.headers.cookie ?? '';
+				let body = '';
+				request.on('data', chunk => {
+					body += String(chunk);
+				});
+				request.on('end', () => {
+					response.writeHead(200, { 'content-type': 'application/json' });
+					// Only the user-keyed cookie value should ever be sent; a legacy
+					// org-keyed read would send the wrong value and fail to resolve a user.
+					if (cookieHeader.includes('user-key-cookie')) {
+						response.end(
+							JSON.stringify({
+								data: {
+									user: {
+										id: 'user-both',
+										username: 'both-user',
+										organization: { id: 'org-both', name: 'Both Org' },
+										allManagedOrgs: [{ id: 'org-both', name: 'Both Org' }],
+									},
+								},
+							}),
+						);
+					} else {
+						response.end(JSON.stringify({ data: { user: null } }));
+					}
+				});
+			});
+			servers.push(server);
+			const port = await listen(server);
+
+			const region = {
+				name: 'Local Test',
+				cookieName: 'appSession',
+				graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+				loginUrl: `http://127.0.0.1:${port}`,
+			};
+			await vscode.workspace
+				.getConfiguration('rewst-buddy')
+				.update('regions', [region], vscode.ConfigurationTarget.Global);
+
+			const savedProfile: SessionProfile = {
+				region,
+				org: { id: 'org-both', name: 'Both Org' },
+				allManagedOrgs: [{ id: 'org-both', name: 'Both Org' }],
+				label: 'both-user (Both Org)',
+				user: { id: 'user-both' } as SessionProfile['user'],
+			};
+			await context.globalState.update('SessionProfiles', [savedProfile]);
+			await context.secrets.store('user-both', 'appSession=user-key-cookie');
+			await context.secrets.store('org-both', 'appSession=legacy-org-key-cookie');
+
+			const sessions = await SessionManager.loadSessions();
+
+			assert.strictEqual(sessions.length, 1, 'the user-keyed cookie must be the one used to restore the session');
+			assert.strictEqual(sessions[0].profile.user.id, 'user-both');
+		});
+
+		test('concurrent loadSessions() calls share one in-flight promise and create each session once', async () => {
+			let requestCount = 0;
+			const server = createServer((request, response) => {
+				request.on('data', () => {});
+				request.on('end', () => {
+					requestCount++;
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(
+						JSON.stringify({
+							data: {
+								user: {
+									id: 'user-concurrent',
+									username: 'concurrent-user',
+									organization: { id: 'org-concurrent', name: 'Concurrent Org' },
+									allManagedOrgs: [{ id: 'org-concurrent', name: 'Concurrent Org' }],
+								},
+							},
+						}),
+					);
+				});
+			});
+			servers.push(server);
+			const port = await listen(server);
+
+			const region = {
+				name: 'Local Test',
+				cookieName: 'appSession',
+				graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+				loginUrl: `http://127.0.0.1:${port}`,
+			};
+			await vscode.workspace
+				.getConfiguration('rewst-buddy')
+				.update('regions', [region], vscode.ConfigurationTarget.Global);
+
+			const savedProfile: SessionProfile = {
+				region,
+				org: { id: 'org-concurrent', name: 'Concurrent Org' },
+				allManagedOrgs: [{ id: 'org-concurrent', name: 'Concurrent Org' }],
+				label: 'concurrent-user (Concurrent Org)',
+				user: { id: 'user-concurrent' } as SessionProfile['user'],
+			};
+			await context.globalState.update('SessionProfiles', [savedProfile]);
+			await context.secrets.store('user-concurrent', 'appSession=concurrent-cookie');
+
+			const [first, second] = await Promise.all([SessionManager.loadSessions(), SessionManager.loadSessions()]);
+
+			// createSession() makes two requests per profile (newSdk's internal
+			// validation, then its own explicit User() call) — 2, not 4, proves
+			// createSession ran once despite two concurrent loadSessions() callers.
+			assert.strictEqual(
+				requestCount,
+				2,
+				'createSession must run once per profile even under concurrent callers',
+			);
+			assert.strictEqual(
+				first,
+				second,
+				'concurrent callers receive the same resolved result via the shared promise',
+			);
+			assert.strictEqual(first.length, 1);
+		});
+
+		test('startup load emits one saved event after batching restored sessions', async () => {
+			const userA: MockUser = {
+				id: 'user-load-a',
+				username: 'load-a',
+				organization: { id: 'org-load-a', name: 'Load A' },
+				allManagedOrgs: [{ id: 'org-load-a', name: 'Load A' }],
+			};
+			const userB: MockUser = {
+				id: 'user-load-b',
+				username: 'load-b',
+				organization: { id: 'org-load-b', name: 'Load B' },
+				allManagedOrgs: [{ id: 'org-load-b', name: 'Load B' }],
+			};
+			const server = createServer((request, response) => {
+				const cookieHeader = request.headers.cookie ?? '';
+				const user = cookieHeader.includes('load-cookie-b')
+					? userB
+					: cookieHeader.includes('load-cookie-a')
+						? userA
+						: null;
+				request.on('data', () => {});
+				request.on('end', () => {
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(JSON.stringify({ data: { user } }));
+				});
+			});
+			servers.push(server);
+			const port = await listen(server);
+
+			const region = {
+				name: 'Local Test',
+				cookieName: 'appSession',
+				graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+				loginUrl: `http://127.0.0.1:${port}`,
+			};
+			await vscode.workspace
+				.getConfiguration('rewst-buddy')
+				.update('regions', [region], vscode.ConfigurationTarget.Global);
+
+			const profileA: SessionProfile = {
+				region,
+				org: userA.organization,
+				allManagedOrgs: userA.allManagedOrgs,
+				label: 'load-a (Load A)',
+				user: { id: userA.id } as SessionProfile['user'],
+			};
+			const profileB: SessionProfile = {
+				region,
+				org: userB.organization,
+				allManagedOrgs: userB.allManagedOrgs,
+				label: 'load-b (Load B)',
+				user: { id: userB.id } as SessionProfile['user'],
+			};
+			await context.globalState.update('SessionProfiles', [profileA, profileB]);
+			await context.secrets.store(userA.id, 'appSession=load-cookie-a');
+			await context.secrets.store(userB.id, 'appSession=load-cookie-b');
+
+			const savedEvents: number[] = [];
+			const disposable = SessionManager.onSessionChange(event => {
+				if (event.type === 'saved') savedEvents.push(event.activeProfiles.length);
+			});
+			try {
+				const sessions = await SessionManager.loadSessions();
+				assert.strictEqual(sessions.length, 2);
+			} finally {
+				disposable.dispose();
+			}
+
+			assert.deepStrictEqual(savedEvents, [2], 'startup restore should publish one final saved event');
+		});
+
+		test('a rejected load clears the in-flight promise so a later call retries', async () => {
+			const manager = SessionManager as unknown as SessionProfileSaver;
+			const originalSaveProfiles = manager.saveProfiles.bind(SessionManager);
+			let calls = 0;
+			Object.defineProperty(SessionManager, 'saveProfiles', {
+				value: async () => {
+					calls++;
+					if (calls === 1) throw new Error('boom');
+					return originalSaveProfiles();
+				},
+				configurable: true,
+				writable: true,
+			});
+
+			try {
+				await assert.rejects(SessionManager.loadSessions(), /boom/);
+				await assert.doesNotReject(
+					SessionManager.loadSessions(),
+					'a later call must retry rather than reuse the rejected promise',
+				);
+			} finally {
+				Object.defineProperty(SessionManager, 'saveProfiles', {
+					value: originalSaveProfiles,
+					configurable: true,
+					writable: true,
+				});
+			}
 		});
 
 		test('a session removed while loadSessions is in flight is not resurrected by the load', async () => {
@@ -657,6 +966,11 @@ suite('Unit: SessionManager', () => {
 				await context.secrets.get('org-late'),
 				undefined,
 				'the removed session cookie must not be re-stored by the load',
+			);
+			assert.strictEqual(
+				await context.secrets.get('user-late'),
+				undefined,
+				'the migrated user-keyed cookie must not survive the purge either',
 			);
 			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
 			await assert.rejects(SessionManager.getSessionForOrg('org-late'));
@@ -722,6 +1036,49 @@ suite('Unit: SessionManager', () => {
 			assert.deepStrictEqual(context.globalState.get('SessionProfiles'), []);
 			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
 		});
+
+		test('deletes user-id keyed secrets for both an active session and a known-only profile', async () => {
+			// D4: clearProfiles must delete the current user-keyed secret for every
+			// active and known profile, not merely legacy org-keyed leftovers.
+			const { session } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-clear-active' }),
+					org: { id: 'org-clear-active', name: 'Active' },
+					allManagedOrgs: [{ id: 'org-clear-active', name: 'Active' }],
+				},
+			});
+			const knownOnlyProfile: SessionProfile = {
+				region: {
+					name: 'Local Test',
+					cookieName: 'appSession',
+					graphqlUrl: 'http://127.0.0.1/graphql',
+					loginUrl: 'http://127.0.0.1',
+				},
+				org: { id: 'org-clear-known', name: 'Known' },
+				allManagedOrgs: [{ id: 'org-clear-known', name: 'Known' }],
+				label: 'known-user (Known)',
+				user: { id: 'user-clear-known' } as SessionProfile['user'],
+			};
+
+			await context.secrets.store('user-clear-active', 'cookie-active-user');
+			await context.secrets.store('user-clear-known', 'cookie-known-user');
+
+			SessionManager._setSessionsForTesting([session]);
+			SessionManager._setKnownProfilesForTesting([session.profile, knownOnlyProfile]);
+
+			await SessionManager.clearProfiles();
+
+			assert.strictEqual(
+				await context.secrets.get('user-clear-active'),
+				undefined,
+				"the active session's user-keyed secret is deleted",
+			);
+			assert.strictEqual(
+				await context.secrets.get('user-clear-known'),
+				undefined,
+				"the known-only profile's user-keyed secret is deleted",
+			);
+		});
 	});
 
 	suite('removeSession()', () => {
@@ -766,8 +1123,13 @@ suite('Unit: SessionManager', () => {
 					],
 				},
 			});
+			// D4: removeSession deletes the user-id key plus the profile's own legacy
+			// org-id key. A secret sitting under a *managed*-org id was never written
+			// by any real create/load path even pre-D4 (createSession only ever wrote
+			// under the profile's own primary org id), so there's nothing to clean up
+			// there anymore — that coverage is superseded by the user-keyed scheme.
+			await context.secrets.store('user-remove', 'cookie-user');
 			await context.secrets.store('org-remove-primary', 'cookie-primary');
-			await context.secrets.store('org-remove-managed', 'cookie-managed');
 
 			const saver = SessionManager as unknown as SessionSaver;
 			await saver.saveSession(session);
@@ -775,8 +1137,8 @@ suite('Unit: SessionManager', () => {
 
 			await SessionManager.removeSession('user-remove');
 
+			assert.strictEqual(await context.secrets.get('user-remove'), undefined);
 			assert.strictEqual(await context.secrets.get('org-remove-primary'), undefined);
-			assert.strictEqual(await context.secrets.get('org-remove-managed'), undefined);
 			assert.strictEqual(SessionManager.getActiveSessions().length, 0);
 			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
 			await assert.rejects(SessionManager.getSessionForOrg('org-remove-primary'));
@@ -853,7 +1215,11 @@ suite('Unit: SessionManager', () => {
 			await assert.rejects(SessionManager.removeSession('does-not-exist'));
 		});
 
-		test('keeps a secret still needed by another profile whose org overlaps the removed session', async () => {
+		test('another session is unaffected when removing a session whose managed orgs overlap it', async () => {
+			// D4: secrets are keyed by user id, so two profiles overlapping on an org
+			// id (parent manages org-child, child's own primary org is org-child) can
+			// never collide on the same secret key the way the old org-keyed scheme
+			// could — this asserts that invariant plus the still-relevant org-index behavior.
 			const { session: parent } = createMockSession({
 				profile: {
 					user: Fixtures.userFragment({ id: 'user-parent' }),
@@ -871,8 +1237,8 @@ suite('Unit: SessionManager', () => {
 					allManagedOrgs: [{ id: 'org-child', name: 'Child' }],
 				},
 			});
-			await context.secrets.store('org-parent', 'cookie-parent');
-			await context.secrets.store('org-child', 'cookie-child');
+			await context.secrets.store('user-parent', 'cookie-parent');
+			await context.secrets.store('user-child', 'cookie-child');
 
 			const saver = SessionManager as unknown as SessionSaver;
 			await saver.saveSession(parent);
@@ -881,14 +1247,14 @@ suite('Unit: SessionManager', () => {
 			await SessionManager.removeSession('user-parent');
 
 			assert.strictEqual(
-				await context.secrets.get('org-parent'),
+				await context.secrets.get('user-parent'),
 				undefined,
 				"the removed session's own cookie is deleted",
 			);
 			assert.strictEqual(
-				await context.secrets.get('org-child'),
+				await context.secrets.get('user-child'),
 				'cookie-child',
-				"another session's cookie stored under a shared org id must survive",
+				"another session's user-keyed cookie survives even though its org overlaps the removed session",
 			);
 			assert.strictEqual(await SessionManager.getSessionForOrg('org-child'), child);
 		});

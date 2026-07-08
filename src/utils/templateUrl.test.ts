@@ -1,6 +1,6 @@
+import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
 import { getTemplateURLParams } from './templateUrl';
 
 const { suite, test, setup } = Mocha;

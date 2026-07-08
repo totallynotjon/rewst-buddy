@@ -1,9 +1,9 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
-import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import { _resetMcpMutationApproverForTesting, setMcpMutationApprover, type CapabilityContext } from '@capabilities';
 import { LinkManager, type SyncDecision, type SyncDecisionContext, type TemplateLink } from '@models';
 import { SessionManager, type FullTemplateFragment, type Session } from '@sessions';
+import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
 import {
@@ -125,6 +125,20 @@ suite('Unit: templateSyncCapabilities', () => {
 		LinkManager._resetForTesting();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
+	});
+
+	// --- Zod parse tests ---
+	test('missing uri throws for buddy_template_sync_status', async () => {
+		const { deps } = makeDeps(null);
+		await assert.rejects(() => runSyncStatus({}, makeCtx(), deps), /uri/);
+	});
+
+	test('buddy_template_sync_status derived schema has uri required and args generated', () => {
+		const statusCap = TEMPLATE_SYNC_CAPABILITIES.find(c => c.spec.name === 'buddy_template_sync_status');
+		assert.ok(statusCap);
+		const schema = statusCap.spec.inputSchema as { required: string[] };
+		assert.ok(schema.required.includes('uri'));
+		assert.strictEqual(statusCap.spec.args, JSON.stringify(schema));
 	});
 
 	suite('buddy_template_sync_status', () => {

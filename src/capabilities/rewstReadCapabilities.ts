@@ -26,18 +26,15 @@ import {
  */
 
 // Bounds list responses so a large org cannot flood an agent's context.
-const DEFAULT_TEMPLATE_LIMIT = 200;
 const DEFAULT_WORKFLOW_LIMIT = 100;
 const DEFAULT_REFERENCE_LIMIT = 25;
 const DEFAULT_ORG_VARIABLE_LIMIT = 50;
-const DEFAULT_ACTION_LIMIT = 25;
 const DEFAULT_EXECUTION_LIMIT = 25;
 const DEFAULT_TASK_LIMIT = 100;
 const DEFAULT_PATCH_LIMIT = 25;
 const MAX_WORKFLOW_LIMIT = 500;
 const MAX_REFERENCE_LIMIT = 100;
 const MAX_ORG_VARIABLE_LIMIT = 200;
-const MAX_ACTION_LIMIT = 100;
 const MAX_EXECUTION_LIMIT = 100;
 const MAX_TASK_LIMIT = 500;
 const MAX_PATCH_LIMIT = 100;
@@ -71,16 +68,6 @@ const listOrgsSpec: ToolSpec = {
 	description:
 		'List the Rewst organizations reachable through the signed-in VS Code sessions, with their ids and names. Call this first to learn which orgId to pass to the other tools.',
 	inputSchema: toInputSchema(listOrgsInputSchema),
-};
-
-const listTemplatesInputSchema = z.object({
-	orgId: ORG_ID_FIELD,
-});
-const listTemplatesSpec: ToolSpec = {
-	name: 'buddy_list_templates',
-	args: '{"orgId": string}',
-	description: 'List the templates in one Rewst organization (id and name). Use buddy_get_template for a full body.',
-	inputSchema: toInputSchema(listTemplatesInputSchema),
 };
 
 const getTemplateInputSchema = z.object({
@@ -122,21 +109,6 @@ const listOrgVariablesSpec: ToolSpec = {
 	description:
 		'List configuration variables for one Rewst organization (name, value, category, cascade). Secret-category values are returned masked. Optionally filter by a case-insensitive name substring.',
 	inputSchema: toInputSchema(listOrgVariablesInputSchema),
-};
-
-const listWorkflowExecutionsInputSchema = z.object({
-	orgId: ORG_ID_FIELD,
-	status: optionalStringField().describe('Optional exact execution status filter.'),
-	limit: optionalClampedInt(MAX_EXECUTION_LIMIT).describe(
-		`Max executions to return (default ${DEFAULT_EXECUTION_LIMIT}, max ${MAX_EXECUTION_LIMIT}).`,
-	),
-});
-const listWorkflowExecutionsSpec: ToolSpec = {
-	name: 'buddy_list_workflow_executions',
-	args: '{"orgId": string, "status"?: string, "limit"?: number}',
-	description:
-		'List recent workflow executions for one Rewst organization (id, status, workflowId, createdAt, numSuccessfulTasks), newest first. Optionally filter by an exact status (e.g. succeeded, failed, running). createdAt is an epoch-millisecond string.',
-	inputSchema: toInputSchema(listWorkflowExecutionsInputSchema),
 };
 
 const findExecutionsByVariableInputSchema = z.object({
@@ -207,19 +179,6 @@ const getWorkflowPatchSpec: ToolSpec = {
 	inputSchema: toInputSchema(getWorkflowPatchInputSchema),
 };
 
-const latestWorkflowExecutionInputSchema = z.object({
-	orgId: ORG_ID_FIELD,
-	workflowId: requiredStringField('workflowId').describe('Workflow id to inspect.'),
-	status: optionalStringField().describe('Optional exact execution status constraint.'),
-});
-const latestWorkflowExecutionSpec: ToolSpec = {
-	name: 'buddy_latest_workflow_execution',
-	args: '{"orgId": string, "workflowId": string, "status"?: string}',
-	description:
-		'Get the most recent execution of one workflow in a Rewst organization (id, status, createdAt, task counts). Optionally constrain to a specific status.',
-	inputSchema: toInputSchema(latestWorkflowExecutionInputSchema),
-};
-
 const getWorkflowExecutionStatsInputSchema = z.object({
 	orgId: ORG_ID_FIELD,
 	createdSince: requiredStringField('createdSince')
@@ -234,23 +193,6 @@ const getWorkflowExecutionStatsSpec: ToolSpec = {
 	description:
 		'Get aggregate workflow-execution status counts for one Rewst organization since a date (succeeded, failed, running, pending, paused, delayed, humanSecondsSaved). createdSince must be an ISO-8601 date string (e.g. 2025-01-01 or 2025-01-01T00:00:00Z) — epoch milliseconds are rejected.',
 	inputSchema: toInputSchema(getWorkflowExecutionStatsInputSchema),
-};
-
-const findActionInputSchema = z.object({
-	orgId: ORG_ID_FIELD,
-	filter: optionalStringField().describe(
-		"Optional text matched case-insensitively against the action's display name.",
-	),
-	limit: optionalClampedInt(MAX_ACTION_LIMIT).describe(
-		`Max flattened actions to return (default ${DEFAULT_ACTION_LIMIT}, max ${MAX_ACTION_LIMIT}).`,
-	),
-});
-const findActionSpec: ToolSpec = {
-	name: 'buddy_find_action',
-	args: '{"orgId": string, "filter"?: string, "limit"?: number}',
-	description:
-		"Search the actions available in one Rewst organization's installed packs. The filter is matched case-insensitively against each action's display name. Returns one line per match — `<ref> (<id>) — <pack>: <description>` — where `<id>` is the action id and `<ref>` is its callable reference; rows with no ref (workflow-as-action entries) show the action name in place of the ref. Capped to `limit`; omitting the filter returns many results, so prefer a filter. For the platform-wide action catalog rather than this org's installed packs, use buddy_action_search.",
-	inputSchema: toInputSchema(findActionInputSchema),
 };
 
 const resolveReferenceInputSchema = z.object({
@@ -321,18 +263,6 @@ const ORG_VARIABLES_QUERY = `query RewstBuddyMcpOrgVariables($orgId: ID!, $searc
   }
 }`;
 
-const WORKFLOW_EXECUTIONS_QUERY = `query RewstBuddyMcpWorkflowExecutions($orgId: ID!, $search: WorkflowExecutionSearchInput, $limit: Int) {
-  workflowExecutions(where: { orgId: $orgId }, search: $search, order: [["createdAt", "DESC"]], limit: $limit) {
-    id
-    status
-    createdAt
-    workflow {
-      id
-    }
-    numSuccessfulTasks
-  }
-}`;
-
 const EXECUTIONS_WITH_IO_QUERY = `query RewstBuddyMcpExecutionsWithIO($orgId: ID!, $workflowId: ID!, $limit: Int) {
   workflowExecutions(where: { orgId: $orgId, workflowId: $workflowId }, order: [["createdAt", "DESC"]], limit: $limit) {
     id
@@ -385,16 +315,6 @@ const WORKFLOW_PATCH_QUERY = `query RewstBuddyMcpWorkflowPatch($id: ID!) {
   }
 }`;
 
-const LATEST_WORKFLOW_EXECUTION_QUERY = `query RewstBuddyMcpLatestWorkflowExecution($orgId: ID!, $workflowId: ID!, $status: String) {
-  latestWorkflowExecution(workflowId: $workflowId, orgId: $orgId, status: $status) {
-    id
-    status
-    createdAt
-    numSuccessfulTasks
-    numAwaitingResponseTasks
-  }
-}`;
-
 const WORKFLOW_EXECUTION_STATS_QUERY = `query RewstBuddyMcpWorkflowExecutionStats($orgId: ID!, $createdSince: String!) {
   workflowExecutionStats(orgId: $orgId, createdSince: $createdSince) {
     succeeded
@@ -404,20 +324,6 @@ const WORKFLOW_EXECUTION_STATS_QUERY = `query RewstBuddyMcpWorkflowExecutionStat
     paused
     delayed
     humanSecondsSaved
-  }
-}`;
-
-const FIND_ACTION_QUERY = `query RewstBuddyMcpFindAction($orgId: ID!, $filter: String) {
-  searchInstalledPackActions(orgId: $orgId, actionFilter: $filter) {
-    id
-    name
-    ref
-    actions {
-      id
-      name
-      ref
-      description
-    }
   }
 }`;
 
@@ -452,19 +358,6 @@ async function runListOrgs(_input: Record<string, unknown>, ctx: CapabilityConte
 	}
 	if (orgs.size === 0) return 'No organizations are available. Sign in to Rewst in VS Code first.';
 	const lines = [...orgs.entries()].map(([id, name]) => `${name} (${id})`).sort();
-	return lines.join('\n');
-}
-
-async function runListTemplates(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const { orgId } = parseCapabilityInput(listTemplatesInputSchema, input);
-	const response = await ctx.session.sdk?.listTemplates({ orgId });
-	const templates = response?.templates ?? [];
-	if (templates.length === 0) return 'No templates found for this organization.';
-	const capped = templates.slice(0, DEFAULT_TEMPLATE_LIMIT);
-	const lines = capped.map(template => `${template?.name ?? '(unnamed)'} (${template?.id})`);
-	if (templates.length > capped.length) {
-		lines.push(`…(${templates.length - capped.length} more not shown; refine in Rewst or use buddy_graphql_query)`);
-	}
 	return lines.join('\n');
 }
 
@@ -519,30 +412,6 @@ async function runListOrgVariables(input: Record<string, unknown>, ctx: Capabili
 			const category = variable.category ?? 'unknown';
 			return `${variable.name ?? '(unnamed)'} = ${variable.value ?? ''}  [${category}${variable.cascade ? ', cascade' : ''}]`;
 		})
-		.join('\n');
-}
-
-async function runListWorkflowExecutions(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const { orgId, status, limit: rawLimit } = parseCapabilityInput(listWorkflowExecutionsInputSchema, input);
-	const limit = rawLimit ?? DEFAULT_EXECUTION_LIMIT;
-	const variables: Record<string, unknown> = { orgId, limit };
-	if (status) variables.search = { status: { _eq: status } };
-	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_EXECUTIONS_QUERY, variables);
-	const executions = ((data as { workflowExecutions?: unknown[] } | undefined)?.workflowExecutions ?? []) as {
-		id?: string;
-		status?: string;
-		createdAt?: string;
-		workflow?: { id?: string };
-		numSuccessfulTasks?: number;
-	}[];
-	if (executions.length === 0) return 'No workflow executions found for this organization.';
-	return executions
-		.map(
-			execution =>
-				`${execution.status ?? '(unknown status)'} — ${execution.id} (workflow ${execution.workflow?.id ?? '?'}, ${
-					execution.numSuccessfulTasks ?? 0
-				} ok, created ${execution.createdAt})`,
-		)
 		.join('\n');
 }
 
@@ -707,30 +576,6 @@ async function runGetWorkflowPatch(input: Record<string, unknown>, ctx: Capabili
 	return JSON.stringify(workflowPatch, null, 2);
 }
 
-async function runLatestWorkflowExecution(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const { orgId, workflowId, status } = parseCapabilityInput(latestWorkflowExecutionInputSchema, input);
-	const variables: Record<string, unknown> = { orgId, workflowId };
-	if (status) variables.status = status;
-	const data = await rawGraphqlOrThrow(ctx.session, LATEST_WORKFLOW_EXECUTION_QUERY, variables);
-	const execution = (
-		data as
-			| {
-					latestWorkflowExecution?: {
-						id?: string;
-						status?: string;
-						createdAt?: string;
-						numSuccessfulTasks?: number;
-						numAwaitingResponseTasks?: number;
-					} | null;
-			  }
-			| undefined
-	)?.latestWorkflowExecution;
-	if (!execution) return `No execution found for workflow ${workflowId}.`;
-	return `${execution.status ?? '(unknown status)'} — ${execution.id} (created ${
-		execution.createdAt
-	}, ${execution.numSuccessfulTasks ?? 0} ok, ${execution.numAwaitingResponseTasks ?? 0} awaiting response)`;
-}
-
 async function runGetWorkflowExecutionStats(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	const { orgId, createdSince } = parseCapabilityInput(getWorkflowExecutionStatsInputSchema, input);
 	const variables = { orgId, createdSince };
@@ -760,50 +605,6 @@ async function runGetWorkflowExecutionStats(input: Record<string, unknown>, ctx:
 		`delayed: ${stats.delayed ?? 0}`,
 		`humanSecondsSaved: ${stats.humanSecondsSaved ?? 0}`,
 	].join('\n');
-}
-
-async function runFindAction(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const { orgId, filter, limit: rawLimit } = parseCapabilityInput(findActionInputSchema, input);
-	const limit = rawLimit ?? DEFAULT_ACTION_LIMIT;
-	const variables: Record<string, unknown> = { orgId };
-	if (filter) variables.filter = filter;
-	const data = await rawGraphqlOrThrow(ctx.session, FIND_ACTION_QUERY, variables);
-	const packs = ((data as { searchInstalledPackActions?: unknown[] } | undefined)?.searchInstalledPackActions ??
-		[]) as {
-		id?: string;
-		name?: string;
-		ref?: string;
-		actions?: {
-			id?: string;
-			name?: string;
-			ref?: string | null;
-			description?: string | null;
-		}[];
-	}[];
-	const flattened: {
-		action: { id?: string; name?: string; ref?: string | null; description?: string | null };
-		packName: string;
-	}[] = [];
-	for (const pack of packs) {
-		const packName = pack.name ?? pack.ref ?? pack.id ?? '(unknown pack)';
-		for (const action of pack.actions ?? []) {
-			flattened.push({ action, packName });
-		}
-	}
-	if (flattened.length === 0) {
-		return `No actions found${filter ? ` matching "${filter}"` : ''} in this organization.`;
-	}
-	const capped = flattened.slice(0, limit);
-	const lines = capped.map(
-		({ action, packName }) =>
-			`${action.ref ?? action.name ?? '(unnamed)'} (${action.id}) — ${packName}${
-				action.description ? `: ${action.description}` : ''
-			}`,
-	);
-	if (flattened.length > limit) {
-		lines.push(`…(${flattened.length - limit} more not shown; refine the filter)`);
-	}
-	return lines.join('\n');
 }
 
 async function runResolveReference(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
@@ -856,18 +657,14 @@ async function runGraphqlQuery(input: Record<string, unknown>, ctx: CapabilityCo
 
 export const READ_CAPABILITIES: Capability[] = [
 	readCapability(listOrgsSpec, runListOrgs, { requiresOrg: false }),
-	readCapability(listTemplatesSpec, runListTemplates),
 	readCapability(getTemplateSpec, runGetTemplate),
 	readCapability(listWorkflowsSpec, runListWorkflows),
 	readCapability(listOrgVariablesSpec, runListOrgVariables),
-	readCapability(listWorkflowExecutionsSpec, runListWorkflowExecutions),
 	readCapability(findExecutionsByVariableSpec, runFindExecutionsByVariable),
 	readCapability(listWorkflowTasksSpec, runListWorkflowTasks),
 	readCapability(listWorkflowPatchesSpec, runListWorkflowPatches),
 	readCapability(getWorkflowPatchSpec, runGetWorkflowPatch),
-	readCapability(latestWorkflowExecutionSpec, runLatestWorkflowExecution),
 	readCapability(getWorkflowExecutionStatsSpec, runGetWorkflowExecutionStats),
-	readCapability(findActionSpec, runFindAction),
 	readCapability(resolveReferenceSpec, runResolveReference),
 	readCapability(getWorkflowSpec, runGetWorkflow),
 	readCapability(graphqlQuerySpec, runGraphqlQuery),

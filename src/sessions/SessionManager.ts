@@ -21,14 +21,18 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	private orgSessionIndex = new Map<string, Session[]>();
 	private sessionExpiredDisposables = new Map<Session, vscode.Disposable>();
 	private knownProfilesCache: SessionProfile[] | undefined;
-	private suppressProfileSaves = false;
+	// Single promise shared by all concurrent loadSessions() callers.
+	// Undefined means not yet started; set to the in-flight promise while loading;
+	// resolves to the loaded sessions and stays set afterwards.
+	private loadPromise: Promise<Session[]> | undefined;
+	// True only while _doLoad is actually running (not merely while loadPromise is set),
+	// so removeSession can tell whether a removal races an in-flight load.
+	private loadInFlight = false;
 	// User ids removed while loadSessions was in flight; the load reconciles
 	// these afterwards so a completed createSession cannot resurrect them.
 	private removedDuringLoad = new Set<string>();
 
 	private readonly sessionChangeEmitter = new vscode.EventEmitter<SessionChangeEvent>();
-	private loaded = false;
-	private loading = false;
 	readonly onSessionChange = this.sessionChangeEmitter.event;
 	private anyActiveSessions = false;
 
@@ -82,7 +86,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		return session;
 	}
 
-	async createSession(cookies?: string): Promise<Session> {
+	async createSession(cookies?: string, options: { persist?: boolean } = {}): Promise<Session> {
 		log.trace('createSession: starting', { hasCookies: !!cookies });
 
 		let sdk;
@@ -147,9 +151,18 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		};
 		const session = new Session(sdk, profile);
 
-		log.trace('createSession: storing cookie and saving session');
-		await context.secrets.store(org.id, cookieString.value);
-		await this.saveSession(session);
+		log.trace('createSession: storing cookie and registering session');
+		// D4: store under user id so two users with the same primary org get separate secrets.
+		const userId = profile.user.id;
+		if (!userId) throw log.error('createSession: user has no id');
+		await context.secrets.store(userId, cookieString.value);
+		// Clean up any legacy org-keyed secret now that we have the user-keyed one.
+		await context.secrets.delete(org.id);
+		if (options.persist === false) {
+			this.registerSession(session);
+		} else {
+			await this.saveSession(session);
+		}
 
 		log.debug('createSession: completed', { label: profile.label });
 		return session;
@@ -220,64 +233,76 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 	async loadSessions(): Promise<Session[]> {
 		log.trace('loadSessions: starting');
 
-		const startTime = Date.now();
-		const maxWaitMs = 10000; // 10 seconds
-
-		while (this.loading) {
-			if (Date.now() - startTime > maxWaitMs) {
-				throw log.error('loadSessions: timeout waiting for concurrent load to complete');
-			}
-			await new Promise(resolve => setTimeout(resolve, 500));
-		}
-		if (this.loaded) {
-			log.debug('loadSessions: already loaded, skipping');
-			return this.getActiveSessions();
+		// D4: share a single promise across concurrent callers — no polling.
+		if (this.loadPromise !== undefined) {
+			log.debug('loadSessions: returning shared in-flight or completed promise');
+			return this.loadPromise;
 		}
 
-		this.loading = true;
+		this.loadPromise = this._doLoad().catch(err => {
+			// Clear the promise on failure so a later call can retry.
+			this.loadPromise = undefined;
+			throw err;
+		});
+		return this.loadPromise;
+	}
+
+	private async _doLoad(): Promise<Session[]> {
+		this.loadInFlight = true;
 		try {
 			const newProfiles = await this.newProfiles();
 			log.debug('loadSessions: profiles to load', newProfiles.length);
 
-			// Defer profile persistence to the single saveProfiles() below
-			this.suppressProfileSaves = true;
-			try {
-				const resultsPromises = newProfiles.map(async profile => {
-					log.trace('loadSessions: loading profile', { label: profile.label, orgId: profile.org.id });
-					try {
-						return await this.createSession(await Session.getCookies(profile.org.id));
-					} catch (err) {
-						log.error(`loadSessions: failed to create session for ${profile.org.id}: ${err}`);
+			const resultsPromises = newProfiles.map(async profile => {
+				log.trace('loadSessions: loading profile', { label: profile.label, orgId: profile.org.id });
+				try {
+					// D4: try user-id key first, fall back to legacy org-id key for migration.
+					const userId = profile.user.id;
+					let cookies: string | undefined;
+					if (userId) {
+						cookies = await context.secrets.get(userId);
+					}
+					if (!cookies) {
+						// Legacy org-id key: migrate by reading and re-storing under user-id.
+						cookies = await context.secrets.get(profile.org.id);
+						if (cookies && userId) {
+							log.debug('loadSessions: migrating legacy org-keyed secret to user-keyed', {
+								userId,
+								orgId: profile.org.id,
+							});
+						}
+					}
+					if (!cookies) {
+						log.error(`loadSessions: no cookie found for profile ${profile.label}`);
 						return undefined;
 					}
-				});
-
-				await Promise.all(resultsPromises);
-			} finally {
-				this.suppressProfileSaves = false;
-			}
-			this.loaded = true;
-
-			await this.saveProfiles();
-
-			// A profile removed while its cookie-driven load was still in flight
-			// may have been resurrected by createSession completing afterwards;
-			// purge it again now that the load has settled.
-			const toPurge = Array.from(this.removedDuringLoad);
-			this.removedDuringLoad.clear();
-			for (const userId of toPurge) {
-				if (this.sessionMap.has(userId)) {
-					log.debug('loadSessions: purging session resurrected past its removal', userId);
-					await this.removeSession(userId);
+					return await this.createSession(cookies, { persist: false });
+				} catch (err) {
+					log.error(`loadSessions: failed to create session for ${profile.org.id}: ${err}`);
+					return undefined;
 				}
-			}
-			this.removedDuringLoad.clear();
+			});
 
-			log.debug('loadSessions: completed', { sessionCount: this.sessionMap.size });
-			return this.getActiveSessions();
+			await Promise.all(resultsPromises);
+			await this.saveProfiles();
 		} finally {
-			this.loading = false;
+			this.loadInFlight = false;
 		}
+
+		// A profile removed while its cookie-driven load was still in flight may
+		// have been resurrected by createSession completing afterwards; purge it
+		// again now that the load has settled.
+		const toPurge = Array.from(this.removedDuringLoad);
+		this.removedDuringLoad.clear();
+		for (const userId of toPurge) {
+			if (this.sessionMap.has(userId)) {
+				log.debug('loadSessions: purging session resurrected past its removal', userId);
+				await this.removeSession(userId);
+			}
+		}
+
+		log.debug('loadSessions: completed', { sessionCount: this.sessionMap.size });
+		return this.getActiveSessions();
 	}
 
 	getActiveSessions() {
@@ -334,9 +359,15 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 	private async saveSession(session: Session): Promise<void> {
 		log.trace('saveSession: saving', { label: session.profile.label });
+		this.registerSession(session);
 
+		await this.saveProfiles();
+		log.trace('saveSession: saved', { sessionMapSize: this.sessionMap.size });
+	}
+
+	private registerSession(session: Session): void {
 		if (typeof session.profile.user.id !== 'string') {
-			throw log.error('saveSession: user has no id');
+			throw log.error('registerSession: user has no id');
 		}
 
 		this.setAnyActiveSessions(true);
@@ -347,11 +378,6 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		}
 		this.sessionMap.set(session.profile.user.id, session);
 		this.indexSession(session);
-
-		if (!this.suppressProfileSaves) {
-			await this.saveProfiles();
-		}
-		log.trace('saveSession: saved', { sessionMapSize: this.sessionMap.size });
 	}
 
 	private indexSession(session: Session): void {
@@ -458,15 +484,17 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			.concat(this.getAllKnownProfiles())
 			.concat(this.getSavedProfiles());
 
-		const orgIdsToClear = new Set<string>();
+		// D4: delete user-id keyed secrets (plus legacy org-id keys for cleanup).
+		const secretKeysToClear = new Set<string>();
 		for (const profile of profilesToClear) {
-			orgIdsToClear.add(profile.org.id);
+			if (profile.user.id) secretKeysToClear.add(profile.user.id);
+			secretKeysToClear.add(profile.org.id); // legacy cleanup
 			for (const managedOrg of profile.allManagedOrgs) {
-				orgIdsToClear.add(managedOrg.id);
+				secretKeysToClear.add(managedOrg.id); // legacy cleanup
 			}
 		}
 
-		await Promise.all(Array.from(orgIdsToClear).map(orgId => context.secrets.delete(orgId)));
+		await Promise.all(Array.from(secretKeysToClear).map(key => context.secrets.delete(key)));
 
 		await context.globalState.update('SessionProfiles', []);
 		await context.globalState.update('RewstAllKnownProfiles', []);
@@ -483,7 +511,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 			activeProfiles: [],
 		});
 
-		log.trace('clearProfiles: cleared', { secretsCleared: orgIdsToClear.size });
+		log.trace('clearProfiles: cleared', { secretsCleared: secretKeysToClear.size });
 	}
 
 	/**
@@ -513,28 +541,13 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		// A load in flight may have already read this profile's cookie and can
 		// re-create the session after this removal completes; mark it so
 		// loadSessions purges any such resurrection once the load finishes.
-		if (this.loading) {
+		if (this.loadInFlight) {
 			this.removedDuringLoad.add(userId);
 		}
 
-		// Only delete secrets no remaining profile still needs: another session
-		// can legitimately store its cookie under one of this profile's org ids
-		// (e.g. this session managed the other session's primary org).
-		const retainedOrgIds = new Set<string>();
-		const remainingProfiles = this.getActiveSessions()
-			.map(s => s.profile)
-			.concat(this.getAllKnownProfiles().filter(known => known.user.id !== userId))
-			.concat(this.getSavedProfiles().filter(saved => saved.user.id !== userId));
-		for (const remaining of remainingProfiles) {
-			retainedOrgIds.add(remaining.org.id);
-			for (const org of remaining.allManagedOrgs) {
-				retainedOrgIds.add(org.id);
-			}
-		}
-		const orgIdsToClear = [profile.org.id, ...profile.allManagedOrgs.map(org => org.id)].filter(
-			orgId => !retainedOrgIds.has(orgId),
-		);
-		await Promise.all(orgIdsToClear.map(orgId => context.secrets.delete(orgId)));
+		// D4: delete the user-id keyed secret. Also clean up any legacy org-id key.
+		await context.secrets.delete(userId);
+		await context.secrets.delete(profile.org.id);
 
 		await context.globalState.update(
 			'SessionProfiles',
@@ -632,10 +645,9 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		this.knownProfileOrgIndex.clear();
 		this.orgSessionIndex.clear();
 		this.knownProfilesCache = undefined;
-		this.suppressProfileSaves = false;
+		this.loadPromise = undefined;
+		this.loadInFlight = false;
 		this.removedDuringLoad.clear();
-		this.loaded = false;
-		this.loading = false;
 		this.setAnyActiveSessions(false);
 		this.sessionChangeEmitter.fire({
 			type: 'cleared',

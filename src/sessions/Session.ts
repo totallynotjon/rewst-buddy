@@ -210,7 +210,7 @@ export default class Session {
 			}
 
 			log.trace('refreshToken: storing new cookie');
-			await this.secrets.store(this.profile.org.id, cookieString);
+			await this.secrets.store(this.secretKey(), cookieString);
 			this.sdk = sdk;
 			this.lastValidated = Date.now();
 			this.consecutiveRefreshFailures = 0;
@@ -223,14 +223,21 @@ export default class Session {
 	}
 
 	private async getCookiesForRefresh(): Promise<string> {
-		log.trace('refreshToken: retrieving stored cookie for org', this.profile.org.id);
-		const token = await this.secrets.get(this.profile.org.id);
+		log.trace('refreshToken: retrieving stored cookie for user', this.profile.user.id);
+		const token = await this.secrets.get(this.secretKey());
 
 		if (typeof token !== 'string') {
-			throw log.error(`refreshToken: no token found for ${this.profile.org.id}`);
+			throw log.error(`refreshToken: no token found for ${this.profile.user.id}`);
 		}
 
 		return token;
+	}
+
+	/** D4: session cookies are keyed by user id, not org id — see SessionManager's secret migration. */
+	private secretKey(): string {
+		const userId = this.profile.user.id;
+		if (!userId) throw log.error('Session: profile has no user id for secret storage');
+		return userId;
 	}
 
 	private recordRefreshFailure(error: unknown): void {
@@ -274,12 +281,12 @@ export default class Session {
 			});
 	}
 
-	public static async getCookies(orgId: string): Promise<string> {
-		log.trace('getCookies: retrieving for org', orgId);
-		const token = await context.secrets.get(orgId);
+	public static async getCookies(key: string): Promise<string> {
+		log.trace('getCookies: retrieving for', key);
+		const token = await context.secrets.get(key);
 
 		if (typeof token !== 'string') {
-			throw log.notifyError(`getCookies: no token found for ${orgId}`);
+			throw log.notifyError(`getCookies: no token found for ${key}`);
 		}
 
 		log.trace('getCookies: retrieved successfully');
@@ -287,7 +294,7 @@ export default class Session {
 	}
 
 	async getCookies(): Promise<string> {
-		return await Session.getCookies(this.profile.org.id);
+		return await Session.getCookies(this.secretKey());
 	}
 
 	/**

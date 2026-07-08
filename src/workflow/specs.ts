@@ -175,7 +175,17 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 				workflowName: { type: 'string', description: 'The workflow name, shown in the approval prompt.' },
 				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
 				orgName: { type: 'string', description: 'The org name, shown in the approval prompt.' },
-				input: { type: 'object', description: "The workflow's run inputs (maps input name to value)." },
+				input: {
+					type: 'object',
+					description:
+						"The workflow's run inputs (maps input name to value). Mutually exclusive with profile.",
+				},
+				profile: {
+					type: 'string',
+					description:
+						'Name of a saved input profile (from buddy_save_workflow_input_profile) to use as run inputs. ' +
+						'Mutually exclusive with input. A fresh approval is still required every time.',
+				},
 				wait: {
 					type: 'boolean',
 					description:

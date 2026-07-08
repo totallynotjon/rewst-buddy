@@ -3,12 +3,13 @@ import { z } from 'zod';
 import { suite, test } from '../test/tdd';
 import {
 	mapWithConcurrency,
+	optionalBooleanField,
 	optionalClampedInt,
 	optionalStringField,
 	parseCapabilityInput,
 	rawGraphqlOrThrow,
 	requireResourceInOrg,
-	requireStringAllowEmpty,
+	requiredStringAllowEmptyField,
 	requiredStringField,
 	throwOnGraphqlErrors,
 	toInputSchema,
@@ -252,23 +253,30 @@ suite('Unit: inputHelpers', () => {
 	});
 });
 
-suite('Unit: inputHelpers — requireStringAllowEmpty', () => {
+suite('Unit: inputHelpers — requiredStringAllowEmptyField', () => {
+	const schema = z.object({ body: requiredStringAllowEmptyField('body') });
+
 	test('returns empty string for an empty-string value', () => {
-		const result = requireStringAllowEmpty({ body: '' }, 'body');
-		assert.strictEqual(result, '');
+		const result = parseCapabilityInput(schema, { body: '' });
+		assert.strictEqual(result.body, '');
 	});
 
-	test('returns the string unchanged (no trimming) for a padded value', () => {
-		const result = requireStringAllowEmpty({ body: '  hello  ' }, 'body');
-		assert.strictEqual(result, '  hello  ');
+	test('returns the string unchanged for a non-empty value', () => {
+		const result = parseCapabilityInput(schema, { body: 'hello' });
+		assert.strictEqual(result.body, 'hello');
+	});
+
+	test('preserves leading and trailing whitespace', () => {
+		const result = parseCapabilityInput(schema, { body: '  hello  ' });
+		assert.strictEqual(result.body, '  hello  ');
 	});
 
 	test('throws when the key is absent', () => {
-		assert.throws(() => requireStringAllowEmpty({}, 'body'), /Missing required string argument "body"/);
+		assert.throws(() => parseCapabilityInput(schema, {}), /Missing required string argument "body"/);
 	});
 
 	test('throws when the value is a non-string (number)', () => {
-		assert.throws(() => requireStringAllowEmpty({ body: 42 }, 'body'), /Missing required string argument "body"/);
+		assert.throws(() => parseCapabilityInput(schema, { body: 42 }), /Missing required string argument "body"/);
 	});
 });
 
@@ -407,6 +415,41 @@ suite('Unit: inputHelpers — optionalClampedInt', () => {
 		const schema = z.object({ n: optionalClampedInt(500) });
 		const result = parseCapabilityInput(schema, { n: 42 });
 		assert.strictEqual(result.n, 42);
+	});
+});
+
+suite('Unit: inputHelpers — optionalBooleanField', () => {
+	test('resolves undefined for missing key (no throw)', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		const result = parseCapabilityInput(schema, {});
+		assert.strictEqual(result.flag, undefined);
+	});
+
+	test('accepts true', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		const result = parseCapabilityInput(schema, { flag: true });
+		assert.strictEqual(result.flag, true);
+	});
+
+	test('accepts false', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		const result = parseCapabilityInput(schema, { flag: false });
+		assert.strictEqual(result.flag, false);
+	});
+
+	test('rejects a string value with a clear keyed message', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		assert.throws(() => parseCapabilityInput(schema, { flag: 'true' }), /"flag" must be a boolean/);
+	});
+
+	test('rejects a numeric value with a clear keyed message', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		assert.throws(() => parseCapabilityInput(schema, { flag: 1 }), /"flag" must be a boolean/);
+	});
+
+	test('rejects null with a clear keyed message', () => {
+		const schema = z.object({ flag: optionalBooleanField('flag') });
+		assert.throws(() => parseCapabilityInput(schema, { flag: null }), /"flag" must be a boolean/);
 	});
 });
 

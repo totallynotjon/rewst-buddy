@@ -19,3 +19,4 @@ scripts/wf-backups/
 .claudeignore
 .LOCAL
 .vscode/settings.json
+.superpowers/

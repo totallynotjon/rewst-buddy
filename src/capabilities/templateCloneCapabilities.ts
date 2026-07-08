@@ -1,11 +1,21 @@
 import type { FullTemplateFragment, Session } from '@sessions';
 import { findAllTemplateReferences } from '@utils';
+import { z } from 'zod';
 import { TEMPLATE_PATTERN } from '../providers/templatePatternUtils';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
-import { asPositiveInt, asString, getTemplateFromAnySession, json, ORG_ID_PROP, requireString } from './inputHelpers';
+import {
+	getTemplateFromAnySession,
+	json,
+	optionalClampedInt,
+	optionalStringField,
+	ORG_ID_FIELD,
+	parseCapabilityInput,
+	requiredStringField,
+	toInputSchema,
+} from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
@@ -124,27 +134,39 @@ async function rollback(deps: TemplateCloneDeps, session: Session, created: read
 	return failed;
 }
 
+const bundleCloneInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	rootTemplateId: requiredStringField('rootTemplateId').describe('Id of the root template to deep-clone.'),
+	sourceOrgId: optionalStringField().describe(
+		'Optional id of the org the root and its references live in. Verified against the root; defaults to the root\u2019s org.',
+	),
+	namePrefix: optionalStringField().describe('Optional prefix for cloned template names.'),
+	nameSuffix: optionalStringField().describe('Optional suffix for cloned template names. Defaults to " (copy)".'),
+	maxTemplates: optionalClampedInt(MAX_MAX_TEMPLATES).describe(
+		'Max total templates to clone (root + references). Default 50, capped at 200.',
+	),
+	maxDepth: optionalClampedInt(MAX_MAX_DEPTH).describe('Max reference depth to walk. Default 10, capped at 25.'),
+});
+
 export async function runBundleClone(
 	input: Record<string, unknown>,
 	ctx: CapabilityContext,
 	deps: TemplateCloneDeps = defaultTemplateCloneDeps,
 ): Promise<string> {
-	const targetOrgId = requireString(input, 'orgId');
-	const rootId = requireString(input, 'rootTemplateId');
-	const sourceOrgIdArg = asString(input, 'sourceOrgId');
+	const {
+		orgId: targetOrgId,
+		rootTemplateId: rootId,
+		sourceOrgId: sourceOrgIdArg,
+		namePrefix: namePrefixRaw,
+		nameSuffix: nameSuffixRaw,
+		maxTemplates: maxTemplatesRaw,
+		maxDepth: maxDepthRaw,
+	} = parseCapabilityInput(bundleCloneInputSchema, input);
 
-	let namePrefix = '';
-	if (input.namePrefix !== undefined) {
-		if (typeof input.namePrefix !== 'string') throw new Error('"namePrefix" must be a string.');
-		namePrefix = input.namePrefix;
-	}
-	let nameSuffix = DEFAULT_NAME_SUFFIX;
-	if (input.nameSuffix !== undefined) {
-		if (typeof input.nameSuffix !== 'string') throw new Error('"nameSuffix" must be a string.');
-		nameSuffix = input.nameSuffix;
-	}
-	const maxTemplates = Math.min(asPositiveInt(input, 'maxTemplates') ?? DEFAULT_MAX_TEMPLATES, MAX_MAX_TEMPLATES);
-	const maxDepth = Math.min(asPositiveInt(input, 'maxDepth') ?? DEFAULT_MAX_DEPTH, MAX_MAX_DEPTH);
+	const namePrefix = namePrefixRaw ?? '';
+	const nameSuffix = nameSuffixRaw ?? DEFAULT_NAME_SUFFIX;
+	const maxTemplates = maxTemplatesRaw ?? DEFAULT_MAX_TEMPLATES;
+	const maxDepth = maxDepthRaw ?? DEFAULT_MAX_DEPTH;
 
 	// Phase 0 — fetch the root (from any session that can read it) and pin the source org.
 	const fetched = await getTemplateFromAnySession(ctx.sessions, deps.getTemplate, rootId);
@@ -276,34 +298,11 @@ export async function runBundleClone(
 	});
 }
 
-const bundleCloneSpec: ToolSpec = {
+const bundleCloneSpec: ToolSpecDefinition = {
 	name: 'buddy_template_bundle_clone',
-	args: '{"orgId": string, "rootTemplateId": string, "sourceOrgId"?: string, "namePrefix"?: string, "nameSuffix"?: string, "maxTemplates"?: number, "maxDepth"?: number}',
 	description:
 		"Deep-copy a Rewst template and the templates it references (transitively, via template('<id>') calls in the body) into NEW templates in a target org, rewriting every reference to the new template ids. Each clone copies the source name, body, contentType, language, JSON context and cloneOverrides; tags are NOT copied (they are org-scoped) and references inside context/cloneOverrides are not followed. orgId is the TARGET org the clones are created in — it must have write tools enabled, be on the write allowlist, and pass per-call approval. The source org is taken from the root template (verify it with sourceOrgId). References to templates in a different org, or that no longer exist, are left pointing at the original id and reported as foreignReferences / missingReferences. Nodes beyond maxTemplates (default 50, max 200) or maxDepth (default 10, max 25) are not cloned and are reported under skipped.cap / skipped.depth. On any failure mid-clone the templates created so far are deleted (rollback). Returns the old→new id map and the new root id; it does not create a local file link — use buddy_template_link for that.",
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			rootTemplateId: { type: 'string', description: 'Id of the root template to deep-clone.' },
-			sourceOrgId: {
-				type: 'string',
-				description:
-					'Optional id of the org the root and its references live in. Verified against the root; defaults to the root’s org.',
-			},
-			namePrefix: { type: 'string', description: 'Optional prefix for cloned template names.' },
-			nameSuffix: {
-				type: 'string',
-				description: 'Optional suffix for cloned template names. Defaults to " (copy)".',
-			},
-			maxTemplates: {
-				type: 'number',
-				description: 'Max total templates to clone (root + references). Default 50, capped at 200.',
-			},
-			maxDepth: { type: 'number', description: 'Max reference depth to walk. Default 10, capped at 25.' },
-		},
-		required: ['orgId', 'rootTemplateId'],
-	},
+	inputSchema: toInputSchema(bundleCloneInputSchema),
 };
 
 export const TEMPLATE_CLONE_CAPABILITIES: Capability[] = [

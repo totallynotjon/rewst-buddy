@@ -1,17 +1,17 @@
+import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { createCapabilityTestHarness, initTestEnvironment } from '@test';
 import type { CapabilityContext } from './Capability';
 import {
 	JINJA_DOCS_CAPABILITIES,
+	_resetJinjaFilterCacheForTesting,
+	_resetJinjaFilterFetcherForTesting,
+	_setJinjaFilterFetcherForTesting,
 	engineBaseFromRegion,
 	formatJinjaFilters,
 	getCachedFilters,
 	parseJinjaFilters,
 	primeFilters,
-	_resetJinjaFilterCacheForTesting,
-	_resetJinjaFilterFetcherForTesting,
-	_setJinjaFilterFetcherForTesting,
 	type JinjaFilterDoc,
 } from './jinjaDocsCapabilities';
 
@@ -56,6 +56,32 @@ suite('Unit: jinjaDocsCapabilities', () => {
 	teardown(() => {
 		_resetJinjaFilterCacheForTesting();
 		_resetJinjaFilterFetcherForTesting();
+	});
+
+	// --- Zod parse tests ---
+	test('non-string name is ignored (not rejected)', async () => {
+		_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
+		const { ctx } = fakeCtx({ data: {} });
+		await assert.doesNotReject(() => cap('buddy_get_jinja_filter_docs').run({ name: 42 }, ctx));
+	});
+
+	test('non-string search is ignored (not rejected)', async () => {
+		_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
+		const { ctx } = fakeCtx({ data: {} });
+		await assert.doesNotReject(() => cap('buddy_get_jinja_filter_docs').run({ search: 99 }, ctx));
+	});
+
+	test('no-arg call lists filter names', async () => {
+		_setJinjaFilterFetcherForTesting(async () => parseJinjaFilters(SAMPLE_PAYLOAD));
+		const { ctx } = fakeCtx({ data: {} });
+		const output = await cap('buddy_get_jinja_filter_docs').run({}, ctx);
+		assert.ok(output.includes('abs'));
+	});
+
+	test('buddy_get_jinja_filter_docs derived schema has no required fields and args generated', () => {
+		const schema = cap('buddy_get_jinja_filter_docs').spec.inputSchema as { required?: string[] };
+		assert.ok(!schema.required || schema.required.length === 0);
+		assert.strictEqual(cap('buddy_get_jinja_filter_docs').spec.args, JSON.stringify(schema));
 	});
 
 	suite('parseJinjaFilters()', () => {

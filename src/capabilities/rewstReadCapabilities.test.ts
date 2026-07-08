@@ -94,65 +94,39 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.ok(output.includes('api_key = ********  [secret, cascade]'));
 	});
 
-	test('buddy_find_action flattens pack actions, caps output, falls back to name, and includes pack names', async () => {
+	test('buddy_search_templates uses templates GraphQL query, maps name search, and formats results', async () => {
 		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
 		useRawGraphqlWrapper(session, wrapper);
 		wrapper.when('rawGraphql', {
 			data: {
 				data: {
-					searchInstalledPackActions: [
+					templates: [
 						{
-							id: 'pack-1',
-							name: 'Core Pack',
-							ref: 'core',
-							actions: [
-								{
-									id: 'action-1',
-									name: 'Create Ticket',
-									ref: null,
-									description: 'Open a ticket',
-								},
-								{
-									id: 'action-2',
-									name: 'Update Ticket',
-									ref: 'ticket_update',
-									description: 'Update a ticket',
-								},
-							],
-						},
-						{
-							id: 'pack-2',
-							name: 'Automation Pack',
-							ref: 'automation',
-							actions: [
-								{
-									id: 'action-3',
-									name: 'Close Ticket',
-									ref: 'ticket_close',
-									description: 'Close a ticket',
-								},
-							],
+							id: 't-1',
+							name: 'Welcome Email',
+							language: 'html',
+							contentType: 'email',
+							updatedAt: '2025-01-01T00:00:00Z',
 						},
 					],
 				},
 			},
 		});
-		const findAction = getCapability('buddy_find_action');
-		assert.ok(findAction, 'buddy_find_action is registered');
+		const searchTemplates = getCapability('buddy_search_templates');
+		assert.ok(searchTemplates, 'buddy_search_templates is registered');
 
-		const output = await findAction.run({ orgId: 'org-1', filter: 'ticket', limit: 2 }, {
+		const output = await searchTemplates.run({ orgId: 'org-1', search: 'welcome', limit: 10 }, {
 			session,
 			orgId: 'org-1',
 			sessions: [session],
 		} satisfies CapabilityContext);
 
-		const lines = output.split('\n');
-		assert.strictEqual(lines.length, 3);
-		assert.strictEqual(lines[0], 'Create Ticket (action-1) — Core Pack: Open a ticket');
-		assert.strictEqual(lines[1], 'ticket_update (action-2) — Core Pack: Update a ticket');
-		assert.strictEqual(lines[2], '…(1 more not shown; refine the filter)');
-		assert.ok(output.includes('Core Pack'), 'pack name is included in output');
-		assert.ok(!output.includes('ticket_close (action-3)'), 'output is capped to the requested limit');
+		const calls = wrapper.getCallsFor('rawGraphql');
+		assert.strictEqual(calls.length, 1);
+		assert.ok(calls[0].variables.query.includes('templates('), 'query uses templates');
+		assert.deepStrictEqual(calls[0].variables.variables.search, { name: { _ilike: '%welcome%' } });
+		assert.ok(output.includes('Welcome Email (t-1)'), 'output includes template name and id');
+		assert.ok(output.includes('html'), 'output includes language');
 	});
 
 	test('buddy_resolve_reference uses localReferenceOptions query, forwards model and search, and formats options', async () => {
@@ -202,41 +176,6 @@ suite('Unit: rewstReadCapabilities', () => {
 				} satisfies CapabilityContext),
 			/Invalid modelType "Widget". Valid modelType values: Crate, CustomDatabase, Organization, PackConfig, Role, Template, TemplateExport, User, Workflow, Trigger, Form, Site, Page/,
 		);
-	});
-
-	test('buddy_list_workflow_executions uses workflowExecutions query, maps status search, and formats executions', async () => {
-		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
-		useRawGraphqlWrapper(session, wrapper);
-		wrapper.when('rawGraphql', {
-			data: {
-				data: {
-					workflowExecutions: [
-						{
-							id: 'exec-1',
-							status: 'succeeded',
-							createdAt: '1735689600000',
-							workflow: { id: 'wf-1' },
-							numSuccessfulTasks: 4,
-						},
-					],
-				},
-			},
-		});
-		const listWorkflowExecutions = getCapability('buddy_list_workflow_executions');
-		assert.ok(listWorkflowExecutions, 'buddy_list_workflow_executions is registered');
-
-		const output = await listWorkflowExecutions.run({ orgId: 'org-1', status: 'succeeded', limit: 10 }, {
-			session,
-			orgId: 'org-1',
-			sessions: [session],
-		} satisfies CapabilityContext);
-
-		const calls = wrapper.getCallsFor('rawGraphql');
-		assert.strictEqual(calls.length, 1);
-		assert.ok(calls[0].variables.query.includes('workflowExecutions('), 'query uses workflowExecutions');
-		assert.ok(calls[0].variables.query.includes('workflow {'), 'query requests nested workflow id');
-		assert.deepStrictEqual(calls[0].variables.variables.search, { status: { _eq: 'succeeded' } });
-		assert.ok(output.includes('succeeded — exec-1 (workflow wf-1, 4 ok, created 1735689600000)'));
 	});
 
 	test('buddy_find_executions_by_variable scans conductor input and matches name and value', async () => {
@@ -411,32 +350,6 @@ suite('Unit: rewstReadCapabilities', () => {
 
 		assert.ok(out.includes('exec-1') && out.includes('ticket_id=12345'), 'matches a context variable');
 		assert.ok(/1 execution context fetch/.test(out), `expected skip note, got: ${out}`);
-	});
-
-	test('buddy_latest_workflow_execution uses latestWorkflowExecution query, forwards workflowId, and handles missing execution', async () => {
-		const { session, wrapper } = createMockSession({ profile: { org: { id: 'org-1', name: 'Acme' } } });
-		useRawGraphqlWrapper(session, wrapper);
-		wrapper.when('rawGraphql', {
-			data: {
-				data: {
-					latestWorkflowExecution: null,
-				},
-			},
-		});
-		const latestWorkflowExecution = getCapability('buddy_latest_workflow_execution');
-		assert.ok(latestWorkflowExecution, 'buddy_latest_workflow_execution is registered');
-
-		const output = await latestWorkflowExecution.run({ orgId: 'org-1', workflowId: 'wf-1' }, {
-			session,
-			orgId: 'org-1',
-			sessions: [session],
-		} satisfies CapabilityContext);
-
-		const calls = wrapper.getCallsFor('rawGraphql');
-		assert.strictEqual(calls.length, 1);
-		assert.ok(calls[0].variables.query.includes('latestWorkflowExecution('), 'query uses latestWorkflowExecution');
-		assert.strictEqual(calls[0].variables.variables.workflowId, 'wf-1');
-		assert.ok(output.includes('No execution found for workflow wf-1'));
 	});
 
 	test('buddy_get_workflow_execution_stats uses workflowExecutionStats query, forwards createdSince, and formats stats', async () => {

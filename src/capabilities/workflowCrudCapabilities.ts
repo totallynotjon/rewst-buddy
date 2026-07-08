@@ -1,9 +1,17 @@
 import { CRATE_REUSE_STEERING } from '@workflow';
+import { z } from 'zod';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { writeCapability } from './capabilityFactories';
-import { ORG_ID_PROP, asString, rawGraphqlOrThrow, requireResourceInOrg, requireString } from './inputHelpers';
+import {
+	ORG_ID_FIELD,
+	optionalStringField,
+	parseCapabilityInput,
+	rawGraphqlOrThrow,
+	requireResourceInOrg,
+	toInputSchema,
+} from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
 
 /**
@@ -52,33 +60,34 @@ async function requireWorkflowInOrg(ctx: CapabilityContext, workflowId: string, 
 	});
 }
 
-const createWorkflowSpec: ToolSpec = {
+const createWorkflowSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	name: z
+		.string({ error: 'Missing required string argument "name".' })
+		.trim()
+		.min(1, { error: 'Missing required string argument "name".' })
+		.describe('Name for the new workflow.'),
+	description: optionalStringField()
+		.pipe(
+			z
+				.string()
+				.max(WORKFLOW_DESCRIPTION_MAX_LENGTH, {
+					error: `Workflow description must be ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters or fewer.`,
+				})
+				.optional(),
+		)
+		.describe(`Optional workflow description, up to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters.`),
+});
+
+const createWorkflowSpec: ToolSpecDefinition = {
 	name: 'buddy_create_workflow',
-	args: '{"orgId": string, "name": string, "description"?: string}',
 	description: `Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code. ${CRATE_REUSE_STEERING}`,
 	// NOTE: CRATE_REUSE_STEERING is embedded verbatim above — do not paraphrase it here.
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			name: { type: 'string', description: 'Name for the new workflow.' },
-			description: {
-				type: 'string',
-				maxLength: WORKFLOW_DESCRIPTION_MAX_LENGTH,
-				description: `Optional workflow description, up to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters.`,
-			},
-		},
-		required: ['orgId', 'name'],
-	},
+	inputSchema: toInputSchema(createWorkflowSchema),
 };
 
 async function runCreateWorkflow(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const name = requireString(input, 'name');
-	const description = asString(input, 'description');
-	if (description !== undefined && description.length > WORKFLOW_DESCRIPTION_MAX_LENGTH) {
-		throw new Error(`Workflow description must be ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters or fewer.`);
-	}
+	const { orgId, name, description } = parseCapabilityInput(createWorkflowSchema, input);
 	const orgName = orgDisplayName(ctx);
 	const scope: MutationScope = { scopeId: orgId, scopeName: `new workflow "${name}"`, orgId, orgName };
 	const summary = `Create workflow "${name}" in org "${orgName}" (${orgId})`;
@@ -92,24 +101,24 @@ async function runCreateWorkflow(input: Record<string, unknown>, ctx: Capability
 	});
 }
 
-const deleteWorkflowSpec: ToolSpec = {
+const deleteWorkflowSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	workflowId: z
+		.string({ error: 'Missing required string argument "workflowId".' })
+		.trim()
+		.min(1, { error: 'Missing required string argument "workflowId".' })
+		.describe('Id of the workflow to delete.'),
+});
+
+const deleteWorkflowSpec: ToolSpecDefinition = {
 	name: 'buddy_delete_workflow',
-	args: '{"orgId": string, "workflowId": string}',
 	description:
 		'Permanently delete one Rewst workflow, identified by org and workflow id. The workflow must belong to the given org. This also removes its triggers, tasks, and execution history and cannot be undone. Requires write tools to be enabled and per-call approval in VS Code.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			...ORG_ID_PROP,
-			workflowId: { type: 'string', description: 'Id of the workflow to delete.' },
-		},
-		required: ['orgId', 'workflowId'],
-	},
+	inputSchema: toInputSchema(deleteWorkflowSchema),
 };
 
 async function runDeleteWorkflow(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const orgId = requireString(input, 'orgId');
-	const workflowId = requireString(input, 'workflowId');
+	const { orgId, workflowId } = parseCapabilityInput(deleteWorkflowSchema, input);
 	const orgName = orgDisplayName(ctx);
 	const current = await requireWorkflowInOrg(ctx, workflowId, orgId);
 	const name = current.name ?? '(unnamed)';

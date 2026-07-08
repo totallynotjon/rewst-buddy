@@ -162,7 +162,7 @@ Cage-Free Rewsty is still told your VS Code working directory when one is open, 
 
 Rewst-specific actions are exposed through the Rewst Buddy MCP server instead of the chat LM tool surface. MCP exposure uses three switches:
 
-- `rewst-buddy.mcp.enable` exposes all read capabilities: `buddy_list_orgs`, `buddy_list_templates`, `buddy_get_template`, `buddy_list_workflows`, `buddy_get_workflow`, `buddy_graphql_query`, `buddy_graphql_schema`, `buddy_search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_workflow_diagnose`, `buddy_render_jinja`, `buddy_action_search`, `buddy_workflow_impact`, `buddy_search_crates`, `buddy_list_jinja_filters`, `buddy_get_jinja_filter_docs`, and `buddy_result_read`.
+- `rewst-buddy.mcp.enable` exposes all read capabilities: `buddy_list_orgs`, `buddy_search_templates`, `buddy_get_template`, `buddy_list_workflows`, `buddy_get_workflow`, `buddy_workflow_lint`, `buddy_graphql_query`, `buddy_graphql_schema`, `buddy_search_template_links`, `buddy_template_link_status`, `buddy_workflow_get`, `buddy_workflow_search`, `buddy_workflow_executions`, `buddy_execution_logs`, `buddy_workflow_diagnose`, `buddy_render_jinja`, `buddy_action_search`, `buddy_workflow_impact`, `buddy_search_crates`, `buddy_get_jinja_filter_docs`, and `buddy_result_read`.
 - `rewst-buddy.mcp.enableWriteTools` adds the write tools that change Rewst data: workflow editing, auto-layout, and runs; workflow create/delete; template create, edit, rename, delete, and sync; and org-variable, tag, and trigger changes.
 - `rewst-buddy.mcp.enableDangerousGraphqlMutation` unlocks only `buddy_graphql_mutate`, the raw GraphQL mutation tool.
 

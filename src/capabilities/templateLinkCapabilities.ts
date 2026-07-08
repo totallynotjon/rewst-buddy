@@ -2,10 +2,17 @@ import { buildTemplateLink, LinkManager, orgForTemplateLink, SyncOnSaveManager }
 import type { FullTemplateFragment, Session } from '@sessions';
 import { uriExists } from '@utils';
 import vscode from 'vscode';
-import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
+import { z } from 'zod';
+import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
-import { asString, getTemplateFromAnySession, json, requireString } from './inputHelpers';
+import {
+	getTemplateFromAnySession,
+	json,
+	parseCapabilityInput,
+	requiredStringField,
+	toInputSchema,
+} from './inputHelpers';
 import { resolveLinkedUri } from './templateSyncCapabilities';
 
 /**
@@ -65,15 +72,56 @@ export const defaultTemplateLinkDeps: TemplateLinkDeps = {
 	getTemplate: (session, templateId) => session.getTemplate(templateId),
 };
 
+const linkInputSchema = z.object({
+	templateId: requiredStringField('templateId').describe(
+		'Id of the existing Rewst template to link the file to (from buddy_search_templates).',
+	),
+	uri: requiredStringField('uri').describe(
+		'Absolute path, workspace-relative path, or file:// URI of the existing local file to link.',
+	),
+	orgId: z
+		.string({ error: '"orgId" must be a string if provided.' })
+		.trim()
+		.min(1, { error: '"orgId" must be a string if provided.' })
+		.optional()
+		.describe("Optional org id to verify the template belongs to. Defaults to the template's own org."),
+	overwrite: z
+		.boolean()
+		.optional()
+		.describe('If the file is already linked, replace the existing link instead of failing. Default false.'),
+});
+
+const unlinkInputSchema = z.object({
+	uri: requiredStringField('uri').describe(
+		'Path or file URI of the linked file, as shown by buddy_search_template_links.',
+	),
+});
+
+const syncOnSaveInputSchema = z.object({
+	uri: requiredStringField('uri').describe('Path or file URI of the linked file.'),
+	enabled: z
+		.boolean({ error: '"enabled" must be a boolean (true to enable sync-on-save, false to disable).' })
+		.describe('true to enable sync-on-save (upload on save), false to disable.'),
+});
+
+const linkStatusInputSchema = z.object({
+	uri: requiredStringField('uri').describe(
+		'Absolute path, workspace-relative path, or file:// URI of the local file to check.',
+	),
+});
+
 export async function runLink(
 	input: Record<string, unknown>,
 	ctx: CapabilityContext,
 	deps: TemplateLinkDeps = defaultTemplateLinkDeps,
 ): Promise<string> {
-	const templateId = requireString(input, 'templateId');
-	const rawUri = requireString(input, 'uri');
-	const requestedOrgId = asString(input, 'orgId');
-	const overwrite = input.overwrite === true;
+	const {
+		templateId,
+		uri: rawUri,
+		orgId: requestedOrgId,
+		overwrite: overwriteRaw,
+	} = parseCapabilityInput(linkInputSchema, input);
+	const overwrite = overwriteRaw === true;
 
 	const uri = deps.resolvePathToUri(rawUri);
 	if (!uri) {
@@ -148,7 +196,7 @@ export async function runLink(
 }
 
 export async function runUnlink(input: Record<string, unknown>, _ctx: CapabilityContext): Promise<string> {
-	const rawUri = requireString(input, 'uri');
+	const { uri: rawUri } = parseCapabilityInput(unlinkInputSchema, input);
 	const resolved = resolveLinkedUri(rawUri);
 	if (!resolved) {
 		return json({
@@ -183,7 +231,7 @@ export async function runUnlink(input: Record<string, unknown>, _ctx: Capability
  * file is definitely unlinked.
  */
 export function runLinkStatus(input: Record<string, unknown>): string {
-	const rawUri = requireString(input, 'uri');
+	const { uri: rawUri } = parseCapabilityInput(linkStatusInputSchema, input);
 	const resolved = resolveLinkedUri(rawUri);
 	if (!resolved) {
 		return json({
@@ -210,11 +258,7 @@ export function runLinkStatus(input: Record<string, unknown>): string {
 }
 
 export async function runSyncOnSave(input: Record<string, unknown>, _ctx: CapabilityContext): Promise<string> {
-	const rawUri = requireString(input, 'uri');
-	const enabled = input.enabled;
-	if (typeof enabled !== 'boolean') {
-		throw new Error('"enabled" must be a boolean (true to enable sync-on-save, false to disable).');
-	}
+	const { uri: rawUri, enabled } = parseCapabilityInput(syncOnSaveInputSchema, input);
 	const resolved = resolveLinkedUri(rawUri);
 	if (!resolved) {
 		return json({
@@ -245,87 +289,32 @@ export async function runSyncOnSave(input: Record<string, unknown>, _ctx: Capabi
 	});
 }
 
-const linkSpec: ToolSpec = {
+const linkSpec: ToolSpecDefinition = {
 	name: 'buddy_template_link',
-	args: '{"templateId": string, "uri": string, "orgId"?: string, "overwrite"?: boolean}',
 	description:
 		'Associate an existing local file with an existing Rewst template, so it can be synced. Does not create the file or the template. Identify the file by an absolute path, a workspace-relative path, or a file:// URI. The link starts out-of-sync on purpose — afterwards call buddy_template_sync_status to compare, or buddy_template_sync to reconcile. Returns already_linked unless overwrite is true, and invalid_path / file_not_found / template_not_found / org_mismatch on the obvious failures. This changes only local link state (no Rewst write).',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			templateId: {
-				type: 'string',
-				description: 'Id of the existing Rewst template to link the file to (from buddy_list_templates).',
-			},
-			uri: {
-				type: 'string',
-				description:
-					'Absolute path, workspace-relative path, or file:// URI of the existing local file to link.',
-			},
-			orgId: {
-				type: 'string',
-				description: 'Optional org id to verify the template belongs to. Defaults to the template’s own org.',
-			},
-			overwrite: {
-				type: 'boolean',
-				description:
-					'If the file is already linked, replace the existing link instead of failing. Default false.',
-			},
-		},
-		required: ['templateId', 'uri'],
-	},
+	inputSchema: toInputSchema(linkInputSchema),
 };
 
-const unlinkSpec: ToolSpec = {
+const unlinkSpec: ToolSpecDefinition = {
 	name: 'buddy_template_unlink',
-	args: '{"uri": string}',
 	description:
 		'Remove the link between a local file and its Rewst template. The local file and the remote template are left untouched; only the local association (and its sync-on-save setting) is removed. Identify the file by the path shown in buddy_search_template_links or its file URI. Returns not_linked if no template is linked to it.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			uri: {
-				type: 'string',
-				description: 'Path or file URI of the linked file, as shown by buddy_search_template_links.',
-			},
-		},
-		required: ['uri'],
-	},
+	inputSchema: toInputSchema(unlinkInputSchema),
 };
 
-const syncOnSaveSpec: ToolSpec = {
+const syncOnSaveSpec: ToolSpecDefinition = {
 	name: 'buddy_template_sync_on_save',
-	args: '{"uri": string, "enabled": boolean}',
 	description:
 		'Enable or disable sync-on-save for a linked file: when on, saving the file in VS Code uploads it to its Rewst template. The file must already be linked (see buddy_template_link). Returns the effective syncOnSave state, which also depends on the rewst-buddy.syncOnSaveByDefault setting. This changes only local state (no Rewst write).',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			uri: { type: 'string', description: 'Path or file URI of the linked file.' },
-			enabled: {
-				type: 'boolean',
-				description: 'true to enable sync-on-save (upload on save), false to disable.',
-			},
-		},
-		required: ['uri', 'enabled'],
-	},
+	inputSchema: toInputSchema(syncOnSaveInputSchema),
 };
 
-const linkStatusSpec: ToolSpec = {
+const linkStatusSpec: ToolSpecDefinition = {
 	name: 'buddy_template_link_status',
-	args: '{"uri": string}',
 	description:
 		'Report whether one local file is linked to a Rewst template, reading only local link state (no network or remote comparison). Identify the file by an absolute path, a workspace-relative path, or a file:// URI. Returns linked:false when nothing is linked; otherwise the template id and name, org id and name, and whether sync-on-save is on. For an up-to-date comparison with the Rewst template use buddy_template_sync_status; to list linked files use buddy_search_template_links.',
-	inputSchema: {
-		type: 'object',
-		properties: {
-			uri: {
-				type: 'string',
-				description: 'Absolute path, workspace-relative path, or file:// URI of the local file to check.',
-			},
-		},
-		required: ['uri'],
-	},
+	inputSchema: toInputSchema(linkStatusInputSchema),
 };
 
 export const TEMPLATE_LINK_CAPABILITIES: Capability[] = [

@@ -136,7 +136,7 @@ read capabilities and gates as tools. Resource URIs SHALL use the
 - **GIVEN** a `rewst://org-1/templates` resource URI
 - **WHEN** an MCP client reads that resource
 - **THEN** the bridge runs the same gated capability used by
-  `buddy_list_templates`
+  `buddy_search_templates`
 - **AND** the read is subject to the same scope and rate-limit rules as a tool
   call
 
@@ -476,13 +476,12 @@ message -- never a raw serialized list of every issue.
 - **THEN** the capability rejects the call with a single message naming the
   missing argument
 
-Implementation status: as of this requirement's schema-based rewrite,
-`src/capabilities/rewstReadCapabilities.ts` validates through per-capability
-Zod schemas per the contract above (`inputHelpers.ts`'s
-`parseCapabilityInput` + `toInputSchema`). The remaining capability files
-still validate via the hand-rolled `asString`/`requireString`/`asPositiveInt`
-helpers in `inputHelpers.ts`; they migrate to the same schema-based contract
-incrementally in follow-up PRs (epic #129 C2).
+Implementation status: complete. All registry capabilities parse runtime input
+through capability-local Zod schemas and derive advertised input schemas from
+those schemas via `parseCapabilityInput` + `toInputSchema` (`inputHelpers.ts`).
+The legacy hand-written string/integer helper exports (`requireString`,
+`asString`, `asPositiveInt`, `requireStringAllowEmpty`, `ORG_ID_PROP`) have
+been removed from `inputHelpers.ts` and from new capability authoring guidance.
 
 ### Requirement: Verify saved task inputs after a workflow edit
 
