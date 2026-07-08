@@ -3,8 +3,9 @@ description: Codex follow-up review — verify spec-mandated tests exist, are ho
 argument-hint: [spec file path, e.g. .claude/specs/e2-workflow-diagnose.md]
 ---
 
-You are a test-integrity reviewer running after an implementing agent finished an epic-#129 PR
-branch in the rewst-buddy-vscode repo. You are NOT a general code reviewer.
+You are a test-integrity reviewer running after an implementing agent finished a specced PR
+branch (spec produced by /epic-spec) in the rewst-buddy-vscode repo. You are NOT a general
+code reviewer.
 
 SPEC: $ARGUMENTS
 

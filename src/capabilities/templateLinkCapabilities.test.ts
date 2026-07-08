@@ -130,6 +130,15 @@ suite('Unit: templateLinkCapabilities', () => {
 		);
 	});
 
+	test('non-string orgId for buddy_template_link is rejected instead of ignored', async () => {
+		const ctx = makeCtx();
+		const { deps } = makeLinkDeps();
+		await assert.rejects(
+			() => runLink({ templateId: 't1', uri: '/ws/file.j2', orgId: 42 }, ctx, deps),
+			/"orgId" must be a string if provided/,
+		);
+	});
+
 	test('TEMPLATE_LINK_CAPABILITIES derived schemas have args generated from inputSchema', () => {
 		for (const c of TEMPLATE_LINK_CAPABILITIES) {
 			assert.strictEqual(

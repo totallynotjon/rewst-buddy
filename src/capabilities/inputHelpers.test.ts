@@ -266,6 +266,11 @@ suite('Unit: inputHelpers — requiredStringAllowEmptyField', () => {
 		assert.strictEqual(result.body, 'hello');
 	});
 
+	test('preserves leading and trailing whitespace', () => {
+		const result = parseCapabilityInput(schema, { body: '  hello  ' });
+		assert.strictEqual(result.body, '  hello  ');
+	});
+
 	test('throws when the key is absent', () => {
 		assert.throws(() => parseCapabilityInput(schema, {}), /Missing required string argument "body"/);
 	});

@@ -9,7 +9,6 @@ import { readCapability } from './capabilityFactories';
 import {
 	getTemplateFromAnySession,
 	json,
-	optionalStringField,
 	parseCapabilityInput,
 	requiredStringField,
 	toInputSchema,
@@ -80,9 +79,12 @@ const linkInputSchema = z.object({
 	uri: requiredStringField('uri').describe(
 		'Absolute path, workspace-relative path, or file:// URI of the existing local file to link.',
 	),
-	orgId: optionalStringField().describe(
-		'Optional org id to verify the template belongs to. Defaults to the template\u2019s own org.',
-	),
+	orgId: z
+		.string({ error: '"orgId" must be a string if provided.' })
+		.trim()
+		.min(1, { error: '"orgId" must be a string if provided.' })
+		.optional()
+		.describe("Optional org id to verify the template belongs to. Defaults to the template's own org."),
 	overwrite: z
 		.boolean()
 		.optional()

@@ -65,6 +65,19 @@ suite('Unit: triggerFormCapabilities', () => {
 		assert.strictEqual(cap('buddy_get_trigger_error_status').spec.args, JSON.stringify(schema));
 	});
 
+	test('missing triggerIds throws before GraphQL for buddy_get_trigger_error_status', async () => {
+		const { ctx } = fakeCtx({ data: {} });
+		await assert.rejects(() => cap('buddy_get_trigger_error_status').run({ orgId: 'org-1' }, ctx), /triggerIds/);
+	});
+
+	test('empty triggerIds array throws before GraphQL for buddy_get_trigger_error_status', async () => {
+		const { ctx } = fakeCtx({ data: {} });
+		await assert.rejects(
+			() => cap('buddy_get_trigger_error_status').run({ orgId: 'org-1', triggerIds: [] }, ctx),
+			/triggerIds/,
+		);
+	});
+
 	test('buddy_list_triggers uses triggers query and formats trigger rows', async () => {
 		const { ctx, calls } = fakeCtx({
 			data: {

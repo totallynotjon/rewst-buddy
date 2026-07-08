@@ -98,6 +98,11 @@ export function formatMcpOutput(toolName: string, text: string, cache: McpResult
 
 const RESULT_READ_ID_ERROR = 'buddy_result_read requires an "id" from a previous oversized Rewst Buddy result.';
 
+function optionalPagingNumber(value: unknown): number | undefined {
+	const n = typeof value === 'string' ? Number(value) : typeof value === 'number' ? value : NaN;
+	return Number.isFinite(n) ? n : undefined;
+}
+
 const resultReadInputSchema = z.object({
 	id: z
 		.string({ error: RESULT_READ_ID_ERROR })
@@ -106,12 +111,12 @@ const resultReadInputSchema = z.object({
 		.describe('Cached result id returned by an oversized Rewst Buddy tool result.'),
 	// Note: id field intentionally uses a custom error message matching the legacy explicit check.
 	offset: z
-		.preprocess(v => (typeof v === 'string' ? Number(v) : v), z.number().optional())
+		.preprocess(optionalPagingNumber, z.number().optional())
 		.describe('Character offset to start reading from (default 0).'),
 	limit: z
-		.preprocess(v => (typeof v === 'string' ? Number(v) : v), z.number().optional())
+		.preprocess(optionalPagingNumber, z.number().optional())
 		.describe(`Maximum characters to return (default ${DEFAULT_READ_LIMIT}, max ${MAX_READ_LIMIT}).`),
-	// offset and limit accept numeric strings for backward compatibility (clampInt coerces them downstream).
+	// offset and limit accept numeric strings and ignore bad values for backward compatibility.
 	search: optionalStringField().describe('Search text; returns matching lines with line numbers instead of a slice.'),
 });
 
@@ -135,8 +140,8 @@ export const resultReadCapability: Capability = readCapability(
 		}
 		const search = parsed.search;
 		if (search !== undefined) return searchCachedOutput(entry, search);
-		const offset = clampInt(input.offset, 0, entry.text.length, 0);
-		const limit = clampInt(input.limit, 1, MAX_READ_LIMIT, DEFAULT_READ_LIMIT);
+		const offset = clampInt(parsed.offset, 0, entry.text.length, 0);
+		const limit = clampInt(parsed.limit, 1, MAX_READ_LIMIT, DEFAULT_READ_LIMIT);
 		return sliceCachedOutput(entry, offset, limit);
 	},
 	{ requiresOrg: false },

@@ -94,6 +94,13 @@ suite('Unit: resultReadCapability', () => {
 			assert.ok(output.includes('456789'));
 		});
 
+		test('non-numeric offset and limit fall back to defaults', async () => {
+			const id = cacheId(mcpResultCache.store('buddy_search_templates', '0123456789abcdef'));
+			const output = await resultReadCapability.run({ id, offset: 'abc', limit: 'def' }, ignoredContext());
+			assert.ok(output.startsWith(`Cached result "${id}" (buddy_search_templates), characters 0-16 of 16.`));
+			assert.ok(output.includes('\n\n0123456789abcdef\n'));
+		});
+
 		test('buddy_result_read derived schema has id required and args generated', () => {
 			const schema = resultReadCapability.spec.inputSchema as { required: string[] };
 			assert.ok(schema.required.includes('id'));

@@ -33,7 +33,8 @@ export const WorkflowInputProfileStore = {
 	 * Rejects blank names.
 	 */
 	save(orgId: string, workflowId: string, name: string, input: Record<string, unknown>): WorkflowInputProfile {
-		if (!name.trim()) throw new Error('Profile name must not be blank.');
+		name = name.trim();
+		if (!name) throw new Error('Profile name must not be blank.');
 		const map = loadAll();
 		const key = profileKey(orgId, workflowId, name);
 		const profile: WorkflowInputProfile = {

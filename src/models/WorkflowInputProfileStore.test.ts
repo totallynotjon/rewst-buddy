@@ -58,10 +58,22 @@ suite('Unit: WorkflowInputProfileStore', () => {
 		assert.throws(() => WorkflowInputProfileStore.save('org-1', 'wf-1', '  ', { x: 1 }), /blank/);
 	});
 
+	test('trims a profile name before saving and lookup', () => {
+		const profile = WorkflowInputProfileStore.save('org-1', 'wf-1', ' smoke ', { x: 1 });
+		assert.strictEqual(profile.name, 'smoke');
+		assert.deepStrictEqual(WorkflowInputProfileStore.get('org-1', 'wf-1', 'smoke')?.input, { x: 1 });
+		assert.strictEqual(WorkflowInputProfileStore.get('org-1', 'wf-1', ' smoke '), undefined);
+	});
+
 	test('persists under RewstWorkflowInputProfiles key', () => {
+		const ctx = initTestEnvironment();
+		clearMockContext(ctx);
 		WorkflowInputProfileStore.save('org-1', 'wf-1', 'test', { x: 1 });
-		// The key is used by context.globalState — verify the constant matches
-		assert.strictEqual(WORKFLOW_INPUT_PROFILES_KEY, 'RewstWorkflowInputProfiles');
+		const stored = ctx.globalState.get(WORKFLOW_INPUT_PROFILES_KEY) as Record<string, unknown>;
+		assert.ok(
+			stored && Object.keys(stored).some(key => key.includes('test')),
+			'profile persisted under the documented key',
+		);
 	});
 
 	test('profiles are scoped by orgId and workflowId', () => {

@@ -86,7 +86,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		return session;
 	}
 
-	async createSession(cookies?: string): Promise<Session> {
+	async createSession(cookies?: string, options: { persist?: boolean } = {}): Promise<Session> {
 		log.trace('createSession: starting', { hasCookies: !!cookies });
 
 		let sdk;
@@ -151,14 +151,18 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		};
 		const session = new Session(sdk, profile);
 
-		log.trace('createSession: storing cookie and saving session');
+		log.trace('createSession: storing cookie and registering session');
 		// D4: store under user id so two users with the same primary org get separate secrets.
 		const userId = profile.user.id;
 		if (!userId) throw log.error('createSession: user has no id');
 		await context.secrets.store(userId, cookieString.value);
 		// Clean up any legacy org-keyed secret now that we have the user-keyed one.
 		await context.secrets.delete(org.id);
-		await this.saveSession(session);
+		if (options.persist === false) {
+			this.registerSession(session);
+		} else {
+			await this.saveSession(session);
+		}
 
 		log.debug('createSession: completed', { label: profile.label });
 		return session;
@@ -272,7 +276,7 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 						log.error(`loadSessions: no cookie found for profile ${profile.label}`);
 						return undefined;
 					}
-					return await this.createSession(cookies);
+					return await this.createSession(cookies, { persist: false });
 				} catch (err) {
 					log.error(`loadSessions: failed to create session for ${profile.org.id}: ${err}`);
 					return undefined;
@@ -355,9 +359,15 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 
 	private async saveSession(session: Session): Promise<void> {
 		log.trace('saveSession: saving', { label: session.profile.label });
+		this.registerSession(session);
 
+		await this.saveProfiles();
+		log.trace('saveSession: saved', { sessionMapSize: this.sessionMap.size });
+	}
+
+	private registerSession(session: Session): void {
 		if (typeof session.profile.user.id !== 'string') {
-			throw log.error('saveSession: user has no id');
+			throw log.error('registerSession: user has no id');
 		}
 
 		this.setAnyActiveSessions(true);
@@ -368,9 +378,6 @@ export const SessionManager = new (class _ implements vscode.Disposable {
 		}
 		this.sessionMap.set(session.profile.user.id, session);
 		this.indexSession(session);
-
-		await this.saveProfiles();
-		log.trace('saveSession: saved', { sessionMapSize: this.sessionMap.size });
 	}
 
 	private indexSession(session: Session): void {

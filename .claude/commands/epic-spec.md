@@ -1,6 +1,6 @@
 ---
-description: Produce a self-contained implementation spec for one epic-#129 item, written for Sonnet 4.6 to execute
-argument-hint: [epic item or grouping, e.g. E2 or "D2.4 + D2.6"]
+description: Plan a set of GitHub issues into PR-sized work, then produce a self-contained implementation spec for one PR, written for Sonnet 4.6 to execute
+argument-hint: [issue number(s), epic ref, or plan item — e.g. "123", '123 145 167', 'epic 129 E2']
 ---
 
 You are a planning model producing an implementation spec for Sonnet 4.6 to execute in the
@@ -11,21 +11,53 @@ repo, so the spec must be self-contained.
 
 TARGET: $ARGUMENTS
 
-The target is one epic-#129 item or one of the epic's suggested PR-sized groupings
-(e.g. "E2", "D2.4 + D2.6", "E3.1–E3.5"). Scope = exactly one draft PR. If no target was
-given above, pick the next unchecked item in the epic's "Recommended order of PRs" whose
-dependencies (sequencing block) are all merged.
+The target names the work to spec. Accepted forms:
+
+- **One issue** (`123`, `#123`): scope = that issue as exactly one draft PR. If the issue is
+  too big for one cohesive PR, treat it like an epic (below) instead of speccing it whole.
+- **Several issues** (`123 145 167`): enter PLANNING MODE first (below), then spec the first
+  unblocked entry of the resulting plan.
+- **An epic-style issue with a checklist** (`epic 129`, optionally plus an item id like
+  `epic 129 E2`): the epic's items/groupings are the plan. With an item id, spec that item;
+  without one, pick the next unchecked item whose dependencies are merged. If the epic body
+  has no usable ordering, enter PLANNING MODE over its unchecked items.
+- **A plan item id** (`plan crash-fixes PR2` or just `PR2` when unambiguous): spec that entry
+  of the existing plan file.
+- **No target**: take the most recently modified `.claude/specs/plan-*.md`, verify its
+  checkboxes against reality (`gh issue view` / merged PRs — fix stale ones), and spec the
+  next unchecked entry whose dependencies are done. If no plan file exists, stop and ask for
+  a target instead of guessing.
+
+Scope of a spec is always exactly one draft PR.
+
+## Planning mode (multiple issues, or an epic without usable ordering)
+
+Before speccing anything:
+
+1. `gh issue view <n>` every target issue. Drop ones already closed or fixed by a merged PR
+   (check linked PRs); note that in the plan.
+2. Group the rest into PR-sized batches — one PR per cohesive effort, closely related fixes
+   batched (repo PR convention). Order batches by dependency, then by risk/value.
+3. Write the plan to `.claude/specs/plan-<kebab-slug>.md`: a checkbox list where each entry
+   has an id (`PR1`, `PR2`, …), the issue number(s) it covers, a one-line scope, its
+   dependencies (other entry ids), and a suggested branch name. Like spec files, plan files
+   are working material: never committed, never changelogged.
+4. Then spec the first unblocked entry, per the rest of this command. Later invocations pick
+   up the same plan file.
 
 ## Ground truth, in priority order
 
 1. `CLAUDE.md` at repo root — read fully; it is normative (capability authoring rules, testing,
    changelog, PR conventions, performance rules, AI-steering wording rules).
-2. Epic #129: run `gh issue view 129`. Read the target item's bullets verbatim — its "Do not"
-   bullets and its "Trio" bullet are requirements, copy them into the spec. Check the
-   sequencing block: if a dependency of the target is unmerged, stop and report that instead
-   of speccing. CAUTION: items A1–A4, B1, D1, D2.1–D2.3, D2.5 already landed (PRs #130, #131);
-   every file:line reference in the epic body predates those merges — re-verify each against
-   current code before citing it. Never copy an epic line number into your spec unverified.
+2. The target issue(s): `gh issue view <n>` each one, plus the plan file entry when speccing
+   from a plan. Read the target's bullets verbatim — any "Do not" bullets and any explicit
+   test/spec requirements are requirements, copy them into the spec. If a dependency of the
+   target (plan entry dependency, or an epic's sequencing block) is unmerged, stop and report
+   that instead of speccing. CAUTION: issue bodies go stale — parts may already be fixed by
+   merged PRs, and every file:line reference predates whatever landed since the issue was
+   written. Check the issue's linked/closing PRs, and re-verify each cited path and line
+   against current code before citing it. Never copy an issue's line number into your spec
+   unverified.
 3. `openspec/specs/*/spec.md` — behavioral baseline (session-auth, template-sync,
    template-linking, template-management, mcp-bridge, ai-chat, credential-server,
    language-navigation; conventions in openspec/specs/README.md).
@@ -99,8 +131,9 @@ every applicable one explicitly (skip inapplicable ones silently):
   `docs/reference.md` (commands/settings tables — must match `package.json` `contributes.*`
   titles exactly), and the README glance bullet. Conventions/internal detail never go in
   changelog or user docs.
-- **D3 only**: breaking tool renames ship in a stable EVEN minor; nightlies ride the next odd
-  minor. Old names stay aliased one release with a deprecation note in output.
+- **Breaking renames**: breaking tool/command renames ship in a stable EVEN minor; nightlies
+  ride the next odd minor. Old names stay aliased one release with a deprecation note in
+  output. (Only applies when the target renames something user-facing.)
 
 ## Process
 
@@ -111,7 +144,7 @@ every applicable one explicitly (skip inapplicable ones silently):
    and events are involved, and which openspec file owns the behavior.
 3. Identify each place where a plausible-but-wrong implementation exists. State the wrong
    approach Sonnet would take, then the required approach. Start from the trap list above and
-   the epic item's own "Do not" bullets; add target-specific ones you find in the code.
+   the target issue's own "Do not" bullets; add target-specific ones you find in the code.
 4. Pin contracts exactly: capability spec objects (name, description text, inputSchema,
    access, requiresOrg, scopedSessions), function signatures, storage keys + shapes, event
    names, settings ids. Ambiguity in contracts cascades; ambiguity in internal logic is fine.
@@ -125,16 +158,19 @@ every applicable one explicitly (skip inapplicable ones silently):
 ## Output destination
 
 Write the finished spec to a file with the Write tool:
-`.claude/specs/<kebab-case-target>.md` (e.g. `.claude/specs/e2-workflow-diagnose.md`) —
-the implementing agent picks it up from there. The file is working material, not part of
-the PR: it stays untracked; never commit it, never add a changelog note for it. In your
-chat reply, give only the file path plus a few-line summary (target chosen, key
-verification findings, anything that reshaped scope) — do not duplicate the spec body
-in the reply. If a spec file for the same target already exists, overwrite it.
+`.claude/specs/<kebab-case-target>.md` (e.g. `.claude/specs/issue-142-hover-cache.md` or
+`.claude/specs/crash-fixes-pr2.md` for a plan entry) — the implementing agent picks it up
+from there. The file is working material, not part of the PR: it stays untracked; never
+commit it, never add a changelog note for it. In your chat reply, give only the file path
+(plus the plan file path if planning mode ran) and a few-line summary (target chosen, key
+verification findings, anything that reshaped scope) — do not duplicate the spec body in
+the reply. If a spec file for the same target already exists, overwrite it.
 
 ## Output format (dense, written for a model, no prose padding)
 
-- Target & scope: epic item ids covered, items explicitly out of scope, branch name, PR title.
+- Target & scope: issue numbers / plan entry ids covered, things explicitly out of scope,
+  branch name, PR title, and the `Closes #<n>` lines the PR body must carry (only for issues
+  the PR fully resolves — partially addressed issues get `Part of #<n>` instead).
 - Project summary (max 10 lines, target-relevant slice only).
 - Spec delta: which `openspec/specs/*/spec.md`, the requirement/scenario text to add or change
   (SHALL / GIVEN-WHEN-THEN, matching the file's existing style, with a Source: line).
@@ -149,7 +185,7 @@ in the reply. If a spec file for the same target already exists, overwrite it.
 - Ordered implementation steps, each with: files touched, contract changes, done-check command.
 - Tricky sections: wrong approach vs required approach; include the exact test(s) that catch
   the wrong approach. Use pseudocode only where prose is ambiguous.
-- Do NOT: the epic item's "Do not" bullets plus applicable repo traps, as explicit
+- Do NOT: the target issue's "Do not" bullets plus applicable repo traps, as explicit
   anti-instructions.
 - Left to implementer discretion: name what you are deliberately not specifying.
 - Changelog: exact `changelog.d/<name>.md` contents verbatim (frontmatter + body), or
@@ -172,6 +208,8 @@ in the reply. If a spec file for the same target already exists, overwrite it.
   `- [ ] Open the draft PR with gh pr create --draft.`
   `- [ ] Watch CI with gh pr checks --watch until every check passes.`
   `- [ ] If CI fails, fix, push, and re-watch until every check passes.`
+  If this spec came from a plan file, append:
+  `- [ ] Check off this entry in <plan file path> (do not commit the plan file).`
 - Definition of done (spell this out verbatim in the spec): all acceptance commands green
   locally → commit → push → `gh pr create --draft` → `gh pr checks --watch` until every CI
   check passes. If CI fails, fix, push, and re-watch; the task is not done until the draft

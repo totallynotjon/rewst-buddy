@@ -806,6 +806,77 @@ suite('Unit: SessionManager', () => {
 			assert.strictEqual(first.length, 1);
 		});
 
+		test('startup load emits one saved event after batching restored sessions', async () => {
+			const userA: MockUser = {
+				id: 'user-load-a',
+				username: 'load-a',
+				organization: { id: 'org-load-a', name: 'Load A' },
+				allManagedOrgs: [{ id: 'org-load-a', name: 'Load A' }],
+			};
+			const userB: MockUser = {
+				id: 'user-load-b',
+				username: 'load-b',
+				organization: { id: 'org-load-b', name: 'Load B' },
+				allManagedOrgs: [{ id: 'org-load-b', name: 'Load B' }],
+			};
+			const server = createServer((request, response) => {
+				const cookieHeader = request.headers.cookie ?? '';
+				const user = cookieHeader.includes('load-cookie-b')
+					? userB
+					: cookieHeader.includes('load-cookie-a')
+						? userA
+						: null;
+				request.on('data', () => {});
+				request.on('end', () => {
+					response.writeHead(200, { 'content-type': 'application/json' });
+					response.end(JSON.stringify({ data: { user } }));
+				});
+			});
+			servers.push(server);
+			const port = await listen(server);
+
+			const region = {
+				name: 'Local Test',
+				cookieName: 'appSession',
+				graphqlUrl: `http://127.0.0.1:${port}/graphql`,
+				loginUrl: `http://127.0.0.1:${port}`,
+			};
+			await vscode.workspace
+				.getConfiguration('rewst-buddy')
+				.update('regions', [region], vscode.ConfigurationTarget.Global);
+
+			const profileA: SessionProfile = {
+				region,
+				org: userA.organization,
+				allManagedOrgs: userA.allManagedOrgs,
+				label: 'load-a (Load A)',
+				user: { id: userA.id } as SessionProfile['user'],
+			};
+			const profileB: SessionProfile = {
+				region,
+				org: userB.organization,
+				allManagedOrgs: userB.allManagedOrgs,
+				label: 'load-b (Load B)',
+				user: { id: userB.id } as SessionProfile['user'],
+			};
+			await context.globalState.update('SessionProfiles', [profileA, profileB]);
+			await context.secrets.store(userA.id, 'appSession=load-cookie-a');
+			await context.secrets.store(userB.id, 'appSession=load-cookie-b');
+
+			const savedEvents: number[] = [];
+			const disposable = SessionManager.onSessionChange(event => {
+				if (event.type === 'saved') savedEvents.push(event.activeProfiles.length);
+			});
+			try {
+				const sessions = await SessionManager.loadSessions();
+				assert.strictEqual(sessions.length, 2);
+			} finally {
+				disposable.dispose();
+			}
+
+			assert.deepStrictEqual(savedEvents, [2], 'startup restore should publish one final saved event');
+		});
+
 		test('a rejected load clears the in-flight promise so a later call retries', async () => {
 			const manager = SessionManager as unknown as SessionProfileSaver;
 			const originalSaveProfiles = manager.saveProfiles.bind(SessionManager);

@@ -53,6 +53,14 @@ suite('Unit: workflowLint', () => {
 		assert.ok(!findings.some(f => f.taskId === 'entry'));
 	});
 
+	test('derives the entry task from incoming transitions when tasks are unordered', () => {
+		const child = makeTask('child');
+		const entry = makeTask('entry', { next: [{ when: '{{ SUCCEEDED }}', do: ['child'] }] });
+		const wf = makeWorkflow([child, entry]);
+		const findings = lintWorkflow(wf);
+		assert.ok(!findings.some(f => f.rule === 'unreachable-task'), 'entry and child are reachable');
+	});
+
 	test('cycle-only island flagged unreachable', () => {
 		// E is terminal (no edges); A↔B cycle, no edge from E
 		const entry = makeTask('entry');
@@ -89,6 +97,21 @@ suite('Unit: workflowLint', () => {
 		assert.strictEqual(shadowed.length, 1);
 		assert.strictEqual(shadowed[0].severity, 'error');
 		assert.strictEqual(shadowed[0].taskId, 't1');
+	});
+
+	test('success transition before custom is not shadowed under FOLLOW_ALL', () => {
+		const task = makeTask('t1', {
+			transitionMode: 'FOLLOW_ALL',
+			next: [
+				{ when: '{{ SUCCEEDED }}', do: ['t2'] },
+				{ when: '{{ x }}', do: ['t3'] },
+			],
+		});
+		const t2 = makeTask('t2');
+		const t3 = makeTask('t3');
+		const wf = makeWorkflow([task, t2, t3]);
+		const findings = lintWorkflow(wf);
+		assert.ok(!findings.some(f => f.rule === 'success-transition-shadowed'));
 	});
 
 	test('custom before success is NOT shadowed', () => {

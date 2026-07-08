@@ -79,18 +79,27 @@ export function lintWorkflow(workflow: RawWorkflow): LintFinding[] {
 	const warnings: LintFinding[] = [];
 	const infos: LintFinding[] = [];
 
-	// Build reachability set via BFS from entry (tasks[0])
-	const taskIds = new Set(tasks.map(t => t.id));
+	// Build reachability set via BFS from the task with no incoming transition.
+	const taskById = new Map(tasks.map(t => [t.id, t]));
+	const incoming = new Set<string>();
+	for (const task of tasks) {
+		for (const tr of task.next ?? []) {
+			for (const targetId of tr.do ?? []) {
+				if (taskById.has(targetId)) incoming.add(targetId);
+			}
+		}
+	}
 	const reachable = new Set<string>();
-	const entryId = tasks[0].id;
+	const entryId = tasks.find(t => !incoming.has(t.id))?.id ?? tasks[0].id;
 	reachable.add(entryId);
 	const queue = [entryId];
-	while (queue.length > 0) {
-		const current = queue.shift()!;
-		const task = tasks.find(t => t.id === current);
+	let head = 0;
+	while (head < queue.length) {
+		const current = queue[head++];
+		const task = taskById.get(current);
 		for (const tr of task?.next ?? []) {
 			for (const targetId of tr.do ?? []) {
-				if (taskIds.has(targetId) && !reachable.has(targetId)) {
+				if (taskById.has(targetId) && !reachable.has(targetId)) {
 					reachable.add(targetId);
 					queue.push(targetId);
 				}
@@ -112,22 +121,24 @@ export function lintWorkflow(workflow: RawWorkflow): LintFinding[] {
 
 		// success-transition-shadowed: a success/default transition appears before a custom one
 		const next = task.next ?? [];
-		for (let i = 0; i < next.length; i++) {
-			if (isSuccessCondition(next[i].when)) {
-				// Check if any later transition is custom (non-success)
-				for (let j = i + 1; j < next.length; j++) {
-					if (!isSuccessCondition(next[j].when)) {
-						errors.push({
-							rule: 'success-transition-shadowed',
-							severity: 'error',
-							taskId: task.id,
-							taskName: task.name,
-							message: `Task "${task.name}" (${task.id}) has a success/default transition at position ${i} that shadows a custom condition at position ${j}. Reorder so custom conditions come first.`,
-						});
-						break; // one finding per task
+		if ((task.transitionMode ?? 'FOLLOW_FIRST') === 'FOLLOW_FIRST') {
+			for (let i = 0; i < next.length; i++) {
+				if (isSuccessCondition(next[i].when)) {
+					// Check if any later transition is custom (non-success)
+					for (let j = i + 1; j < next.length; j++) {
+						if (!isSuccessCondition(next[j].when)) {
+							errors.push({
+								rule: 'success-transition-shadowed',
+								severity: 'error',
+								taskId: task.id,
+								taskName: task.name,
+								message: `Task "${task.name}" (${task.id}) has a success/default transition at position ${i} that shadows a custom condition at position ${j}. Reorder so custom conditions come first.`,
+							});
+							break; // one finding per task
+						}
 					}
+					break; // found first success transition, done checking this task
 				}
-				break; // found first success transition, done checking this task
 			}
 		}
 

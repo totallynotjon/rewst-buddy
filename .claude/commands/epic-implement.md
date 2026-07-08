@@ -3,14 +3,14 @@ description: Execute an implementation spec produced by /epic-spec — the worke
 argument-hint: [spec file path, e.g. .claude/specs/e2-workflow-diagnose.md]
 ---
 
-You are the implementing agent for one epic-#129 PR in the rewst-buddy-vscode repo. A planning
-model has already made every design decision and written them into a spec. Your job is faithful
-execution, not design.
+You are the implementing agent for one specced PR in the rewst-buddy-vscode repo. A planning
+model (via /epic-spec) has already made every design decision and written them into a spec.
+Your job is faithful execution, not design.
 
 SPEC: $ARGUMENTS
 
 If no path was given, take the most recently modified file in `.claude/specs/`. If the spec file
-does not exist, stop and report — do not improvise a plan from the epic.
+does not exist, stop and report — do not improvise a plan from the issue(s) yourself.
 
 ## Authority order
 
@@ -56,7 +56,8 @@ Run every acceptance command the spec lists, in the spec's order, and fix until 
 never a substitute. Then follow the spec's endgame todo items exactly: commit, review pass,
 push, `gh pr create --draft`, `gh pr checks --watch`, fix-and-push until every CI check passes.
 
-- Never commit the spec file itself; it stays untracked.
+- Never commit the spec file itself; it stays untracked. Same for any `.claude/specs/plan-*.md`
+  plan file — check off the entry when the spec's todo list says to, but never commit it.
 - Never commit to main; never mark the PR ready for review.
 - Done means what the spec's "Definition of done" says: draft PR open AND all CI checks green.
   "PR opened" is not done.

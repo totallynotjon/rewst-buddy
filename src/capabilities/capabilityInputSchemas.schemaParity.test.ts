@@ -32,13 +32,20 @@ const { suite, test } = Mocha;
 interface LegacyProperty {
 	type: string;
 	description?: string;
-	items?: { type: string };
+	items?: { type: string; enum?: readonly string[] };
 	enum?: readonly string[];
 }
 
 interface LegacySchema {
 	properties: Record<string, LegacyProperty>;
 	required?: string[];
+}
+
+interface SchemaProperty {
+	type?: string;
+	description?: string;
+	enum?: readonly string[];
+	items?: SchemaProperty;
 }
 
 const ORG_ID_DESC = 'Rewst organization id the operation runs against (from buddy_list_orgs).';
@@ -267,7 +274,7 @@ const LEGACY_SCHEMAS: Record<string, LegacySchema> = {
 // ---------------------------------------------------------------------------
 
 function getSchema(cap: { spec: { inputSchema?: unknown } }): {
-	properties: Record<string, { type?: string; description?: string; enum?: string[]; items?: unknown }>;
+	properties: Record<string, { type?: string; description?: string; enum?: string[]; items?: SchemaProperty }>;
 	required?: string[];
 } {
 	return (cap.spec.inputSchema ?? { properties: {} }) as ReturnType<typeof getSchema>;
@@ -279,6 +286,9 @@ function assertSchemaParity(toolName: string, legacy: LegacySchema, derived: Ret
 	const derivedRequired = new Set(derived.required ?? []);
 	for (const field of legacyRequired) {
 		assert.ok(derivedRequired.has(field), `${toolName}: required field "${field}" missing from derived schema`);
+	}
+	for (const field of derivedRequired) {
+		assert.ok(legacyRequired.has(field), `${toolName}: field "${field}" became required unexpectedly`);
 	}
 
 	// 2. every legacy property key exists in derived
@@ -300,6 +310,20 @@ function assertSchemaParity(toolName: string, legacy: LegacySchema, derived: Ret
 			typesCompatible,
 			`${toolName}.${key}: type mismatch — legacy "${legacyType}" vs derived "${derivedType}"`,
 		);
+		if (legacyProp.type === 'array' && legacyProp.items) {
+			assert.strictEqual(
+				derivedProp.items?.type,
+				legacyProp.items.type,
+				`${toolName}.${key}: array item type mismatch`,
+			);
+			if (legacyProp.items.enum) {
+				const legacyItemEnums = new Set(legacyProp.items.enum);
+				const derivedItemEnums = new Set(derivedProp.items?.enum ?? []);
+				for (const v of legacyItemEnums) {
+					assert.ok(derivedItemEnums.has(v), `${toolName}.${key}: array item enum value "${v}" missing`);
+				}
+			}
+		}
 	}
 
 	// 4. enum values match when present
