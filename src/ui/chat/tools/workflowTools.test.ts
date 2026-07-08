@@ -1604,6 +1604,8 @@ suite('Unit: workflowTools', () => {
 				childExecutionsError: string;
 				executions: unknown[];
 				executionOwnerOrgId: string;
+				executionWorkflowOrgId: string;
+				executionManagingOrgId: string;
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
 			}> = {},
 		) {
@@ -1637,6 +1639,29 @@ suite('Unit: workflowTools', () => {
 				}
 				if (query.includes('RewstBuddyTestWorkflow')) {
 					return { data: { testWorkflow: { executionId: 'exec-new' } } };
+				}
+				if (query.includes('RewstBuddyExecutionDetail')) {
+					const where = (variables?.where ?? {}) as { id?: string };
+					const ownerOrgId = over.executionOwnerOrgId ?? 'org-1';
+					const workflowOrgId = over.executionWorkflowOrgId ?? ownerOrgId;
+					return {
+						data: {
+							workflowExecution: {
+								id: where.id,
+								status: over.pollStatus ?? 'failed',
+								orgId: ownerOrgId,
+								organization: {
+									id: ownerOrgId,
+									managingOrgId: over.executionManagingOrgId,
+								},
+								workflow: {
+									id: 'wf-1',
+									name: 'Sample',
+									orgId: workflowOrgId,
+								},
+							},
+						},
+					};
 				}
 				if (query.includes('RewstBuddyExecutions')) {
 					const where = (variables?.where ?? {}) as { id?: string; workflowId?: string; orgId?: string };
@@ -2685,6 +2710,36 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
+		test('buddy_execution_logs accepts a managing orgId by resolving the execution owner first', async () => {
+			const { deps, calls } = makeDeps({
+				executionOwnerOrgId: 'child-org',
+				executionWorkflowOrgId: 'manager-org',
+				executionManagingOrgId: 'manager-org',
+				taskLogs: [{ originalWorkflowTaskName: 'managed_task', status: 'succeeded' }],
+			});
+
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', orgId: 'manager-org' },
+				},
+				deps,
+			);
+
+			assert.match(output, /managed_task: succeeded/);
+			assert.ok(
+				!calls.some(c => {
+					const where = c.variables?.where as { id?: string; orgId?: string } | undefined;
+					return (
+						c.query.includes('RewstBuddyExecutions') &&
+						where?.id === 'exec-1' &&
+						where?.orgId === 'manager-org'
+					);
+				}),
+				'execution ownership is resolved from the execution id instead of filtering by the URL org',
+			);
+		});
+
 		test('buddy_execution_logs tries alternates when the primary session errors', async () => {
 			const deps: GraphqlToolDeps = {
 				isEnabled: () => true,
@@ -3689,6 +3744,7 @@ suite('Unit: workflowTools', () => {
 				childExecutions: unknown[];
 				childExecutionsWorkflow: { id: string; name: string; orgId: string } | null;
 				childExecutionsOrgId: string;
+				childExecutionsManagingOrgId: string;
 				childExecutionsError: string;
 				workflow: unknown;
 				workflowError: string;
@@ -3700,6 +3756,28 @@ suite('Unit: workflowTools', () => {
 			const execute: GraphqlToolDeps['execute'] = async (query, variables) => {
 				calls.push({ query, variables });
 				if (query.includes('RewstBuddyTaskLogs')) return { data: { taskLogs: over.taskLogs ?? [] } };
+				if (query.includes('RewstBuddyExecutionDetail')) {
+					const where = (variables?.where ?? {}) as { id?: string };
+					const ownerOrgId = over.childExecutionsOrgId ?? 'org-1';
+					const workflow =
+						over.childExecutionsWorkflow === null
+							? null
+							: (over.childExecutionsWorkflow ?? { id: 'wf-1', name: 'Sample', orgId: ownerOrgId });
+					return {
+						data: {
+							workflowExecution: {
+								id: where.id,
+								status: 'FAILED',
+								orgId: ownerOrgId,
+								organization: {
+									id: ownerOrgId,
+									managingOrgId: over.childExecutionsManagingOrgId,
+								},
+								workflow,
+							},
+						},
+					};
+				}
 				if (query.includes('RewstBuddyExecutions')) {
 					return { data: { workflowExecutions: over.findExecutions ?? [] } };
 				}
@@ -3711,6 +3789,10 @@ suite('Unit: workflowTools', () => {
 								id: 'exec-1',
 								status: 'FAILED',
 								orgId: over.childExecutionsOrgId,
+								organization: {
+									id: over.childExecutionsOrgId,
+									managingOrgId: over.childExecutionsManagingOrgId,
+								},
 								workflow: over.childExecutionsWorkflow,
 								childExecutions: over.childExecutions ?? [],
 							},
@@ -3899,6 +3981,27 @@ suite('Unit: workflowTools', () => {
 				orgId: 'org-1',
 				status: 'FAILED',
 			});
+		});
+
+		test('fetches the workflow definition from the workflow org when execution owner is a child org', async () => {
+			const { deps, calls } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutionsOrgId: 'child-org',
+				childExecutionsManagingOrgId: 'manager-org',
+				childExecutionsWorkflow: { id: 'wf-1', name: 'Sample', orgId: 'manager-org' },
+				workflow: diagnoseWorkflow(),
+				contexts: [{ some_key: 1 }],
+			});
+
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+
+			assert.match(output, /Transition path/);
+			const workflowCall = calls.find(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.ok(workflowCall, 'workflow definition was fetched');
+			assert.strictEqual((workflowCall.variables?.where as { orgId?: string } | undefined)?.orgId, 'manager-org');
 		});
 
 		test('reports no failed executions for a workflow instead of erroring', async () => {

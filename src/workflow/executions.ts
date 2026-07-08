@@ -26,6 +26,14 @@ const EXECUTION_CONTEXTS_QUERY = `query RewstBuddyExecutionContexts($id: ID!) {
 	workflowExecutionContexts(workflowExecutionId: $id)
 }`;
 
+const EXECUTION_DETAIL_QUERY = `query RewstBuddyExecutionDetail($where: WorkflowExecutionWhereInput) {
+	workflowExecution(where: $where) {
+		id status orgId originatingExecutionId parentExecutionId parentTaskExecutionId
+		organization { id name managingOrgId managingOrg { id name } }
+		workflow { id name orgId }
+	}
+}`;
+
 // renderJinja evaluates a template; `vars` becomes the CTX namespace. No side effects.
 const RENDER_JINJA_MUTATION = `mutation RewstBuddyRenderJinja($orgId: ID!, $template: String!, $vars: JSON) {
 	renderJinja(orgId: $orgId, template: $template, vars: $vars)
@@ -96,6 +104,15 @@ export interface ExecutionDetail {
 	id?: string | null;
 	status?: string | null;
 	orgId?: string | null;
+	originatingExecutionId?: string | null;
+	parentExecutionId?: string | null;
+	parentTaskExecutionId?: string | null;
+	organization?: {
+		id?: string | null;
+		name?: string | null;
+		managingOrgId?: string | null;
+		managingOrg?: { id?: string | null; name?: string | null } | null;
+	} | null;
 	workflow?: { id?: string | null; name?: string | null; orgId?: string | null } | null;
 }
 
@@ -164,23 +181,51 @@ export function describeChildExecution(child: ChildExecutionRow): string {
 	return `${child.workflow?.name ?? '(unknown workflow)'} (${child.id ?? '?'}, ${child.status ?? '?'})`;
 }
 
+export async function fetchExecutionDetail(
+	deps: GraphqlToolDeps,
+	executionId: string,
+): Promise<ExecutionDetail | undefined> {
+	const result = await deps.execute(EXECUTION_DETAIL_QUERY, { where: { id: executionId } });
+	const error = firstErrorMessage(result as ExecResult);
+	if (error) throw new Error(`Failed to resolve execution ${executionId}: ${error}`);
+	return (result.data as { workflowExecution?: ExecutionDetail | null } | undefined)?.workflowExecution ?? undefined;
+}
+
+function executionAssociatedOrgIds(detail: ExecutionDetail): Set<string> {
+	const ids = new Set<string>();
+	for (const id of [
+		detail.orgId,
+		detail.organization?.id,
+		detail.organization?.managingOrgId,
+		detail.organization?.managingOrg?.id,
+		detail.workflow?.orgId,
+	]) {
+		if (id) ids.add(id);
+	}
+	return ids;
+}
+
+function describeExecutionAssociation(detail: ExecutionDetail): string {
+	const parts = [
+		detail.orgId ? `owner org ${detail.orgId}` : undefined,
+		detail.workflow?.orgId ? `workflow org ${detail.workflow.orgId}` : undefined,
+		detail.organization?.managingOrgId ? `managing org ${detail.organization.managingOrgId}` : undefined,
+	].filter((part): part is string => !!part);
+	return parts.length > 0 ? ` Resolved ${parts.join(', ')}.` : '';
+}
+
 export async function assertExecutionBelongsToOrg(
 	deps: GraphqlToolDeps,
 	executionId: string,
 	orgId: string,
-): Promise<void> {
-	const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, {
-		where: { id: executionId, orgId },
-		limit: 1,
-	});
-	const error = firstErrorMessage(result as ExecResult);
-	if (error) throw new Error(`Failed to verify execution ${executionId} in org ${orgId}: ${error}`);
-	const row = (
-		(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
-	).find((entry): entry is ExecutionRow => !!entry);
-	if (!row) {
-		throw new Error(`Execution ${executionId} was not found in org ${orgId}.`);
+): Promise<ExecutionDetail> {
+	const detail = await fetchExecutionDetail(deps, executionId);
+	if (!detail || !executionAssociatedOrgIds(detail).has(orgId)) {
+		throw new Error(
+			`Execution ${executionId} was not found in org ${orgId}.${detail ? describeExecutionAssociation(detail) : ''}`,
+		);
 	}
+	return detail;
 }
 
 function fetchTaskLogsForVisibleExecution(
@@ -860,7 +905,7 @@ export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToo
 	}
 
 	const workflowId = workflowIdArg ?? detail?.workflow?.id ?? undefined;
-	const orgId = orgIdArg ?? detail?.orgId ?? detail?.workflow?.orgId ?? undefined;
+	const orgId = detail?.workflow?.orgId ?? orgIdArg ?? detail?.orgId ?? undefined;
 
 	const workflowSection = (async (): Promise<string | undefined> => {
 		if (!(workflowId && orgId)) return undefined;
