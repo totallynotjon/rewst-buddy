@@ -90,6 +90,20 @@ suite('Unit: WorkingScopeManager', () => {
 		sub.dispose();
 	});
 
+	test('applyChange stores workflow names and clears them on replace', () => {
+		WorkingScopeManager.applyChange({ workflows: ['wf-1', 'wf-2'] }, [
+			{ id: 'wf-1', name: 'Alpha' },
+			{ id: 'wf-2', name: 'Beta' },
+		]);
+		assert.strictEqual(WorkingScopeManager.workflowNames.get('wf-1'), 'Alpha');
+		assert.strictEqual(WorkingScopeManager.workflowNames.get('wf-2'), 'Beta');
+
+		// Replace with a new set — old names should be pruned.
+		WorkingScopeManager.applyChange({ workflows: ['wf-3'], replace: true }, [{ id: 'wf-3', name: 'Gamma' }]);
+		assert.strictEqual(WorkingScopeManager.workflowNames.has('wf-1'), false, 'wf-1 name pruned on replace');
+		assert.strictEqual(WorkingScopeManager.workflowNames.get('wf-3'), 'Gamma');
+	});
+
 	test('applyChange replaces only the named dimension and leaves an omitted one alone', () => {
 		WorkingScopeManager.setOrgs(['org-1']);
 		WorkingScopeManager.setWorkflows(['wf-keep']);

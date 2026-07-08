@@ -3,6 +3,7 @@ import * as Mocha from 'mocha';
 import { WorkingScopeManager } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
+import type { Session } from '@sessions';
 import type { CapabilityContext } from './Capability';
 import {
 	_resetWorkingScopeApproverForTesting,
@@ -10,6 +11,7 @@ import {
 	setWorkingScopeApprover,
 	setWorkingScopeCapability,
 	workingScopeApprovalText,
+	type NamedWorkflow,
 } from './workingScopeCapability';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -18,6 +20,23 @@ function ctxFor(orgId = 'org-1', orgName = 'Acme'): CapabilityContext {
 	const { session } = createMockSession({ profile: { org: { id: orgId, name: orgName } } });
 	SessionManager._setSessionsForTesting([session]);
 	return { session, orgId, sessions: SessionManager.getActiveSessions() };
+}
+
+/** Returns a ctx whose sessions resolve workflow ids via rawGraphql. */
+function ctxWithWorkflowResolver(workflows: NamedWorkflow[], orgId = 'org-1'): CapabilityContext {
+	// Build a queue of responses: one per workflow id, in order.
+	const queue = workflows.map(wf => ({
+		data: { workflow: { id: wf.id, name: wf.name, orgId: wf.orgId ?? orgId } },
+	}));
+	let callIndex = 0;
+	const session = {
+		rawGraphql: async (_query: string, _vars?: Record<string, unknown>) => {
+			return queue[callIndex++] ?? { data: { workflow: null } };
+		},
+		profile: { org: { id: orgId, name: 'Acme' }, allManagedOrgs: [{ id: orgId, name: 'Acme' }] },
+	} as unknown as Session;
+	SessionManager._setSessionsForTesting([session]);
+	return { session, orgId, sessions: [session] };
 }
 
 suite('Unit: workingScopeCapability', () => {
@@ -62,7 +81,7 @@ suite('Unit: workingScopeCapability', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), []);
 	});
 
-	test('buddy_set_working_scope does not change the scope when the user declines', async () => {
+	test('buddy_set_working_scope returns denied when the user declines all approvals', async () => {
 		const ctx = ctxFor('org-1');
 		setWorkingScopeApprover(async () => false);
 
@@ -70,25 +89,23 @@ suite('Unit: workingScopeCapability', () => {
 			status: string;
 		};
 
-		assert.strictEqual(parsed.status, 'approval_required');
+		assert.strictEqual(parsed.status, 'denied');
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), []);
 	});
 
-	test('buddy_set_working_scope adds to the scope after approval', async () => {
+	test('buddy_set_working_scope adds to the scope after approval (workflow-only, no resolver needed)', async () => {
 		const ctx = ctxFor('org-1');
 		WorkingScopeManager.setOrgs(['org-existing']);
 		setWorkingScopeApprover(async () => true);
 
-		const parsed = JSON.parse(
-			await setWorkingScopeCapability.run({ orgs: ['org-1'], workflows: ['wf-1'] }, ctx),
-		) as {
+		// Workflow-only: no GraphQL resolution needed when no workflow ids are passed.
+		const parsed = JSON.parse(await setWorkingScopeCapability.run({ orgs: ['org-1'] }, ctx)) as {
 			status: string;
 			scope: { orgs: string[]; workflows: string[] };
 		};
 
 		assert.strictEqual(parsed.status, 'ok');
 		assert.deepStrictEqual(parsed.scope.orgs.sort(), ['org-1', 'org-existing']);
-		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-1']);
 	});
 
 	test('buddy_set_working_scope replaces the named dimension when replace is true', async () => {
@@ -104,8 +121,8 @@ suite('Unit: workingScopeCapability', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-keep']);
 	});
 
-	test('buddy_set_working_scope adds a workflow-only change after approval', async () => {
-		const ctx = ctxFor('org-1');
+	test('buddy_set_working_scope resolves workflow names and adds them after approval', async () => {
+		const ctx = ctxWithWorkflowResolver([{ id: 'wf-1', name: 'My Workflow' }]);
 		WorkingScopeManager.setWorkflows(['wf-existing']);
 		setWorkingScopeApprover(async () => true);
 
@@ -115,12 +132,14 @@ suite('Unit: workingScopeCapability', () => {
 		};
 
 		assert.strictEqual(parsed.status, 'ok');
-		assert.deepStrictEqual(parsed.scope.workflows.sort(), ['wf-1', 'wf-existing']);
+		assert.ok(parsed.scope.workflows.includes('wf-1'));
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), [], 'org scope is untouched by a workflow-only call');
+		// Name should be stored in the manager.
+		assert.strictEqual(WorkingScopeManager.workflowNames.get('wf-1'), 'My Workflow');
 	});
 
 	test('buddy_set_working_scope replaces workflows-only when replace is true', async () => {
-		const ctx = ctxFor('org-1');
+		const ctx = ctxWithWorkflowResolver([{ id: 'wf-1', name: 'My Workflow' }]);
 		WorkingScopeManager.setWorkflows(['wf-existing']);
 		setWorkingScopeApprover(async () => true);
 
@@ -129,11 +148,42 @@ suite('Unit: workingScopeCapability', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-1']);
 	});
 
-	test('working scope approval text surfaces requested org names and workflow ids in the visible message', () => {
+	test('buddy_set_working_scope returns partial when org approved but workflow denied', async () => {
+		const ctx = ctxWithWorkflowResolver([{ id: 'wf-1', name: 'My Workflow' }]);
+		let callCount = 0;
+		setWorkingScopeApprover(async () => {
+			callCount++;
+			// First call = org approval (approve), second = workflow approval (deny).
+			return callCount === 1;
+		});
+
+		const parsed = JSON.parse(
+			await setWorkingScopeCapability.run({ orgs: ['org-1'], workflows: ['wf-1'] }, ctx),
+		) as {
+			status: string;
+			approved: { orgs: string[]; workflows: string[] };
+			denied: { orgs: string[]; workflows: string[] };
+		};
+
+		assert.strictEqual(parsed.status, 'partial');
+		assert.deepStrictEqual(parsed.approved.orgs, ['org-1']);
+		assert.deepStrictEqual(parsed.denied.workflows, ['wf-1']);
+		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), ['org-1']);
+		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), []);
+	});
+
+	test('buddy_set_working_scope throws when no session can resolve a workflow id', async () => {
+		const ctx = ctxFor('org-1');
+		setWorkingScopeApprover(async () => true);
+		// No rawGraphql mock → session returns no workflow data → should throw.
+		await assert.rejects(setWorkingScopeCapability.run({ workflows: ['wf-unknown'] }, ctx), /wf-unknown/);
+	});
+
+	test('working scope approval text surfaces requested org names and workflow names in the visible message', () => {
 		const text = workingScopeApprovalText(
 			{
 				orgs: [{ id: 'org-1', name: 'Acme' }],
-				workflows: ['wf-1'],
+				workflows: [{ id: 'wf-1', name: 'My Workflow' }],
 				replace: false,
 			},
 			'chat',
@@ -141,16 +191,16 @@ suite('Unit: workingScopeCapability', () => {
 
 		assert.match(text.message, /Cage-Free Rewsty/);
 		assert.match(text.message, /Acme \(org-1\)/);
-		assert.match(text.message, /wf-1/);
+		assert.match(text.message, /My Workflow \(wf-1\)/);
 		assert.match(text.detail, /Orgs: Acme \(org-1\)/);
-		assert.match(text.detail, /Workflows: wf-1/);
+		assert.match(text.detail, /Workflows: My Workflow \(wf-1\)/);
 	});
 
 	test('working scope approval text uses the MCP requester wording and "set" verb for replace requests', () => {
 		const text = workingScopeApprovalText(
 			{
 				orgs: [{ id: 'org-1', name: 'Acme' }],
-				workflows: ['wf-1'],
+				workflows: [{ id: 'wf-1', name: 'My Workflow' }],
 				replace: true,
 			},
 			'mcp',
