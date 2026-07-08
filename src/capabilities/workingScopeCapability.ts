@@ -162,31 +162,26 @@ async function runGetWorkingScope(): Promise<string> {
 const WORKFLOW_NAME_QUERY =
 	'query RewstBuddyScopeWorkflowName($id: ID!) { workflow(where: { id: $id }) { id name orgId } }';
 
-async function resolveWorkflowNames(ids: string[], sessions: Session[]): Promise<NamedWorkflow[]> {
-	const results: NamedWorkflow[] = [];
-	for (const id of ids) {
-		let resolved: NamedWorkflow | null = null;
-		for (const session of sessions) {
-			try {
-				const data = (await rawGraphqlOrThrow(session, WORKFLOW_NAME_QUERY, { id })) as {
-					workflow?: { id: string; name: string; orgId?: string } | null;
-				};
-				if (data.workflow) {
-					resolved = data.workflow;
-					break;
-				}
-			} catch {
-				// try next session
-			}
+async function resolveWorkflowName(id: string, sessions: Session[]): Promise<NamedWorkflow> {
+	for (const session of sessions) {
+		try {
+			const data = (await rawGraphqlOrThrow(session, WORKFLOW_NAME_QUERY, { id })) as {
+				workflow?: { id: string; name: string; orgId?: string } | null;
+			};
+			if (data.workflow) return data.workflow;
+		} catch {
+			// try next session
 		}
-		if (!resolved) {
-			throw new Error(
-				`No active session can see workflow ${id}. Check the id — names are shown to the user before scope approval.`,
-			);
-		}
-		results.push(resolved);
 	}
-	return results;
+	throw new Error(
+		`No active session can see workflow ${id}. Check the id — names are shown to the user before scope approval.`,
+	);
+}
+
+// Ids resolve concurrently (Promise.all preserves order); each id's fallback across sessions
+// stays sequential since trying the next session only matters once the current one fails.
+async function resolveWorkflowNames(ids: string[], sessions: Session[]): Promise<NamedWorkflow[]> {
+	return Promise.all(ids.map(id => resolveWorkflowName(id, sessions)));
 }
 
 async function runSetWorkingScope(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {

@@ -482,13 +482,11 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 		);
 	}
 	if (includeSubExecutions) {
-		let inlineCount = 0;
 		const inlineSections = await Promise.all(
 			children.slice(0, MAX_INLINE_SUB_EXECUTIONS).map(async child => {
 				if (!child.id) return undefined;
 				try {
 					const childRows = await fetchTaskLogs(sourceDeps, child.id);
-					inlineCount++;
 					return `Sub-execution ${describeChildExecution(child)}:\n${formatTaskLogs(childRows, { failedOnly, includeResult })}`;
 				} catch (error) {
 					return `Sub-execution ${describeChildExecution(child)}: task logs could not be read (${error instanceof Error ? error.message : String(error)})`;
@@ -501,8 +499,6 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 				`(${children.length - MAX_INLINE_SUB_EXECUTIONS} more sub-execution(s) not inlined — drill into them individually.)`,
 			);
 		}
-		// suppress unused-variable warning
-		void inlineCount;
 	}
 
 	// BFS walk for depth > 1
@@ -513,6 +509,7 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 			parentId: string;
 		}
 		const nestedLines: string[] = [];
+		const fetchErrors: string[] = [];
 		let totalFetches = 1; // root fetch already done
 		let truncated = false;
 		let currentLevel: { child: ChildExecutionRow; parentId: string }[] = children.map(c => ({
@@ -530,7 +527,11 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 					break;
 				}
 				totalFetches++;
-				const { children: grandchildren } = await fetchChildExecutions(sourceDeps, child.id);
+				const { children: grandchildren, error } = await fetchChildExecutions(sourceDeps, child.id);
+				if (error) {
+					fetchErrors.push(`sub-execution ${child.id} (${describeChildExecution(child)}): ${error}`);
+					continue;
+				}
 				for (const gc of grandchildren) {
 					nextLevel.push({ child: gc, parentId: child.id });
 					allDescendants.push({ child: gc, level, parentId: child.id });
@@ -540,7 +541,7 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 			if (currentLevel.length === 0) break;
 		}
 
-		if (allDescendants.length > 0) {
+		if (allDescendants.length > 0 || fetchErrors.length > 0) {
 			nestedLines.push(`Nested sub-executions (depth ${depth}):`);
 			for (const { child, level, parentId } of allDescendants) {
 				nestedLines.push(
@@ -551,6 +552,9 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 				nestedLines.push(
 					`(sub-execution tree truncated at ${MAX_SUB_EXECUTION_FETCHES} fetches — drill in manually.)`,
 				);
+			}
+			for (const fetchError of fetchErrors) {
+				nestedLines.push(`(could not fetch children of ${fetchError})`);
 			}
 			footer.push(nestedLines.join('\n'));
 		}

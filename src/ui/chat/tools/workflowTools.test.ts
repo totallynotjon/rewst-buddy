@@ -3397,6 +3397,61 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /parent execution exec-child/, 'grandchild references its parent execution id');
 		});
 
+		test('buddy_execution_logs depth walk appends a note for a per-node fetch error instead of silently stopping', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						return {
+							data: {
+								taskLogs: [
+									{
+										originalWorkflowTaskName: 'root_task',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						if (where.id === 'exec-1') {
+							return {
+								data: {
+									workflowExecution: {
+										id: 'exec-1',
+										childExecutions: [
+											{
+												id: 'exec-child',
+												status: 'succeeded',
+												parentTaskExecutionId: 'te-1',
+												workflow: { id: 'wf-sub', name: 'Child Flow' },
+											},
+										],
+									},
+								},
+							};
+						}
+						// Fetching exec-child's own children fails.
+						return { errors: [{ message: 'boom: transient GraphQL error' }] };
+					}
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', depth: 2 } },
+				deps,
+			);
+			assert.match(output, /Child Flow.*exec-child/, 'the level-1 child that failed to expand is still listed');
+			assert.match(
+				output,
+				/could not fetch children of sub-execution exec-child.*boom: transient GraphQL error/,
+				'the per-node fetch error is appended as a note rather than silently treated as no children',
+			);
+		});
+
 		test('buddy_execution_logs depth is clamped: non-numeric and 0 fall back to 1, 99 is capped at 5', async () => {
 			const childFetchCounts: Record<string, number> = {};
 			const deps: GraphqlToolDeps = {
