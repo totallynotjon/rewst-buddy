@@ -965,6 +965,49 @@ suite('Unit: SessionManager', () => {
 			assert.deepStrictEqual(context.globalState.get('SessionProfiles'), []);
 			assert.strictEqual(SessionManager.getAllKnownProfiles().length, 0);
 		});
+
+		test('deletes user-id keyed secrets for both an active session and a known-only profile', async () => {
+			// D4: clearProfiles must delete the current user-keyed secret for every
+			// active and known profile, not merely legacy org-keyed leftovers.
+			const { session } = createMockSession({
+				profile: {
+					user: Fixtures.userFragment({ id: 'user-clear-active' }),
+					org: { id: 'org-clear-active', name: 'Active' },
+					allManagedOrgs: [{ id: 'org-clear-active', name: 'Active' }],
+				},
+			});
+			const knownOnlyProfile: SessionProfile = {
+				region: {
+					name: 'Local Test',
+					cookieName: 'appSession',
+					graphqlUrl: 'http://127.0.0.1/graphql',
+					loginUrl: 'http://127.0.0.1',
+				},
+				org: { id: 'org-clear-known', name: 'Known' },
+				allManagedOrgs: [{ id: 'org-clear-known', name: 'Known' }],
+				label: 'known-user (Known)',
+				user: { id: 'user-clear-known' } as SessionProfile['user'],
+			};
+
+			await context.secrets.store('user-clear-active', 'cookie-active-user');
+			await context.secrets.store('user-clear-known', 'cookie-known-user');
+
+			SessionManager._setSessionsForTesting([session]);
+			SessionManager._setKnownProfilesForTesting([session.profile, knownOnlyProfile]);
+
+			await SessionManager.clearProfiles();
+
+			assert.strictEqual(
+				await context.secrets.get('user-clear-active'),
+				undefined,
+				"the active session's user-keyed secret is deleted",
+			);
+			assert.strictEqual(
+				await context.secrets.get('user-clear-known'),
+				undefined,
+				"the known-only profile's user-keyed secret is deleted",
+			);
+		});
 	});
 
 	suite('removeSession()', () => {
