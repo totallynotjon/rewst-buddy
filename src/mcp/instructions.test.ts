@@ -2,14 +2,19 @@ import {
 	CRATE_REUSE_STEERING,
 	RENDER_VERIFY_STEERING,
 	RESULT_SHAPE_STEERING,
+	SET_VARIABLE_STEERING,
 	WORKFLOW_COMPOSITION_STEERING,
+	WORKFLOW_DATA_PASSING_STEERING,
 	WORKFLOW_DIAGNOSE_TOOL_NAME,
 	WORKFLOW_EDIT_TOOL_NAME,
 	WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 	WORKFLOW_IMPACT_STEERING,
+	WORKFLOW_RETRY_STEERING,
 	WORKFLOW_RUN_TOOL_NAME,
+	WORKFLOW_START_STEERING,
 	WORKFLOW_SUMMARY_DETAIL_STEERING,
 	WORKFLOW_TOOL_SPECS,
+	WORKFLOW_WITH_ITEMS_STEERING,
 } from '@workflow';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
@@ -76,6 +81,46 @@ suite('Unit: mcpInstructions', () => {
 		);
 	});
 
+	test('contains WORKFLOW_RETRY_STEERING verbatim', () => {
+		const instructions = buildMcpInstructions();
+		assert.ok(
+			instructions.includes(WORKFLOW_RETRY_STEERING),
+			'instructions must contain WORKFLOW_RETRY_STEERING verbatim',
+		);
+	});
+
+	test('contains WORKFLOW_WITH_ITEMS_STEERING verbatim', () => {
+		const instructions = buildMcpInstructions();
+		assert.ok(
+			instructions.includes(WORKFLOW_WITH_ITEMS_STEERING),
+			'instructions must contain WORKFLOW_WITH_ITEMS_STEERING verbatim',
+		);
+	});
+
+	test('contains WORKFLOW_DATA_PASSING_STEERING verbatim', () => {
+		const instructions = buildMcpInstructions();
+		assert.ok(
+			instructions.includes(WORKFLOW_DATA_PASSING_STEERING),
+			'instructions must contain WORKFLOW_DATA_PASSING_STEERING verbatim',
+		);
+	});
+
+	test('contains WORKFLOW_START_STEERING verbatim', () => {
+		const instructions = buildMcpInstructions();
+		assert.ok(
+			instructions.includes(WORKFLOW_START_STEERING),
+			'instructions must contain WORKFLOW_START_STEERING verbatim',
+		);
+	});
+
+	test('contains SET_VARIABLE_STEERING verbatim', () => {
+		const instructions = buildMcpInstructions();
+		assert.ok(
+			instructions.includes(SET_VARIABLE_STEERING),
+			'instructions must contain SET_VARIABLE_STEERING verbatim',
+		);
+	});
+
 	test('contains WORKFLOW_RUN_TOOL_NAME', () => {
 		const instructions = buildMcpInstructions();
 		assert.ok(
@@ -138,6 +183,51 @@ suite('Unit: mcpInstructions', () => {
 		assert.ok(
 			spec.description.includes(RESULT_SHAPE_STEERING),
 			'buddy_workflow_edit description must contain RESULT_SHAPE_STEERING verbatim',
+		);
+	});
+
+	test('buddy_workflow_edit description contains WORKFLOW_RETRY_STEERING', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(s => s.name === 'buddy_workflow_edit');
+		assert.ok(spec, 'buddy_workflow_edit spec must exist');
+		assert.ok(
+			spec.description.includes(WORKFLOW_RETRY_STEERING),
+			'buddy_workflow_edit description must contain WORKFLOW_RETRY_STEERING verbatim',
+		);
+	});
+
+	test('buddy_workflow_edit description contains WORKFLOW_WITH_ITEMS_STEERING', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(s => s.name === 'buddy_workflow_edit');
+		assert.ok(spec, 'buddy_workflow_edit spec must exist');
+		assert.ok(
+			spec.description.includes(WORKFLOW_WITH_ITEMS_STEERING),
+			'buddy_workflow_edit description must contain WORKFLOW_WITH_ITEMS_STEERING verbatim',
+		);
+	});
+
+	test('buddy_workflow_edit description contains WORKFLOW_DATA_PASSING_STEERING', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(s => s.name === 'buddy_workflow_edit');
+		assert.ok(spec, 'buddy_workflow_edit spec must exist');
+		assert.ok(
+			spec.description.includes(WORKFLOW_DATA_PASSING_STEERING),
+			'buddy_workflow_edit description must contain WORKFLOW_DATA_PASSING_STEERING verbatim',
+		);
+	});
+
+	test('buddy_workflow_edit description contains WORKFLOW_START_STEERING', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(s => s.name === 'buddy_workflow_edit');
+		assert.ok(spec, 'buddy_workflow_edit spec must exist');
+		assert.ok(
+			spec.description.includes(WORKFLOW_START_STEERING),
+			'buddy_workflow_edit description must contain WORKFLOW_START_STEERING verbatim',
+		);
+	});
+
+	test('buddy_workflow_edit description contains SET_VARIABLE_STEERING', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(s => s.name === 'buddy_workflow_edit');
+		assert.ok(spec, 'buddy_workflow_edit spec must exist');
+		assert.ok(
+			spec.description.includes(SET_VARIABLE_STEERING),
+			'buddy_workflow_edit description must contain SET_VARIABLE_STEERING verbatim',
 		);
 	});
 

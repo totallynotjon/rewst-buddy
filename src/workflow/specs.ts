@@ -36,6 +36,34 @@ export const WORKFLOW_IMPACT_STEERING =
 	'Changing a sub-workflow contract affects every workflow that calls it: before set_inputs or set_output on a workflow that other workflows may call, run buddy_workflow_impact with that workflowId to list the callers that would break.';
 
 /**
+ * Steering fragment: task retries must be modeled as explicit workflow loops.
+ * Appears verbatim in buddy_workflow_edit's description and in the MCP server instructions.
+ */
+export const WORKFLOW_RETRY_STEERING =
+	'Tasks do NOT take a retry config: saving a task with a retry object makes the Rewst engine fail to initialize that task at run time, killing the run with no task logs. Implement retries as a loop instead: wrap the action in its own sub-workflow, route its failure transition to a delay task, and loop back with a bounded attempt counter.';
+
+/**
+ * Steering fragment: with-items loops should wrap actions in sub-workflows.
+ * Appears verbatim in buddy_workflow_edit's description and in the MCP server instructions.
+ */
+export const WORKFLOW_WITH_ITEMS_STEERING =
+	'Never put a with items loop on a plain action task: one failed item fails the whole task with no per-item retry or error handling. Wrap the action in its own sub-workflow and loop over the wrapper instead — with: {items} on a sub-workflow task gives each item its own execution that can be retried and inspected individually.';
+
+/**
+ * Steering fragment: workflow boundaries should exchange primitive values.
+ * Appears verbatim in buddy_workflow_edit's description and in the MCP server instructions.
+ */
+export const WORKFLOW_DATA_PASSING_STEERING =
+	'Pass only text, number, integer, or boolean values into and out of a workflow. To pass an object or array, encode it with to_json_string, pass it as text, and decode it in the receiving workflow with from_json_string.';
+
+/**
+ * Steering fragment: new workflows should have a stable START anchor.
+ * Appears verbatim in buddy_workflow_edit and buddy_create_workflow descriptions and in the MCP server instructions.
+ */
+export const WORKFLOW_START_STEERING =
+	'Start every workflow you build with a core.noop task named "START" that has no inbound transitions and a single success transition to the first real action, so the entry point stays a stable anchor as the graph grows.';
+
+/**
  * Steering fragment: search Crates and existing workflows before building anew.
  * Appears verbatim in buddy_create_workflow's description and in the MCP server instructions.
  */
@@ -48,6 +76,13 @@ export const CRATE_REUSE_STEERING =
  */
 export const RESULT_SHAPE_STEERING =
 	"RESULT shape depends on the task type: a built-in action task usually wraps its payload under a result key — read RESULT.result.<field> in transitions and publishes (and CTX.<publishResultAs>.result.<field> after a publish) — while a sub-workflow task returns its set_output keys directly — read RESULT.<output-key> (and CTX.<publishResultAs>.<output-key>). When unsure, read the task's result in buddy_execution_logs from a real run; it shows the exact shape.";
+
+/**
+ * Steering fragment: transforms.set_variable output shape and publish requirement.
+ * Appears verbatim in buddy_workflow_edit's description and in the MCP server instructions.
+ */
+export const SET_VARIABLE_STEERING =
+	'To compute or transform a value, use a transforms.set_variable task: its input is {"params": {"text": "{{ <jinja> }}"}} and publishResultAs is REQUIRED (without it the result is discarded). Unlike normal actions its output has NO result wrapper — the rendered value lands directly at CTX.<publishResultAs> (CTX.<name>.result is None). Prefer it over a core.noop with a transition-publish alias: the computed value then appears in the task\'s own log.';
 
 /**
  * Steering fragment: render-verify Jinja before and after edits.
@@ -126,8 +161,8 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	},
 	{
 		name: WORKFLOW_EDIT_TOOL_NAME,
-		description: `Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. ${workflowEditOperationGrammar()}. Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. Loop inputs use with: {items, concurrency}; inside the loop body, {{ item() }} is the current element. At most one outgoing transition runs: the first condition that evaluates true in listed order. publish entries apply whenever that transition is taken, including on {{ FAILED }}. This tool does not expose parallel task controls. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. A caller reads that sub-workflow task result as RESULT.<output-key>, matching the callee's set_output contract. ${RESULT_SHAPE_STEERING} Saving an edit is a mutation and requires user approval every time. ${WORKFLOW_COMPOSITION_STEERING} ${WORKFLOW_IMPACT_STEERING}`,
-		// NOTE: RESULT_SHAPE_STEERING, WORKFLOW_COMPOSITION_STEERING, and WORKFLOW_IMPACT_STEERING are embedded verbatim above — do not paraphrase them here.
+		description: `Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. ${workflowEditOperationGrammar()}. Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. Loop inputs use with: {items, concurrency}; inside the loop body, {{ item() }} is the current element. At most one outgoing transition runs: the first condition that evaluates true in listed order. publish entries apply whenever that transition is taken, including on {{ FAILED }}. This tool does not expose parallel task controls. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. A caller reads that sub-workflow task result as RESULT.<output-key>, matching the callee's set_output contract. ${RESULT_SHAPE_STEERING} Saving an edit is a mutation and requires user approval every time. ${WORKFLOW_COMPOSITION_STEERING} ${WORKFLOW_IMPACT_STEERING} ${WORKFLOW_RETRY_STEERING} ${WORKFLOW_WITH_ITEMS_STEERING} ${WORKFLOW_DATA_PASSING_STEERING} ${WORKFLOW_START_STEERING} ${SET_VARIABLE_STEERING}`,
+		// NOTE: RESULT_SHAPE_STEERING, WORKFLOW_COMPOSITION_STEERING, WORKFLOW_IMPACT_STEERING, WORKFLOW_RETRY_STEERING, WORKFLOW_WITH_ITEMS_STEERING, WORKFLOW_DATA_PASSING_STEERING, WORKFLOW_START_STEERING, and SET_VARIABLE_STEERING are embedded verbatim above — do not paraphrase them here.
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -222,7 +257,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	{
 		name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 		description:
-			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task that called a sub-workflow is marked with the sub-execution it spawned (workflow name, execution id, status) — a sub-workflow's own tasks are NOT in the parent's logs, so drill into a sub-execution by calling this tool again with its execution id, or pass includeSubExecutions:true to inline the task logs of the first few sub-executions. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }). Each signed-in Rewst session only sees its own org hierarchy: if the first session has no rows for the execution, the other active sessions are checked automatically; pass orgId (the org that owns the execution) to query the right session directly.",
+			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task that called a sub-workflow is marked with the sub-execution it spawned (workflow name, execution id, status) — a sub-workflow's own tasks are NOT in the parent's logs, so drill into a sub-execution by calling this tool again with its execution id, or pass includeSubExecutions:true to inline the task logs of the first few sub-executions. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }). Each signed-in Rewst session only sees its own org hierarchy: if the first session has no rows for the execution, the other active sessions are checked automatically; pass orgId (the org that owns the execution) to query the right session directly. Pass depth (default 1, max 5) to walk deeper levels of nested sub-workflow executions.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -241,6 +276,11 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 					type: 'boolean',
 					description:
 						'Also inline the task logs of the first few sub-workflow executions this run spawned (default false).',
+				},
+				depth: {
+					type: 'number',
+					description:
+						'How many levels of nested sub-workflow executions to list (default 1 = direct children, max 5). Each extra level costs one query per execution found at that level.',
 				},
 			},
 			required: ['executionId'],
@@ -261,7 +301,8 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 			"Each signed-in Rewst session only sees its own org hierarchy: if the first session can't see " +
 			'the execution, other active sessions are checked automatically, same as buddy_execution_logs; ' +
 			'pass orgId to route directly. For the full task-by-task list instead of just the failing task, ' +
-			'use buddy_execution_logs.',
+			'use buddy_execution_logs. ' +
+			'Pass depth (default 3, max 5) to control how many nested failing executions are diagnosed inline; failures while drilling degrade to a note rather than failing the call.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -277,6 +318,11 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 					description:
 						'Required together with workflowId. Optional together with executionId: routes the ' +
 						'lookup to the session managing that org (useful with several signed-in accounts).',
+				},
+				depth: {
+					type: 'number',
+					description:
+						'How many levels of failing sub-workflow executions to drill into automatically (default 3, max 5).',
 				},
 			},
 		},

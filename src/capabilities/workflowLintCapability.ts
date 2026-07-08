@@ -22,10 +22,12 @@ const spec: ToolSpecDefinition = {
 	name: 'buddy_workflow_lint',
 	description:
 		'Run a read-only structural audit of one Rewst workflow and return its issues without changing it: ' +
-		'tasks unreachable from the entry, transitions whose {{ SUCCEEDED }}/default path is listed before a custom ' +
-		'condition (which shadows it under FOLLOW_FIRST), tasks with transitions but no success/default path, action ' +
-		'tasks lacking both retry and timeout, tasks with mock input still enabled, and a size heuristic that recommends ' +
-		'sub-workflow extraction for large workflows. Use this when asked to review or check a workflow.',
+		'tasks unreachable from the entry; transitions whose {{ SUCCEEDED }}/default path is listed before a custom ' +
+		'condition (which shadows it under FOLLOW_FIRST); tasks with transitions but no success/default path; ' +
+		'task-level retry configs (engine-breaking — replace with a delay-and-loop sub-workflow); ' +
+		'custom transitions without labels; with-items loops on plain action tasks; ' +
+		'action tasks lacking a timeout; mock input left enabled; missing START entry anchor; ' +
+		'monolith size heuristic. Use this when asked to review or check a workflow.',
 	inputSchema: toInputSchema(inputSchema),
 };
 

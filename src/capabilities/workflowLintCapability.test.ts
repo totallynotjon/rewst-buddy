@@ -96,7 +96,7 @@ suite('Unit: workflowLintCapability', () => {
 						tasks: [
 							{
 								id: 'entry',
-								name: 'entry',
+								name: 'START',
 								next: [{ when: '{{ SUCCEEDED }}', do: ['done'] }],
 							},
 							{ id: 'done', name: 'done' },

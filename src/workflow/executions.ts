@@ -105,6 +105,16 @@ export interface ExecutionDetail {
 
 const TASK_VALUE_CHARS = 600;
 const MAX_INLINE_SUB_EXECUTIONS = 5;
+const MAX_SUB_EXECUTION_FETCHES = 25;
+const MAX_DEPTH = 5;
+
+function asDepthArg(args: unknown, key: string, defaultVal: number): number {
+	const raw = (args as Record<string, unknown>)?.[key];
+	if (raw === undefined || raw === null) return defaultVal;
+	const n = typeof raw === 'number' ? raw : Number(raw);
+	if (!Number.isFinite(n) || n < 1) return 1;
+	return Math.min(Math.floor(n), MAX_DEPTH);
+}
 
 export function isFailedStatus(status: string | null | undefined): boolean {
 	return /fail|error/i.test(status ?? '');
@@ -380,6 +390,7 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 	const failedOnly = asBooleanArg(request.args, 'failedOnly') ?? false;
 	const includeResult = asBooleanArg(request.args, 'includeResult') ?? false;
 	const includeSubExecutions = asBooleanArg(request.args, 'includeSubExecutions') ?? false;
+	const depth = asDepthArg(request.args, 'depth', 1);
 	const sweep = await sweepTaskLogs(deps, executionId, orgId);
 	const { rows, sourceDeps, sourceNote, hadVisibleSession, firstError } = sweep;
 	const alternates = deps.alternates ?? [];
@@ -426,11 +437,13 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 		);
 	}
 	if (includeSubExecutions) {
+		let inlineCount = 0;
 		const inlineSections = await Promise.all(
 			children.slice(0, MAX_INLINE_SUB_EXECUTIONS).map(async child => {
 				if (!child.id) return undefined;
 				try {
 					const childRows = await fetchTaskLogs(sourceDeps, child.id);
+					inlineCount++;
 					return `Sub-execution ${describeChildExecution(child)}:\n${formatTaskLogs(childRows, { failedOnly, includeResult })}`;
 				} catch (error) {
 					return `Sub-execution ${describeChildExecution(child)}: task logs could not be read (${error instanceof Error ? error.message : String(error)})`;
@@ -442,6 +455,59 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 			footer.push(
 				`(${children.length - MAX_INLINE_SUB_EXECUTIONS} more sub-execution(s) not inlined — drill into them individually.)`,
 			);
+		}
+		// suppress unused-variable warning
+		void inlineCount;
+	}
+
+	// BFS walk for depth > 1
+	if (depth > 1 && children.length > 0) {
+		interface BfsEntry {
+			child: ChildExecutionRow;
+			level: number;
+			parentId: string;
+		}
+		const nestedLines: string[] = [];
+		let totalFetches = 1; // root fetch already done
+		let truncated = false;
+		let currentLevel: { child: ChildExecutionRow; parentId: string }[] = children.map(c => ({
+			child: c,
+			parentId: executionId,
+		}));
+		const allDescendants: BfsEntry[] = currentLevel.map(e => ({ ...e, level: 1 }));
+
+		for (let level = 2; level <= depth && !truncated; level++) {
+			const nextLevel: { child: ChildExecutionRow; parentId: string }[] = [];
+			for (const { child } of currentLevel) {
+				if (!child.id) continue;
+				if (totalFetches >= MAX_SUB_EXECUTION_FETCHES) {
+					truncated = true;
+					break;
+				}
+				totalFetches++;
+				const { children: grandchildren } = await fetchChildExecutions(sourceDeps, child.id);
+				for (const gc of grandchildren) {
+					nextLevel.push({ child: gc, parentId: child.id });
+					allDescendants.push({ child: gc, level, parentId: child.id });
+				}
+			}
+			currentLevel = nextLevel;
+			if (currentLevel.length === 0) break;
+		}
+
+		if (allDescendants.length > 0) {
+			nestedLines.push(`Nested sub-executions (depth ${depth}):`);
+			for (const { child, level, parentId } of allDescendants) {
+				nestedLines.push(
+					`${'  '.repeat(level - 1)}- ${describeChildExecution(child)} (parent execution ${parentId})`,
+				);
+			}
+			if (truncated) {
+				nestedLines.push(
+					`(sub-execution tree truncated at ${MAX_SUB_EXECUTION_FETCHES} fetches — drill in manually.)`,
+				);
+			}
+			footer.push(nestedLines.join('\n'));
 		}
 	}
 
@@ -742,7 +808,46 @@ export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToo
 	);
 
 	if (childLookupError) sections.push(`Sub-workflow executions could not be checked: ${childLookupError}`);
-	const failedChild = childrenOfFailingTask.find(child => isFailedStatus(child.status));
+	const depth = asDepthArg(request.args, 'depth', 3);
+	let failedChild = childrenOfFailingTask.find(child => isFailedStatus(child.status));
+
+	// Auto-drill into nested failing sub-executions up to `depth` levels
+	if (failedChild && depth > 1) {
+		let currentFailedChild: ChildExecutionRow | undefined = failedChild;
+		for (let k = 1; k < depth && currentFailedChild; k++) {
+			const drillChild = currentFailedChild;
+			if (!drillChild.id) break;
+			try {
+				const childTaskRows = await fetchTaskLogs(sourceDeps, drillChild.id);
+				const childFailingRow = childTaskRows.find(r => isFailedStatus(r.status));
+				if (!childFailingRow) break;
+				sections.push(
+					`Nested diagnosis (level ${k}, execution ${drillChild.id}, workflow ${drillChild.workflow?.name ?? '?'}):\n${formatTaskLogs([childFailingRow], { includeResult: true })}`,
+				);
+				const { children: grandchildren } = await fetchChildExecutions(sourceDeps, drillChild.id);
+				const childFailingTaskExecId = childFailingRow.taskExecutionId;
+				const childrenOfChildFailingTask = childFailingTaskExecId
+					? grandchildren.filter(gc => gc.parentTaskExecutionId === childFailingTaskExecId)
+					: [];
+				currentFailedChild = childrenOfChildFailingTask.find(gc => isFailedStatus(gc.status));
+			} catch (drillError) {
+				sections.push(
+					`Nested diagnosis stopped: ${drillError instanceof Error ? drillError.message : String(drillError)}`,
+				);
+				currentFailedChild = undefined;
+				break;
+			}
+		}
+		// If a deeper failed child still remains after exhausting depth, emit the drill-in pointer
+		if (currentFailedChild) {
+			sections.push(
+				`Likely deeper cause: sub-execution ${describeChildExecution(currentFailedChild)} — drill in with buddy_workflow_diagnose {"executionId": "${currentFailedChild.id}"}.`,
+			);
+		}
+		// Clear failedChild so the original pointer below is not also emitted
+		failedChild = undefined;
+	}
+
 	if (failedChild) {
 		sections.push(
 			`Likely deeper cause: sub-execution ${describeChildExecution(failedChild)} — drill in with buddy_workflow_diagnose {"executionId": "${failedChild.id}"}.`,

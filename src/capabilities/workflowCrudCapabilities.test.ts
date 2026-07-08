@@ -6,7 +6,7 @@ import {
 } from '@capabilities';
 import type { Session } from '@sessions';
 import { initTestEnvironment } from '@test';
-import { CRATE_REUSE_STEERING } from '@workflow';
+import { CRATE_REUSE_STEERING, WORKFLOW_START_STEERING } from '@workflow';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
@@ -256,6 +256,14 @@ suite('Unit: workflowCrudCapabilities', () => {
 		assert.ok(
 			getCapability('buddy_search_crates') !== undefined,
 			'buddy_search_crates capability is registered (cross-layer drift guard)',
+		);
+	});
+
+	test('buddy_create_workflow spec steers a START anchor for new workflows', () => {
+		const c = cap('buddy_create_workflow');
+		assert.ok(
+			c.spec.description.includes(WORKFLOW_START_STEERING),
+			'buddy_create_workflow description embeds WORKFLOW_START_STEERING verbatim',
 		);
 	});
 });
