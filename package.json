@@ -143,6 +143,11 @@
 					"maximum": 100,
 					"description": "Maximum in-process Buddy tool calls Cage-Free Rewsty may run within one chat response before stopping and asking you to continue."
 				},
+				"rewst-buddy.ai.anthropicProxy": {
+					"type": "boolean",
+					"default": false,
+					"description": "Serve an Anthropic Messages API endpoint (POST /v1/messages) on the local Rewst Buddy server, backed by the Rewst AI assistant. Local tools that speak the Anthropic API (for example Claude Code with ANTHROPIC_BASE_URL) can then use Cage-Free Rewsty as their model. Requests authenticate with the same local token as the MCP server."
+				},
 				"rewst-buddy.mcp.enable": {
 					"type": "boolean",
 					"default": false,

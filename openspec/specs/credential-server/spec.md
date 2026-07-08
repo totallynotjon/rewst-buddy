@@ -19,8 +19,9 @@ The system SHALL run an HTTP server bound only to a loopback host from
 `127.0.0.1`, `localhost`, `::1`, or `[::1]`) and
 `rewst-buddy.server.port` (default `27121`, range 1024–65535). The server SHALL
 refuse to start rather than bind to a wildcard, LAN, public, or otherwise
-non-loopback interface. The server SHALL run when either
-`rewst-buddy.server.enabled` or `rewst-buddy.mcp.enable` is on, and SHALL guard
+non-loopback interface. The server SHALL run when any of
+`rewst-buddy.server.enabled`, `rewst-buddy.mcp.enable`, or
+`rewst-buddy.ai.anthropicProxy` is on, and SHALL guard
 against concurrent starts.
 
 #### Scenario: Server enabled
@@ -42,6 +43,13 @@ against concurrent starts.
 - **GIVEN** `rewst-buddy.server.enabled` is off but `rewst-buddy.mcp.enable` is on
 - **WHEN** the extension runs
 - **THEN** the server stays up to serve the bridge
+
+#### Scenario: Kept alive by the Anthropic proxy
+
+- **GIVEN** `rewst-buddy.server.enabled` and `rewst-buddy.mcp.enable` are off but
+  `rewst-buddy.ai.anthropicProxy` is on
+- **WHEN** the extension runs
+- **THEN** the server stays up to serve the proxy
 
 #### Scenario: Manual start
 

@@ -3,6 +3,7 @@ import http, { IncomingMessage, ServerResponse } from 'http';
 import vscode from 'vscode';
 import { handleMcpHttp } from '../mcp/mcpServer';
 import { readMcpSettings } from '../mcp/settings';
+import { handleAnthropicHttp, isAnthropicProxyEnabled } from './anthropic/anthropicProxy';
 import { getServerConfig, isLoopbackHost } from './config';
 import { handleAddSession, handleOpenTemplate, validateRequest } from './handlers';
 import { evaluateRequestGuard, requestGuardInputFromRequest } from './requestGuard';
@@ -21,7 +22,10 @@ export const Server = new (class _ implements vscode.Disposable {
 	constructor() {
 		this.disposables.push(
 			vscode.workspace.onDidChangeConfiguration(e => {
-				if (e.affectsConfiguration('rewst-buddy.server')) {
+				if (
+					e.affectsConfiguration('rewst-buddy.server') ||
+					e.affectsConfiguration('rewst-buddy.ai.anthropicProxy')
+				) {
 					this.handleConfigChange();
 				}
 			}),
@@ -42,11 +46,10 @@ export const Server = new (class _ implements vscode.Disposable {
 	}
 
 	private async handleConfigChange(): Promise<void> {
-		const config = getServerConfig();
-		if (config.enabled && !this.isRunning) {
+		const wants = this.shouldStayRunning();
+		if (wants && !this.isRunning) {
 			await this.start(true);
-		} else if (!config.enabled && this.isRunning && !readMcpSettings().enable) {
-			// Only stop when MCP no longer needs the server either.
+		} else if (!wants && this.isRunning) {
 			await this.stop();
 		}
 	}
@@ -58,9 +61,9 @@ export const Server = new (class _ implements vscode.Disposable {
 		}
 	}
 
-	/** The server stays up while either driver wants it: the browser-action server or MCP. */
+	/** The server stays up while any driver wants it: browser-action server, MCP, or Anthropic proxy. */
 	private shouldStayRunning(): boolean {
-		return getServerConfig().enabled || readMcpSettings().enable;
+		return getServerConfig().enabled || readMcpSettings().enable || isAnthropicProxyEnabled();
 	}
 
 	/**
@@ -167,6 +170,10 @@ export const Server = new (class _ implements vscode.Disposable {
 		const path = (req.url ?? '/').split('?')[0].replace(/\/+$/, '');
 		if (path === '/mcp') {
 			void handleMcpHttp(req, res);
+			return;
+		}
+		if (path === '/v1/messages' || path === '/v1/messages/count_tokens') {
+			void handleAnthropicHttp(req, res);
 			return;
 		}
 

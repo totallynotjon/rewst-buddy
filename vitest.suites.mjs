@@ -21,4 +21,10 @@ export const vitestSuites = [
 	'src/ui/jinja/jinjaPreviewRender.test.ts',
 	'src/workflow/lint.test.ts',
 	'src/crates/crateUnpack.test.ts',
+	'src/server/anthropic/wire.test.ts',
+	'src/server/anthropic/sse.test.ts',
+	'src/server/anthropic/conversationCache.test.ts',
+	'src/server/anthropic/wire.test.ts',
+	'src/server/anthropic/sse.test.ts',
+	'src/server/anthropic/conversationCache.test.ts',
 ];

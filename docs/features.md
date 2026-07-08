@@ -239,3 +239,39 @@ A local HTTP server that receives session cookies from the [Rewst Buddy Browser 
 ```
 
 The server is enabled by default. Use `Start Server` / `Stop Server` commands for manual control.
+
+## Anthropic Messages Proxy
+
+The Anthropic proxy lets local tools that speak the Anthropic Messages API — such as Claude Code configured with `ANTHROPIC_BASE_URL` — use the Rewst AI assistant (Cage-Free Rewsty) as their model, including tool calling.
+
+**Enabling it:**
+
+The proxy is off by default. Enable it in VS Code Settings → search "rewst-buddy" → toggle **Anthropic Proxy**, or add to `settings.json`:
+
+```json
+{
+	"rewst-buddy.ai.anthropicProxy": true
+}
+```
+
+Once enabled, the extension serves `POST /v1/messages` and `POST /v1/messages/count_tokens` on the same local server as the MCP bridge (default `http://127.0.0.1:27121`).
+
+**Authentication:**
+
+Requests must present the same local MCP token used by the MCP server. Obtain it via the **Rewst Buddy: Copy MCP Client Config** command in the Command Palette — the token appears as the `Authorization: Bearer` value in the generated config. You can also pass it as an `x-api-key` header (the format Claude Code uses with `ANTHROPIC_API_KEY`).
+
+**Using with Claude Code:**
+
+```bash
+export ANTHROPIC_BASE_URL=http://127.0.0.1:27121
+export ANTHROPIC_AUTH_TOKEN=<your-rewst-buddy-mcp-token>
+claude
+```
+
+Or set `ANTHROPIC_API_KEY` instead of `ANTHROPIC_AUTH_TOKEN` — both are accepted.
+
+**Security notes:**
+
+- The endpoint is localhost-only and token-gated; it cannot be reached from other machines.
+- Requests count against your Rewst AI usage quota, the same as chat messages in VS Code.
+- The proxy never executes tool calls server-side — the client (Claude Code) owns the agentic loop.

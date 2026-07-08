@@ -50,6 +50,7 @@ Want to pull in **every template** from an organization at once? See the [Bulk F
 - File rename support + automatic stale link cleanup
 - Browser extension integration (sideload — not yet on the Chrome Web Store)
 - Multi-region support
+- Anthropic Messages proxy — opt-in `POST /v1/messages` endpoint so tools like Claude Code can use Cage-Free Rewsty as their model via `ANTHROPIC_BASE_URL`
 
 Full detail → [docs/features.md](docs/features.md).
 

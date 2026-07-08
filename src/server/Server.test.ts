@@ -1,10 +1,10 @@
+import { SessionManager } from '@sessions';
+import { initTestEnvironment, stub as replaceMethod } from '@test';
 import * as assert from 'assert';
 import http from 'http';
 import * as Mocha from 'mocha';
 import net from 'net';
 import vscode from 'vscode';
-import { SessionManager } from '@sessions';
-import { initTestEnvironment, stub as replaceMethod } from '@test';
 import { Server } from './Server';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -168,12 +168,19 @@ interface RawHttpResponse {
 function rawRequest(options: {
 	port: number;
 	method: string;
+	path?: string;
 	headers?: Record<string, string>;
 	body?: string;
 }): Promise<RawHttpResponse> {
 	return new Promise((resolve, reject) => {
 		const req = http.request(
-			{ host: '127.0.0.1', port: options.port, method: options.method, path: '/', headers: options.headers },
+			{
+				host: '127.0.0.1',
+				port: options.port,
+				method: options.method,
+				path: options.path ?? '/',
+				headers: options.headers,
+			},
 			res => {
 				const chunks: Buffer[] = [];
 				res.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -419,5 +426,44 @@ suite('Unit: Server lifecycle drivers', () => {
 
 		assert.strictEqual(started, false, 'an auto start with no driver reports not started');
 		assert.strictEqual(Server.getStatus(), false, 'the server does not stay up when both drivers are off');
+	});
+
+	test('proxy setting alone keeps the server running', async () => {
+		await vscode.workspace
+			.getConfiguration('rewst-buddy.ai')
+			.update('anthropicProxy', true, vscode.ConfigurationTarget.Global);
+		try {
+			// Auto start: shouldStayRunning() is true because proxy is on
+			const started = await Server.start(true);
+			assert.ok(started, 'proxy driver alone should keep the server running');
+			assert.ok(await waitForListening(port), 'server should be listening when proxy is the only driver');
+		} finally {
+			await vscode.workspace
+				.getConfiguration('rewst-buddy.ai')
+				.update('anthropicProxy', undefined, vscode.ConfigurationTarget.Global);
+		}
+	});
+
+	test('routes /v1/messages to the proxy handler', async () => {
+		await setEnabled(true);
+		await Server.startIfEnabled();
+		assert.ok(await waitForListening(port), 'server must be up');
+		// A request to /v1/messages should get an Anthropic-shaped error response
+		// (proxy disabled by default → 403 permission_error), NOT the browser-action
+		// pipeline's 400/405 shape.
+		const res = await rawRequest({
+			port,
+			method: 'POST',
+			path: '/v1/messages',
+			headers: { Host: `127.0.0.1:${port}`, 'Content-Type': 'application/json' },
+			body: JSON.stringify({ model: 'claude-3', messages: [{ role: 'user', content: 'hi' }] }),
+		});
+		const body = JSON.parse(res.body) as Record<string, unknown>;
+		// Anthropic error shape: { type: 'error', error: { type, message } }
+		assert.strictEqual(body?.type, 'error', 'response should have Anthropic error shape');
+		assert.ok(
+			(body?.error as Record<string, unknown>)?.type === 'permission_error',
+			'proxy disabled → permission_error (not browser-action pipeline error)',
+		);
 	});
 });

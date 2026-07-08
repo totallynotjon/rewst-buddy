@@ -1,5 +1,5 @@
 import { extPrefix } from '@global';
-import { Server, getServerConfig } from '@server';
+import { Server, getServerConfig, isAnthropicProxyEnabled } from '@server';
 import { log } from '@utils';
 import vscode from 'vscode';
 import { readMcpSettings } from './settings';
@@ -55,6 +55,7 @@ export const McpServerController = new (class _ implements vscode.Disposable {
 	 */
 	private async sync(): Promise<void> {
 		if (readMcpSettings().enable && !Server.getStatus()) await Server.start(true);
-		if (!readMcpSettings().enable && Server.getStatus() && !getServerConfig().enabled) await Server.stop();
+		if (!readMcpSettings().enable && Server.getStatus() && !getServerConfig().enabled && !isAnthropicProxyEnabled())
+			await Server.stop();
 	}
 })();
