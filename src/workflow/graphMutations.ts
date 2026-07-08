@@ -534,6 +534,9 @@ export function applyOperations(
 		return id;
 	};
 
+	let structural = false;
+	let explicitPositioning = false;
+
 	for (const operation of operations) {
 		const op = operation.op;
 		switch (op) {
@@ -569,7 +572,9 @@ export function applyOperations(
 				setAdvancedTaskFields(task, operation, field => markVerify(id, field));
 				if (typeof operation.x === 'number' && typeof operation.y === 'number') {
 					setPosition(task, operation.x, operation.y);
+					explicitPositioning = true;
 				}
+				structural = true;
 				next.push(task);
 				if ('input' in operation) markVerify(id, 'input');
 				if ('with' in operation) markVerify(id, 'with');
@@ -617,6 +622,7 @@ export function applyOperations(
 					});
 				}
 				verifyFields.delete(task.id);
+				structural = true;
 				applied.push(`delete_task ${task.name} (${task.id})`);
 				break;
 			}
@@ -643,6 +649,7 @@ export function applyOperations(
 					terminalIndex >= 0 && isSuccessCondition(transition.when)
 						? [...existing.slice(0, terminalIndex), transition, ...existing.slice(terminalIndex)]
 						: [...existing, transition];
+				structural = true;
 				applied.push(`connect ${from.name} -> ${to.name} when ${transition.when}`);
 				break;
 			}
@@ -662,6 +669,7 @@ export function applyOperations(
 					}
 					return true;
 				});
+				structural = true;
 				applied.push(`disconnect ${from.name} (${before - (from.next?.length ?? 0)} edge(s) removed)`);
 				break;
 			}
@@ -683,6 +691,7 @@ export function applyOperations(
 						'set_transition: the resulting transition has a custom condition, so it requires a non-empty "label" — set it in the same operation.',
 					);
 				}
+				structural = true;
 				applied.push(`set_transition on ${from.name}`);
 				break;
 			}
@@ -694,11 +703,13 @@ export function applyOperations(
 				}
 				const task = resolveTask(next, ref);
 				setPosition(task, operation.x, operation.y);
+				explicitPositioning = true;
 				applied.push(`reposition ${task.name} -> (${operation.x}, ${operation.y})`);
 				break;
 			}
 			case 'autolayout': {
 				autoLayout(next);
+				explicitPositioning = true;
 				applied.push(`autolayout (${next.length} node(s) re-arranged)`);
 				break;
 			}
@@ -772,7 +783,12 @@ export function applyOperations(
 	removeRedundantTerminalSuccessTransitions(next);
 	orderTransitionsByCondition(next);
 	ensureTaskDefaults(next);
-	layoutNewTasks(next);
+	if (structural && !explicitPositioning) {
+		autoLayout(next);
+		applied.push('autolayout (automatic after structural edits)');
+	} else {
+		layoutNewTasks(next);
+	}
 	return { tasks: next, applied, workflow, verifyFields };
 }
 
