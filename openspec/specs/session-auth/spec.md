@@ -55,15 +55,14 @@ id, so the user never has to pick a region manually.
 
 ### Requirement: Store credentials securely
 
-The system SHALL store the raw session cookie only in VS Code `secrets`, keyed by
-the session profile's primary organization id. Non-secret session metadata
-(region, org, managed orgs, label, user) SHALL be stored in `globalState` under
+The system SHALL store the raw session cookie only in VS Code `secrets`, keyed
+by the authenticated user's id. Non-secret session metadata (region, org,
+managed orgs, label, user) SHALL be stored in `globalState` under
 `SessionProfiles`. The system SHALL also maintain a non-secret
 `RewstAllKnownProfiles` cache for profiles that have been seen before, including
-profiles that are not currently active. Managed organization ids MAY resolve to
-the profile through non-secret indexes, but their ids SHALL NOT be relied on as
-the primary secret key for restoration. The cookie SHALL NOT be written to
-`globalState`.
+profiles that are not currently active. Organization ids MAY resolve to the
+profile through non-secret indexes, but SHALL NOT be used as the secret key.
+The cookie SHALL NOT be written to `globalState`.
 
 **Implementation status:** today known-profile lookup resolves by org id without
 distinguishing region; the region-aware selection described in the scenario
@@ -71,12 +70,31 @@ below is the target lookup contract and is tracked as follow-up work.
 
 #### Scenario: Credential placement after login
 
-- **GIVEN** a session is successfully established for org `org-123`
+- **GIVEN** a session is successfully established for user `user-123` in org
+  `org-123`
 - **WHEN** persistence runs
-- **THEN** the cookie value is stored via `secrets` under key `org-123`
+- **THEN** the cookie value is stored via `secrets` under key `user-123`
+- **AND** any cookie previously stored under the legacy org-id key `org-123` is
+  deleted
 - **AND** the session profile (without the cookie) is stored under
   `SessionProfiles`
 - **AND** the profile is included in `RewstAllKnownProfiles`
+
+#### Scenario: Restoring a legacy org-keyed cookie
+
+- **GIVEN** a saved profile with user id `U` and primary org id `O`
+- **AND** `secrets` contains a cookie under `O` but not under `U`
+- **WHEN** sessions are loaded
+- **THEN** the cookie is read from `O`, the session is restored, and the
+  cookie is written under `U`
+
+#### Scenario: Removing one of two sessions with the same primary org
+
+- **GIVEN** two saved profiles with distinct user ids and the same primary org
+  id
+- **WHEN** one profile is removed
+- **THEN** only that user's credential is deleted
+- **AND** the remaining session can still be restored
 
 #### Scenario: Known profile lookup
 
@@ -283,12 +301,12 @@ expires.
 
 The system SHALL provide a way to remove all saved Rewst sessions, not merely
 disconnect active in-memory sessions. Clearing sessions SHALL delete raw cookies
-from VS Code `secrets` for every active or known session profile, including
-primary organization keys and any legacy managed-organization secret keys if
-present. It SHALL remove `SessionProfiles` and `RewstAllKnownProfiles` from
-`globalState`, clear in-memory sessions, org indexes, validation caches, and
-known-profile caches, and update extension context so no session is considered
-active.
+from VS Code `secrets` for every active or known session profile, keyed by user
+id, plus any legacy org-id-keyed cookies (primary or managed org) left over from
+before migration. It SHALL remove `SessionProfiles` and `RewstAllKnownProfiles`
+from `globalState`, clear in-memory sessions, org indexes, validation caches,
+and known-profile caches, and update extension context so no session is
+considered active.
 
 #### Scenario: User clears sessions
 
@@ -296,8 +314,8 @@ active.
 - **WHEN** the user runs `Rewst Buddy: Clear Sessions`
 - **THEN** active profiles are removed from `SessionProfiles`
 - **AND** all known profiles are removed from `RewstAllKnownProfiles`
-- **AND** raw cookies for active, known, and legacy managed-org profile keys are
-  deleted from VS Code `secrets`
+- **AND** raw cookies for active and known profiles' user-id keys, plus any
+  legacy org-id keys, are deleted from VS Code `secrets`
 - **AND** no org id resolves to an active session
 - **AND** the Sessions tree is emptied
 
@@ -306,17 +324,19 @@ active.
 - **GIVEN** no session is active
 - **AND** `RewstAllKnownProfiles` contains previously saved profiles
 - **WHEN** the user runs `Rewst Buddy: Clear Sessions`
-- **THEN** known profiles and their primary-org and legacy managed-org secrets
-  are removed
+- **THEN** known profiles and their user-id-keyed and legacy org-id-keyed
+  secrets are removed
 - **AND** future startup does not restore those sessions without a new cookie
 
 ### Requirement: Remove a single session
 
 The system SHALL provide a way to remove one authenticated or previously
 authenticated session — active or known-only — without disturbing any other
-session. Removing a session SHALL delete its raw cookie(s) from VS Code
-`secrets` (primary organization key and any legacy managed-organization keys),
-except keys another remaining profile still needs, remove its profile from
+session. Removing a session SHALL delete its cookie from VS Code `secrets`
+under its user-id key, plus any legacy cookie left at its primary-organization
+key. Because cookies are keyed by user id, removing one session cannot delete
+another session's cookie even when their organizations overlap, so no
+retained-key bookkeeping is needed. Removal SHALL remove the profile from
 `SessionProfiles` (if active) and `RewstAllKnownProfiles`, and clear its
 entries from in-memory sessions and org indexes before any persistence await,
 so the session stops resolving the moment removal is confirmed. If the removed
@@ -352,12 +372,13 @@ cookie.
 - **THEN** the extension no longer considers any session active
 - **AND** the background credential-refresh interval stops
 
-#### Scenario: A secret shared with another profile survives removal
+#### Scenario: Another session survives removal even when their orgs overlap
 
 - **GIVEN** session A whose managed orgs include the primary org of session B
 - **WHEN** the user removes session A
-- **THEN** session A's own cookie is deleted from `secrets`
-- **AND** the cookie stored under session B's primary org id is kept
+- **THEN** session A's own user-keyed cookie is deleted from `secrets`
+- **AND** session B's user-keyed cookie is unaffected, because cookies are
+  keyed by user id rather than org id
 - **AND** session B still resolves for its orgs
 
 #### Scenario: A session being removed stops resolving immediately

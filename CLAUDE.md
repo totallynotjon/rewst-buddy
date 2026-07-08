@@ -244,12 +244,13 @@ async execute(...args: unknown[]): Promise<void> {
 
 ## Data Persistence
 
-| Storage       | Key                    | Data                                  |
-| ------------- | ---------------------- | ------------------------------------- |
-| `globalState` | `RewstSessionProfiles` | Session metadata (org, region, label) |
-| `globalState` | `RewstTemplateLinks`   | File-to-template mappings             |
-| `secrets`     | `{orgId}`              | Encrypted cookies/tokens              |
-| `settings`    | `rewst-buddy.*`        | User preferences                      |
+| Storage       | Key                     | Data                                                                              |
+| ------------- | ----------------------- | --------------------------------------------------------------------------------- |
+| `globalState` | `SessionProfiles`       | Active session metadata (org, region, label)                                      |
+| `globalState` | `RewstAllKnownProfiles` | Cache of every known profile, active or not                                       |
+| `globalState` | `RewstTemplateLinks`    | File-to-template mappings                                                         |
+| `secrets`     | `{userId}`              | Encrypted cookies/tokens, keyed by user id (migrated from a legacy `{orgId}` key) |
+| `settings`    | `rewst-buddy.*`         | User preferences                                                                  |
 
 ## Logging
 

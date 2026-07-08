@@ -35,6 +35,7 @@ suite('Unit: Session', () => {
 
 	test('rawGraphql sends the session cookie stored in extension secrets', async () => {
 		const orgId = 'org-raw-graphql';
+		const userId = 'user-1';
 		const expectedCookie = 'appSession=test-cookie; other=value';
 		let receivedCookie = '';
 		let receivedBody: { query?: string; variables?: Record<string, unknown> } | undefined;
@@ -55,7 +56,8 @@ suite('Unit: Session', () => {
 		const port = await listen(server);
 
 		const context = initTestEnvironment();
-		await context.secrets.store(orgId, expectedCookie);
+		// D4: cookies are keyed by user id, not org id.
+		await context.secrets.store(userId, expectedCookie);
 
 		const profile: SessionProfile = {
 			region: {
@@ -67,7 +69,7 @@ suite('Unit: Session', () => {
 			org: { id: orgId, name: 'Raw GraphQL Org' },
 			allManagedOrgs: [{ id: orgId, name: 'Raw GraphQL Org' }],
 			label: 'Raw GraphQL Session',
-			user: { id: 'user-1' } as SessionProfile['user'],
+			user: { id: userId } as SessionProfile['user'],
 		};
 
 		const session = new Session(undefined, profile);
@@ -242,7 +244,8 @@ suite('Unit: Session', () => {
 			servers.push(server);
 
 			const context = initTestEnvironment();
-			await context.secrets.store(orgId, 'appSession=stale-cookie');
+			// D4: cookies are keyed by user id, not org id.
+			await context.secrets.store('user-1', 'appSession=stale-cookie');
 			// No sdk yet, so validate() fails immediately without a network call,
 			// exactly like a session whose cached User() query previously failed.
 			const session = new Session(undefined, refreshableSessionProfile(orgId, port, 'user-1'));
@@ -300,7 +303,8 @@ suite('Unit: Session', () => {
 			const port = await listen(server);
 
 			const context = initTestEnvironment();
-			await context.secrets.store(orgId, oldCookie);
+			// D4: cookies are keyed by user id, not org id.
+			await context.secrets.store('user-1', oldCookie);
 
 			const profile: SessionProfile = {
 				region: {
@@ -321,7 +325,7 @@ suite('Unit: Session', () => {
 			await session.refreshToken();
 
 			assert.strictEqual(receivedLoginCookie, oldCookie);
-			assert.strictEqual(await context.secrets.get(orgId), newCookie);
+			assert.strictEqual(await context.secrets.get('user-1'), newCookie);
 			assert.notStrictEqual(session.sdk, undefined, 'refreshToken should replace the in-memory SDK');
 			assert.strictEqual(receivedGraphqlCookie, newCookie);
 		});
@@ -352,11 +356,12 @@ suite('Unit: Session', () => {
 			const port = await listen(server);
 
 			const context = initTestEnvironment();
-			await context.secrets.store(orgId, oldCookie);
+			// D4: cookies are keyed by user id, not org id.
+			await context.secrets.store('user-1', oldCookie);
 			const session = new Session(undefined, refreshProfile(orgId, port));
 
 			await assert.rejects(() => session.refreshToken(), /status 500/);
-			assert.strictEqual(await context.secrets.get(orgId), oldCookie, 'stored secret is unchanged');
+			assert.strictEqual(await context.secrets.get('user-1'), oldCookie, 'stored secret is unchanged');
 			assert.strictEqual(session.sdk, undefined, 'in-memory SDK is not set');
 		});
 
@@ -371,11 +376,12 @@ suite('Unit: Session', () => {
 			const port = await listen(server);
 
 			const context = initTestEnvironment();
-			await context.secrets.store(orgId, oldCookie);
+			// D4: cookies are keyed by user id, not org id.
+			await context.secrets.store('user-1', oldCookie);
 			const session = new Session(undefined, refreshProfile(orgId, port));
 
 			await assert.rejects(() => session.refreshToken(), /missing set-cookie header/);
-			assert.strictEqual(await context.secrets.get(orgId), oldCookie, 'stored secret is unchanged');
+			assert.strictEqual(await context.secrets.get('user-1'), oldCookie, 'stored secret is unchanged');
 		});
 
 		test('throws when the refreshed cookie fails SDK validation', async () => {
@@ -400,12 +406,13 @@ suite('Unit: Session', () => {
 			const port = await listen(server);
 
 			const context = initTestEnvironment();
-			await context.secrets.store(orgId, oldCookie);
+			// D4: cookies are keyed by user id, not org id.
+			await context.secrets.store('user-1', oldCookie);
 			const session = new Session(undefined, refreshProfile(orgId, port));
 
 			await assert.rejects(() => session.refreshToken(), /new SDK validation failed/);
 			assert.strictEqual(
-				await context.secrets.get(orgId),
+				await context.secrets.get('user-1'),
 				oldCookie,
 				'secret is not overwritten on validation failure',
 			);
@@ -418,7 +425,8 @@ suite('Unit: Session', () => {
 			servers.push(server);
 
 			const context = initTestEnvironment();
-			await context.secrets.store(orgId, 'appSession=stale-cookie');
+			// D4: cookies are keyed by user id, not org id.
+			await context.secrets.store('user-1', 'appSession=stale-cookie');
 			const session = new Session(undefined, refreshableSessionProfile(orgId, port, 'user-1'));
 
 			await Promise.all([session.refreshToken(), session.refreshToken(), session.refreshToken()]);
@@ -464,7 +472,8 @@ suite('Unit: Session', () => {
 			servers.push(server);
 			const port = await listen(server);
 			const context = initTestEnvironment();
-			await context.secrets.store(orgId, 'appSession=dead-cookie');
+			// D4: cookies are keyed by user id, not org id.
+			await context.secrets.store('user-1', 'appSession=dead-cookie');
 
 			let notificationCount = 0;
 			let focusSidebarCount = 0;
@@ -507,7 +516,8 @@ suite('Unit: Session', () => {
 			const port = await listen(server);
 
 			const context = initTestEnvironment();
-			await context.secrets.store(orgId, 'appSession=stale-cookie');
+			// D4: cookies are keyed by user id, not org id.
+			await context.secrets.store('user-1', 'appSession=stale-cookie');
 			const session = new Session(undefined, refreshProfile(orgId, port));
 
 			await assert.rejects(() => session.refreshToken(), /status 500/);
@@ -532,7 +542,8 @@ suite('Unit: Session', () => {
 			const port = await listen(server);
 
 			const context = initTestEnvironment();
-			await context.secrets.store(orgId, 'appSession=dead-cookie');
+			// D4: cookies are keyed by user id, not org id.
+			await context.secrets.store('user-1', 'appSession=dead-cookie');
 			restores.push(
 				stub(
 					vscode.window,
