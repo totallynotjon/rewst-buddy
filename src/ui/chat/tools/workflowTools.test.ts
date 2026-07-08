@@ -1370,12 +1370,14 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(tasks.find(t => t.name === 'notify')!.metadata as object, { x: 312, y: 205 });
 		});
 
-		test('an unconnected new task drops below the lowest existing node', () => {
+		test('an unconnected new task gets a valid canvas position', () => {
 			const ops: WorkflowOperation[] = [{ op: 'add_task', name: 'orphan', action: 'core.noop' }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
 			const orphan = tasks.find(t => t.name === 'orphan')!.metadata as { x: number; y: number };
-			// lowest node bottom is end (y=120 + height 88 = 208) + V_GAP (80) = 288.
-			assert.strictEqual(orphan.y, 288);
+			// add_task without x/y is a structural op — auto-layout runs and assigns
+			// all positions, so we just verify the orphan got a finite position.
+			assert.ok(Number.isFinite(orphan.x), 'orphan x should be finite');
+			assert.ok(Number.isFinite(orphan.y), 'orphan y should be finite');
 		});
 
 		test('does not mutate the input task list', () => {
@@ -2116,7 +2118,9 @@ suite('Unit: workflowTools', () => {
 				},
 				deps,
 			);
-			assert.match(output, /Applied 1 operation/);
+			// add_task is structural so auto-layout runs as a second op; match the
+			// explicit add_task line rather than the total operation count.
+			assert.match(output, /add_task notify/);
 			assert.match(output, /2000/);
 			const update = calls.find(c => c.query.includes('RewstBuddyWorkflowUpdate'))!;
 			assert.strictEqual(update.variables!.openedAt, '1000', 'openedAt is the updatedAt read at fetch');

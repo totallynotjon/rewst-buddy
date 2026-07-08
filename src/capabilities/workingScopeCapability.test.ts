@@ -33,7 +33,13 @@ function ctxWithWorkflowResolver(workflows: NamedWorkflow[], orgId = 'org-1'): C
 		rawGraphql: async (_query: string, _vars?: Record<string, unknown>) => {
 			return queue[callIndex++] ?? { data: { workflow: null } };
 		},
-		profile: { org: { id: orgId, name: 'Acme' }, allManagedOrgs: [{ id: orgId, name: 'Acme' }] },
+		profile: {
+			org: { id: orgId, name: 'Acme' },
+			allManagedOrgs: [{ id: orgId, name: 'Acme' }],
+			user: { id: 'mock-user-1' },
+			label: 'Mock Session',
+		},
+		onExpired: () => ({ dispose: () => {} }),
 	} as unknown as Session;
 	SessionManager._setSessionsForTesting([session]);
 	return { session, orgId, sessions: [session] };
