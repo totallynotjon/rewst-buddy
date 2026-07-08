@@ -1,11 +1,11 @@
 import { WorkingScopeManager } from '@models';
 import type { Session } from '@sessions';
-import { rawGraphqlOrThrow } from './inputHelpers';
 import { readMcpSettings } from '../mcp/settings';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import { currentApprovalOrigin, type ApprovalOrigin } from './approvalOrigin';
 import type { Capability, CapabilityContext } from './Capability';
 import { readCapability } from './capabilityFactories';
+import { rawGraphqlOrThrow } from './inputHelpers';
 
 /**
  * Read and request changes to the user's working scope (see WorkingScopeManager).

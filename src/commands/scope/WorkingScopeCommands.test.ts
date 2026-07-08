@@ -1,9 +1,9 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
 import { WorkingScopeManager } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, initTestEnvironment } from '@test';
 import { log } from '@utils';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import { ClearWorkingScope } from './ClearWorkingScope';
 import { SetWorkingScope } from './SetWorkingScope';

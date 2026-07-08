@@ -1,9 +1,9 @@
+import { WorkingScopeManager } from '@models';
+import type { Session } from '@sessions';
+import { SessionManager } from '@sessions';
+import { createMockSession, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { WorkingScopeManager } from '@models';
-import { SessionManager } from '@sessions';
-import { createMockSession, Fixtures, initTestEnvironment } from '@test';
-import type { Session } from '@sessions';
 import type { CapabilityContext } from './Capability';
 import {
 	_resetWorkingScopeApproverForTesting,

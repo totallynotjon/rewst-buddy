@@ -1,7 +1,7 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
 import { WorkingScopeManager } from '@models';
 import { initTestEnvironment } from '@test';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import { WorkingScopeStatusBar } from './WorkingScopeStatusBar';
 
