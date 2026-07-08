@@ -26,6 +26,14 @@ const EXECUTION_CONTEXTS_QUERY = `query RewstBuddyExecutionContexts($id: ID!) {
 	workflowExecutionContexts(workflowExecutionId: $id)
 }`;
 
+const EXECUTION_DETAIL_QUERY = `query RewstBuddyExecutionDetail($where: WorkflowExecutionWhereInput) {
+	workflowExecution(where: $where) {
+		id status orgId originatingExecutionId parentExecutionId parentTaskExecutionId
+		organization { id name managingOrgId managingOrg { id name } }
+		workflow { id name orgId }
+	}
+}`;
+
 // renderJinja evaluates a template; `vars` becomes the CTX namespace. No side effects.
 const RENDER_JINJA_MUTATION = `mutation RewstBuddyRenderJinja($orgId: ID!, $template: String!, $vars: JSON) {
 	renderJinja(orgId: $orgId, template: $template, vars: $vars)
@@ -96,6 +104,15 @@ export interface ExecutionDetail {
 	id?: string | null;
 	status?: string | null;
 	orgId?: string | null;
+	originatingExecutionId?: string | null;
+	parentExecutionId?: string | null;
+	parentTaskExecutionId?: string | null;
+	organization?: {
+		id?: string | null;
+		name?: string | null;
+		managingOrgId?: string | null;
+		managingOrg?: { id?: string | null; name?: string | null } | null;
+	} | null;
 	workflow?: { id?: string | null; name?: string | null; orgId?: string | null } | null;
 }
 
@@ -105,6 +122,16 @@ export interface ExecutionDetail {
 
 const TASK_VALUE_CHARS = 600;
 const MAX_INLINE_SUB_EXECUTIONS = 5;
+const MAX_SUB_EXECUTION_FETCHES = 25;
+const MAX_DEPTH = 5;
+
+function asDepthArg(args: unknown, key: string, defaultVal: number): number {
+	const raw = (args as Record<string, unknown>)?.[key];
+	if (raw === undefined || raw === null) return defaultVal;
+	const n = typeof raw === 'number' ? raw : Number(raw);
+	if (!Number.isFinite(n) || n < 1) return 1;
+	return Math.min(Math.floor(n), MAX_DEPTH);
+}
 
 export function isFailedStatus(status: string | null | undefined): boolean {
 	return /fail|error/i.test(status ?? '');
@@ -154,23 +181,51 @@ export function describeChildExecution(child: ChildExecutionRow): string {
 	return `${child.workflow?.name ?? '(unknown workflow)'} (${child.id ?? '?'}, ${child.status ?? '?'})`;
 }
 
+export async function fetchExecutionDetail(
+	deps: GraphqlToolDeps,
+	executionId: string,
+): Promise<ExecutionDetail | undefined> {
+	const result = await deps.execute(EXECUTION_DETAIL_QUERY, { where: { id: executionId } });
+	const error = firstErrorMessage(result as ExecResult);
+	if (error) throw new Error(`Failed to resolve execution ${executionId}: ${error}`);
+	return (result.data as { workflowExecution?: ExecutionDetail | null } | undefined)?.workflowExecution ?? undefined;
+}
+
+function executionAssociatedOrgIds(detail: ExecutionDetail): Set<string> {
+	const ids = new Set<string>();
+	for (const id of [
+		detail.orgId,
+		detail.organization?.id,
+		detail.organization?.managingOrgId,
+		detail.organization?.managingOrg?.id,
+		detail.workflow?.orgId,
+	]) {
+		if (id) ids.add(id);
+	}
+	return ids;
+}
+
+function describeExecutionAssociation(detail: ExecutionDetail): string {
+	const parts = [
+		detail.orgId ? `owner org ${detail.orgId}` : undefined,
+		detail.workflow?.orgId ? `workflow org ${detail.workflow.orgId}` : undefined,
+		detail.organization?.managingOrgId ? `managing org ${detail.organization.managingOrgId}` : undefined,
+	].filter((part): part is string => !!part);
+	return parts.length > 0 ? ` Resolved ${parts.join(', ')}.` : '';
+}
+
 export async function assertExecutionBelongsToOrg(
 	deps: GraphqlToolDeps,
 	executionId: string,
 	orgId: string,
-): Promise<void> {
-	const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, {
-		where: { id: executionId, orgId },
-		limit: 1,
-	});
-	const error = firstErrorMessage(result as ExecResult);
-	if (error) throw new Error(`Failed to verify execution ${executionId} in org ${orgId}: ${error}`);
-	const row = (
-		(result.data as { workflowExecutions?: (ExecutionRow | null)[] } | undefined)?.workflowExecutions ?? []
-	).find((entry): entry is ExecutionRow => !!entry);
-	if (!row) {
-		throw new Error(`Execution ${executionId} was not found in org ${orgId}.`);
+): Promise<ExecutionDetail> {
+	const detail = await fetchExecutionDetail(deps, executionId);
+	if (!detail || !executionAssociatedOrgIds(detail).has(orgId)) {
+		throw new Error(
+			`Execution ${executionId} was not found in org ${orgId}.${detail ? describeExecutionAssociation(detail) : ''}`,
+		);
 	}
+	return detail;
 }
 
 function fetchTaskLogsForVisibleExecution(
@@ -380,6 +435,7 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 	const failedOnly = asBooleanArg(request.args, 'failedOnly') ?? false;
 	const includeResult = asBooleanArg(request.args, 'includeResult') ?? false;
 	const includeSubExecutions = asBooleanArg(request.args, 'includeSubExecutions') ?? false;
+	const depth = asDepthArg(request.args, 'depth', 1);
 	const sweep = await sweepTaskLogs(deps, executionId, orgId);
 	const { rows, sourceDeps, sourceNote, hadVisibleSession, firstError } = sweep;
 	const alternates = deps.alternates ?? [];
@@ -442,6 +498,65 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 			footer.push(
 				`(${children.length - MAX_INLINE_SUB_EXECUTIONS} more sub-execution(s) not inlined — drill into them individually.)`,
 			);
+		}
+	}
+
+	// BFS walk for depth > 1
+	if (depth > 1 && children.length > 0) {
+		interface BfsEntry {
+			child: ChildExecutionRow;
+			level: number;
+			parentId: string;
+		}
+		const nestedLines: string[] = [];
+		const fetchErrors: string[] = [];
+		let totalFetches = 1; // root fetch already done
+		let truncated = false;
+		let currentLevel: { child: ChildExecutionRow; parentId: string }[] = children.map(c => ({
+			child: c,
+			parentId: executionId,
+		}));
+		const allDescendants: BfsEntry[] = currentLevel.map(e => ({ ...e, level: 1 }));
+
+		for (let level = 2; level <= depth && !truncated; level++) {
+			const nextLevel: { child: ChildExecutionRow; parentId: string }[] = [];
+			for (const { child } of currentLevel) {
+				if (!child.id) continue;
+				if (totalFetches >= MAX_SUB_EXECUTION_FETCHES) {
+					truncated = true;
+					break;
+				}
+				totalFetches++;
+				const { children: grandchildren, error } = await fetchChildExecutions(sourceDeps, child.id);
+				if (error) {
+					fetchErrors.push(`sub-execution ${child.id} (${describeChildExecution(child)}): ${error}`);
+					continue;
+				}
+				for (const gc of grandchildren) {
+					nextLevel.push({ child: gc, parentId: child.id });
+					allDescendants.push({ child: gc, level, parentId: child.id });
+				}
+			}
+			currentLevel = nextLevel;
+			if (currentLevel.length === 0) break;
+		}
+
+		if (allDescendants.length > 0 || fetchErrors.length > 0) {
+			nestedLines.push(`Nested sub-executions (depth ${depth}):`);
+			for (const { child, level, parentId } of allDescendants) {
+				nestedLines.push(
+					`${'  '.repeat(level - 1)}- ${describeChildExecution(child)} (parent execution ${parentId})`,
+				);
+			}
+			if (truncated) {
+				nestedLines.push(
+					`(sub-execution tree truncated at ${MAX_SUB_EXECUTION_FETCHES} fetches — drill in manually.)`,
+				);
+			}
+			for (const fetchError of fetchErrors) {
+				nestedLines.push(`(could not fetch children of ${fetchError})`);
+			}
+			footer.push(nestedLines.join('\n'));
 		}
 	}
 
@@ -742,7 +857,46 @@ export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToo
 	);
 
 	if (childLookupError) sections.push(`Sub-workflow executions could not be checked: ${childLookupError}`);
-	const failedChild = childrenOfFailingTask.find(child => isFailedStatus(child.status));
+	const depth = asDepthArg(request.args, 'depth', 3);
+	let failedChild = childrenOfFailingTask.find(child => isFailedStatus(child.status));
+
+	// Auto-drill into nested failing sub-executions up to `depth` levels
+	if (failedChild && depth > 1) {
+		let currentFailedChild: ChildExecutionRow | undefined = failedChild;
+		for (let k = 1; k < depth && currentFailedChild; k++) {
+			const drillChild = currentFailedChild;
+			if (!drillChild.id) break;
+			try {
+				const childTaskRows = await fetchTaskLogs(sourceDeps, drillChild.id);
+				const childFailingRow = childTaskRows.find(r => isFailedStatus(r.status));
+				if (!childFailingRow) break;
+				sections.push(
+					`Nested diagnosis (level ${k}, execution ${drillChild.id}, workflow ${drillChild.workflow?.name ?? '?'}):\n${formatTaskLogs([childFailingRow], { includeResult: true })}`,
+				);
+				const { children: grandchildren } = await fetchChildExecutions(sourceDeps, drillChild.id);
+				const childFailingTaskExecId = childFailingRow.taskExecutionId;
+				const childrenOfChildFailingTask = childFailingTaskExecId
+					? grandchildren.filter(gc => gc.parentTaskExecutionId === childFailingTaskExecId)
+					: [];
+				currentFailedChild = childrenOfChildFailingTask.find(gc => isFailedStatus(gc.status));
+			} catch (drillError) {
+				sections.push(
+					`Nested diagnosis stopped: ${drillError instanceof Error ? drillError.message : String(drillError)}`,
+				);
+				currentFailedChild = undefined;
+				break;
+			}
+		}
+		// If a deeper failed child still remains after exhausting depth, emit the drill-in pointer
+		if (currentFailedChild) {
+			sections.push(
+				`Likely deeper cause: sub-execution ${describeChildExecution(currentFailedChild)} — drill in with buddy_workflow_diagnose {"executionId": "${currentFailedChild.id}"}.`,
+			);
+		}
+		// Clear failedChild so the original pointer below is not also emitted
+		failedChild = undefined;
+	}
+
 	if (failedChild) {
 		sections.push(
 			`Likely deeper cause: sub-execution ${describeChildExecution(failedChild)} — drill in with buddy_workflow_diagnose {"executionId": "${failedChild.id}"}.`,
@@ -755,7 +909,7 @@ export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToo
 	}
 
 	const workflowId = workflowIdArg ?? detail?.workflow?.id ?? undefined;
-	const orgId = orgIdArg ?? detail?.orgId ?? detail?.workflow?.orgId ?? undefined;
+	const orgId = detail?.workflow?.orgId ?? orgIdArg ?? detail?.orgId ?? undefined;
 
 	const workflowSection = (async (): Promise<string | undefined> => {
 		if (!(workflowId && orgId)) return undefined;

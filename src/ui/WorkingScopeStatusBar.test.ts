@@ -1,7 +1,7 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
 import { WorkingScopeManager } from '@models';
 import { initTestEnvironment } from '@test';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import { WorkingScopeStatusBar } from './WorkingScopeStatusBar';
 
@@ -39,6 +39,17 @@ suite('Unit: WorkingScopeStatusBar', () => {
 		const item = itemOf(bar);
 		assert.match(item.text, /1 org\b/);
 		assert.match(item.text, /2 workflows/);
+	});
+
+	test('tooltip shows workflow name when available, raw id as fallback', () => {
+		bar = new WorkingScopeStatusBar();
+		WorkingScopeManager.applyChange({ workflows: ['wf-named', 'wf-raw'] }, [
+			{ id: 'wf-named', name: 'My Workflow' },
+		]);
+		const tooltip = itemOf(bar).tooltip as vscode.MarkdownString;
+		assert.ok(tooltip.value.includes('My Workflow (wf-named)'), 'named workflow shows name (id)');
+		assert.ok(tooltip.value.includes('wf-raw'), 'unnamed workflow falls back to raw id');
+		assert.ok(!tooltip.value.includes('wf-raw (wf-raw)'), 'no double-id for unnamed workflow');
 	});
 
 	test('returns to the unset label when the scope is cleared', () => {

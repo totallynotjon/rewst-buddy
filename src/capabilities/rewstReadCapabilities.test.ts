@@ -525,6 +525,7 @@ suite('Unit: rewstReadCapabilities', () => {
 							commentDescription: 'Task name cleanup',
 							workflowId: 'wf-1',
 							createdAt: '1735689600000',
+							user: { id: 'user-1', username: 'alice' },
 						},
 						{
 							id: 'patch-2',
@@ -533,6 +534,7 @@ suite('Unit: rewstReadCapabilities', () => {
 							commentDescription: null,
 							workflowId: 'wf-1',
 							createdAt: '1735603200000',
+							user: null,
 						},
 					],
 				},
@@ -555,9 +557,10 @@ suite('Unit: rewstReadCapabilities', () => {
 		assert.strictEqual(calls[0].variables.variables.limit, 5);
 		assert.strictEqual(
 			output,
-			['update — patch-1: Rename task (created 1735689600000)', 'create — patch-2 (created 1735603200000)'].join(
-				'\n',
-			),
+			[
+				'update — patch-1: Rename task (created 1735689600000) by alice',
+				'create — patch-2 (created 1735603200000) by (unknown user)',
+			].join('\n'),
 		);
 	});
 

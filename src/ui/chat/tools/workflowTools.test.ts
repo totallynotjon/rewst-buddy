@@ -4,8 +4,13 @@ import {
 	ADD_TASK_FIELD_NAMES,
 	ADVANCED_TASK_FIELD_TABLE,
 	RESULT_SHAPE_STEERING,
+	SET_VARIABLE_STEERING,
 	UPDATE_TASK_SET_FIELD_NAMES,
+	WORKFLOW_DATA_PASSING_STEERING,
 	WORKFLOW_IMPACT_STEERING,
+	WORKFLOW_RETRY_STEERING,
+	WORKFLOW_START_STEERING,
+	WORKFLOW_WITH_ITEMS_STEERING,
 	workflowEditOperationGrammar,
 	type RawWorkflow,
 } from '@workflow';
@@ -132,6 +137,51 @@ suite('Unit: workflowTools', () => {
 		);
 	});
 
+	test('buddy_workflow_edit spec steers retries as a delay-loop pattern', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.ok(
+			spec.description.includes(WORKFLOW_RETRY_STEERING),
+			'buddy_workflow_edit description embeds WORKFLOW_RETRY_STEERING verbatim',
+		);
+	});
+
+	test('buddy_workflow_edit spec steers with-items loops to sub-workflow wrappers', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.ok(
+			spec.description.includes(WORKFLOW_WITH_ITEMS_STEERING),
+			'buddy_workflow_edit description embeds WORKFLOW_WITH_ITEMS_STEERING verbatim',
+		);
+	});
+
+	test('buddy_workflow_edit spec steers primitive-only workflow data passing', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.ok(
+			spec.description.includes(WORKFLOW_DATA_PASSING_STEERING),
+			'buddy_workflow_edit description embeds WORKFLOW_DATA_PASSING_STEERING verbatim',
+		);
+	});
+
+	test('buddy_workflow_edit spec steers new workflows to use a START anchor', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.ok(
+			spec.description.includes(WORKFLOW_START_STEERING),
+			'buddy_workflow_edit description embeds WORKFLOW_START_STEERING verbatim',
+		);
+	});
+
+	test('buddy_workflow_edit spec documents transforms.set_variable result shape', () => {
+		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EDIT_TOOL_NAME);
+		assert.ok(spec, 'buddy_workflow_edit spec exists');
+		assert.ok(
+			spec.description.includes(SET_VARIABLE_STEERING),
+			'buddy_workflow_edit description embeds SET_VARIABLE_STEERING verbatim',
+		);
+	});
+
 	test('buddy_workflow_get spec reserves full detail for ids and positions, not ordinary edits', () => {
 		const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === 'buddy_workflow_get');
 		assert.ok(spec, 'buddy_workflow_get spec exists');
@@ -186,7 +236,6 @@ suite('Unit: workflowTools', () => {
 			'packOverrides',
 			'isMocked',
 			'mockInput',
-			'retry',
 		]);
 		for (const [field, entry] of Object.entries(ADVANCED_TASK_FIELD_TABLE)) {
 			assert.strictEqual(entry.verifyField, field, `${field} marks the same post-save verification field`);
@@ -229,7 +278,7 @@ suite('Unit: workflowTools', () => {
 		assert.match(spec.description, /\{\{ item\(\) \}\}/, 'documents the with.items current-element callable');
 		assert.match(
 			spec.description,
-			/update_task \{id\|name, set:\{name\?, input\?, action\? or subWorkflowId\?, publishResultAs\?, timeout\?, description\?, with\?, runAsOrgId\?, packOverrides\?, isMocked\?, mockInput\?, retry\?\}\}/,
+			/update_task \{id\|name, set:\{name\?, input\?, action\? or subWorkflowId\?, publishResultAs\?, timeout\?, description\?, with\?, runAsOrgId\?, packOverrides\?, isMocked\?, mockInput\?\}\}/,
 			'enumerates the update_task settable fields',
 		);
 	});
@@ -421,7 +470,9 @@ suite('Unit: workflowTools', () => {
 			assert.match(added.id, /^[0-9a-f]{32}$/, 'id is de-dashed hex');
 			assert.strictEqual(added.actionId, 'noop-id');
 			assert.deepStrictEqual(added.input, { x: 1 });
-			assert.strictEqual(applied.length, 1);
+			// structural add_task without explicit x/y triggers automatic auto-layout, so applied has 2 entries
+			assert.strictEqual(applied.length, 2);
+			assert.match(applied[1], /autolayout \(automatic/);
 		});
 
 		test('connect links by name, including a task added in the same edit', () => {
@@ -686,7 +737,6 @@ suite('Unit: workflowTools', () => {
 						],
 						isMocked: true,
 						mockInput: { mock_result: { id: '{{ "mocked" }}' } },
-						retry: { count: '3', delay: '5', when: '{{ FAILED }}' },
 					},
 				},
 			];
@@ -698,7 +748,6 @@ suite('Unit: workflowTools', () => {
 			]);
 			assert.strictEqual(start.isMocked, true);
 			assert.deepStrictEqual(start.mockInput, { mock_result: { id: '{{ "mocked" }}' } });
-			assert.deepStrictEqual(start.retry, { count: '3', delay: '5', when: '{{ FAILED }}' });
 		});
 
 		test('add_task accepts advanced task execution fields', () => {
@@ -711,7 +760,6 @@ suite('Unit: workflowTools', () => {
 					packOverrides: [{ packId: 'pack-1', configSelectionMode: 'USE_DEFAULT' }],
 					isMocked: true,
 					mockInput: { mock_result: { ok: '{{ true }}' } },
-					retry: { count: '2' },
 				},
 			];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
@@ -720,7 +768,6 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(notify.packOverrides, [{ packId: 'pack-1', configSelectionMode: 'USE_DEFAULT' }]);
 			assert.strictEqual(notify.isMocked, true);
 			assert.deepStrictEqual(notify.mockInput, { mock_result: { ok: '{{ true }}' } });
-			assert.deepStrictEqual(notify.retry, { count: '2' });
 		});
 
 		test('add_task rejects unsupported fields so agents do not trust silent drops', () => {
@@ -763,7 +810,165 @@ suite('Unit: workflowTools', () => {
 						],
 						NO_ACTIONS,
 					),
-				/Unsupported retry field "extra"/,
+				/delay task/i,
+			);
+		});
+
+		test('add_task with retry throws the loop guidance', () => {
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[{ op: 'add_task', name: 'notify', action: 'core.noop', retry: { count: '3' } }],
+						NOOP_REF,
+					),
+				(err: Error) => {
+					assert.match(err.message, /delay task/i);
+					assert.match(err.message, /sub-workflow/i);
+					return true;
+				},
+			);
+			// No task was added
+			const { tasks } = applyOperations(sampleTasks() as never, [], NOOP_REF);
+			assert.strictEqual(tasks.length, sampleTasks().length);
+		});
+
+		test('add_task with retries (plural) throws the loop guidance', () => {
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[{ op: 'add_task', name: 'notify', action: 'core.noop', retries: 3 }],
+						NOOP_REF,
+					),
+				(err: Error) => {
+					assert.match(err.message, /delay task/i);
+					assert.match(err.message, /sub-workflow/i);
+					return true;
+				},
+			);
+		});
+
+		test('update_task.set retry throws and leaves the task untouched', () => {
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[{ op: 'update_task', name: 'start', set: { retry: { count: '3' } } }],
+						NO_ACTIONS,
+					),
+				(err: Error) => {
+					assert.match(err.message, /delay task/i);
+					return true;
+				},
+			);
+		});
+
+		test('existing task retry is preserved by unrelated edits', () => {
+			// Seed a task with a stored retry config (as if saved before the guardrail)
+			const tasksWithRetry = sampleTasks() as import('../../../workflow/types').RawTask[];
+			(tasksWithRetry[0] as import('../../../workflow/types').RawTask & { retry?: unknown }).retry = {
+				count: '3',
+				delay: '5',
+				when: '{{ FAILED }}',
+			};
+			// Apply an unrelated edit (rename the other task)
+			const { tasks } = applyOperations(
+				tasksWithRetry as never,
+				[{ op: 'update_task', name: 'end', set: { description: 'touched' } }],
+				NO_ACTIONS,
+			);
+			// The retry on 'start' must survive the round-trip
+			assert.deepStrictEqual(
+				(tasks.find(t => t.name === 'start') as import('../../../workflow/types').RawTask & { retry?: unknown })
+					?.retry,
+				{ count: '3', delay: '5', when: '{{ FAILED }}' },
+			);
+		});
+
+		test('connect with custom when and no label throws', () => {
+			assert.throws(
+				() =>
+					applyOperations(
+						sampleTasks() as never,
+						[{ op: 'connect', from: 'start', to: 'end', when: '{{ FAILED }}' }],
+						NO_ACTIONS,
+					),
+				/connect: a custom transition.*requires a non-empty "label"/i,
+			);
+		});
+
+		test('connect with custom when and label succeeds', () => {
+			const { tasks } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'connect', from: 'start', to: 'end', when: '{{ FAILED }}', label: 'on failure' }],
+				NO_ACTIONS,
+			);
+			const tr = tasks.find(t => t.name === 'start')!.next!.find(t => t.when === '{{ FAILED }}');
+			assert.ok(tr, 'transition exists');
+			assert.strictEqual(tr!.label, 'on failure');
+		});
+
+		test('connect success transition without label still works', () => {
+			const { tasks } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'connect', from: 'end', to: 'start', when: '{{ SUCCEEDED }}' }],
+				NO_ACTIONS,
+			);
+			const startId = tasks.find(t => t.name === 'start')!.id;
+			const tr = tasks
+				.find(t => t.name === 'end')!
+				.next!.find(t => t.when === '{{ SUCCEEDED }}' && (t.do ?? []).includes(startId));
+			assert.ok(tr, 'success transition added without label');
+		});
+
+		test('set_transition making a condition custom without a label throws', () => {
+			const { tasks: withTr } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'connect', from: 'end', to: 'start', when: '{{ SUCCEEDED }}', label: '' }],
+				NO_ACTIONS,
+			);
+			assert.throws(
+				() =>
+					applyOperations(
+						withTr as never,
+						[{ op: 'set_transition', from: 'end', to: 'start', set: { when: '{{ FAILED }}' } }],
+						NO_ACTIONS,
+					),
+				/set_transition.*custom condition.*requires a non-empty "label"/i,
+			);
+		});
+
+		test('set_transition custom with label in the same set succeeds', () => {
+			const { tasks: withTr } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'connect', from: 'end', to: 'start', when: '{{ SUCCEEDED }}', label: '' }],
+				NO_ACTIONS,
+			);
+			const { tasks } = applyOperations(
+				withTr as never,
+				[{ op: 'set_transition', from: 'end', to: 'start', set: { when: '{{ FAILED }}', label: 'on fail' } }],
+				NO_ACTIONS,
+			);
+			const tr = tasks.find(t => t.name === 'end')!.next!.find(t => t.when === '{{ FAILED }}');
+			assert.ok(tr);
+			assert.strictEqual(tr!.label, 'on fail');
+		});
+
+		test('set_transition clearing the label on a custom transition throws', () => {
+			const { tasks: withTr } = applyOperations(
+				sampleTasks() as never,
+				[{ op: 'connect', from: 'end', to: 'start', when: '{{ FAILED }}', label: 'on fail' }],
+				NO_ACTIONS,
+			);
+			assert.throws(
+				() =>
+					applyOperations(
+						withTr as never,
+						[{ op: 'set_transition', from: 'end', to: 'start', set: { label: '' } }],
+						NO_ACTIONS,
+					),
+				/set_transition.*custom condition.*requires a non-empty "label"/i,
 			);
 		});
 
@@ -905,7 +1110,7 @@ suite('Unit: workflowTools', () => {
 			});
 		});
 
-		test('retry.count rejects non-scalar values instead of stringifying garbage', () => {
+		test('retry.count rejects with loop guidance (retry is no longer accepted)', () => {
 			for (const count of [{ value: 3 }, [3], true]) {
 				assert.throws(
 					() =>
@@ -914,7 +1119,7 @@ suite('Unit: workflowTools', () => {
 							[{ op: 'update_task', name: 'start', set: { retry: { count } } }],
 							NO_ACTIONS,
 						),
-					/retry\.count must be a string or number/,
+					/delay task/i,
 				);
 			}
 		});
@@ -1108,7 +1313,7 @@ suite('Unit: workflowTools', () => {
 			// shadow the custom condition under FOLLOW_FIRST.
 			const ops: WorkflowOperation[] = [
 				{ op: 'add_task', name: 'special', action: 'core.noop' },
-				{ op: 'connect', from: 'start', to: 'special', when: '{{ RESULT.flag }}' },
+				{ op: 'connect', from: 'start', to: 'special', when: '{{ RESULT.flag }}', label: 'flag set' },
 			];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
 			const start = tasks.find(t => t.name === 'start')!;
@@ -1165,12 +1370,14 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual(tasks.find(t => t.name === 'notify')!.metadata as object, { x: 312, y: 205 });
 		});
 
-		test('an unconnected new task drops below the lowest existing node', () => {
+		test('an unconnected new task gets a valid canvas position', () => {
 			const ops: WorkflowOperation[] = [{ op: 'add_task', name: 'orphan', action: 'core.noop' }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
 			const orphan = tasks.find(t => t.name === 'orphan')!.metadata as { x: number; y: number };
-			// lowest node bottom is end (y=120 + height 88 = 208) + V_GAP (80) = 288.
-			assert.strictEqual(orphan.y, 288);
+			// add_task without x/y is a structural op — auto-layout runs and assigns
+			// all positions, so we just verify the orphan got a finite position.
+			assert.ok(Number.isFinite(orphan.x), 'orphan x should be finite');
+			assert.ok(Number.isFinite(orphan.y), 'orphan y should be finite');
 		});
 
 		test('does not mutate the input task list', () => {
@@ -1399,6 +1606,8 @@ suite('Unit: workflowTools', () => {
 				childExecutionsError: string;
 				executions: unknown[];
 				executionOwnerOrgId: string;
+				executionWorkflowOrgId: string;
+				executionManagingOrgId: string;
 				indexWorkflows: { id: string; name: string; orgId: string; orgName: string }[];
 			}> = {},
 		) {
@@ -1432,6 +1641,29 @@ suite('Unit: workflowTools', () => {
 				}
 				if (query.includes('RewstBuddyTestWorkflow')) {
 					return { data: { testWorkflow: { executionId: 'exec-new' } } };
+				}
+				if (query.includes('RewstBuddyExecutionDetail')) {
+					const where = (variables?.where ?? {}) as { id?: string };
+					const ownerOrgId = over.executionOwnerOrgId ?? 'org-1';
+					const workflowOrgId = over.executionWorkflowOrgId ?? ownerOrgId;
+					return {
+						data: {
+							workflowExecution: {
+								id: where.id,
+								status: over.pollStatus ?? 'failed',
+								orgId: ownerOrgId,
+								organization: {
+									id: ownerOrgId,
+									managingOrgId: over.executionManagingOrgId,
+								},
+								workflow: {
+									id: 'wf-1',
+									name: 'Sample',
+									orgId: workflowOrgId,
+								},
+							},
+						},
+					};
 				}
 				if (query.includes('RewstBuddyExecutions')) {
 					const where = (variables?.where ?? {}) as { id?: string; workflowId?: string; orgId?: string };
@@ -1886,7 +2118,9 @@ suite('Unit: workflowTools', () => {
 				},
 				deps,
 			);
-			assert.match(output, /Applied 1 operation/);
+			// add_task is structural so auto-layout runs as a second op; match the
+			// explicit add_task line rather than the total operation count.
+			assert.match(output, /add_task notify/);
 			assert.match(output, /2000/);
 			const update = calls.find(c => c.query.includes('RewstBuddyWorkflowUpdate'))!;
 			assert.strictEqual(update.variables!.openedAt, '1000', 'openedAt is the updatedAt read at fetch');
@@ -2480,6 +2714,36 @@ suite('Unit: workflowTools', () => {
 			);
 		});
 
+		test('buddy_execution_logs accepts a managing orgId by resolving the execution owner first', async () => {
+			const { deps, calls } = makeDeps({
+				executionOwnerOrgId: 'child-org',
+				executionWorkflowOrgId: 'manager-org',
+				executionManagingOrgId: 'manager-org',
+				taskLogs: [{ originalWorkflowTaskName: 'managed_task', status: 'succeeded' }],
+			});
+
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', orgId: 'manager-org' },
+				},
+				deps,
+			);
+
+			assert.match(output, /managed_task: succeeded/);
+			assert.ok(
+				!calls.some(c => {
+					const where = c.variables?.where as { id?: string; orgId?: string } | undefined;
+					return (
+						c.query.includes('RewstBuddyExecutions') &&
+						where?.id === 'exec-1' &&
+						where?.orgId === 'manager-org'
+					);
+				}),
+				'execution ownership is resolved from the execution id instead of filtering by the URL org',
+			);
+		});
+
 		test('buddy_execution_logs tries alternates when the primary session errors', async () => {
 			const deps: GraphqlToolDeps = {
 				isEnabled: () => true,
@@ -3001,14 +3265,306 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /task logs could not be read \(child hidden\)/);
 		});
 
+		test('buddy_execution_logs default depth fetches only direct children', async () => {
+			const childFetchIds: string[] = [];
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						return {
+							data: {
+								taskLogs: [
+									{
+										originalWorkflowTaskName: 'root_task',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						childFetchIds.push(where.id ?? '?');
+						if (where.id === 'exec-1') {
+							return {
+								data: {
+									workflowExecution: {
+										id: 'exec-1',
+										childExecutions: [
+											{
+												id: 'exec-child',
+												status: 'succeeded',
+												parentTaskExecutionId: 'te-1',
+												workflow: { id: 'wf-sub', name: 'Sub Flow' },
+											},
+										],
+									},
+								},
+							};
+						}
+						// exec-child has its own grandchild — should NOT be fetched at depth 1
+						return {
+							data: {
+								workflowExecution: {
+									id: where.id,
+									childExecutions: [
+										{
+											id: 'exec-grand',
+											status: 'succeeded',
+											parentTaskExecutionId: 'te-child',
+											workflow: { id: 'wf-grand', name: 'Grand Flow' },
+										},
+									],
+								},
+							},
+						};
+					}
+					return { data: {} };
+				},
+			};
+			await runWorkflowTool({ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1' } }, deps);
+			// Only the root fetch should have happened — no grandchild fetch
+			assert.deepStrictEqual(childFetchIds, ['exec-1'], 'default depth=1 fetches only the root children');
+		});
+
+		test('buddy_execution_logs depth 2 lists grandchildren under their parent', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						return {
+							data: {
+								taskLogs: [
+									{
+										originalWorkflowTaskName: 'root_task',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						if (where.id === 'exec-1') {
+							return {
+								data: {
+									workflowExecution: {
+										id: 'exec-1',
+										childExecutions: [
+											{
+												id: 'exec-child',
+												status: 'succeeded',
+												parentTaskExecutionId: 'te-1',
+												workflow: { id: 'wf-sub', name: 'Child Flow' },
+											},
+										],
+									},
+								},
+							};
+						}
+						if (where.id === 'exec-child') {
+							return {
+								data: {
+									workflowExecution: {
+										id: 'exec-child',
+										childExecutions: [
+											{
+												id: 'exec-grand',
+												status: 'failed',
+												parentTaskExecutionId: 'te-child',
+												workflow: { id: 'wf-grand', name: 'Grand Flow' },
+											},
+										],
+									},
+								},
+							};
+						}
+						return { data: { workflowExecution: { id: where.id, childExecutions: [] } } };
+					}
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', depth: 2 } },
+				deps,
+			);
+			assert.match(output, /Nested sub-executions \(depth 2\)/, 'nested section header present');
+			assert.match(output, /Grand Flow.*exec-grand/, 'grandchild listed');
+			assert.match(output, /parent execution exec-child/, 'grandchild references its parent execution id');
+		});
+
+		test('buddy_execution_logs depth walk appends a note for a per-node fetch error instead of silently stopping', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						return {
+							data: {
+								taskLogs: [
+									{
+										originalWorkflowTaskName: 'root_task',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						if (where.id === 'exec-1') {
+							return {
+								data: {
+									workflowExecution: {
+										id: 'exec-1',
+										childExecutions: [
+											{
+												id: 'exec-child',
+												status: 'succeeded',
+												parentTaskExecutionId: 'te-1',
+												workflow: { id: 'wf-sub', name: 'Child Flow' },
+											},
+										],
+									},
+								},
+							};
+						}
+						// Fetching exec-child's own children fails.
+						return { errors: [{ message: 'boom: transient GraphQL error' }] };
+					}
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', depth: 2 } },
+				deps,
+			);
+			assert.match(output, /Child Flow.*exec-child/, 'the level-1 child that failed to expand is still listed');
+			assert.match(
+				output,
+				/could not fetch children of sub-execution exec-child.*boom: transient GraphQL error/,
+				'the per-node fetch error is appended as a note rather than silently treated as no children',
+			);
+		});
+
+		test('buddy_execution_logs depth is clamped: non-numeric and 0 fall back to 1, 99 is capped at 5', async () => {
+			const childFetchCounts: Record<string, number> = {};
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						return {
+							data: {
+								taskLogs: [
+									{ originalWorkflowTaskName: 't', status: 'succeeded', taskExecutionId: 'te-1' },
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						const id = where.id ?? '?';
+						childFetchCounts[id] = (childFetchCounts[id] ?? 0) + 1;
+						// Each execution has one child, creating a deep chain
+						const childId = `exec-${id}-child`;
+						return {
+							data: {
+								workflowExecution: {
+									id,
+									childExecutions: [
+										{
+											id: childId,
+											status: 'succeeded',
+											parentTaskExecutionId: 'te-1',
+											workflow: { id: 'wf-x', name: 'X' },
+										},
+									],
+								},
+							},
+						};
+					}
+					return { data: {} };
+				},
+			};
+			// depth=99 should be capped at 5, so at most 5 total fetches (levels 1..5)
+			await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', depth: 99 } },
+				deps,
+			);
+			const totalFetches = Object.values(childFetchCounts).reduce((a, b) => a + b, 0);
+			assert.ok(totalFetches <= 5, `depth 99 capped at 5; got ${totalFetches} fetches`);
+		});
+
+		test('buddy_execution_logs fetch cap truncation is stated in output', async () => {
+			// Root has 30 children; with depth:2 the BFS would try to fetch each child's children,
+			// hitting the MAX_SUB_EXECUTION_FETCHES=25 cap.
+			const rootChildren = Array.from({ length: 30 }, (_, i) => ({
+				id: `exec-child-${i}`,
+				status: 'succeeded',
+				parentTaskExecutionId: 'te-1',
+				workflow: { id: `wf-${i}`, name: `Child ${i}` },
+			}));
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						return {
+							data: {
+								taskLogs: [
+									{ originalWorkflowTaskName: 't', status: 'succeeded', taskExecutionId: 'te-1' },
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						if (where.id === 'exec-1') {
+							return { data: { workflowExecution: { id: 'exec-1', childExecutions: rootChildren } } };
+						}
+						// Each child also has a grandchild
+						return {
+							data: {
+								workflowExecution: {
+									id: where.id,
+									childExecutions: [
+										{
+											id: `${where.id}-grand`,
+											status: 'succeeded',
+											parentTaskExecutionId: 'te-x',
+											workflow: { id: 'wf-g', name: 'Grand' },
+										},
+									],
+								},
+							},
+						};
+					}
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME, args: { executionId: 'exec-1', depth: 2 } },
+				deps,
+			);
+			assert.match(output, /truncated at 25 fetches/, 'truncation note appears when fetch cap is hit');
+		});
+
 		test('buddy_execution_logs spec documents sub-execution visibility and includeSubExecutions', () => {
 			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME);
 			assert.ok(spec, 'buddy_execution_logs spec exists');
 			assert.strictEqual(spec.args, JSON.stringify(spec.inputSchema));
 			assert.match(spec.description, /sub-workflow/i, 'description explains sub-workflow visibility');
 			assert.match(spec.description, /includeSubExecutions/);
+			assert.match(spec.description, /depth/, 'description mentions depth param');
 			const props = (spec.inputSchema as { properties: Record<string, unknown> }).properties;
 			assert.ok('includeSubExecutions' in props, 'inputSchema declares includeSubExecutions');
+			assert.ok('depth' in props, 'inputSchema declares depth');
 		});
 
 		test('buddy_workflow_search indexes every accessible org and shows the org name', async () => {
@@ -3247,6 +3803,7 @@ suite('Unit: workflowTools', () => {
 				childExecutions: unknown[];
 				childExecutionsWorkflow: { id: string; name: string; orgId: string } | null;
 				childExecutionsOrgId: string;
+				childExecutionsManagingOrgId: string;
 				childExecutionsError: string;
 				workflow: unknown;
 				workflowError: string;
@@ -3258,6 +3815,28 @@ suite('Unit: workflowTools', () => {
 			const execute: GraphqlToolDeps['execute'] = async (query, variables) => {
 				calls.push({ query, variables });
 				if (query.includes('RewstBuddyTaskLogs')) return { data: { taskLogs: over.taskLogs ?? [] } };
+				if (query.includes('RewstBuddyExecutionDetail')) {
+					const where = (variables?.where ?? {}) as { id?: string };
+					const ownerOrgId = over.childExecutionsOrgId ?? 'org-1';
+					const workflow =
+						over.childExecutionsWorkflow === null
+							? null
+							: (over.childExecutionsWorkflow ?? { id: 'wf-1', name: 'Sample', orgId: ownerOrgId });
+					return {
+						data: {
+							workflowExecution: {
+								id: where.id,
+								status: 'FAILED',
+								orgId: ownerOrgId,
+								organization: {
+									id: ownerOrgId,
+									managingOrgId: over.childExecutionsManagingOrgId,
+								},
+								workflow,
+							},
+						},
+					};
+				}
 				if (query.includes('RewstBuddyExecutions')) {
 					return { data: { workflowExecutions: over.findExecutions ?? [] } };
 				}
@@ -3269,6 +3848,10 @@ suite('Unit: workflowTools', () => {
 								id: 'exec-1',
 								status: 'FAILED',
 								orgId: over.childExecutionsOrgId,
+								organization: {
+									id: over.childExecutionsOrgId,
+									managingOrgId: over.childExecutionsManagingOrgId,
+								},
 								workflow: over.childExecutionsWorkflow,
 								childExecutions: over.childExecutions ?? [],
 							},
@@ -3457,6 +4040,27 @@ suite('Unit: workflowTools', () => {
 				orgId: 'org-1',
 				status: 'FAILED',
 			});
+		});
+
+		test('fetches the workflow definition from the workflow org when execution owner is a child org', async () => {
+			const { deps, calls } = makeDiagnoseDeps({
+				taskLogs: failingTaskLogs,
+				childExecutionsOrgId: 'child-org',
+				childExecutionsManagingOrgId: 'manager-org',
+				childExecutionsWorkflow: { id: 'wf-1', name: 'Sample', orgId: 'manager-org' },
+				workflow: diagnoseWorkflow(),
+				contexts: [{ some_key: 1 }],
+			});
+
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+
+			assert.match(output, /Transition path/);
+			const workflowCall = calls.find(c => c.query.includes('RewstBuddyWorkflowGet'));
+			assert.ok(workflowCall, 'workflow definition was fetched');
+			assert.strictEqual((workflowCall.variables?.where as { orgId?: string } | undefined)?.orgId, 'manager-org');
 		});
 
 		test('reports no failed executions for a workflow instead of erroring', async () => {
@@ -3727,6 +4331,188 @@ suite('Unit: workflowTools', () => {
 				primaryDeps,
 			);
 			assert.match(output, /None of the 2 active session\(s\) can see task logs/i);
+		});
+
+		test('buddy_workflow_diagnose auto-drills the failing chain with default depth', async () => {
+			// root → failed child → failed grandchild; default depth=3 should inline both
+			const taskLogsByExec: Record<string, unknown[]> = {
+				'exec-1': [
+					{
+						originalWorkflowTaskName: 'root_task',
+						status: 'failed',
+						message: 'root boom',
+						input: {},
+						result: {},
+						taskExecutionId: 'te-root',
+					},
+				],
+				'exec-child': [
+					{
+						originalWorkflowTaskName: 'child_task',
+						status: 'failed',
+						message: 'child boom',
+						input: {},
+						result: {},
+						taskExecutionId: 'te-child',
+					},
+				],
+				'exec-grand': [
+					{
+						originalWorkflowTaskName: 'grand_task',
+						status: 'failed',
+						message: 'grand boom',
+						input: {},
+						result: {},
+						taskExecutionId: 'te-grand',
+					},
+				],
+			};
+			const childrenByExec: Record<string, unknown[]> = {
+				'exec-1': [
+					{
+						id: 'exec-child',
+						status: 'failed',
+						parentTaskExecutionId: 'te-root',
+						workflow: { id: 'wf-child', name: 'Child WF' },
+					},
+				],
+				'exec-child': [
+					{
+						id: 'exec-grand',
+						status: 'failed',
+						parentTaskExecutionId: 'te-child',
+						workflow: { id: 'wf-grand', name: 'Grand WF' },
+					},
+				],
+				'exec-grand': [],
+			};
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						const where = (variables?.where ?? {}) as { workflowExecutionId?: string };
+						return { data: { taskLogs: taskLogsByExec[where.workflowExecutionId ?? ''] ?? [] } };
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						return {
+							data: {
+								workflowExecution: {
+									id: where.id,
+									status: 'FAILED',
+									orgId: 'org-1',
+									workflow: { id: 'wf-1', name: 'Root WF', orgId: 'org-1' },
+									childExecutions: childrenByExec[where.id ?? ''] ?? [],
+								},
+							},
+						};
+					}
+					if (query.includes('RewstBuddyExecutionContexts'))
+						return { data: { workflowExecutionContexts: [{}] } };
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /Nested diagnosis \(level 1/, 'level 1 nested section present');
+			assert.match(output, /Nested diagnosis \(level 2/, 'level 2 nested section present');
+			assert.ok(
+				!output.includes('drill in with buddy_workflow_diagnose'),
+				'no unresolved drill-in pointer when chain is fully inlined',
+			);
+		});
+
+		test('buddy_workflow_diagnose depth 1 preserves old single-level behavior', async () => {
+			const { deps } = makeDiagnoseDeps({
+				taskLogs: [
+					{
+						originalWorkflowTaskName: 'the_failer',
+						status: 'failed',
+						message: 'boom',
+						input: {},
+						result: {},
+						taskExecutionId: 'te-1',
+					},
+				],
+				childExecutions: [
+					{
+						id: 'exec-child',
+						status: 'failed',
+						parentTaskExecutionId: 'te-1',
+						workflow: { id: 'wf-sub', name: 'Sub Flow' },
+					},
+				],
+				childExecutionsOrgId: 'org-1',
+			});
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1', depth: 1 } },
+				deps,
+			);
+			assert.match(output, /Likely deeper cause.*exec-child/, 'drill-in pointer present at depth 1');
+			assert.ok(!output.includes('Nested diagnosis'), 'no nested diagnosis section at depth 1');
+		});
+
+		test('buddy_workflow_diagnose drill error degrades to a note', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						const where = (variables?.where ?? {}) as { workflowExecutionId?: string };
+						if (where.workflowExecutionId === 'exec-child') throw new Error('child logs unavailable');
+						return {
+							data: {
+								taskLogs: [
+									{
+										originalWorkflowTaskName: 'root_task',
+										status: 'failed',
+										message: 'root boom',
+										input: {},
+										result: {},
+										taskExecutionId: 'te-root',
+									},
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						return {
+							data: {
+								workflowExecution: {
+									id: where.id,
+									status: 'FAILED',
+									orgId: 'org-1',
+									workflow: { id: 'wf-1', name: 'Root WF', orgId: 'org-1' },
+									childExecutions:
+										where.id === 'exec-1'
+											? [
+													{
+														id: 'exec-child',
+														status: 'failed',
+														parentTaskExecutionId: 'te-root',
+														workflow: { id: 'wf-sub', name: 'Sub Flow' },
+													},
+												]
+											: [],
+								},
+							},
+						};
+					}
+					if (query.includes('RewstBuddyExecutionContexts'))
+						return { data: { workflowExecutionContexts: [{}] } };
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /root_task: failed/, 'root digest still returned');
+			assert.match(output, /Nested diagnosis stopped:.*child logs unavailable/, 'error degrades to a note');
 		});
 	});
 });

@@ -22,8 +22,9 @@ function makeWorkflow(tasks: RawTask[], over: Partial<RawWorkflow> = {}): RawWor
 suite('Unit: workflowLint', () => {
 	test('clean workflow yields no findings', () => {
 		const entry = makeTask('entry', {
+			name: 'START',
 			action: { ref: 'msgraph.x' },
-			retry: { count: '3' },
+			timeout: 30,
 			next: [{ when: '{{ SUCCEEDED }}', do: ['terminal'] }],
 		});
 		const terminal = makeTask('terminal');
@@ -42,7 +43,7 @@ suite('Unit: workflowLint', () => {
 	});
 
 	test('unreachable disconnected task flagged', () => {
-		const entry = makeTask('entry'); // no edges to X
+		const entry = makeTask('entry', { name: 'START' }); // no edges to X
 		const orphan = makeTask('orphan');
 		const wf = makeWorkflow([entry, orphan]);
 		const findings = lintWorkflow(wf);
@@ -55,7 +56,7 @@ suite('Unit: workflowLint', () => {
 
 	test('derives the entry task from incoming transitions when tasks are unordered', () => {
 		const child = makeTask('child');
-		const entry = makeTask('entry', { next: [{ when: '{{ SUCCEEDED }}', do: ['child'] }] });
+		const entry = makeTask('entry', { name: 'START', next: [{ when: '{{ SUCCEEDED }}', do: ['child'] }] });
 		const wf = makeWorkflow([child, entry]);
 		const findings = lintWorkflow(wf);
 		assert.ok(!findings.some(f => f.rule === 'unreachable-task'), 'entry and child are reachable');
@@ -63,7 +64,7 @@ suite('Unit: workflowLint', () => {
 
 	test('cycle-only island flagged unreachable', () => {
 		// E is terminal (no edges); A↔B cycle, no edge from E
-		const entry = makeTask('entry');
+		const entry = makeTask('entry', { name: 'START' });
 		const a = makeTask('a', { next: [{ when: '{{ SUCCEEDED }}', do: ['b'] }] });
 		const b = makeTask('b', { next: [{ when: '{{ SUCCEEDED }}', do: ['a'] }] });
 		const wf = makeWorkflow([entry, a, b]);
@@ -158,31 +159,31 @@ suite('Unit: workflowLint', () => {
 		assert.ok(!findings.some(f => f.rule === 'missing-success-transition'));
 	});
 
-	test('action task without retry/timeout flagged', () => {
+	test('action task without timeout flagged', () => {
 		const task = makeTask('t1', { action: { ref: 'msgraph.x' } });
 		const wf = makeWorkflow([task]);
 		const findings = lintWorkflow(wf);
-		const noGuard = findings.filter(f => f.rule === 'action-without-guard');
-		assert.strictEqual(noGuard.length, 1);
-		assert.strictEqual(noGuard[0].severity, 'info');
+		const noTimeout = findings.filter(f => f.rule === 'action-without-timeout');
+		assert.strictEqual(noTimeout.length, 1);
+		assert.strictEqual(noTimeout[0].severity, 'info');
 	});
 
-	test('action task with retry is NOT action-without-guard', () => {
+	test('action task with retry but no timeout still fires action-without-timeout', () => {
 		const task = makeTask('t1', { action: { ref: 'msgraph.x' }, retry: { count: '3' } });
 		const wf = makeWorkflow([task]);
-		assert.ok(!lintWorkflow(wf).some(f => f.rule === 'action-without-guard'));
+		assert.ok(lintWorkflow(wf).some(f => f.rule === 'action-without-timeout'));
 	});
 
-	test('action task with timeout is NOT action-without-guard', () => {
+	test('action task with timeout is NOT action-without-timeout', () => {
 		const task = makeTask('t1', { action: { ref: 'msgraph.x' }, timeout: 30 });
 		const wf = makeWorkflow([task]);
-		assert.ok(!lintWorkflow(wf).some(f => f.rule === 'action-without-guard'));
+		assert.ok(!lintWorkflow(wf).some(f => f.rule === 'action-without-timeout'));
 	});
 
-	test('non-action task with no guards is NOT action-without-guard', () => {
+	test('non-action task with no timeout is NOT action-without-timeout', () => {
 		const task = makeTask('t1'); // no action ref, no actionId
 		const wf = makeWorkflow([task]);
-		assert.ok(!lintWorkflow(wf).some(f => f.rule === 'action-without-guard'));
+		assert.ok(!lintWorkflow(wf).some(f => f.rule === 'action-without-timeout'));
 	});
 
 	test('enabled mock input flagged', () => {
@@ -243,7 +244,7 @@ suite('Unit: workflowLint', () => {
 	});
 
 	test('short chain is NOT monolith', () => {
-		const entry = makeTask('entry', { next: [{ when: '{{ SUCCEEDED }}', do: ['t1'] }] });
+		const entry = makeTask('entry', { name: 'START', next: [{ when: '{{ SUCCEEDED }}', do: ['t1'] }] });
 		const t1 = makeTask('t1');
 		const wf = makeWorkflow([entry, t1]);
 		assert.ok(!lintWorkflow(wf).some(f => f.rule === 'monolith'));
@@ -253,9 +254,9 @@ suite('Unit: workflowLint', () => {
 		// Create a workflow that triggers one of each severity:
 		// - success-transition-shadowed (error)
 		// - mock-input-enabled (warning)
-		// - action-without-guard (info)
+		// - action-without-timeout (info)
 		const task = makeTask('t1', {
-			action: { ref: 'msgraph.x' }, // triggers action-without-guard (info)
+			action: { ref: 'msgraph.x' }, // triggers action-without-timeout (info)
 			isMocked: true, // triggers mock-input-enabled (warning)
 			next: [
 				{ when: '{{ SUCCEEDED }}', do: ['t2'] }, // triggers success-transition-shadowed (error)
@@ -277,6 +278,97 @@ suite('Unit: workflowLint', () => {
 		assert.ok(findings.some(f => f.severity === 'error'));
 		assert.ok(findings.some(f => f.severity === 'warning'));
 		assert.ok(findings.some(f => f.severity === 'info'));
+	});
+
+	test('task-retry-configured flags a stored retry', () => {
+		const task = makeTask('t1', { name: 'my_task', action: { ref: 'msgraph.x' }, retry: { count: '3' } });
+		const wf = makeWorkflow([task]);
+		const findings = lintWorkflow(wf);
+		const retryFindings = findings.filter(f => f.rule === 'task-retry-configured');
+		assert.strictEqual(retryFindings.length, 1);
+		assert.strictEqual(retryFindings[0].severity, 'warning');
+		assert.strictEqual(retryFindings[0].taskId, 't1');
+		assert.ok(retryFindings[0].message.includes('my_task'));
+	});
+
+	test('action-without-timeout no longer mentions retry', () => {
+		// action task with timeout set, no retry → no action-without-timeout
+		const task = makeTask('t1', { action: { ref: 'msgraph.x' }, timeout: 5 });
+		const wf = makeWorkflow([task]);
+		assert.ok(!lintWorkflow(wf).some(f => f.rule === 'action-without-timeout'));
+	});
+
+	test('action task without timeout still gets info', () => {
+		// action task, no timeout, no retry → one action-without-timeout info
+		const task = makeTask('t1', { action: { ref: 'msgraph.x' } });
+		const wf = makeWorkflow([task]);
+		const findings = lintWorkflow(wf).filter(f => f.rule === 'action-without-timeout');
+		assert.strictEqual(findings.length, 1);
+		assert.strictEqual(findings[0].severity, 'info');
+	});
+
+	test('unlabeled-custom-transition flags custom when without label', () => {
+		const task = makeTask('t1', {
+			name: 'my_task',
+			next: [{ when: '{{ FAILED }}', label: '', do: ['t2'] }],
+		});
+		const t2 = makeTask('t2');
+		const wf = makeWorkflow([task, t2]);
+		const findings = lintWorkflow(wf).filter(f => f.rule === 'unlabeled-custom-transition');
+		assert.strictEqual(findings.length, 1);
+		assert.strictEqual(findings[0].severity, 'warning');
+		assert.strictEqual(findings[0].taskId, 't1');
+		assert.ok(findings[0].message.includes('my_task'));
+		assert.ok(findings[0].message.includes('{{ FAILED }}'));
+	});
+
+	test('success transitions never need labels', () => {
+		const task = makeTask('t1', {
+			next: [{ when: '{{ SUCCEEDED }}', label: '', do: ['t2'] }],
+		});
+		const t2 = makeTask('t2');
+		const wf = makeWorkflow([task, t2]);
+		assert.ok(!lintWorkflow(wf).some(f => f.rule === 'unlabeled-custom-transition'));
+	});
+
+	test('with-items-on-action flags a pack action loop', () => {
+		const task = makeTask('t1', {
+			name: 'my_loop',
+			action: { ref: 'core.http_request' },
+			with: { items: '{{ CTX.list }}' },
+		});
+		const wf = makeWorkflow([task]);
+		const findings = lintWorkflow(wf).filter(f => f.rule === 'with-items-on-action');
+		assert.strictEqual(findings.length, 1);
+		assert.strictEqual(findings[0].severity, 'warning');
+		assert.ok(findings[0].message.includes('core.http_request'));
+	});
+
+	test('with-items on a sub-workflow task is fine', () => {
+		// task with 'with' set but action has no dot-ref (sub-workflow style)
+		const task = makeTask('t1', {
+			action: { id: 'wf-id' },
+			with: { items: '{{ CTX.list }}' },
+		});
+		const wf = makeWorkflow([task]);
+		assert.ok(!lintWorkflow(wf).some(f => f.rule === 'with-items-on-action'));
+	});
+
+	test('missing-start-anchor fires without a START entry', () => {
+		const t1 = makeTask('t1', { name: 'first', next: [{ when: '{{ SUCCEEDED }}', do: ['t2'] }] });
+		const t2 = makeTask('t2', { name: 'second' });
+		const wf = makeWorkflow([t1, t2]);
+		const findings = lintWorkflow(wf).filter(f => f.rule === 'missing-start-anchor');
+		assert.strictEqual(findings.length, 1);
+		assert.strictEqual(findings[0].severity, 'info');
+		assert.strictEqual(findings[0].taskId, undefined);
+	});
+
+	test('START entry anchor satisfies the rule', () => {
+		const start = makeTask('t1', { name: 'START', next: [{ when: '{{ SUCCEEDED }}', do: ['t2'] }] });
+		const t2 = makeTask('t2', { name: 'second' });
+		const wf = makeWorkflow([start, t2]);
+		assert.ok(!lintWorkflow(wf).some(f => f.rule === 'missing-start-anchor'));
 	});
 
 	test('rankDepth is deterministic and cycle-safe', () => {

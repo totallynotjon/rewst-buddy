@@ -41,7 +41,13 @@ export class WorkingScopeStatusBar implements vscode.Disposable {
 
 		const lines = ['**Rewst working scope**', ''];
 		if (orgs.length > 0) lines.push(`Orgs: ${orgs.join(', ')}`);
-		if (workflows.length > 0) lines.push(`Workflows: ${workflows.join(', ')}`);
+		if (workflows.length > 0) {
+			const wfLabels = workflows.map(id => {
+				const name = WorkingScopeManager.workflowNames.get(id);
+				return name ? `${name} (${id})` : id;
+			});
+			lines.push(`Workflows: ${wfLabels.join(', ')}`);
+		}
 		lines.push('', 'Writes stay within this scope; reads too under strict mode. Click to change it.');
 		this.item.tooltip = new vscode.MarkdownString(lines.join('\n'));
 		this.item.show();

@@ -561,11 +561,16 @@ zero rows, it SHALL query each other active session (skipping ones that error)
 and use the first non-empty result, noting that the logs came from another
 session. The tool SHALL accept an optional `orgId` that routes the primary
 lookup to the session managing that org, falling back to the default session
-when no session manages it. When no session has rows, the result SHALL say
-that none of the active sessions can see the execution rather than implying
-the execution has no logs. Under strict scope with a working org pinned (see
-`Scope reads per configuration`), the primary lookup and the sweep SHALL be
-confined to sessions managing an org in the effective allowed set.
+when no session manages it. Before reading task logs for a supplied `orgId`, it
+SHALL resolve the execution by id and accept the `orgId` when it matches the
+execution owner org, the execution workflow's org, or the execution owner's
+managing org; this allows Rewst result URLs anchored on a managing org to
+diagnose child-org executions without weakening the ownership check. When no
+session has rows, the result SHALL say that none of the active sessions can see
+the execution rather than implying the execution has no logs. Under strict
+scope with a working org pinned (see `Scope reads per configuration`), the
+primary lookup and the sweep SHALL be confined to sessions managing an org in
+the effective allowed set.
 
 #### Scenario: Execution owned by another signed-in account
 
@@ -581,6 +586,16 @@ confined to sessions managing an org in the effective allowed set.
 - **WHEN** `buddy_execution_logs` runs
 - **THEN** the result states that none of the active sessions can see task
   logs for it
+
+#### Scenario: Result URL names the managing org
+
+- **GIVEN** an execution owned by a child org whose workflow or managing org is
+  the org named in the result URL
+- **WHEN** `buddy_execution_logs` runs with that URL org as `orgId`
+- **THEN** it resolves the execution owner from the execution id and returns
+  the child-org task logs
+- **AND** it does not require the supplied `orgId` to equal the execution row's
+  `orgId`
 
 #### Scenario: Strict scope confines the sweep
 
@@ -815,7 +830,10 @@ usual `buddy_workflow_executions` → `buddy_execution_logs` →
 `executionId` directly, or a `workflowId` (with `orgId`) to find that
 workflow's most recent `FAILED` execution. It is `requiresOrg:false` with
 `scopedSessions:true`, and SHALL use the same multi-session sweep semantics
-as `buddy_execution_logs` to locate task logs across active sessions.
+as `buddy_execution_logs` to locate task logs across active sessions. When an
+execution's owner org differs from the workflow's org, the digest SHALL use the
+execution owner org for task logs and context, and the workflow org for reading
+the workflow definition and transition path.
 
 #### Scenario: Root cause found
 
@@ -835,6 +853,16 @@ as `buddy_execution_logs` to locate task logs across active sessions.
   in execution order
 - **AND** each step includes the corresponding graph transition line between
   tasks, including publish details when present
+
+#### Scenario: Workflow definition lives in the managing org
+
+- **GIVEN** an execution owned by a child org and a workflow definition owned by
+  its managing org
+- **WHEN** `buddy_workflow_diagnose` is called with that execution's id
+- **THEN** the digest fetches the workflow definition from the workflow org
+  reported by the execution metadata
+- **AND** it includes the transition path instead of reporting the workflow
+  definition unavailable in the child org
 
 #### Scenario: No failing task
 
@@ -1053,3 +1081,235 @@ exercised manually rather than by an automated UI test.
 
 - **WHEN** the user dismisses any wizard step or the final confirmation
 - **THEN** the command returns without starting the unpack stream
+
+### Requirement: Reject task-level retry configuration (#161)
+
+The system SHALL reject any `add_task` or `update_task` operation that supplies
+a `retry` or `retries` field, because the Rewst engine fails to initialize a
+task saved with a retry object and the run dies with no task logs. The rejection
+SHALL name the field and explain the correct alternative (a loop: wrap the
+action in its own sub-workflow, route its failure transition to a delay task,
+and loop back with a bounded attempt counter). Existing stored `retry` values
+SHALL survive round-trips unchanged — `buddy_workflow_get` still shows them and
+`updateWorkflow` still carries them forward — so that workflows already
+configured in the Rewst UI are not silently corrupted.
+
+#### Scenario: add_task with retry is rejected
+
+- **GIVEN** an `add_task` operation that includes a `retry` field
+- **WHEN** `buddy_workflow_edit` applies the batch
+- **THEN** the call errors with a message naming `retry` and describing the
+  loop alternative, and nothing is saved
+
+#### Scenario: update_task.set with retry is rejected
+
+- **GIVEN** an `update_task` operation whose `set` object includes a `retry`
+  field
+- **WHEN** `buddy_workflow_edit` applies the batch
+- **THEN** the call errors with a message naming `retry` and describing the
+  loop alternative, and nothing is saved
+
+#### Scenario: Existing retry survives round-trip
+
+- **GIVEN** a workflow whose task already has a `retry` object stored in Rewst
+- **WHEN** `buddy_workflow_edit` applies an unrelated edit
+- **THEN** the task's existing `retry` value is carried forward in the
+  `updateWorkflow` mutation unchanged
+
+### Requirement: Require labels on custom transitions (#160)
+
+The system SHALL reject a `connect` or `set_transition` operation that would
+produce a transition whose condition is not the default success condition
+(`{{ SUCCEEDED }}`) and whose label is empty or whitespace. Success and default
+transitions SHALL remain label-optional. Validation SHALL be per-operation at
+apply time so a batch cannot defer labeling to a later call.
+
+#### Scenario: connect with custom condition and no label is rejected
+
+- **GIVEN** a `connect` operation with a non-success `when` and an empty
+  `label`
+- **WHEN** `buddy_workflow_edit` applies the batch
+- **THEN** the call errors naming the missing label, and nothing is saved
+
+#### Scenario: connect with success condition needs no label
+
+- **GIVEN** a `connect` operation with `when: "{{ SUCCEEDED }}"` and no label
+- **WHEN** `buddy_workflow_edit` applies the batch
+- **THEN** the transition is created without error
+
+#### Scenario: set_transition producing an unlabeled custom transition is rejected
+
+- **GIVEN** a `set_transition` operation that sets a custom `when` without
+  setting a `label`
+- **WHEN** `buddy_workflow_edit` applies the batch
+- **THEN** the call errors asking for a label in the same operation
+
+### Requirement: Auto-layout after structural edits (#163)
+
+The system SHALL automatically run a full auto-layout pass after any
+`buddy_workflow_edit` batch that changes the graph structure
+(`add_task`, `delete_task`, `connect`, `disconnect`, `set_transition`), unless
+the same batch also positions tasks explicitly (`reposition`, `autolayout`, or
+`add_task` with numeric `x` and `y`). Content-only edits (rename, input
+changes, `set_inputs`, `set_output`) SHALL NOT trigger auto-layout. When
+auto-layout runs automatically, the `applied` list SHALL include an
+`autolayout (automatic after structural edits)` entry so the caller knows
+positions changed.
+
+#### Scenario: Structural edit triggers auto-layout
+
+- **GIVEN** a batch containing an `add_task` operation with no explicit
+  position
+- **WHEN** `buddy_workflow_edit` saves the batch
+- **THEN** a full auto-layout runs and the applied list includes
+  `autolayout (automatic after structural edits)`
+
+#### Scenario: Explicit positioning suppresses auto-layout
+
+- **GIVEN** a batch containing an `add_task` with numeric `x` and `y`
+- **WHEN** `buddy_workflow_edit` saves the batch
+- **THEN** only `layoutNewTasks` runs (placing only position-less tasks) and
+  the applied list does NOT include the automatic autolayout entry
+
+#### Scenario: Content-only edit does not move tasks
+
+- **GIVEN** a batch containing only an `update_task` that changes a task's
+  input
+- **WHEN** `buddy_workflow_edit` saves the batch
+- **THEN** only `layoutNewTasks` runs and no auto-layout entry appears
+
+### Requirement: List recently edited workflows (#155)
+
+The system SHALL provide a `buddy_recent_workflow_edits` tool that lists one
+org's workflows ordered by most-recent edit, returning each workflow's name,
+id, last-updated timestamp (as an ISO-8601 string), and the username of the
+last editor. An optional `username` filter SHALL narrow results to workflows
+whose last editor's username contains the supplied substring
+(case-insensitive). Username filtering SHALL be performed client-side after
+fetching a larger result set, so the GraphQL `where` clause is never widened
+beyond the org filter. The tool SHALL accept an optional `limit` (default 25,
+max 100).
+
+#### Scenario: List recent edits
+
+- **GIVEN** an org with several workflows edited at different times
+- **WHEN** `buddy_recent_workflow_edits` is called
+- **THEN** workflows are returned newest-first with name, id, ISO timestamp,
+  and last editor's username (or `(unknown user)` when the user record is
+  absent)
+
+#### Scenario: Filter by username
+
+- **GIVEN** an org where multiple users have edited workflows
+- **WHEN** `buddy_recent_workflow_edits` is called with `username: "alice"`
+- **THEN** only workflows whose last editor's username contains `alice`
+  (case-insensitive) are returned
+
+#### Scenario: Empty result
+
+- **GIVEN** no workflows match the filter
+- **WHEN** `buddy_recent_workflow_edits` is called
+- **THEN** a clear message is returned naming the org and the filter (if any)
+
+### Requirement: Attribute workflow patches to their author (#155)
+
+The system SHALL include the authoring user's username in each row returned by
+`buddy_list_workflow_patches`. An optional `username` filter SHALL narrow
+results to patches whose author's username contains the supplied substring
+(case-insensitive), using the same client-side filtering pattern as
+`buddy_recent_workflow_edits`.
+
+#### Scenario: Patch list includes author
+
+- **GIVEN** a workflow with several patches made by different users
+- **WHEN** `buddy_list_workflow_patches` is called
+- **THEN** each row includes `by <username>` (or `by (unknown user)`) after
+  the creation timestamp
+
+#### Scenario: Filter patches by username
+
+- **GIVEN** the same workflow
+- **WHEN** `buddy_list_workflow_patches` is called with `username: "bob"`
+- **THEN** only patches authored by a user whose username contains `bob`
+  (case-insensitive) are returned
+
+### Requirement: Resolve workflow names before scope approval (#154)
+
+The system SHALL resolve each requested workflow id to its name before
+presenting any approval modal, so the user sees `<name> (<id>)` rather than a
+raw UUID. If no active session can resolve a workflow id, the tool SHALL error
+immediately with a message naming the unresolvable id, before any modal is
+shown. Org approvals and workflow approvals SHALL be issued as separate modal
+requests — one for the org group and one per workflow — so the user can
+approve or deny each independently. The status bar tooltip and the
+`SetWorkingScope` command quick-pick SHALL display workflow names alongside
+ids wherever names are known.
+
+#### Scenario: Unresolvable workflow id errors before modal
+
+- **GIVEN** a `buddy_set_working_scope` call with a workflow id that no active
+  session can see
+- **WHEN** the tool runs
+- **THEN** it errors immediately with a message naming the unresolvable id,
+  and no approval modal is shown
+
+#### Scenario: Org and workflow approvals are separate
+
+- **GIVEN** a `buddy_set_working_scope` call with one org id and two workflow
+  ids
+- **WHEN** the tool runs
+- **THEN** the user sees three separate approval modals: one for the org and
+  one for each workflow
+
+#### Scenario: Partial approval is reported
+
+- **GIVEN** the user approves the org modal but denies one workflow modal
+- **WHEN** `buddy_set_working_scope` completes
+- **THEN** the response has `status: "partial"` with `approved` and `denied`
+  lists, and only the approved parts are applied to the working scope
+
+#### Scenario: Status bar shows workflow names
+
+- **GIVEN** a workflow has been added to the working scope with a resolved name
+- **WHEN** the user hovers the status bar item
+- **THEN** the tooltip shows `<name> (<id>)` for that workflow
+
+### Requirement: Drill into nested sub-workflow executions (#152)
+
+The system SHALL accept a `depth` parameter on `buddy_execution_logs` and
+`buddy_workflow_diagnose` that controls how many levels of nested
+sub-workflow executions are fetched and surfaced. The default depth for
+`buddy_execution_logs` SHALL be 1 (direct children only, preserving existing
+behavior). The default depth for `buddy_workflow_diagnose` SHALL be 3. The
+maximum depth SHALL be 5. A depth that exceeds the maximum SHALL be silently
+clamped. When the total number of sub-execution fetches would exceed the
+fetch cap, the result SHALL note that the tree was truncated rather than
+silently omitting levels. Per-node fetch errors SHALL degrade gracefully
+(appended as notes) and SHALL NOT fail the call.
+
+#### Scenario: depth=1 preserves existing behavior
+
+- **GIVEN** `buddy_execution_logs` is called without a `depth` argument
+- **THEN** only direct child executions are surfaced, matching pre-feature
+  behavior
+
+#### Scenario: depth=2 surfaces grandchildren
+
+- **GIVEN** an execution whose child spawned its own sub-workflow
+- **WHEN** `buddy_execution_logs` is called with `depth: 2`
+- **THEN** both the child and grandchild executions appear in the result
+
+#### Scenario: Fetch cap triggers truncation notice
+
+- **GIVEN** a deeply nested execution tree that would require more fetches
+  than the cap allows
+- **WHEN** `buddy_execution_logs` is called with a large depth
+- **THEN** the result includes a truncation notice naming the cap, rather
+  than silently stopping
+
+#### Scenario: Per-node fetch error degrades gracefully
+
+- **GIVEN** one node in the sub-execution tree cannot be fetched
+- **WHEN** `buddy_execution_logs` runs
+- **THEN** the error is appended as a note and the rest of the tree is still
+  returned

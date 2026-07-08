@@ -8,6 +8,10 @@ interface OrgPickItem extends QuickPickItem {
 	id: string;
 }
 
+interface WorkflowPickItem extends QuickPickItem {
+	id: string;
+}
+
 /**
  * Sets the working scope's orgs from a multi-select of every managed org. The
  * working scope is the ambient blast-radius cap: writes (and, under strict scope,
@@ -58,17 +62,44 @@ export class SetWorkingScope extends GenericCommand {
 		});
 		if (picked === undefined) return; // cancelled
 
-		const selectedIds = picked
+		const selectedOrgIds = picked
 			.map(item => (item as OrgPickItem).id)
 			.filter((id): id is string => typeof id === 'string');
-		// This picker represents the whole visible scope, but only edits orgs — clear
-		// any workflow pins (which can only be set over MCP) so a stale workflow scope
-		// can't keep blocking writes after the user re-picks orgs here.
-		WorkingScopeManager.applyChange({ orgs: selectedIds, workflows: [], replace: true });
+
+		// Second quick-pick: let the user adjust pinned workflows (if any are pinned).
+		// Show workflow names when available, falling back to the raw id.
+		const pinnedWorkflowIds = WorkingScopeManager.getWorkflows();
+		let selectedWorkflowIds: string[] = pinnedWorkflowIds;
+		if (pinnedWorkflowIds.length > 0) {
+			const workflowItems: WorkflowPickItem[] = pinnedWorkflowIds.map(id => {
+				const name = WorkingScopeManager.workflowNames.get(id);
+				return {
+					id,
+					label: name ?? id,
+					description: name ? id : undefined,
+					picked: true,
+				};
+			});
+			const pickedWorkflows = await vscode.window.showQuickPick(workflowItems, {
+				canPickMany: true,
+				placeHolder: 'Select the workflows to keep pinned (deselect to remove from scope)',
+			});
+			if (pickedWorkflows === undefined) return; // cancelled
+			selectedWorkflowIds = pickedWorkflows
+				.map(item => item.id)
+				.filter((id): id is string => typeof id === 'string');
+		}
+
+		WorkingScopeManager.applyChange({ orgs: selectedOrgIds, workflows: selectedWorkflowIds, replace: true });
+		const orgPart = picked.length > 0 ? `${picked.length} org${picked.length === 1 ? '' : 's'}` : 'no orgs';
+		const wfPart =
+			selectedWorkflowIds.length > 0
+				? ` and ${selectedWorkflowIds.length} workflow${selectedWorkflowIds.length === 1 ? '' : 's'}`
+				: '';
 		log.notifyInfo(
-			picked.length > 0
-				? `Working scope set to ${picked.length} org${picked.length === 1 ? '' : 's'}.`
-				: 'Working org scope cleared.',
+			picked.length > 0 || selectedWorkflowIds.length > 0
+				? `Working scope set to ${orgPart}${wfPart}.`
+				: 'Working scope cleared.',
 		);
 	}
 }

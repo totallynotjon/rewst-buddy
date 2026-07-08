@@ -11,7 +11,7 @@ import { randomUUID } from 'crypto';
 import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asStringArg } from '../ui/chat/tools/toolProtocol';
 import { autoLayout, layoutNewTasks, setPosition } from './layout';
-import { ADD_TASK_FIELDS, PACK_OVERRIDE_FIELDS, RETRY_FIELDS, UPDATE_TASK_SET_FIELDS } from './operationGrammar';
+import { ADD_TASK_FIELDS, PACK_OVERRIDE_FIELDS, UPDATE_TASK_SET_FIELDS } from './operationGrammar';
 import {
 	type ExecResult,
 	MUTATION_SCOPE_KEYS,
@@ -28,6 +28,13 @@ import {
 	orderTransitionsByCondition,
 	str,
 } from './types';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const RETRY_REJECTION =
+	'Tasks do not take a "retry" config: the Rewst engine fails to initialize a task saved with one and the run dies with no task logs. Implement retries as a loop: wrap the action in its own sub-workflow, route its failure transition to a delay task, and loop back with a bounded attempt counter.';
 
 // ---------------------------------------------------------------------------
 // GraphQL queries and mutations
@@ -75,7 +82,6 @@ interface TaskVerifyFields {
 	packOverrides?: boolean;
 	isMocked?: boolean;
 	mockInput?: boolean;
-	retry?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -303,28 +309,6 @@ function coercePackOverrides(value: unknown): PackOverride[] {
 	});
 }
 
-function coerceRetry(value: unknown): RawTask['retry'] {
-	if (value === null) return null;
-	const record = coerceObjectField(value, 'task "retry"');
-	rejectUnsupportedFields(record, RETRY_FIELDS, 'retry');
-	const count = record.count;
-	if (count === undefined || count === null || count === '') {
-		throw new Error('retry.count must be present.');
-	}
-	if (typeof count !== 'string' && typeof count !== 'number') {
-		throw new Error('retry.count must be a string or number.');
-	}
-	const out: NonNullable<RawTask['retry']> = { count: String(count) };
-	for (const key of ['delay', 'when'] as const) {
-		if (!(key in record)) continue;
-		const field = record[key];
-		if (field === null) out[key] = null;
-		else if (typeof field === 'string' || typeof field === 'number') out[key] = String(field);
-		else throw new Error(`retry.${key} must be a string, number, or null.`);
-	}
-	return out;
-}
-
 function assertStringLeaves(value: unknown, path: string): void {
 	if (typeof value === 'string') return;
 	if (Array.isArray(value)) {
@@ -379,10 +363,6 @@ export const ADVANCED_TASK_FIELD_TABLE = {
 	mockInput: {
 		verifyField: 'mockInput',
 		coerce: (value: unknown) => (value == null ? null : coerceMockInput(value)),
-	},
-	retry: {
-		verifyField: 'retry',
-		coerce: coerceRetry,
 	},
 } satisfies Record<
 	Exclude<keyof TaskVerifyFields, 'input' | 'with'>,
@@ -554,10 +534,14 @@ export function applyOperations(
 		return id;
 	};
 
+	let structural = false;
+	let explicitPositioning = false;
+
 	for (const operation of operations) {
 		const op = operation.op;
 		switch (op) {
 			case 'add_task': {
+				if ('retry' in operation || 'retries' in operation) throw new Error(`add_task: ${RETRY_REJECTION}`);
 				rejectUnsupportedFields(operation, ADD_TASK_FIELDS, 'add_task');
 				const name = str(operation.name);
 				const action = str(operation.action);
@@ -588,7 +572,9 @@ export function applyOperations(
 				setAdvancedTaskFields(task, operation, field => markVerify(id, field));
 				if (typeof operation.x === 'number' && typeof operation.y === 'number') {
 					setPosition(task, operation.x, operation.y);
+					explicitPositioning = true;
 				}
+				structural = true;
 				next.push(task);
 				if ('input' in operation) markVerify(id, 'input');
 				if ('with' in operation) markVerify(id, 'with');
@@ -605,6 +591,7 @@ export function applyOperations(
 				if ('x' in set || 'y' in set) {
 					throw new Error('update_task.set does not move tasks — use reposition {task, x, y} instead.');
 				}
+				if ('retry' in set || 'retries' in set) throw new Error(`update_task.set: ${RETRY_REJECTION}`);
 				rejectUnsupportedFields(set, UPDATE_TASK_SET_FIELDS, 'update_task.set');
 				if (str(set.name)) task.name = str(set.name)!;
 				if ('input' in set) task.input = coerceTaskInput(set.input);
@@ -635,6 +622,7 @@ export function applyOperations(
 					});
 				}
 				verifyFields.delete(task.id);
+				structural = true;
 				applied.push(`delete_task ${task.name} (${task.id})`);
 				break;
 			}
@@ -650,12 +638,18 @@ export function applyOperations(
 					do: [to.id],
 					publish: normalizePublish(operation.publish),
 				};
+				if (!isSuccessCondition(transition.when) && (transition.label ?? '').trim() === '') {
+					throw new Error(
+						'connect: a custom transition (when other than {{ SUCCEEDED }}) requires a non-empty "label" naming the branch.',
+					);
+				}
 				const existing = from.next ?? [];
 				const terminalIndex = existing.findIndex(t => isSuccessCondition(t.when) && (t.do ?? []).length === 0);
 				from.next =
 					terminalIndex >= 0 && isSuccessCondition(transition.when)
 						? [...existing.slice(0, terminalIndex), transition, ...existing.slice(terminalIndex)]
 						: [...existing, transition];
+				structural = true;
 				applied.push(`connect ${from.name} -> ${to.name} when ${transition.when}`);
 				break;
 			}
@@ -675,6 +669,7 @@ export function applyOperations(
 					}
 					return true;
 				});
+				structural = true;
 				applied.push(`disconnect ${from.name} (${before - (from.next?.length ?? 0)} edge(s) removed)`);
 				break;
 			}
@@ -691,6 +686,12 @@ export function applyOperations(
 					const targets = Array.isArray(set.to) ? (set.to as string[]) : [set.to as string];
 					transition.do = targets.map(target => resolveTask(next, target).id);
 				}
+				if (!isSuccessCondition(transition.when) && !(transition.label ?? '').trim()) {
+					throw new Error(
+						'set_transition: the resulting transition has a custom condition, so it requires a non-empty "label" — set it in the same operation.',
+					);
+				}
+				structural = true;
 				applied.push(`set_transition on ${from.name}`);
 				break;
 			}
@@ -702,11 +703,13 @@ export function applyOperations(
 				}
 				const task = resolveTask(next, ref);
 				setPosition(task, operation.x, operation.y);
+				explicitPositioning = true;
 				applied.push(`reposition ${task.name} -> (${operation.x}, ${operation.y})`);
 				break;
 			}
 			case 'autolayout': {
 				autoLayout(next);
+				explicitPositioning = true;
 				applied.push(`autolayout (${next.length} node(s) re-arranged)`);
 				break;
 			}
@@ -780,7 +783,12 @@ export function applyOperations(
 	removeRedundantTerminalSuccessTransitions(next);
 	orderTransitionsByCondition(next);
 	ensureTaskDefaults(next);
-	layoutNewTasks(next);
+	if (structural && !explicitPositioning) {
+		autoLayout(next);
+		applied.push('autolayout (automatic after structural edits)');
+	} else {
+		layoutNewTasks(next);
+	}
 	return { tasks: next, applied, workflow, verifyFields };
 }
 
@@ -870,13 +878,12 @@ async function verifySavedTaskValues(
 				...(fields.mockInput
 					? sentValueDivergences(sent.mockInput ?? null, stored.mockInput ?? null, 'mockInput')
 					: []),
-				...(fields.retry ? sentValueDivergences(sent.retry ?? null, stored.retry ?? null, 'retry') : []),
 			];
 			problems.push(...lines.map(line => `- task "${sent.name}": ${line}`));
 		}
 		if (problems.length === 0) return '';
 		return (
-			`\n\nWARNING — the server did not store some task values as sent. Rewst may filter task input against the action's inputSchema or normalize advanced task configuration such as org overrides, integration overrides, mocking, and retry settings, while the save still reports success.\n` +
+			`\n\nWARNING — the server did not store some task values as sent. Rewst may filter task input against the action's inputSchema or normalize advanced task configuration such as org overrides, integration overrides, mocking, while the save still reports success.\n` +
 			`${problems.join('\n')}\n` +
 			`Check the action's accepted parameters, advanced configuration or field mapping with buddy_action_search describe mode, then re-apply with matching keys, types, and supported configuration values.`
 		);

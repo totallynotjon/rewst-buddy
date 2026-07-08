@@ -38,6 +38,8 @@ export const WorkingScopeManager = new (class _ implements vscode.Disposable {
 	readonly stateKey = 'RewstWorkingScope';
 	private orgs = new Set<string>();
 	private workflows = new Set<string>();
+	/** Maps workflow id → resolved display name, populated when named workflows are applied. */
+	readonly workflowNames = new Map<string, string>();
 	private loaded = false;
 
 	private readonly changeEmitter = new vscode.EventEmitter<WorkingScopeState>();
@@ -118,8 +120,14 @@ export const WorkingScopeManager = new (class _ implements vscode.Disposable {
 	 * change can't publish a half-applied scope or lose part of itself to a
 	 * persistence race. A dimension whose array is omitted is left untouched;
 	 * `replace` replaces the provided dimension instead of adding to it.
+	 *
+	 * Pass `namedWorkflows` to persist id→name mappings for display in the status
+	 * bar and command palette (the second argument is optional).
 	 */
-	applyChange(change: { orgs?: readonly string[]; workflows?: readonly string[]; replace?: boolean }): void {
+	applyChange(
+		change: { orgs?: readonly string[]; workflows?: readonly string[]; replace?: boolean },
+		namedWorkflows?: readonly { id: string; name: string }[],
+	): void {
 		this.ensureLoaded();
 		const { orgs, workflows, replace = false } = change;
 		if (orgs) {
@@ -127,8 +135,20 @@ export const WorkingScopeManager = new (class _ implements vscode.Disposable {
 			else for (const id of normalizeIds(orgs)) this.orgs.add(id);
 		}
 		if (workflows) {
-			if (replace) this.workflows = new Set(normalizeIds(workflows));
-			else for (const id of normalizeIds(workflows)) this.workflows.add(id);
+			if (replace) {
+				this.workflows = new Set(normalizeIds(workflows));
+				// On replace, drop names for ids no longer in scope.
+				for (const id of [...this.workflowNames.keys()]) {
+					if (!this.workflows.has(id)) this.workflowNames.delete(id);
+				}
+			} else {
+				for (const id of normalizeIds(workflows)) this.workflows.add(id);
+			}
+		}
+		if (namedWorkflows) {
+			for (const { id, name } of namedWorkflows) {
+				if (id && name) this.workflowNames.set(id.trim(), name);
+			}
 		}
 		this.commit();
 	}
@@ -164,6 +184,7 @@ export const WorkingScopeManager = new (class _ implements vscode.Disposable {
 	_resetForTesting(): void {
 		this.orgs.clear();
 		this.workflows.clear();
+		this.workflowNames.clear();
 		this.loaded = true;
 	}
 

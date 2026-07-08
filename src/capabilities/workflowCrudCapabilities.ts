@@ -1,4 +1,4 @@
-import { CRATE_REUSE_STEERING } from '@workflow';
+import { CRATE_REUSE_STEERING, WORKFLOW_START_STEERING } from '@workflow';
 import { z } from 'zod';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
@@ -81,8 +81,8 @@ const createWorkflowSchema = z.object({
 
 const createWorkflowSpec: ToolSpecDefinition = {
 	name: 'buddy_create_workflow',
-	description: `Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code. ${CRATE_REUSE_STEERING}`,
-	// NOTE: CRATE_REUSE_STEERING is embedded verbatim above — do not paraphrase it here.
+	description: `Create a new, empty Rewst workflow in one organization, returning its id and name. Description is optional and limited to ${WORKFLOW_DESCRIPTION_MAX_LENGTH} characters. Add tasks and transitions afterwards with buddy_workflow_edit. Requires write tools to be enabled and per-call approval in VS Code. ${CRATE_REUSE_STEERING} ${WORKFLOW_START_STEERING}`,
+	// NOTE: CRATE_REUSE_STEERING and WORKFLOW_START_STEERING are embedded verbatim above — do not paraphrase them here.
 	inputSchema: toInputSchema(createWorkflowSchema),
 };
 

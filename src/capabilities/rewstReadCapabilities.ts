@@ -38,6 +38,8 @@ const MAX_ORG_VARIABLE_LIMIT = 200;
 const MAX_EXECUTION_LIMIT = 100;
 const MAX_TASK_LIMIT = 500;
 const MAX_PATCH_LIMIT = 100;
+const DEFAULT_RECENT_EDITS_LIMIT = 25;
+const MAX_RECENT_EDITS_LIMIT = 100;
 
 const LOCAL_REFERENCE_MODELS = [
 	'Crate',
@@ -155,16 +157,36 @@ const listWorkflowTasksSpec: ToolSpec = {
 const listWorkflowPatchesInputSchema = z.object({
 	orgId: ORG_ID_FIELD,
 	workflowId: requiredStringField('workflowId').describe('Workflow id whose patch history to list.'),
+	username: optionalStringField().describe(
+		'Only include patches by a user matching this username (case-insensitive substring).',
+	),
 	limit: optionalClampedInt(MAX_PATCH_LIMIT).describe(
 		`Max patches to return (default ${DEFAULT_PATCH_LIMIT}, max ${MAX_PATCH_LIMIT}).`,
 	),
 });
 const listWorkflowPatchesSpec: ToolSpec = {
 	name: 'buddy_list_workflow_patches',
-	args: '{"orgId": string, "workflowId": string, "limit"?: number}',
+	args: '{"orgId": string, "workflowId": string, "username"?: string, "limit"?: number}',
 	description:
-		'List the revision history (patch metadata) for one Rewst workflow, newest first (id, patchType, comment, createdAt). Use buddy_get_workflow_patch with a patch id to see the actual change. createdAt is an epoch-millisecond string.',
+		'List the revision history (patch metadata) for one Rewst workflow, newest first (id, patchType, comment, createdAt, username). Use buddy_get_workflow_patch with a patch id to see the actual change. createdAt is an epoch-millisecond string. username filters to patches by a specific user (case-insensitive substring).',
 	inputSchema: toInputSchema(listWorkflowPatchesInputSchema),
+};
+
+const recentWorkflowEditsInputSchema = z.object({
+	orgId: ORG_ID_FIELD,
+	username: optionalStringField().describe(
+		'Only include workflows whose last editor matches this username (case-insensitive substring).',
+	),
+	limit: optionalClampedInt(MAX_RECENT_EDITS_LIMIT).describe(
+		`Max workflows to return (default ${DEFAULT_RECENT_EDITS_LIMIT}, max ${MAX_RECENT_EDITS_LIMIT}).`,
+	),
+});
+const recentWorkflowEditsSpec: ToolSpec = {
+	name: 'buddy_recent_workflow_edits',
+	args: '{"orgId": string, "username"?: string, "limit"?: number}',
+	description:
+		"List one org's workflows ordered by most recent edit — workflow name, id, when it was last updated, and the user who made the last edit. Use it to see what changed recently or what a specific user touched; drill into one workflow's change history with buddy_list_workflow_patches. username filters by the last editor (case-insensitive substring match).",
+	inputSchema: toInputSchema(recentWorkflowEditsInputSchema),
 };
 
 const getWorkflowPatchInputSchema = z.object({
@@ -300,6 +322,7 @@ const WORKFLOW_PATCHES_QUERY = `query RewstBuddyMcpWorkflowPatches($workflowId: 
     commentDescription
     workflowId
     createdAt
+    user { id username }
   }
 }`;
 
@@ -312,6 +335,13 @@ const WORKFLOW_PATCH_QUERY = `query RewstBuddyMcpWorkflowPatch($id: ID!) {
     commentDescription
     workflowId
     createdAt
+    user { id username }
+  }
+}`;
+
+const RECENT_WORKFLOW_EDITS_QUERY = `query RewstBuddyMcpRecentWorkflowEdits($orgId: ID!, $limit: Int) {
+  workflows(where: { orgId: $orgId }, order: [["updatedAt", "DESC"]], limit: $limit) {
+    id name updatedAt updatedById updatedBy { id username }
   }
 }`;
 
@@ -543,26 +573,73 @@ async function runListWorkflowTasks(input: Record<string, unknown>, ctx: Capabil
 		.join('\n');
 }
 
+function formatEpochMs(value: unknown): string {
+	const n = Number(value);
+	return Number.isFinite(n) ? new Date(n).toISOString() : String(value);
+}
+
 // orgId is validated to select the session; result scoping is enforced server-side by the session's org access, so the query filters by workflow id alone.
 async function runListWorkflowPatches(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
-	const { workflowId, limit: rawLimit } = parseCapabilityInput(listWorkflowPatchesInputSchema, input);
+	const { workflowId, username, limit: rawLimit } = parseCapabilityInput(listWorkflowPatchesInputSchema, input);
 	const limit = rawLimit ?? DEFAULT_PATCH_LIMIT;
-	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_PATCHES_QUERY, { workflowId, limit });
-	const workflowPatches = ((data as { workflowPatches?: unknown[] } | undefined)?.workflowPatches ?? []) as {
+	const fetchLimit = username ? MAX_PATCH_LIMIT : limit;
+	const data = await rawGraphqlOrThrow(ctx.session, WORKFLOW_PATCHES_QUERY, { workflowId, limit: fetchLimit });
+	let workflowPatches = ((data as { workflowPatches?: unknown[] } | undefined)?.workflowPatches ?? []) as {
 		id?: string;
 		patchType?: string;
 		comment?: string | null;
 		commentDescription?: string | null;
 		workflowId?: string;
 		createdAt?: string;
+		user?: { id: string; username: string } | null;
 	}[];
-	if (workflowPatches.length === 0) return `No workflow patches found for workflow ${workflowId}.`;
+	if (username) {
+		const lower = username.toLowerCase();
+		workflowPatches = workflowPatches.filter(p => p.user?.username?.toLowerCase().includes(lower));
+		workflowPatches = workflowPatches.slice(0, limit);
+	}
+	if (workflowPatches.length === 0) {
+		return username
+			? `No workflow patches found for workflow ${workflowId} by a user matching "${username}".`
+			: `No workflow patches found for workflow ${workflowId}.`;
+	}
 	return workflowPatches
 		.map(
 			patch =>
 				`${patch.patchType ?? '(unknown patch type)'} — ${patch.id}${patch.comment ? `: ${patch.comment}` : ''} (created ${
 					patch.createdAt
-				})`,
+				}) by ${patch.user?.username ?? '(unknown user)'}`,
+		)
+		.join('\n');
+}
+
+async function runRecentWorkflowEdits(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
+	const { orgId, username, limit: rawLimit } = parseCapabilityInput(recentWorkflowEditsInputSchema, input);
+	const effectiveLimit = rawLimit ?? DEFAULT_RECENT_EDITS_LIMIT;
+	const fetchLimit = username ? MAX_RECENT_EDITS_LIMIT * 2 : effectiveLimit;
+	const data = await rawGraphqlOrThrow(ctx.session, RECENT_WORKFLOW_EDITS_QUERY, { orgId, limit: fetchLimit });
+	let workflows = ((data as { workflows?: unknown[] } | undefined)?.workflows ?? []) as {
+		id: string;
+		name: string;
+		updatedAt: unknown;
+		updatedBy?: { id: string; username: string } | null;
+	}[];
+	if (username) {
+		const lower = username.toLowerCase();
+		workflows = workflows.filter(w => w.updatedBy?.username?.toLowerCase().includes(lower));
+		workflows = workflows.slice(0, effectiveLimit);
+	}
+	if (workflows.length === 0) {
+		return username
+			? `No workflows in org ${orgId} were last edited by a user matching "${username}".`
+			: `No recently edited workflows found for org ${orgId}.`;
+	}
+	return workflows
+		.map(
+			w =>
+				`${w.name} (${w.id}) — updated ${formatEpochMs(w.updatedAt)} by ${
+					w.updatedBy?.username ?? '(unknown user)'
+				}`,
 		)
 		.join('\n');
 }
@@ -664,6 +741,7 @@ export const READ_CAPABILITIES: Capability[] = [
 	readCapability(listWorkflowTasksSpec, runListWorkflowTasks),
 	readCapability(listWorkflowPatchesSpec, runListWorkflowPatches),
 	readCapability(getWorkflowPatchSpec, runGetWorkflowPatch),
+	readCapability(recentWorkflowEditsSpec, runRecentWorkflowEdits),
 	readCapability(getWorkflowExecutionStatsSpec, runGetWorkflowExecutionStats),
 	readCapability(resolveReferenceSpec, runResolveReference),
 	readCapability(getWorkflowSpec, runGetWorkflow),

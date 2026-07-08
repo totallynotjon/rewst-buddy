@@ -1,9 +1,9 @@
-import * as assert from 'assert';
-import * as Mocha from 'mocha';
 import { WorkingScopeManager } from '@models';
 import { SessionManager } from '@sessions';
 import { createMockSession, initTestEnvironment } from '@test';
 import { log } from '@utils';
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import { ClearWorkingScope } from './ClearWorkingScope';
 import { SetWorkingScope } from './SetWorkingScope';
@@ -50,18 +50,61 @@ suite('Unit: WorkingScope commands', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), ['org-1']);
 	});
 
-	test('SetWorkingScope clears stale workflow pins when it replaces org scope', async () => {
+	test('SetWorkingScope shows a second picker for pinned workflows and keeps selected ones', async () => {
 		useSession('org-1', 'Acme');
 		WorkingScopeManager.setWorkflows(['wf-1']);
-		vscode.window.showQuickPick = (async (items: readonly { id: string }[]) => {
+		let pickCallCount = 0;
+		vscode.window.showQuickPick = (async (items: readonly { id?: string }[]) => {
+			pickCallCount++;
+			const resolved = await items;
+			if (pickCallCount === 1) {
+				// First pick: org picker — select org-1.
+				return resolved.filter(item => item.id === 'org-1');
+			}
+			// Second pick: workflow picker — keep all.
+			return resolved;
+		}) as unknown as typeof vscode.window.showQuickPick;
+
+		await new SetWorkingScope().execute();
+
+		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), ['org-1']);
+		assert.deepStrictEqual(
+			WorkingScopeManager.getWorkflows(),
+			['wf-1'],
+			'workflow pin is kept when user selects it',
+		);
+		assert.strictEqual(pickCallCount, 2, 'two pickers shown when workflows are pinned');
+	});
+
+	test('SetWorkingScope removes workflow pins that the user deselects', async () => {
+		useSession('org-1', 'Acme');
+		WorkingScopeManager.setWorkflows(['wf-1', 'wf-2']);
+		let pickCallCount = 0;
+		vscode.window.showQuickPick = (async (items: readonly { id?: string }[]) => {
+			pickCallCount++;
+			const resolved = await items;
+			if (pickCallCount === 1) return resolved.filter(item => item.id === 'org-1');
+			// Second pick: deselect all workflows.
+			return [];
+		}) as unknown as typeof vscode.window.showQuickPick;
+
+		await new SetWorkingScope().execute();
+
+		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), [], 'deselected workflows are removed');
+	});
+
+	test('SetWorkingScope does not show a workflow picker when no workflows are pinned', async () => {
+		useSession('org-1', 'Acme');
+		let pickCallCount = 0;
+		vscode.window.showQuickPick = (async (items: readonly { id?: string }[]) => {
+			pickCallCount++;
 			const resolved = await items;
 			return resolved.filter(item => item.id === 'org-1');
 		}) as unknown as typeof vscode.window.showQuickPick;
 
 		await new SetWorkingScope().execute();
 
-		assert.deepStrictEqual(WorkingScopeManager.getOrgs(), ['org-1']);
-		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), [], 'workflow pins are cleared with the org change');
+		assert.strictEqual(pickCallCount, 1, 'only one picker shown when no workflows are pinned');
 	});
 
 	test('SetWorkingScope lists the orgs already in scope first', async () => {

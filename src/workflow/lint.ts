@@ -153,14 +153,49 @@ export function lintWorkflow(workflow: RawWorkflow): LintFinding[] {
 			});
 		}
 
-		// action-without-guard: pack-action task with no retry and no timeout
-		if ((task.action?.ref || task.actionId) && task.retry == null && task.timeout == null) {
+		// task-retry-configured: task-level retry is engine-breaking
+		if (task.retry != null) {
+			warnings.push({
+				rule: 'task-retry-configured',
+				severity: 'warning',
+				taskId: task.id,
+				taskName: task.name,
+				message: `Task "${task.name}" (${task.id}) has a task-level retry config; the Rewst engine can fail to initialize such a task. Replace it with a loop: a sub-workflow wrapper with a delay task on the failure path.`,
+			});
+		}
+
+		// unlabeled-custom-transition: custom transition with no label
+		for (const tr of next) {
+			if (!isSuccessCondition(tr.when) && (tr.label == null || tr.label.trim() === '')) {
+				warnings.push({
+					rule: 'unlabeled-custom-transition',
+					severity: 'warning',
+					taskId: task.id,
+					taskName: task.name,
+					message: `Task "${task.name}" (${task.id}) has a custom transition (when: ${tr.when}) with no label. Custom transitions need a label naming the branch.`,
+				});
+			}
+		}
+
+		// with-items-on-action: with-items loop directly on a pack action
+		if (task.with != null && typeof task.action?.ref === 'string' && task.action.ref.includes('.')) {
+			warnings.push({
+				rule: 'with-items-on-action',
+				severity: 'warning',
+				taskId: task.id,
+				taskName: task.name,
+				message: `Task "${task.name}" (${task.id}) runs a with-items loop directly on action ${task.action.ref}. Wrap the action in a sub-workflow and loop over the wrapper so each item can fail, retry, and log individually.`,
+			});
+		}
+
+		// action-without-timeout: pack-action task with no timeout
+		if ((task.action?.ref || task.actionId) && task.timeout == null) {
 			infos.push({
-				rule: 'action-without-guard',
+				rule: 'action-without-timeout',
 				severity: 'info',
 				taskId: task.id,
 				taskName: task.name,
-				message: `Task "${task.name}" (${task.id}) is an action task with no retry or timeout configured. Consider adding guards for resilience.`,
+				message: `Task "${task.name}" (${task.id}) is an action task with no timeout configured. Consider adding one so a hung call cannot stall the run.`,
 			});
 		}
 
@@ -174,6 +209,19 @@ export function lintWorkflow(workflow: RawWorkflow): LintFinding[] {
 				message: `Task "${task.name}" (${task.id}) has mock input enabled. Disable mocking before using this workflow in production.`,
 			});
 		}
+	}
+
+	// missing-start-anchor: workflow-level, no taskId
+	// Entry candidates = tasks with zero inbound edges (same set used for BFS above)
+	const entryCandidates = tasks.filter(t => !incoming.has(t.id));
+	const hasStartAnchor = entryCandidates.some(t => t.name.trim().toUpperCase() === 'START');
+	if (!hasStartAnchor) {
+		infos.push({
+			rule: 'missing-start-anchor',
+			severity: 'info',
+			message:
+				'Workflow has no "START" entry anchor. Convention: begin with a core.noop task named "START" with no inbound transitions and a single success transition to the first real action.',
+		});
 	}
 
 	// monolith: workflow-level finding (no taskId)

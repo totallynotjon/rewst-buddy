@@ -1,6 +1,6 @@
+import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { initTestEnvironment } from '@test';
 import { WorkingScopeManager } from './WorkingScopeManager';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -88,6 +88,20 @@ suite('Unit: WorkingScopeManager', () => {
 		assert.deepStrictEqual(WorkingScopeManager.getOrgs().sort(), ['org-1', 'org-existing']);
 		assert.deepStrictEqual(WorkingScopeManager.getWorkflows(), ['wf-1']);
 		sub.dispose();
+	});
+
+	test('applyChange stores workflow names and clears them on replace', () => {
+		WorkingScopeManager.applyChange({ workflows: ['wf-1', 'wf-2'] }, [
+			{ id: 'wf-1', name: 'Alpha' },
+			{ id: 'wf-2', name: 'Beta' },
+		]);
+		assert.strictEqual(WorkingScopeManager.workflowNames.get('wf-1'), 'Alpha');
+		assert.strictEqual(WorkingScopeManager.workflowNames.get('wf-2'), 'Beta');
+
+		// Replace with a new set — old names should be pruned.
+		WorkingScopeManager.applyChange({ workflows: ['wf-3'], replace: true }, [{ id: 'wf-3', name: 'Gamma' }]);
+		assert.strictEqual(WorkingScopeManager.workflowNames.has('wf-1'), false, 'wf-1 name pruned on replace');
+		assert.strictEqual(WorkingScopeManager.workflowNames.get('wf-3'), 'Gamma');
 	});
 
 	test('applyChange replaces only the named dimension and leaves an omitted one alone', () => {

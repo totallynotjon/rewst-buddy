@@ -21,7 +21,6 @@ export const ADD_TASK_FIELD_NAMES = [
 	'packOverrides',
 	'isMocked',
 	'mockInput',
-	'retry',
 	'x',
 	'y',
 	// Accepted only so the edit engine can report the existing ignored-controls note.
@@ -42,7 +41,6 @@ export const UPDATE_TASK_SET_FIELD_NAMES = [
 	'packOverrides',
 	'isMocked',
 	'mockInput',
-	'retry',
 	// Accepted only so the edit engine can report the existing ignored-controls note.
 	'transitionMode',
 	'join',
@@ -56,12 +54,9 @@ export const PACK_OVERRIDE_FIELD_NAMES = [
 	'searchInput',
 ] as const;
 
-export const RETRY_FIELD_NAMES = ['count', 'delay', 'when'] as const;
-
 export const ADD_TASK_FIELDS = new Set<string>(ADD_TASK_FIELD_NAMES);
 export const UPDATE_TASK_SET_FIELDS = new Set<string>(UPDATE_TASK_SET_FIELD_NAMES);
 export const PACK_OVERRIDE_FIELDS = new Set<string>(PACK_OVERRIDE_FIELD_NAMES);
-export const RETRY_FIELDS = new Set<string>(RETRY_FIELD_NAMES);
 
 const HIDDEN_TASK_FIELDS = new Set(['op', 'id', 'transitionMode', 'join']);
 
@@ -92,9 +87,9 @@ export function workflowEditOperationGrammar(): string {
 		addTaskGrammar(),
 		updateTaskGrammar(),
 		'delete_task {id|name} (also removes edges pointing at it)',
-		'connect {from, to, when?, label?, publish?} (from/to are task names or ids)',
+		'connect {from, to, when?, label? (required when when is custom), publish?} (from/to are task names or ids)',
 		'disconnect {from, to?|transitionId?}',
-		'set_transition {from, to?|transitionId?, set:{when?, label?, publish?, to?}}',
+		'set_transition {from, to?|transitionId?, set:{when?, label? (required when the condition is custom), publish?, to?}}',
 		'reposition {task, x, y} (move a task to canvas coordinates)',
 		'mocking: set isMocked:true and mockInput: {"mock_result": {...}}; every leaf value under mock_result must be a string/Jinja expression (use "{{ 42 }}" for numbers, "{{ true }}" for booleans, "{{- [{\'a\': 1}] -}}" for arrays/objects); mocked tasks skip their action and return the rendered mock_result',
 		'set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you)',
