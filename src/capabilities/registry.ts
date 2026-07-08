@@ -5,6 +5,7 @@ import {
 	graphqlSchemaCapability,
 } from './chatToolCapabilities';
 import { CRATE_CAPABILITIES } from './crateCapabilities';
+import { crateUnpackCapability } from './crateUnpackCapability';
 import { graphqlMutateCapability } from './graphqlMutateCapability';
 import { JINJA_DOCS_CAPABILITIES } from './jinjaDocsCapabilities';
 import { ORG_USER_CAPABILITIES } from './orgUserCapabilities';
@@ -56,6 +57,7 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...WORKING_SCOPE_CAPABILITIES,
 	...JINJA_DOCS_CAPABILITIES,
 	...CRATE_CAPABILITIES,
+	crateUnpackCapability,
 	workflowImpactCapability,
 	workflowLintCapability,
 	saveWorkflowInputProfileCapability,

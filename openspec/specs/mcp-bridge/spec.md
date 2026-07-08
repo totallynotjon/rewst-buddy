@@ -958,3 +958,98 @@ and existing workflows before building anew.
 
 - **WHEN** `buddy_search_crates` is called with an unknown `source` value
 - **THEN** the call is rejected with an error naming the valid sources
+
+### Requirement: Unpack a Crate into an organization
+
+The system SHALL expose `buddy_unpack_crate`, a write capability that installs
+(unpacks) one prebuilt Crate into one organization over the platform's unpack
+stream, gated by the write-tools setting and per-call approval like every
+other write capability. Because crates declare their own configuration
+dynamically as an ordered list of tokens (free-text inputs and single- or
+multi-select options), the capability SHALL resolve every value-bearing token
+from the caller-supplied values (keyed by token name or id) with fallback to
+the crate's own defaults, and when any token remains unresolved it SHALL
+return a structured `input_required` response describing each missing token
+(name, type, options, default, hint) and each default that resolved — without
+prompting or mutating — so the caller can retry with complete values. The
+unpack input SHALL mirror the shape the Rewst web unpack wizard sends: the
+workflow carries the crate's source-workflow name and time-savings figure (no
+org id — targeting is the top-level org id), every crate trigger (a crate can
+carry several) is covered with its own name and criteria forwarded from the
+underlying trigger, and multiselect token values are serialized as a
+Jinja-wrapped JSON list. The crate's triggers SHALL install disabled unless
+the caller explicitly enables them, and the success response SHALL name the
+unpacked workflow and any org variables the crate requires.
+
+#### Scenario: Discover a crate's configuration dynamically
+
+- **GIVEN** a crate whose tokens include one with neither a supplied value
+  nor a default
+- **WHEN** `buddy_unpack_crate` is called without covering that token
+- **THEN** the result is `input_required`, listing the missing token with its
+  type and options and the tokens that resolved via defaults
+- **AND** no approval is requested and nothing is mutated
+
+#### Scenario: Unpack with approval
+
+- **GIVEN** every value-bearing token resolves from supplied values or
+  defaults
+- **WHEN** `buddy_unpack_crate` is called and the user approves the prompt
+- **THEN** the unpack runs with token arguments in wizard order, triggers
+  defaulting to disabled, and the unpacked workflow id is reported along with
+  the crate's required org variables
+
+#### Scenario: Approval denied
+
+- **WHEN** the user denies the approval prompt
+- **THEN** the result is `approval_required` and the unpack stream is never
+  started
+
+#### Scenario: Multiselect token values
+
+- **WHEN** a multiselect token is supplied an array of option values
+- **THEN** the values are serialized into the single Jinja-wrapped JSON list
+  token argument the platform expects
+
+#### Scenario: Multiple triggers
+
+- **GIVEN** a crate that carries several triggers
+- **WHEN** the unpack input is built
+- **THEN** every crate trigger is included, each with its own trigger name and
+  criteria and its underlying trigger's managed-orgs default
+
+#### Scenario: Unknown crate
+
+- **WHEN** `buddy_unpack_crate` names a crate id that is not visible to the
+  session
+- **THEN** the call is rejected with an error naming the crate id
+
+### Requirement: Install a Crate interactively
+
+The system SHALL provide an `Install Crate` command that walks the user from
+crate discovery to a completed install: an organization pick, a searchable
+catalog pick that marks already-installed crates, a configuration wizard
+generated dynamically from the crate's token metadata (option pickers for
+select tokens including multi-select, prefilled input boxes for free-text
+tokens), a workflow-name prompt, a trigger enablement choice defaulting to
+disabled, and a modal confirmation summarizing the install before the unpack
+stream runs with visible progress. Cancelling any step SHALL abort the
+install without mutating anything.
+
+_Implementation status:_ the interactive command builds the same unpack input
+as `buddy_unpack_crate` and shares its behavior guarantees; the full
+end-to-end wizard interaction (organization pick through confirmation) is
+exercised manually rather than by an automated UI test.
+
+#### Scenario: Dynamic token wizard
+
+- **GIVEN** a crate with a free-text token and a multiselect token
+- **WHEN** the user runs `Install Crate` and selects the crate
+- **THEN** the free-text token prompts with its default prefilled and the
+  multiselect token offers its options with defaults preselected, in the
+  crate's wizard order
+
+#### Scenario: Cancel aborts cleanly
+
+- **WHEN** the user dismisses any wizard step or the final confirmation
+- **THEN** the command returns without starting the unpack stream

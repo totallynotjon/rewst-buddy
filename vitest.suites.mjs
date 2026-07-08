@@ -20,4 +20,5 @@ export const vitestSuites = [
 	'src/sessions/graphql/sdk.test.ts',
 	'src/ui/jinja/jinjaPreviewRender.test.ts',
 	'src/workflow/lint.test.ts',
+	'src/crates/crateUnpack.test.ts',
 ];
