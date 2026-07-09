@@ -3711,6 +3711,67 @@ suite('Unit: workflowTools', () => {
 				`no more than MAX_INLINE_SUB_EXECUTIONS per level across up to 5 levels; got ${inlinedSections}`,
 			);
 			assert.match(output, /truncated at 25 fetches/, 'truncation is stated in the output when the budget is hit');
+			assert.match(
+				output,
+				/more sub-execution\(s\) not inlined/,
+				'the skip-count footer states how many siblings past the per-level cap were not inlined',
+			);
+		});
+
+		test('buddy_execution_logs includeSubExecutions notes a footer error when fetching grandchildren fails', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						return {
+							data: {
+								taskLogs: [
+									{ originalWorkflowTaskName: 'root_task', status: 'succeeded', taskExecutionId: 'te-1' },
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						if (where.id === 'exec-1') {
+							return {
+								data: {
+									workflowExecution: {
+										id: 'exec-1',
+										childExecutions: [
+											{
+												id: 'exec-child',
+												status: 'succeeded',
+												parentTaskExecutionId: 'te-1',
+												workflow: { id: 'wf-sub', name: 'Child Flow' },
+											},
+										],
+									},
+								},
+							};
+						}
+						if (where.id === 'exec-child') {
+							return { errors: [{ message: 'grandchild lookup boom' }] };
+						}
+						return { data: { workflowExecution: { id: where.id, childExecutions: [] } } };
+					}
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: true, depth: 2 },
+				},
+				deps,
+			);
+			assert.match(output, /Sub-execution Child Flow \(exec-child, succeeded\):/, 'level 1 child is still inlined');
+			assert.match(
+				output,
+				/could not fetch children of sub-execution exec-child.*grandchild lookup boom/,
+				'the fetch-error footer note surfaces the failure to fetch grandchildren',
+			);
 		});
 
 		test('buddy_execution_logs with includeSubExecutions:false and depth:2 stays id-only (flags stay independent)', async () => {

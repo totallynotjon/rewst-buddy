@@ -528,7 +528,11 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 
 	private async saveWithRetry(uri: vscode.Uri, attempts = 3): Promise<boolean> {
 		for (let attempt = 0; attempt < attempts; attempt++) {
-			if ((await vscode.workspace.save(uri)) !== undefined) return true;
+			try {
+				if ((await vscode.workspace.save(uri)) !== undefined) return true;
+			} catch {
+				// save rejected — treat as a retryable failure
+			}
 			if (attempt < attempts - 1) await delay(150 * (attempt + 1));
 		}
 		return false;

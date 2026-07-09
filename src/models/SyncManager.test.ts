@@ -503,6 +503,45 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 			);
 		});
 
+		test('treats a thrown save rejection as a retryable failure, not an unhandled exception', async () => {
+			const uri = vscode.Uri.file('/test/retry-throws.txt');
+			const localContent = '';
+			const { doc, session, remoteTemplate } = setUpDownload(uri, localContent);
+
+			const appliedTexts: (string | undefined)[] = [];
+			const restoreApply = stub(vscode.workspace, 'applyEdit', (async (edit: vscode.WorkspaceEdit) => {
+				appliedTexts.push(edit.get(uri)[0]?.newText);
+				return true;
+			}) as typeof vscode.workspace.applyEdit);
+			let saveCalls = 0;
+			const restoreSave = stub(vscode.workspace, 'save', (async () => {
+				saveCalls++;
+				throw new Error('save rejected');
+			}) as typeof vscode.workspace.save);
+
+			try {
+				await assert.rejects(
+					() => SyncManager.applyTemplateToDocument(doc, session, remoteTemplate),
+					/applyTemplateToDocument: failed to save/,
+				);
+			} finally {
+				restoreApply();
+				restoreSave();
+			}
+
+			assert.strictEqual(saveCalls, 3, 'a thrown save is retried like a falsy save result');
+			assert.strictEqual(appliedTexts.length, 2, 'the download edit, then a revert edit, are applied');
+			assert.strictEqual(
+				appliedTexts[1],
+				localContent,
+				'the revert edit still runs after every retry throws',
+			);
+			assert.throws(
+				() => LinkManager.getTemplateLink(uri),
+				'the link is never recorded when every save attempt throws',
+			);
+		});
+
 		test('serializes concurrent applyTemplateToDocument calls across different files', async () => {
 			const uriA = vscode.Uri.file('/test/concurrent-a.txt');
 			const uriB = vscode.Uri.file('/test/concurrent-b.txt');
