@@ -547,6 +547,9 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 			currentLevel = nextLevel;
 		}
 
+		if (nestedSections.length > 0 && depth > 1) {
+			footer.push(`Nested task logs (full depth, up to level ${depth}):`);
+		}
 		footer.push(...nestedSections);
 		if (skippedTotal > 0) {
 			footer.push(`(${skippedTotal} more sub-execution(s) not inlined — drill into them individually.)`);
