@@ -3555,6 +3555,237 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /truncated at 25 fetches/, 'truncation note appears when fetch cap is hit');
 		});
 
+		test('buddy_execution_logs includeSubExecutions with depth 2 inlines the grandchild task log too', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						const where = (variables?.where ?? {}) as { workflowExecutionId?: string };
+						if (where.workflowExecutionId === 'exec-child') {
+							return {
+								data: {
+									taskLogs: [
+										{
+											originalWorkflowTaskName: 'child_task',
+											status: 'succeeded',
+											taskExecutionId: 'te-child',
+										},
+									],
+								},
+							};
+						}
+						if (where.workflowExecutionId === 'exec-grand') {
+							return {
+								data: {
+									taskLogs: [
+										{
+											originalWorkflowTaskName: 'grand_task',
+											status: 'failed',
+											message: 'grand boom',
+											input: {},
+											result: {},
+										},
+									],
+								},
+							};
+						}
+						return {
+							data: {
+								taskLogs: [
+									{ originalWorkflowTaskName: 'root_task', status: 'succeeded', taskExecutionId: 'te-1' },
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						if (where.id === 'exec-1') {
+							return {
+								data: {
+									workflowExecution: {
+										id: 'exec-1',
+										childExecutions: [
+											{
+												id: 'exec-child',
+												status: 'succeeded',
+												parentTaskExecutionId: 'te-1',
+												workflow: { id: 'wf-sub', name: 'Child Flow' },
+											},
+										],
+									},
+								},
+							};
+						}
+						if (where.id === 'exec-child') {
+							return {
+								data: {
+									workflowExecution: {
+										id: 'exec-child',
+										childExecutions: [
+											{
+												id: 'exec-grand',
+												status: 'failed',
+												parentTaskExecutionId: 'te-child',
+												workflow: { id: 'wf-grand', name: 'Grand Flow' },
+											},
+										],
+									},
+								},
+							};
+						}
+						return { data: { workflowExecution: { id: where.id, childExecutions: [] } } };
+					}
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: true, depth: 2 },
+				},
+				deps,
+			);
+			assert.match(output, /Sub-execution Child Flow \(exec-child, succeeded\):/, 'level 1 child is inlined');
+			assert.match(output, /child_task: succeeded/, "level 1 child's own task log is inlined");
+			assert.match(
+				output,
+				/Sub-execution Grand Flow \(exec-grand, failed\) \(level 2, parent execution exec-child\):/,
+				'level 2 grandchild is inlined and labeled with its level and parent',
+			);
+			assert.match(output, /grand_task: failed/, "the grandchild's own task name shows up, not just its id");
+			assert.match(output, /grand boom/, "the grandchild's own failure message is inlined, not just listed");
+		});
+
+		test('buddy_execution_logs includeSubExecutions with depth respects the per-level inline cap and total fetch budget', async () => {
+			// Each execution has 10 children, more than MAX_INLINE_SUB_EXECUTIONS (5), and depth is deep
+			// enough that the total fetch budget (25) is exhausted before the whole tree is walked.
+			const makeChildren = (prefix: string) =>
+				Array.from({ length: 10 }, (_, i) => ({
+					id: `${prefix}-${i}`,
+					status: 'succeeded',
+					parentTaskExecutionId: 'te-1',
+					workflow: { id: `wf-${prefix}-${i}`, name: `Flow ${prefix}-${i}` },
+				}));
+			const fetchCounts: Record<string, number> = {};
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						const where = (variables?.where ?? {}) as { workflowExecutionId?: string };
+						const id = where.workflowExecutionId ?? 'root';
+						fetchCounts[id] = (fetchCounts[id] ?? 0) + 1;
+						return {
+							data: {
+								taskLogs: [
+									{ originalWorkflowTaskName: 't', status: 'succeeded', taskExecutionId: 'te-1' },
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						const id = where.id ?? 'root';
+						fetchCounts[id] = (fetchCounts[id] ?? 0) + 1;
+						return { data: { workflowExecution: { id, childExecutions: makeChildren(id) } } };
+					}
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: true, depth: 5 },
+				},
+				deps,
+			);
+			const totalFetches = Object.values(fetchCounts).reduce((a, b) => a + b, 0);
+			// MAX_SUB_EXECUTION_FETCHES (25) bounds the walk's own fetches; the root's unconditional
+			// task-log fetch and its unconditional child-execution lookup are not drawn from that budget
+			// (same as the pre-existing depth-only BFS walk), so the hard ceiling is 25 + 1.
+			assert.ok(totalFetches <= 26, `total fetches must stay within the shared budget; got ${totalFetches}`);
+			const inlinedSections = output.split('\n').filter(line => /^Sub-execution Flow /.test(line)).length;
+			assert.ok(
+				inlinedSections <= 5 * 5,
+				`no more than MAX_INLINE_SUB_EXECUTIONS per level across up to 5 levels; got ${inlinedSections}`,
+			);
+			assert.match(output, /truncated at 25 fetches/, 'truncation is stated in the output when the budget is hit');
+		});
+
+		test('buddy_execution_logs with includeSubExecutions:false and depth:2 stays id-only (flags stay independent)', async () => {
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						return {
+							data: {
+								taskLogs: [
+									{
+										originalWorkflowTaskName: 'root_task',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
+								],
+							},
+						};
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						if (where.id === 'exec-1') {
+							return {
+								data: {
+									workflowExecution: {
+										id: 'exec-1',
+										childExecutions: [
+											{
+												id: 'exec-child',
+												status: 'succeeded',
+												parentTaskExecutionId: 'te-1',
+												workflow: { id: 'wf-sub', name: 'Child Flow' },
+											},
+										],
+									},
+								},
+							};
+						}
+						if (where.id === 'exec-child') {
+							return {
+								data: {
+									workflowExecution: {
+										id: 'exec-child',
+										childExecutions: [
+											{
+												id: 'exec-grand',
+												status: 'failed',
+												parentTaskExecutionId: 'te-child',
+												workflow: { id: 'wf-grand', name: 'Grand Flow' },
+											},
+										],
+									},
+								},
+							};
+						}
+						return { data: { workflowExecution: { id: where.id, childExecutions: [] } } };
+					}
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
+					args: { executionId: 'exec-1', includeSubExecutions: false, depth: 2 },
+				},
+				deps,
+			);
+			assert.match(output, /Nested sub-executions \(depth 2\)/, 'old id-only nested section header present');
+			assert.match(output, /Grand Flow.*exec-grand/, 'grandchild listed by id/workflow/status only');
+			assert.match(output, /parent execution exec-child/, 'grandchild references its parent execution id');
+			assert.ok(!output.includes('Sub-execution Grand Flow'), 'no inlined task log for the grandchild');
+			assert.ok(!output.includes('Sub-execution Child Flow'), 'no inlined task log for the child either');
+		});
+
 		test('buddy_execution_logs spec documents sub-execution visibility and includeSubExecutions', () => {
 			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_EXECUTION_LOGS_TOOL_NAME);
 			assert.ok(spec, 'buddy_execution_logs spec exists');
@@ -4422,6 +4653,111 @@ suite('Unit: workflowTools', () => {
 			assert.ok(
 				!output.includes('drill in with buddy_workflow_diagnose'),
 				'no unresolved drill-in pointer when chain is fully inlined',
+			);
+		});
+
+		test('buddy_workflow_diagnose nested drill sections show the full sub-execution task log, not just the failing task', async () => {
+			// root → failed child (with a preceding succeeded sibling task) → failed grandchild
+			// (with a preceding succeeded sibling task). Default depth=3 should inline both nested levels.
+			const taskLogsByExec: Record<string, unknown[]> = {
+				'exec-1': [
+					{
+						originalWorkflowTaskName: 'root_task',
+						status: 'failed',
+						message: 'root boom',
+						input: {},
+						result: {},
+						taskExecutionId: 'te-root',
+					},
+				],
+				'exec-child': [
+					{
+						originalWorkflowTaskName: 'child_setup',
+						status: 'succeeded',
+						taskExecutionId: 'te-child-setup',
+					},
+					{
+						originalWorkflowTaskName: 'child_task',
+						status: 'failed',
+						message: 'child boom',
+						input: {},
+						result: {},
+						taskExecutionId: 'te-child',
+					},
+				],
+				'exec-grand': [
+					{
+						originalWorkflowTaskName: 'grand_setup',
+						status: 'succeeded',
+						taskExecutionId: 'te-grand-setup',
+					},
+					{
+						originalWorkflowTaskName: 'grand_task',
+						status: 'failed',
+						message: 'grand boom',
+						input: {},
+						result: {},
+						taskExecutionId: 'te-grand',
+					},
+				],
+			};
+			const childrenByExec: Record<string, unknown[]> = {
+				'exec-1': [
+					{
+						id: 'exec-child',
+						status: 'failed',
+						parentTaskExecutionId: 'te-root',
+						workflow: { id: 'wf-child', name: 'Child WF' },
+					},
+				],
+				'exec-child': [
+					{
+						id: 'exec-grand',
+						status: 'failed',
+						parentTaskExecutionId: 'te-child',
+						workflow: { id: 'wf-grand', name: 'Grand WF' },
+					},
+				],
+				'exec-grand': [],
+			};
+			const deps: GraphqlToolDeps = {
+				isEnabled: () => true,
+				confirmMutation: async () => true,
+				execute: async (query, variables) => {
+					if (query.includes('RewstBuddyTaskLogs')) {
+						const where = (variables?.where ?? {}) as { workflowExecutionId?: string };
+						return { data: { taskLogs: taskLogsByExec[where.workflowExecutionId ?? ''] ?? [] } };
+					}
+					if (query.includes('RewstBuddyChildExecutions')) {
+						const where = (variables?.where ?? {}) as { id?: string };
+						return {
+							data: {
+								workflowExecution: {
+									id: where.id,
+									status: 'FAILED',
+									orgId: 'org-1',
+									workflow: { id: 'wf-1', name: 'Root WF', orgId: 'org-1' },
+									childExecutions: childrenByExec[where.id ?? ''] ?? [],
+								},
+							},
+						};
+					}
+					if (query.includes('RewstBuddyExecutionContexts'))
+						return { data: { workflowExecutionContexts: [{}] } };
+					return { data: {} };
+				},
+			};
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_DIAGNOSE_TOOL_NAME, args: { executionId: 'exec-1' } },
+				deps,
+			);
+			assert.match(output, /Nested diagnosis \(level 1/, 'level 1 nested section present');
+			assert.match(output, /child_setup: succeeded/, "level 1 section includes the sibling task, not just child_task");
+			assert.match(output, /Nested diagnosis \(level 2/, 'level 2 nested section present');
+			assert.match(
+				output,
+				/grand_setup: succeeded/,
+				"level 2 section includes the sibling task, not just grand_task",
 			);
 		});
 

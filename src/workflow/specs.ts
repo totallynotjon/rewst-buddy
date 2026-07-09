@@ -257,7 +257,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	{
 		name: WORKFLOW_EXECUTION_LOGS_TOOL_NAME,
 		description:
-			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task that called a sub-workflow is marked with the sub-execution it spawned (workflow name, execution id, status) — a sub-workflow's own tasks are NOT in the parent's logs, so drill into a sub-execution by calling this tool again with its execution id, or pass includeSubExecutions:true to inline the task logs of the first few sub-executions. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }). Each signed-in Rewst session only sees its own org hierarchy: if the first session has no rows for the execution, the other active sessions are checked automatically; pass orgId (the org that owns the execution) to query the right session directly. Pass depth (default 1, max 5) to walk deeper levels of nested sub-workflow executions.",
+			"Inspect one workflow execution's task logs: per task, its status, and for failed tasks the message, the input it received, and the result it produced — the fastest way to see WHY a run failed, instead of hand-writing taskLogs GraphQL. Get an executionId from buddy_workflow_run or buddy_workflow_executions. By default every task shows name + status and failed tasks additionally show message, input, and result (truncated); pass includeResult to include every task's result, or failedOnly to list only failed tasks. A task that called a sub-workflow is marked with the sub-execution it spawned (workflow name, execution id, status) — a sub-workflow's own tasks are NOT in the parent's logs, so drill into a sub-execution by calling this tool again with its execution id, or pass includeSubExecutions:true to inline the full task logs of the first few sub-executions. A task's input shows exactly what it received (an empty-string id means the caller passed nothing); its result shows the real output shape — read it before assuming a wrapper key (e.g. some actions return a list directly, not { items: [...] }). Each signed-in Rewst session only sees its own org hierarchy: if the first session has no rows for the execution, the other active sessions are checked automatically; pass orgId (the org that owns the execution) to query the right session directly. Pass depth (default 1, max 5) to walk deeper levels of nested sub-workflow executions: with includeSubExecutions:false, depth only lists each descendant execution's id/workflow/status; with includeSubExecutions:true, depth inlines full task logs (same detail as the top level) at every nested level up to depth, not just the first — bounded by a per-level inline cap and a total fetch budget, each stated in the output if hit.",
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -275,12 +275,12 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 				includeSubExecutions: {
 					type: 'boolean',
 					description:
-						'Also inline the task logs of the first few sub-workflow executions this run spawned (default false).',
+						"Also inline the full task logs of the first few sub-workflow executions this run spawned (default false). Combine with depth > 1 to inline task logs at every nested level, not just the first — each level still caps at the first few sub-executions and the whole walk shares one fetch budget.",
 				},
 				depth: {
 					type: 'number',
 					description:
-						'How many levels of nested sub-workflow executions to list (default 1 = direct children, max 5). Each extra level costs one query per execution found at that level.',
+						'How many levels of nested sub-workflow executions to walk (default 1 = direct children, max 5). Without includeSubExecutions, each level is listed by id/workflow/status only. With includeSubExecutions:true, each level up to depth also gets full task logs inlined. Each extra level costs one query per execution found at that level.',
 				},
 			},
 			required: ['executionId'],
@@ -300,9 +300,12 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 			"merged execution context's top-level keys so you know what CTX.<field> paths are available. " +
 			"Each signed-in Rewst session only sees its own org hierarchy: if the first session can't see " +
 			'the execution, other active sessions are checked automatically, same as buddy_execution_logs; ' +
-			'pass orgId to route directly. For the full task-by-task list instead of just the failing task, ' +
-			'use buddy_execution_logs. ' +
-			'Pass depth (default 3, max 5) to control how many nested failing executions are diagnosed inline; failures while drilling degrade to a note rather than failing the call.',
+			'pass orgId to route directly. For the full task-by-task list of the top-level execution instead ' +
+			'of just its failing task, use buddy_execution_logs. ' +
+			'Pass depth (default 3, max 5) to control how many nested failing executions are diagnosed inline: ' +
+			"the top-level section stays narrowed to the single failing task, but each auto-drilled nested " +
+			"level shows that sub-execution's complete task log (not just its failing task), so a preceding " +
+			'or sibling task can explain the failure. Failures while drilling degrade to a note rather than failing the call.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -322,7 +325,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 				depth: {
 					type: 'number',
 					description:
-						'How many levels of failing sub-workflow executions to drill into automatically (default 3, max 5).',
+						"How many levels of failing sub-workflow executions to drill into automatically (default 3, max 5). Each drilled level's section shows that sub-execution's complete task log, not just its failing task.",
 				},
 			},
 		},
