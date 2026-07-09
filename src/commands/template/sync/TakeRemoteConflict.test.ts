@@ -78,21 +78,21 @@ suite('Unit: TakeRemoteConflict', () => {
 			'showInformationMessage',
 			(() => new Promise(() => {})) as unknown as typeof vscode.window.showInformationMessage,
 		);
+		// addLink only runs after a confirmed save (#172), so stub applyEdit/save
+		// to succeed — a non-open mock document's save fails for real otherwise.
+		const restoreApply = stub(vscode.workspace, 'applyEdit', (async () => true) as typeof vscode.workspace.applyEdit);
+		const restoreSave = stub(vscode.workspace, 'save', (async (u: vscode.Uri) => u) as typeof vscode.workspace.save);
 
 		try {
 			const syncPromise = SyncManager.syncTemplate(doc);
 			await new Promise(resolve => setTimeout(resolve, 0));
 			await new TakeRemoteConflict().execute();
-			try {
-				await syncPromise;
-			} catch {
-				// expected: vscode.workspace.applyEdit/save against an unopened mock
-				// document fails here, same as the existing applyTemplateToDocument
-				// tests elsewhere in SyncManager.test.ts.
-			}
+			await syncPromise;
 		} finally {
 			restoreExec();
 			restoreNotification();
+			restoreApply();
+			restoreSave();
 		}
 
 		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload happens on take-remote');

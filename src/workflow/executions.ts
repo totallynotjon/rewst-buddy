@@ -481,28 +481,87 @@ export async function runExecutionLogs(request: ToolRequest, deps: GraphqlToolDe
 			`Sub-execution(s) not shown with a task above: ${unshownChildren.map(describeChildExecution).join(', ')}`,
 		);
 	}
-	if (includeSubExecutions) {
-		const inlineSections = await Promise.all(
-			children.slice(0, MAX_INLINE_SUB_EXECUTIONS).map(async child => {
-				if (!child.id) return undefined;
-				try {
-					const childRows = await fetchTaskLogs(sourceDeps, child.id);
-					return `Sub-execution ${describeChildExecution(child)}:\n${formatTaskLogs(childRows, { failedOnly, includeResult })}`;
-				} catch (error) {
-					return `Sub-execution ${describeChildExecution(child)}: task logs could not be read (${error instanceof Error ? error.message : String(error)})`;
-				}
-			}),
-		);
-		footer.push(...inlineSections.filter((section): section is string => !!section));
-		if (children.length > MAX_INLINE_SUB_EXECUTIONS) {
-			footer.push(
-				`(${children.length - MAX_INLINE_SUB_EXECUTIONS} more sub-execution(s) not inlined — drill into them individually.)`,
-			);
+	if (includeSubExecutions && children.length > 0) {
+		// Level-by-level walk: inline full task logs for up to MAX_INLINE_SUB_EXECUTIONS
+		// siblings at every level up to `depth`, bounded overall by MAX_SUB_EXECUTION_FETCHES.
+		interface LevelEntry {
+			child: ChildExecutionRow;
+			parentId: string;
 		}
-	}
+		const nestedSections: string[] = [];
+		const fetchErrors: string[] = [];
+		let totalFetches = 1; // root task log fetch already done
+		let truncated = false;
+		let skippedTotal = 0;
+		let currentLevel: LevelEntry[] = children.map(c => ({ child: c, parentId: executionId }));
 
-	// BFS walk for depth > 1
-	if (depth > 1 && children.length > 0) {
+		for (let level = 1; level <= depth && currentLevel.length > 0 && !truncated; level++) {
+			const eligible = currentLevel.filter((e): e is LevelEntry & { child: { id: string } } => !!e.child.id);
+			const remainingBudget = MAX_SUB_EXECUTION_FETCHES - totalFetches;
+			if (remainingBudget <= 0) {
+				truncated = true;
+				break;
+			}
+			const inlineCount = Math.min(MAX_INLINE_SUB_EXECUTIONS, remainingBudget, eligible.length);
+			const toInline = eligible.slice(0, inlineCount);
+			skippedTotal += currentLevel.length - toInline.length;
+			if (remainingBudget < MAX_INLINE_SUB_EXECUTIONS && eligible.length > toInline.length) {
+				truncated = true;
+			}
+			totalFetches += toInline.length;
+
+			const levelResults = await Promise.all(
+				toInline.map(async ({ child, parentId }) => {
+					const label =
+						level === 1
+							? `Sub-execution ${describeChildExecution(child)}`
+							: `Sub-execution ${describeChildExecution(child)} (level ${level}, parent execution ${parentId})`;
+					try {
+						const childRows = await fetchTaskLogs(sourceDeps, child.id);
+						return `${label}:\n${formatTaskLogs(childRows, { failedOnly, includeResult })}`;
+					} catch (error) {
+						return `${label}: task logs could not be read (${error instanceof Error ? error.message : String(error)})`;
+					}
+				}),
+			);
+			nestedSections.push(...levelResults);
+
+			const nextLevel: LevelEntry[] = [];
+			if (level < depth && !truncated) {
+				for (const { child } of toInline) {
+					if (totalFetches >= MAX_SUB_EXECUTION_FETCHES) {
+						truncated = true;
+						break;
+					}
+					totalFetches++;
+					const { children: grandchildren, error } = await fetchChildExecutions(sourceDeps, child.id);
+					if (error) {
+						fetchErrors.push(`sub-execution ${child.id} (${describeChildExecution(child)}): ${error}`);
+						continue;
+					}
+					for (const gc of grandchildren) {
+						nextLevel.push({ child: gc, parentId: child.id });
+					}
+				}
+			}
+			currentLevel = nextLevel;
+		}
+
+		if (nestedSections.length > 0 && depth > 1) {
+			footer.push(`Nested task logs (full depth, up to level ${depth}):`);
+		}
+		footer.push(...nestedSections);
+		if (skippedTotal > 0) {
+			footer.push(`(${skippedTotal} more sub-execution(s) not inlined — drill into them individually.)`);
+		}
+		if (truncated) {
+			footer.push(`(sub-execution tree truncated at ${MAX_SUB_EXECUTION_FETCHES} fetches — drill in manually.)`);
+		}
+		for (const fetchError of fetchErrors) {
+			footer.push(`(could not fetch children of ${fetchError})`);
+		}
+	} else if (depth > 1 && children.length > 0) {
+		// BFS walk for depth > 1 (includeSubExecutions:false): id-only listing, unbounded by task-log fetches.
 		interface BfsEntry {
 			child: ChildExecutionRow;
 			level: number;
@@ -871,7 +930,7 @@ export async function runWorkflowDiagnose(request: ToolRequest, deps: GraphqlToo
 				const childFailingRow = childTaskRows.find(r => isFailedStatus(r.status));
 				if (!childFailingRow) break;
 				sections.push(
-					`Nested diagnosis (level ${k}, execution ${drillChild.id}, workflow ${drillChild.workflow?.name ?? '?'}):\n${formatTaskLogs([childFailingRow], { includeResult: true })}`,
+					`Nested diagnosis (level ${k}, execution ${drillChild.id}, workflow ${drillChild.workflow?.name ?? '?'}):\n${formatTaskLogs(childTaskRows, { includeResult: true })}`,
 				);
 				const { children: grandchildren } = await fetchChildExecutions(sourceDeps, drillChild.id);
 				const childFailingTaskExecId = childFailingRow.taskExecutionId;

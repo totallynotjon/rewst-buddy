@@ -27,6 +27,14 @@ export { orgFromTemplate } from './templateLinkFactory';
  */
 export class ConflictDismissedError extends Error {}
 
+function delay(ms: number): Promise<void> {
+	return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function fullDocumentRange(doc: vscode.TextDocument): vscode.Range {
+	return new vscode.Range(doc.lineAt(0).range.start, doc.lineAt(doc.lineCount - 1).range.end);
+}
+
 type ConflictChoice = 'Keep Local' | 'Take Remote' | undefined;
 
 /** Injectable seam for conflict resolution: real diff/prompt/cleanup vs. test doubles. */
@@ -106,6 +114,11 @@ export interface SyncDecisionContext {
 
 export const SyncManager = new (class _ implements vscode.Disposable {
 	private syncingUris = new Set<string>();
+	// Chained mutex serializing applyTemplateToDocument's edit+save critical
+	// section ACROSS ALL uris (not per-uri, unlike syncingUris above): firing
+	// many concurrent downloads at once — even for different files — was
+	// racing VS Code's own edit/save machinery and mostly failing (#172).
+	private applyChain: Promise<void> = Promise.resolve();
 	private disposables: vscode.Disposable[] = [];
 	private documentEventDisposables: vscode.Disposable[] = [];
 	private interval: NodeJS.Timeout | undefined;
@@ -494,6 +507,47 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		}
 	}
 
+	/**
+	 * Runs `fn` after every previously-queued caller has settled (success or
+	 * failure), so only one edit+save critical section runs at a time across the
+	 * whole extension regardless of which uri each call targets.
+	 */
+	private async withApplySerialized<T>(fn: () => Promise<T>): Promise<T> {
+		const previous = this.applyChain;
+		let release!: () => void;
+		this.applyChain = new Promise(resolve => {
+			release = resolve;
+		});
+		await previous;
+		try {
+			return await fn();
+		} finally {
+			release();
+		}
+	}
+
+	private async saveWithRetry(uri: vscode.Uri, attempts = 3): Promise<boolean> {
+		for (let attempt = 0; attempt < attempts; attempt++) {
+			try {
+				if ((await vscode.workspace.save(uri)) !== undefined) return true;
+			} catch {
+				// save rejected — treat as a retryable failure
+			}
+			if (attempt < attempts - 1) await delay(150 * (attempt + 1));
+		}
+		return false;
+	}
+
+	private async revertDocumentEdit(doc: vscode.TextDocument, previousText: string): Promise<void> {
+		try {
+			const revertEdit = new vscode.WorkspaceEdit();
+			revertEdit.replace(doc.uri, fullDocumentRange(doc), previousText);
+			await vscode.workspace.applyEdit(revertEdit);
+		} catch (revertError) {
+			log.warn('applyTemplateToDocument: failed to revert in-memory edit after a failed save', revertError);
+		}
+	}
+
 	async applyTemplateToDocument(doc: vscode.TextDocument, _session: Session, remoteTemplate: FullTemplateFragment) {
 		log.trace('applyTemplateToDocument: applying remote template', {
 			templateId: remoteTemplate.id,
@@ -503,21 +557,26 @@ export const SyncManager = new (class _ implements vscode.Disposable {
 		const body = remoteTemplate.body;
 		remoteTemplate.body = '';
 
-		const edit = new vscode.WorkspaceEdit();
-		edit.replace(
-			doc.uri,
-			new vscode.Range(doc.lineAt(0).range.start, doc.lineAt(doc.lineCount - 1).range.end),
-			body,
-		);
-		await vscode.workspace.applyEdit(edit);
+		await this.withApplySerialized(async () => {
+			const previousText = doc.getText();
+			const edit = new vscode.WorkspaceEdit();
+			edit.replace(doc.uri, fullDocumentRange(doc), body);
+			await vscode.workspace.applyEdit(edit);
 
-		const templateLink = buildTemplateLink(remoteTemplate, body, doc.uri.toString());
+			const saved = await this.saveWithRetry(doc.uri);
+			if (!saved) {
+				// The edit already landed in the in-memory buffer even though the
+				// save failed — revert it so a later read of this (still-open,
+				// cached) document sees the actual on-disk content instead of the
+				// unpersisted remote body, which would otherwise falsely compare
+				// as "bodies already match" / in-sync (#172).
+				await this.revertDocumentEdit(doc, previousText);
+				throw log.error('applyTemplateToDocument: failed to save');
+			}
 
-		this.addLink(templateLink, doc.uri);
-
-		if ((await vscode.workspace.save(doc.uri)) === undefined) {
-			throw log.error('applyTemplateToDocument: failed to save');
-		}
+			const templateLink = buildTemplateLink(remoteTemplate, body, doc.uri.toString());
+			this.addLink(templateLink, doc.uri);
+		});
 
 		log.trace('applyTemplateToDocument: completed');
 	}
