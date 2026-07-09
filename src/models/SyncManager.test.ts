@@ -405,17 +405,137 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 			organization: Fixtures.org({ id: 'sub-org', name: 'Sub Org' }),
 		});
 
-		// applyTemplateToDocument updates the link before persisting; the final
-		// save of a non-open mock document throws in the unit host, which we ignore.
+		// addLink only runs after a confirmed save (#172), so stub applyEdit/save
+		// to succeed — a non-open mock document's save fails for real otherwise.
+		const restoreApply = stub(vscode.workspace, 'applyEdit', (async () => true) as typeof vscode.workspace.applyEdit);
+		const restoreSave = stub(vscode.workspace, 'save', (async (u: vscode.Uri) => u) as typeof vscode.workspace.save);
 		try {
 			await SyncManager.applyTemplateToDocument(doc, session, remoteTemplate);
-		} catch {
-			// expected: vscode.workspace.save of an unopened mock document fails here
+		} finally {
+			restoreApply();
+			restoreSave();
 		}
 
 		const link = LinkManager.getTemplateLink(uri);
 		assert.strictEqual(link.org.id, 'sub-org', 'downloaded link must record the template sub-org');
 		assert.strictEqual(link.org.name, 'Sub Org');
+	});
+
+	// Spec: issue #172 — concurrent downloads mostly failed to save, and a
+	// retry after a failed save falsely reported "in sync" against an empty
+	// local file because the failed edit was left applied in memory.
+	suite('applyTemplateToDocument resilience (#172)', () => {
+		function setUpDownload(uri: vscode.Uri, localContent: string) {
+			const org = Fixtures.orgModel({ id: 'org-172', name: 'Org 172' });
+			const { session } = createMockSession({ profile: { org, allManagedOrgs: [org] } });
+			SessionManager._setSessionsForTesting([session]);
+			const doc = createMockDocument({ uri, content: localContent });
+			const remoteTemplate = Fixtures.fullTemplate({
+				id: 'tpl-172',
+				name: 'Tpl 172',
+				body: '// remote body',
+				updatedAt: '2024-05-05T00:00:00Z',
+				orgId: org.id,
+				organization: Fixtures.org({ id: org.id, name: org.name }),
+			});
+			return { doc, session, remoteTemplate };
+		}
+
+		test('retries a failed save before giving up, and links the template once it succeeds', async () => {
+			const uri = vscode.Uri.file('/test/retry-succeeds.txt');
+			const { doc, session, remoteTemplate } = setUpDownload(uri, '');
+
+			let saveCalls = 0;
+			const restoreApply = stub(
+				vscode.workspace,
+				'applyEdit',
+				(async () => true) as typeof vscode.workspace.applyEdit,
+			);
+			const restoreSave = stub(vscode.workspace, 'save', (async (u: vscode.Uri) => {
+				saveCalls++;
+				return saveCalls < 3 ? undefined : u; // fails twice, succeeds on the 3rd attempt
+			}) as typeof vscode.workspace.save);
+
+			try {
+				await SyncManager.applyTemplateToDocument(doc, session, remoteTemplate);
+			} finally {
+				restoreApply();
+				restoreSave();
+			}
+
+			assert.strictEqual(saveCalls, 3, 'save is retried until it succeeds');
+			const link = LinkManager.getTemplateLink(uri);
+			assert.strictEqual(link.template.id, 'tpl-172', 'the link is recorded once the retried save succeeds');
+		});
+
+		test('reverts the in-memory edit and does not update the link when every save attempt fails', async () => {
+			const uri = vscode.Uri.file('/test/retry-exhausted.txt');
+			const localContent = ''; // matches the real #172 repro: an empty local file
+			const { doc, session, remoteTemplate } = setUpDownload(uri, localContent);
+
+			const appliedTexts: (string | undefined)[] = [];
+			const restoreApply = stub(vscode.workspace, 'applyEdit', (async (edit: vscode.WorkspaceEdit) => {
+				appliedTexts.push(edit.get(uri)[0]?.newText);
+				return true;
+			}) as typeof vscode.workspace.applyEdit);
+			const restoreSave = stub(vscode.workspace, 'save', (async () => undefined) as typeof vscode.workspace.save);
+
+			try {
+				await assert.rejects(
+					() => SyncManager.applyTemplateToDocument(doc, session, remoteTemplate),
+					/applyTemplateToDocument: failed to save/,
+				);
+			} finally {
+				restoreApply();
+				restoreSave();
+			}
+
+			assert.strictEqual(appliedTexts.length, 2, 'the download edit, then a revert edit, are applied');
+			assert.strictEqual(appliedTexts[0], '// remote body', 'the first edit writes the remote body');
+			assert.strictEqual(
+				appliedTexts[1],
+				localContent,
+				'the revert edit restores the pre-download local content, not the unpersisted remote body',
+			);
+			assert.throws(
+				() => LinkManager.getTemplateLink(uri),
+				'the link is never recorded for a download that never actually saved',
+			);
+		});
+
+		test('serializes concurrent applyTemplateToDocument calls across different files', async () => {
+			const uriA = vscode.Uri.file('/test/concurrent-a.txt');
+			const uriB = vscode.Uri.file('/test/concurrent-b.txt');
+			const a = setUpDownload(uriA, '');
+			const b = setUpDownload(uriB, '');
+
+			let inFlight = 0;
+			let maxInFlight = 0;
+			const restoreApply = stub(
+				vscode.workspace,
+				'applyEdit',
+				(async () => true) as typeof vscode.workspace.applyEdit,
+			);
+			const restoreSave = stub(vscode.workspace, 'save', (async (u: vscode.Uri) => {
+				inFlight++;
+				maxInFlight = Math.max(maxInFlight, inFlight);
+				await new Promise(resolve => setTimeout(resolve, 20));
+				inFlight--;
+				return u;
+			}) as typeof vscode.workspace.save);
+
+			try {
+				await Promise.all([
+					SyncManager.applyTemplateToDocument(a.doc, a.session, a.remoteTemplate),
+					SyncManager.applyTemplateToDocument(b.doc, b.session, b.remoteTemplate),
+				]);
+			} finally {
+				restoreApply();
+				restoreSave();
+			}
+
+			assert.strictEqual(maxInFlight, 1, 'saves for different files never overlap');
+		});
 	});
 
 	test('should attempt to apply remote template when local unchanged and remote is newer', async () => {
@@ -560,11 +680,15 @@ suite('Unit: SyncManager.checkAutoFetch', () => {
 		});
 
 		const doc = createMockDocument({ uri, content });
+		// addLink only runs after a confirmed save (#172), so stub applyEdit/save
+		// to succeed — a non-open mock document's save fails for real otherwise.
+		const restoreApply = stub(vscode.workspace, 'applyEdit', (async () => true) as typeof vscode.workspace.applyEdit);
+		const restoreSave = stub(vscode.workspace, 'save', (async (u: vscode.Uri) => u) as typeof vscode.workspace.save);
 		try {
 			await (SyncManager as any)['checkAutoFetch'](doc);
-		} catch {
-			// expected: vscode.workspace.save of an unopened mock document fails here,
-			// after applyTemplateToDocument has already updated the link.
+		} finally {
+			restoreApply();
+			restoreSave();
 		}
 
 		assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 1);
@@ -1118,11 +1242,15 @@ suite('Unit: SyncManager.syncTemplate (conflict resolution)', () => {
 			closeDiff: async () => {},
 		});
 
+		// addLink only runs after a confirmed save (#172), so stub applyEdit/save
+		// to succeed — a non-open mock document's save fails for real otherwise.
+		const restoreApply = stub(vscode.workspace, 'applyEdit', (async () => true) as typeof vscode.workspace.applyEdit);
+		const restoreSave = stub(vscode.workspace, 'save', (async (u: vscode.Uri) => u) as typeof vscode.workspace.save);
 		try {
 			await SyncManager.syncTemplate(doc);
-		} catch {
-			// expected: vscode.workspace.save of an unopened mock document fails here,
-			// same as the existing applyTemplateToDocument tests above.
+		} finally {
+			restoreApply();
+			restoreSave();
 		}
 
 		assert.strictEqual(wrapper.getCallsFor('updateTemplateBody').length, 0, 'no upload happens on take-remote');
