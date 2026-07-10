@@ -323,6 +323,7 @@ suite('Unit: templateMutateCapabilities', () => {
 
 		test('updates the local link cache and fires onLinksSaved when a linked template is renamed (#176)', async () => {
 			const { ctx, wrapper } = sandboxCtx();
+			const renamedUpdatedAt = '2026-01-02T00:00:00.000Z';
 			wrapper
 				.when('getTemplate', {
 					data: Fixtures.getTemplateQuery({ id: 't-1', orgId: 'org-sandbox', name: 'Old Name' }),
@@ -330,7 +331,12 @@ suite('Unit: templateMutateCapabilities', () => {
 				.when('updateTemplateName', {
 					data: {
 						__typename: 'Mutation',
-						template: Fixtures.fullTemplate({ id: 't-1', orgId: 'org-sandbox', name: 'New Name' }),
+						template: Fixtures.fullTemplate({
+							id: 't-1',
+							orgId: 'org-sandbox',
+							name: 'New Name',
+							updatedAt: renamedUpdatedAt,
+						}),
 					},
 				});
 			setMcpMutationApprover(async () => true);
@@ -340,7 +346,12 @@ suite('Unit: templateMutateCapabilities', () => {
 				type: 'Template',
 				uriString: uri.toString(),
 				org: { id: 'org-sandbox', name: 'Sandbox' },
-				template: { id: 't-1', name: 'Old Name', updatedAt: '', orgId: 'org-sandbox' } as any,
+				template: {
+					id: 't-1',
+					name: 'Old Name',
+					updatedAt: '2026-01-01T00:00:00.000Z',
+					orgId: 'org-sandbox',
+				} as any,
 				bodyHash: 'hash',
 			};
 			LinkManager.addLink(link);
@@ -358,7 +369,13 @@ suite('Unit: templateMutateCapabilities', () => {
 				off.dispose();
 			}
 
-			assert.strictEqual(LinkManager.getTemplateLink(uri).template.name, 'New Name');
+			const cached = LinkManager.getTemplateLink(uri);
+			assert.strictEqual(cached.template.name, 'New Name');
+			assert.strictEqual(
+				cached.template.updatedAt,
+				renamedUpdatedAt,
+				'the cached updatedAt must move forward too, or the next auto-fetch check sees a stale timestamp and re-syncs needlessly (#176 follow-up)',
+			);
 			assert.ok(fired, 'onLinksSaved should fire so the status bar refreshes');
 		});
 

@@ -2323,6 +2323,99 @@ suite('Unit: workflowTools', () => {
 				!/WARNING — the server did not store/i.test(output),
 				'the warning is dropped once the heal succeeds',
 			);
+			assert.match(
+				output,
+				/New version token: 2000/,
+				"the reported version token must be the heal write's own updatedAt, not the stale first-write token",
+			);
+		});
+
+		test("buddy_workflow_edit does not replay a heal write for a task whose own packOverrides did not diverge, even when another task's did (#174)", async () => {
+			// healable (created-task) packOverrides gating must be scoped per task —
+			// a divergence warning anywhere in the output must not trigger a heal
+			// replay for a created task whose own packOverrides already match.
+			let gets = 0;
+			let updates = 0;
+			const sentOverrides = [
+				{
+					packId: 'pack-1',
+					packConfigId: 'cfg-1',
+					configSelectionMode: 'USE_SELECTED_ID',
+					configFallbackMode: 'FAIL_ACTION',
+				},
+			];
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyActionSearch')) {
+					return { data: { actionsForOrg: [{ id: 'noop-id', ref: 'core.noop', name: 'noop' }] } };
+				}
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					gets += 1;
+					const w = sampleWorkflow();
+					if (gets === 1) return { data: { workflow: w } };
+					// 'notify' (newly created) already stored with the correct sent
+					// overrides — no divergence for it. 'start' (an existing, updated
+					// task, not created this batch) diverges on an unrelated field the
+					// server silently stripped.
+					const created = {
+						id: 'cc03',
+						name: 'notify',
+						actionId: 'noop-id',
+						action: { ref: 'core.noop' },
+						input: {},
+						metadata: { x: 0, y: 0 },
+						next: [],
+						packOverrides: sentOverrides,
+					};
+					w.tasks = sampleTasks().map(t =>
+						t.name === 'start'
+							? { ...t, packOverrides: [{ packId: 'pack-2', configSelectionMode: 'USE_DEFAULT' }] }
+							: t,
+					);
+					w.tasks.push(created);
+					return { data: { workflow: w } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					updates += 1;
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: String(1000 + updates * 500) } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{
+								op: 'add_task',
+								id: 'cc03',
+								name: 'notify',
+								action: 'core.noop',
+								packOverrides: sentOverrides,
+							},
+							{
+								op: 'update_task',
+								name: 'start',
+								set: { packOverrides: [{ packId: 'pack-2', configSelectionMode: 'USE_SELECTED_ID' }] },
+							},
+						],
+					},
+				},
+				deps,
+			);
+
+			assert.strictEqual(updates, 1, 'no heal replay for a created task whose own packOverrides already matched');
+			assert.match(
+				output,
+				/WARNING — the server did not store/i,
+				'the unrelated divergence on "start" still warns',
+			);
+			assert.ok(!/auto-corrected packOverrides/i.test(output), 'nothing was actually healed');
 		});
 
 		test('buddy_workflow_edit keeps the warning when the packOverrides self-heal replay still diverges (#174)', async () => {

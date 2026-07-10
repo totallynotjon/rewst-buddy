@@ -90,11 +90,14 @@ scanning all links.
 ### Requirement: Keep cached template metadata in sync after a remote rename
 
 Renaming a Rewst template via `buddy_rename_template` SHALL update the cached
-`template.name` on every local link for that template id and emit the same
-change event other link mutations emit, so surfaces that read the cached name
-(the status bar, the tree view) reflect the new name without a manual reload.
-Renaming a template with no local link SHALL be a no-op for the link cache,
-not an error.
+`template.name` and `template.updatedAt` on every local link for that template
+id and emit the same change event other link mutations emit, so surfaces that
+read the cached name (the status bar, the tree view) reflect the new name
+without a manual reload. `updatedAt` SHALL move forward to the value the rename
+mutation returned, not just the name: leaving it stale would make the next
+auto-fetch check see a provably-newer remote and needlessly re-fetch and
+re-save the unchanged body. Renaming a template with no local link SHALL be a
+no-op for the link cache, not an error.
 
 Source: `src/capabilities/templateMutateCapabilities.ts`.
 
@@ -102,7 +105,8 @@ Source: `src/capabilities/templateMutateCapabilities.ts`.
 
 - **GIVEN** a local file linked to a Rewst template
 - **WHEN** `buddy_rename_template` successfully renames that template
-- **THEN** the local link's cached `template.name` is updated to the new name
+- **THEN** the local link's cached `template.name` and `template.updatedAt` are
+  updated to the values the rename mutation returned
 - **AND** `onLinksSaved` fires so subscribed UI (status bar, tree view)
   refreshes without a reload
 

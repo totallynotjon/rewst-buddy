@@ -897,20 +897,17 @@ async function verifySavedTaskValues(
 // Shared write pipeline
 // ---------------------------------------------------------------------------
 
-/**
- * The shared workflow write pipeline: resolve action refs, read the current
- * workflow, apply operations to the whole graph, and save with the correct
- * openedAt token — retrying once on a version conflict.
- */
+type UpdateWorkflowResult = { updateWorkflow?: { name?: string; updatedAt?: string } } | undefined;
+
 /**
  * Rewst's updateWorkflow resolver can silently default a newly created task's
  * packOverrides configSelectionMode/configFallbackMode on the SAME write that
  * creates the task, while honoring them on a follow-up update of that
  * already-existing task (server-side quirk — #174). Re-sends just the healable
  * tasks' packOverrides in one corrective updateWorkflow call, replaying the
- * "call update_task a second time" workaround programmatically. Returns false
- * (no self-heal attempted/succeeded) on any fetch or mutation error, leaving
- * the original verification warning as the caller's fallback.
+ * "call update_task a second time" workaround programmatically. Returns
+ * `ok: false` (no self-heal attempted/succeeded) on any fetch or mutation
+ * error, leaving the original verification warning as the caller's fallback.
  */
 async function healCreatedTaskPackOverrides(
 	deps: GraphqlToolDeps,
@@ -918,7 +915,7 @@ async function healCreatedTaskPackOverrides(
 	orgId: string,
 	healable: RawTask[],
 	comment: string,
-): Promise<boolean> {
+): Promise<{ ok: boolean; updatedAt?: string }> {
 	try {
 		const fresh = await fetchWorkflow(deps, workflowId, orgId);
 		const byId = new Map(fresh.tasks.map(t => [t.id, t]));
@@ -931,12 +928,19 @@ async function healCreatedTaskPackOverrides(
 			openedAt: fresh.updatedAt,
 			comment: `${comment} (auto-correct packOverrides mode on newly created task(s))`,
 		});
-		return !firstErrorMessage(result as ExecResult);
+		if (firstErrorMessage(result as ExecResult)) return { ok: false };
+		const updated = (result.data as UpdateWorkflowResult)?.updateWorkflow;
+		return { ok: true, updatedAt: updated?.updatedAt };
 	} catch {
-		return false;
+		return { ok: false };
 	}
 }
 
+/**
+ * The shared workflow write pipeline: resolve action refs, read the current
+ * workflow, apply operations to the whole graph, and save with the correct
+ * openedAt token — retrying once on a version conflict.
+ */
 export async function applyWorkflowMutation(
 	deps: GraphqlToolDeps,
 	workflowId: string,
@@ -948,7 +952,12 @@ export async function applyWorkflowMutation(
 	const apply = (source: RawWorkflow) => applyOperations(source.tasks, operations, actionIdByRef);
 
 	const workflow = await fetchWorkflow(deps, workflowId, orgId);
-	const originalTaskIds = new Set(workflow.tasks.map(t => t.id));
+	// Tracks task ids that existed before this edit, so a task created by one of
+	// this batch's own add_task operations can be told apart from a pre-existing
+	// one for the packOverrides self-heal below. Recomputed from `fresh` on a
+	// version-conflict retry so a task another edit concurrently created between
+	// our read and write is never misclassified as "created by this batch".
+	let originalTaskIds = new Set(workflow.tasks.map(t => t.id));
 	let { tasks, applied, workflow: overrides, verifyFields } = apply(workflow);
 	if (!(await deps.confirmMutation(`update workflow "${workflow.name}" (${applied.length} operation(s))`))) {
 		throw new Error('Workflow change was not confirmed.');
@@ -962,6 +971,7 @@ export async function applyWorkflowMutation(
 	let error = firstErrorMessage(result as ExecResult);
 	if (error && /newer version/i.test(error)) {
 		const fresh = await fetchWorkflow(deps, workflowId, orgId);
+		originalTaskIds = new Set(fresh.tasks.map(t => t.id));
 		({ tasks, applied, workflow: overrides, verifyFields } = apply(fresh));
 		result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
 			workflow: workflowToInput(fresh, tasks, overrides),
@@ -972,20 +982,25 @@ export async function applyWorkflowMutation(
 	}
 	if (error) throw new Error(`updateWorkflow failed: ${error}`);
 
-	const updated = (result.data as { updateWorkflow?: { name?: string; updatedAt?: string } } | undefined)
-		?.updateWorkflow;
+	let updated = (result.data as UpdateWorkflowResult)?.updateWorkflow;
 	const toVerify = tasks.flatMap(task => {
 		const fields = verifyFields.get(task.id);
 		return fields ? [{ task, fields }] : [];
 	});
 	let verification = toVerify.length > 0 ? await verifySavedTaskValues(deps, workflowId, orgId, toVerify) : '';
 
+	// Scoped per task (not just "does the warning mention packOverrides anywhere"):
+	// only a task this batch created, whose OWN divergence line is present, is a
+	// heal candidate — an unrelated task's divergence must never trigger a
+	// pointless corrective write for a created task that already matched.
 	const healable = toVerify
 		.filter(({ task, fields }) => fields.packOverrides && !originalTaskIds.has(task.id))
-		.map(({ task }) => task);
-	if (healable.length > 0 && /packOverrides/.test(verification)) {
-		const healed = await healCreatedTaskPackOverrides(deps, workflowId, orgId, healable, comment);
-		if (healed) {
+		.map(({ task }) => task)
+		.filter(task => verification.includes(`task "${task.name}": packOverrides`));
+	if (healable.length > 0) {
+		const heal = await healCreatedTaskPackOverrides(deps, workflowId, orgId, healable, comment);
+		if (heal.ok) {
+			if (heal.updatedAt) updated = { ...updated, updatedAt: heal.updatedAt };
 			verification = await verifySavedTaskValues(deps, workflowId, orgId, toVerify);
 			if (!/packOverrides/.test(verification)) {
 				verification += `\n\nNote: auto-corrected packOverrides on ${healable.length} newly created task(s) — the server ignored the requested selection/fallback mode on creation but accepted it on this follow-up update.`;

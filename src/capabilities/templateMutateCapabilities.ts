@@ -140,8 +140,14 @@ async function runRenameTemplate(input: Record<string, unknown>, ctx: Capability
 		const newName = template.name ?? name;
 		// Keep the local link cache (and its status bar / tree label) in sync — a
 		// rename otherwise leaves the cached name stale until the next sync (#176).
+		// updatedAt must move forward too: leaving it stale makes the next auto-fetch
+		// check see a provably-newer remote and needlessly re-fetch/re-save the
+		// unchanged body.
 		for (const link of LinkManager.getTemplateLinkFromId(templateId)) {
-			const updated: TemplateLink = { ...link, template: { ...link.template, name: newName } };
+			const updated: TemplateLink = {
+				...link,
+				template: { ...link.template, name: newName, updatedAt: template.updatedAt ?? link.template.updatedAt },
+			};
 			LinkManager.addLink(updated);
 		}
 		return JSON.stringify({ status: 'renamed', id: template.id, name: newName }, null, 2);

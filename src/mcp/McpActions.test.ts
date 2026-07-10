@@ -1002,7 +1002,12 @@ suite('Unit: McpActions', () => {
 			assert.strictEqual(wrapper.getCallsFor('rawGraphql').length, 0);
 		});
 
-		test('buddy_graphql_mutate executes after approval and remembers the same scope', async () => {
+		test('buddy_graphql_mutate executes after approval and always prompts again for the same scope (#177)', async () => {
+			// Unlike the typed write capabilities, buddy_graphql_mutate lets the
+			// caller pick any scopeId for any query, so a scope-keyed approval here
+			// has no fixed relationship to what the mutation actually does — reusing
+			// it would let a later, unrelated mutation on the same caller-chosen
+			// scopeId run unprompted. It must always re-prompt.
 			const { session, wrapper } = useSession('org-1', 'Acme Org');
 			useRawGraphqlWrapper(session, wrapper);
 			wrapper.when('rawGraphql', { data: { data: { updateThing: { id: 'wf-1' } } } });
@@ -1033,7 +1038,7 @@ suite('Unit: McpActions', () => {
 			assert.ok(!second.isError);
 			const calls = wrapper.getCallsFor('rawGraphql');
 			assert.strictEqual(calls.length, 2);
-			assert.strictEqual(approvals, 1);
+			assert.strictEqual(approvals, 2, "the second call must prompt again, not reuse the first call's approval");
 			assert.deepStrictEqual(calls[0].variables.variables, { name: 'Renamed' });
 		});
 

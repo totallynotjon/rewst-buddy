@@ -1,10 +1,4 @@
-import {
-	approveMutationScope,
-	detectOperationType,
-	isMutationScopeApproved,
-	runMutationGraphql,
-	type MutationScope,
-} from '../ui/chat/tools/graphqlTool';
+import { detectOperationType, runMutationGraphql, type MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpec } from '../ui/chat/tools/toolProtocol';
 import { currentApprovalOrigin, type ApprovalOrigin } from './approvalOrigin';
 import type { Capability, CapabilityContext } from './Capability';
@@ -99,15 +93,19 @@ async function runGraphqlMutate(input: Record<string, unknown>, ctx: CapabilityC
 	const variables = parseVariables(input, ctx);
 	const operation = formatOperationSummary(query, variables);
 
-	if (!isMutationScopeApproved(scope)) {
-		if (!(await requestMcpMutationApproval(scope, operation))) {
-			return JSON.stringify({
-				status: 'approval_required',
-				message:
-					'The mutation was not run; it needs approval in the VS Code window running Rewst Buddy. Focus that window to respond to the prompt, then retry. The prompt does not appear in the MCP client and cannot be approved if no VS Code window is open.',
-			});
-		}
-		approveMutationScope(scope);
+	// Always prompt, never reuse a scope-keyed approval: the caller supplies an
+	// arbitrary scopeId alongside an arbitrary mutation document, so unlike the
+	// typed write capabilities (where scopeId is verified against a fetched
+	// resource id before the scope is recorded) a scope here has no fixed
+	// relationship to what the query actually does. Reusing an approval recorded
+	// for one mutation would let a later, unrelated mutation on the same
+	// caller-chosen scopeId run unprompted (#177).
+	if (!(await requestMcpMutationApproval(scope, operation))) {
+		return JSON.stringify({
+			status: 'approval_required',
+			message:
+				'The mutation was not run; it needs approval in the VS Code window running Rewst Buddy. Focus that window to respond to the prompt, then retry. The prompt does not appear in the MCP client and cannot be approved if no VS Code window is open.',
+		});
 	}
 
 	return runMutationGraphql(query, variables, (q, v) => ctx.session.rawGraphql(q, v));
