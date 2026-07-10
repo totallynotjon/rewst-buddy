@@ -219,6 +219,17 @@ suite('Unit: workflowCrudCapabilities', () => {
 			assert.ok(approverCalled, 'delete must still prompt even though the shared scope was already approved');
 			assert.strictEqual(callsFor(calls, 'delete').length, 1);
 		});
+
+		test('does not delete when denied, even if the workflow scope was previously approved (#177)', async () => {
+			const { ctx, calls } = makeCtx({ owner: inOrg });
+			approveMutationScope({ scopeId: 'w1', scopeName: 'Onboard', orgId: 'org-sandbox', orgName: 'Sandbox' });
+			setMcpMutationApprover(async () => false);
+
+			const output = await cap('buddy_delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx);
+
+			assert.strictEqual(callsFor(calls, 'delete').length, 0);
+			assert.strictEqual(JSON.parse(output).status, 'approval_required');
+		});
 	});
 
 	suite('error and empty-result branches', () => {

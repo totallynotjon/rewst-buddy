@@ -319,6 +319,17 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 			assert.ok(approverCalled, 'delete must still prompt even though the shared scope was already approved');
 			assert.strictEqual(callsFor(calls, 'delete').length, 1);
 		});
+
+		test('does not delete when denied, even if the variable scope was previously approved (#177)', async () => {
+			const { ctx, calls } = makeCtx({ byId: inOrgRow });
+			approveMutationScope({ scopeId: 'v1', scopeName: 'API_KEY', orgId: 'org-sandbox', orgName: 'Sandbox' });
+			setMcpMutationApprover(async () => false);
+
+			const output = await cap('buddy_delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx);
+
+			assert.strictEqual(callsFor(calls, 'delete').length, 0);
+			assert.strictEqual(JSON.parse(output).status, 'approval_required');
+		});
 	});
 
 	suite('error and empty-result branches', () => {

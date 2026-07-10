@@ -87,6 +87,7 @@ interface TaskVerifyFields {
 interface TaskVerification {
 	message: string;
 	readOk: boolean;
+	storedById?: Map<string, RawTask>;
 }
 
 // ---------------------------------------------------------------------------
@@ -852,6 +853,29 @@ export function sentValueDivergences(sent: unknown, stored: unknown, path: strin
 	return storedValueMatches(sent, stored) ? [] : [`${path}: sent ${briefValue(sent)}, stored ${briefValue(stored)}`];
 }
 
+type TaskVerifyFieldName = keyof TaskVerifyFields;
+
+function taskFieldDivergences(sent: RawTask, stored: RawTask, field: TaskVerifyFieldName): string[] {
+	switch (field) {
+		case 'input':
+			return sentValueDivergences(sent.input ?? {}, stored.input ?? {}, 'input');
+		case 'with':
+			return sentValueDivergences(sent.with ?? {}, stored.with ?? {}, 'with');
+		case 'runAsOrgId':
+			return sentValueDivergences(sent.runAsOrgId ?? null, stored.runAsOrgId ?? null, 'runAsOrgId');
+		case 'packOverrides':
+			return sentValueDivergences(sent.packOverrides ?? [], stored.packOverrides ?? [], 'packOverrides');
+		case 'isMocked':
+			return sentValueDivergences(sent.isMocked ?? null, stored.isMocked ?? null, 'isMocked');
+		case 'mockInput':
+			return sentValueDivergences(sent.mockInput ?? null, stored.mockInput ?? null, 'mockInput');
+	}
+}
+
+function hasTaskFieldDivergence(sent: RawTask, stored: RawTask, field: TaskVerifyFieldName): boolean {
+	return taskFieldDivergences(sent, stored, field).length > 0;
+}
+
 async function verifySavedTaskValues(
 	deps: GraphqlToolDeps,
 	workflowId: string,
@@ -869,30 +893,23 @@ async function verifySavedTaskValues(
 				continue;
 			}
 			const lines = [
-				...(fields.input ? sentValueDivergences(sent.input ?? {}, stored.input ?? {}, 'input') : []),
-				...(fields.with ? sentValueDivergences(sent.with ?? {}, stored.with ?? {}, 'with') : []),
-				...(fields.runAsOrgId
-					? sentValueDivergences(sent.runAsOrgId ?? null, stored.runAsOrgId ?? null, 'runAsOrgId')
-					: []),
-				...(fields.packOverrides
-					? sentValueDivergences(sent.packOverrides ?? [], stored.packOverrides ?? [], 'packOverrides')
-					: []),
-				...(fields.isMocked
-					? sentValueDivergences(sent.isMocked ?? null, stored.isMocked ?? null, 'isMocked')
-					: []),
-				...(fields.mockInput
-					? sentValueDivergences(sent.mockInput ?? null, stored.mockInput ?? null, 'mockInput')
-					: []),
+				...(fields.input ? taskFieldDivergences(sent, stored, 'input') : []),
+				...(fields.with ? taskFieldDivergences(sent, stored, 'with') : []),
+				...(fields.runAsOrgId ? taskFieldDivergences(sent, stored, 'runAsOrgId') : []),
+				...(fields.packOverrides ? taskFieldDivergences(sent, stored, 'packOverrides') : []),
+				...(fields.isMocked ? taskFieldDivergences(sent, stored, 'isMocked') : []),
+				...(fields.mockInput ? taskFieldDivergences(sent, stored, 'mockInput') : []),
 			];
 			problems.push(...lines.map(line => `- task "${sent.name}": ${line}`));
 		}
-		if (problems.length === 0) return { message: '', readOk: true };
+		if (problems.length === 0) return { message: '', readOk: true, storedById };
 		return {
 			message:
 				`\n\nWARNING — the server did not store some task values as sent. Rewst may filter task input against the action's inputSchema or normalize advanced task configuration such as org overrides, integration overrides, mocking, while the save still reports success.\n` +
 				`${problems.join('\n')}\n` +
 				`Check the action's accepted parameters, advanced configuration or field mapping with buddy_action_search describe mode, then re-apply with matching keys, types, and supported configuration values.`,
 			readOk: true,
+			storedById,
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -1007,9 +1024,16 @@ export async function applyWorkflowMutation(
 	// heal candidate — an unrelated task's divergence must never trigger a
 	// pointless corrective write for a created task that already matched.
 	const healable = toVerify
-		.filter(({ task, fields }) => fields.packOverrides && !originalTaskIds.has(task.id))
-		.map(({ task }) => task)
-		.filter(task => verification.message.includes(`task "${task.name}": packOverrides`));
+		.filter(({ task, fields }) => {
+			const stored = verification.storedById?.get(task.id);
+			return (
+				fields.packOverrides &&
+				!originalTaskIds.has(task.id) &&
+				!!stored &&
+				hasTaskFieldDivergence(task, stored, 'packOverrides')
+			);
+		})
+		.map(({ task }) => task);
 	if (healable.length > 0) {
 		const heal = await healCreatedTaskPackOverrides(deps, workflowId, orgId, healable, comment);
 		if (heal.ok) {

@@ -203,11 +203,11 @@ rendered as the final path. It SHALL interrupt the native attempt, send a neutra
 correction that names the local `vscode-tool` transport, carry through any
 resolved native tool arguments, and suppress abandoned native output. A repeated
 native-tool attempt within the same backend turn sequence SHALL escalate through
-multiple correction attempts (`MAX_NATIVE_REDIRECT_ATTEMPTS`) — each subsequent
-correction states its attempt number, still within the same neutral,
-transport-focused wording rules — before finally giving up and surfacing a stop
-message; the ceiling is intentionally high because surfacing that stop message is
-a last resort, not an expected outcome.
+the configured redirect-attempt budget — each subsequent correction states its
+attempt number, still within the same neutral, transport-focused wording rules —
+before finally giving up and surfacing a stop message; the ceiling is
+intentionally high because surfacing that stop message is a last resort, not an
+expected outcome.
 
 #### Scenario: Backend tries a native Rewst tool
 
@@ -234,7 +234,7 @@ a last resort, not an expected outcome.
 #### Scenario: A later correction attempt succeeds
 
 - **GIVEN** the backend has repeated a native Rewst tool attempt across several
-  corrections, still below `MAX_NATIVE_REDIRECT_ATTEMPTS`
+  corrections, still below the configured redirect-attempt budget
 - **WHEN** the backend finally follows a later correction and answers using the
   local tool protocol instead
 - **THEN** the final answer streams normally and no stop message is shown
@@ -242,7 +242,8 @@ a last resort, not an expected outcome.
 #### Scenario: The redirect ceiling is exhausted
 
 - **GIVEN** the backend has repeated a native Rewst tool attempt
-  `MAX_NATIVE_REDIRECT_ATTEMPTS` times despite escalating corrections
+  until the configured redirect-attempt budget is exhausted despite escalating
+  corrections
 - **WHEN** the native tool is attempted once more
 - **THEN** the extension gives up and shows the stop message asking the user to
   ask again, instead of attempting another correction

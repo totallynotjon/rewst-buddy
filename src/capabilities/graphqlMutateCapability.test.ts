@@ -96,6 +96,26 @@ suite('Unit: graphqlMutateCapability', () => {
 		assert.strictEqual(calls.length, 1);
 	});
 
+	test('does not run when denied, even if the scope was approved by an earlier mutation (#177)', async () => {
+		const { ctx, calls } = makeCtx();
+		const priorScope: MutationScope = {
+			scopeId: 't-1',
+			scopeName: 'Doomed',
+			orgId: 'org-sandbox',
+			orgName: 'Sandbox',
+		};
+		approveMutationScope(priorScope);
+		setMcpMutationApprover(async () => false);
+
+		const output = await graphqlMutateCapability.run(
+			{ orgId: 'org-sandbox', query: DELETE_QUERY, scopeId: 't-1', scopeName: 'Doomed' },
+			ctx,
+		);
+
+		assert.strictEqual(calls.length, 0);
+		assert.strictEqual(JSON.parse(output).status, 'approval_required');
+	});
+
 	test('rejects a query operation', async () => {
 		const { ctx } = makeCtx();
 		setMcpMutationApprover(async () => true);

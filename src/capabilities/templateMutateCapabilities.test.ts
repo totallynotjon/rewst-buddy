@@ -379,6 +379,59 @@ suite('Unit: templateMutateCapabilities', () => {
 			assert.ok(fired, 'onLinksSaved should fire so the status bar refreshes');
 		});
 
+		test('leaves the local link cache untouched when the rename mutation fails (#176)', async () => {
+			const { ctx, wrapper } = sandboxCtx();
+			const uri = vscode.Uri.file('/tmp/rewst-buddy-rename-test/failed-rename.j2');
+			const originalUpdatedAt = '2026-01-01T00:00:00.000Z';
+			wrapper
+				.when('getTemplate', {
+					data: Fixtures.getTemplateQuery({
+						id: 't-1',
+						orgId: 'org-sandbox',
+						name: 'Old Name',
+						updatedAt: originalUpdatedAt,
+					}),
+				})
+				.when('updateTemplateName', { error: new Error('rename failed') });
+			setMcpMutationApprover(async () => true);
+
+			const link: TemplateLink = {
+				type: 'Template',
+				uriString: uri.toString(),
+				org: { id: 'org-sandbox', name: 'Sandbox' },
+				template: {
+					id: 't-1',
+					name: 'Old Name',
+					updatedAt: originalUpdatedAt,
+					orgId: 'org-sandbox',
+				} as any,
+				bodyHash: 'hash',
+			};
+			LinkManager.addLink(link);
+
+			let fired = false;
+			const off = LinkManager.onLinksSaved(() => {
+				fired = true;
+			});
+			try {
+				await assert.rejects(
+					() =>
+						cap('buddy_rename_template').run(
+							{ orgId: 'org-sandbox', templateId: 't-1', name: 'New Name' },
+							ctx,
+						),
+					/rename failed/,
+				);
+			} finally {
+				off.dispose();
+			}
+
+			const cached = LinkManager.getTemplateLink(uri);
+			assert.strictEqual(cached.template.name, 'Old Name');
+			assert.strictEqual(cached.template.updatedAt, originalUpdatedAt);
+			assert.strictEqual(fired, false, 'failed rename must not emit a links-saved event');
+		});
+
 		test('does not throw when renaming a template with no local link', async () => {
 			const { ctx, wrapper } = sandboxCtx();
 			wrapper
@@ -498,6 +551,20 @@ suite('Unit: templateMutateCapabilities', () => {
 
 			assert.ok(approverCalled, 'delete must still prompt even though the shared scope was already approved');
 			assert.strictEqual(wrapper.getCallsFor('deleteTemplate').length, 1);
+		});
+
+		test('does not delete when denied, even if the template scope was previously approved (#177)', async () => {
+			const { ctx, wrapper } = sandboxCtx();
+			wrapper.when('getTemplate', {
+				data: Fixtures.getTemplateQuery({ id: 't-1', orgId: 'org-sandbox', name: 'Doomed' }),
+			});
+			approveMutationScope({ scopeId: 't-1', scopeName: 'Doomed', orgId: 'org-sandbox', orgName: 'Sandbox' });
+			setMcpMutationApprover(async () => false);
+
+			const output = await cap('buddy_delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx);
+
+			assert.strictEqual(wrapper.getCallsFor('deleteTemplate').length, 0);
+			assert.strictEqual(JSON.parse(output).status, 'approval_required');
 		});
 	});
 

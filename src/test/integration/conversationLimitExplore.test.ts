@@ -4,14 +4,31 @@ import { clearCachedSession, getTestSession, hasTestToken, initTestEnvironment }
 
 const { suite, test, suiteSetup, suiteTeardown } = Mocha;
 
+const EXPLORE_OPT_IN_ENV = 'REWST_CONVERSATION_LIMIT_EXPLORE';
+const RAW_LOG_ENV = 'REWST_CONVERSATION_LIMIT_RAW_LOG';
+
+function envFlag(name: string): boolean {
+	return process.env[name] === '1';
+}
+
+function jsonSize(value: unknown): number {
+	return JSON.stringify(value ?? null).length;
+}
+
+function boundedText(value: unknown, max = 240): string {
+	const text = String(value ?? '');
+	return text.length > max ? `${text.slice(0, max)}...[truncated ${text.length - max} chars]` : text;
+}
+
 /**
  * EXPLORATION PROBE (not an assertion test): grows one RoboRewsty conversation
  * turn-by-turn until the backend's new "conversation is getting long" buttons
- * appear in the reply, dumping each turn's full reply + context usage so the
- * length-limit marker can be identified and a detector written against it.
+ * appear in the reply. Normal output is bounded/redacted; set
+ * REWST_CONVERSATION_LIMIT_RAW_LOG=1 only for a local diagnostic run that is
+ * allowed to print live conversation contents.
  *
  * Run only on demand:
- *   unset REWST_TEST_TOKEN && npm run test:grep:integration -- "explore conversation length limit"
+ *   REWST_CONVERSATION_LIMIT_EXPLORE=1 npm run test:grep:integration -- "explore conversation length limit"
  */
 suite('Integration: conversation length limit exploration', function () {
 	this.timeout(1_200_000);
@@ -19,7 +36,7 @@ suite('Integration: conversation length limit exploration', function () {
 	let session: Session;
 
 	suiteSetup(async function () {
-		if (!hasTestToken()) {
+		if (!hasTestToken() || !envFlag(EXPLORE_OPT_IN_ENV)) {
 			this.skip();
 			return;
 		}
@@ -40,7 +57,7 @@ suite('Integration: conversation length limit exploration', function () {
 		/new (chat|conversation)|start(ing)? (a )?(new|fresh)|conversation is getting long|reached the (maximum|max|length|limit)|too long|start over|\[[^\]]+\]\(command:|button/i;
 
 	test('explore conversation length limit buttons', async function () {
-		if (!hasTestToken()) {
+		if (!hasTestToken() || !envFlag(EXPLORE_OPT_IN_ENV)) {
 			this.skip();
 			return;
 		}
@@ -71,39 +88,58 @@ suite('Integration: conversation length limit exploration', function () {
 			let usageLine = '(no usage reported)';
 			let percent = -1;
 			let errored: string | undefined;
-			for await (const event of askRewstAi({
-				session,
-				orgId,
-				message,
-				conversationId,
-				inactivityTimeoutMs: 180_000,
-			})) {
-				if (event.kind === 'conversation') conversationId = event.conversationId;
-				if (event.kind === 'usage') {
-					percent = event.percent;
-					usageLine = `usage ${event.totalTokens}/${event.maxTokens} (${event.percent}%)`;
+			let attempts = 0;
+			for (let attempt = 1; attempt <= 2; attempt++) {
+				attempts = attempt;
+				content = '';
+				usageLine = '(no usage reported)';
+				percent = -1;
+				errored = undefined;
+				for await (const event of askRewstAi({
+					session,
+					orgId,
+					message,
+					conversationId,
+					inactivityTimeoutMs: 180_000,
+				})) {
+					if (event.kind === 'conversation') conversationId = event.conversationId;
+					if (event.kind === 'usage') {
+						percent = event.percent;
+						usageLine = `usage ${event.totalTokens}/${event.maxTokens} (${event.percent}%)`;
+					}
+					if (event.kind === 'complete') {
+						content = event.content;
+						if (event.conversationId) conversationId = event.conversationId;
+					}
+					if (event.kind === 'approval') {
+						if (envFlag(RAW_LOG_ENV)) {
+							console.log(`\n>>> APPROVAL event on turn ${turnNo}:`, JSON.stringify(event.raw));
+						} else {
+							console.log(`\n>>> APPROVAL event on turn ${turnNo}: rawBytes=${jsonSize(event.raw)}`);
+						}
+					}
+					if (event.kind === 'error') errored = event.message;
 				}
-				if (event.kind === 'complete') {
-					content = event.content;
-					if (event.conversationId) conversationId = event.conversationId;
-				}
-				if (event.kind === 'approval') {
-					console.log(`\n>>> APPROVAL event on turn ${turnNo}:`, JSON.stringify(event.raw));
-				}
-				if (event.kind === 'error') errored = event.message;
-			}
-
-			console.log(`\n========== TURN ${turnNo} ========== ${usageLine} conv=${conversationId ?? '?'}`);
-			if (errored) {
-				console.log(`ERROR: ${errored}`);
-				// Retry a transient interruption once; otherwise stop.
-				if (/interrupted/i.test(errored)) {
+				if (errored && /interrupted/i.test(errored) && attempt === 1) {
+					console.log(`\n>>> Turn ${turnNo} interrupted; retrying the same prompt once after delay.`);
 					await new Promise(r => setTimeout(r, 15_000));
 					continue;
 				}
 				break;
 			}
-			console.log(`REPLY (${content.length} chars):\n${content}`);
+
+			console.log(
+				`\n========== TURN ${turnNo} ========== ${usageLine} conv=${conversationId ?? '?'} attempts=${attempts}`,
+			);
+			if (errored) {
+				console.log(`ERROR: ${boundedText(errored)}`);
+				break;
+			}
+			if (envFlag(RAW_LOG_ENV)) {
+				console.log(`REPLY (${content.length} chars):\n${content}`);
+			} else {
+				console.log(`REPLY (${content.length} chars): [redacted; set ${RAW_LOG_ENV}=1 for local raw output]`);
+			}
 
 			// If context stops climbing while we keep feeding big messages, the
 			// backend is summarizing — a token cap won't be reached, so the limit
@@ -118,7 +154,7 @@ suite('Integration: conversation length limit exploration', function () {
 
 			if (SUSPECT.test(content)) {
 				console.log(
-					`\n>>> SUSPECT length-limit marker detected on turn ${turnNo}. Full reply above. Stopping.`,
+					`\n>>> SUSPECT length-limit marker detected on turn ${turnNo}; reply length=${content.length}. Stopping.`,
 				);
 				break;
 			}
