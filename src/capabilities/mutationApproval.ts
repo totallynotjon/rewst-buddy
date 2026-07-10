@@ -33,8 +33,12 @@ export function orgDisplayName(ctx: CapabilityContext): string {
 
 /**
  * Runs a mutation behind the shared per-call approval flow. With alwaysPrompt
- * (e.g. workflow run/auto-layout) the prompt shows on every call and approval is
- * never remembered for the scope.
+ * (e.g. workflow run/edit) the prompt shows on every call and approval is never
+ * remembered for the scope. Every delete-type capability MUST set alwaysPrompt:
+ * approval scopes key only on [orgId, resourceId], with no operation-type
+ * component, so a resource's delete would otherwise silently reuse an approval
+ * given for an earlier non-delete mutation (rename, update) on that same
+ * resource (#177).
  */
 export async function withMutationApproval(
 	scope: MutationScope,

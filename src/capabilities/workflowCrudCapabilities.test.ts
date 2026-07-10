@@ -9,7 +9,7 @@ import { initTestEnvironment } from '@test';
 import { CRATE_REUSE_STEERING, WORKFLOW_START_STEERING } from '@workflow';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
+import { _resetApprovedMutationScopes, approveMutationScope } from '../ui/chat/tools/graphqlTool';
 import { getCapability } from './registry';
 import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 
@@ -199,6 +199,25 @@ suite('Unit: workflowCrudCapabilities', () => {
 
 			assert.strictEqual(callsFor(calls, 'delete').length, 0);
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
+		});
+
+		test('still prompts even when a prior non-delete mutation on the same workflow was approved (#177)', async () => {
+			const { ctx, calls } = makeCtx({ owner: inOrg, delete: { data: { deleteWorkflow: 'w1' } } });
+			// Simulate any earlier non-delete mutation on this same workflow (e.g. an
+			// auto-layout, which unlike run/edit is not always-prompt) having been
+			// approved this session — the scope key is only [orgId, workflowId].
+			approveMutationScope({ scopeId: 'w1', scopeName: 'Onboard', orgId: 'org-sandbox', orgName: 'Sandbox' });
+
+			let approverCalled = false;
+			setMcpMutationApprover(async () => {
+				approverCalled = true;
+				return true;
+			});
+
+			await cap('buddy_delete_workflow').run({ orgId: 'org-sandbox', workflowId: 'w1' }, ctx);
+
+			assert.ok(approverCalled, 'delete must still prompt even though the shared scope was already approved');
+			assert.strictEqual(callsFor(calls, 'delete').length, 1);
 		});
 	});
 

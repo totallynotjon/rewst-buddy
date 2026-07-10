@@ -8,7 +8,7 @@ import {
 	type CapabilityContext,
 } from '@capabilities';
 import type { Session } from '@sessions';
-import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
+import { _resetApprovedMutationScopes, approveMutationScope } from '../ui/chat/tools/graphqlTool';
 import { TAG_MUTATE_CAPABILITIES } from './tagMutateCapabilities';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -218,6 +218,24 @@ suite('Unit: tagMutateCapabilities', () => {
 
 			assert.strictEqual(callsFor(calls, 'delete').length, 0);
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
+		});
+
+		test('still prompts even when a prior non-delete mutation on the same tag was approved (#177)', async () => {
+			const { ctx, calls } = makeCtx({ byId: inOrgRow, delete: { data: { deleteTag: 'g1' } } });
+			// Simulate any earlier non-delete mutation (e.g. update) on this same tag
+			// having been approved this session — the scope key is only [orgId, tagId].
+			approveMutationScope({ scopeId: 'g1', scopeName: 'old', orgId: 'org-sandbox', orgName: 'Sandbox' });
+
+			let approverCalled = false;
+			setMcpMutationApprover(async () => {
+				approverCalled = true;
+				return true;
+			});
+
+			await cap('buddy_delete_tag').run({ orgId: 'org-sandbox', tagId: 'g1' }, ctx);
+
+			assert.ok(approverCalled, 'delete must still prompt even though the shared scope was already approved');
+			assert.strictEqual(callsFor(calls, 'delete').length, 1);
 		});
 	});
 

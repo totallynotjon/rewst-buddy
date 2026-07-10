@@ -2242,6 +2242,166 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /advanced configuration or field mapping/i);
 		});
 
+		test("buddy_workflow_edit self-heals a newly created task's packOverrides mode when the server defaults it on creation (#174)", async () => {
+			// Server-side quirk: updateWorkflow ignores configSelectionMode /
+			// configFallbackMode on the SAME write that creates a task, but honors
+			// them on a follow-up update of that now-existing task. The tool should
+			// detect and replay the corrective write itself, instead of surfacing
+			// only a warning and requiring the caller to redo it manually.
+			let gets = 0;
+			let updates = 0;
+			const sentOverrides = [
+				{
+					packId: 'pack-1',
+					packConfigId: 'cfg-1',
+					configSelectionMode: 'USE_SELECTED_ID',
+					configFallbackMode: 'FAIL_ACTION',
+				},
+			];
+			const defaultedOverrides = [
+				{
+					packId: 'pack-1',
+					packConfigId: 'cfg-1',
+					configSelectionMode: 'USE_DEFAULT',
+					configFallbackMode: 'USE_DEFAULT',
+				},
+			];
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyActionSearch')) {
+					return { data: { actionsForOrg: [{ id: 'noop-id', ref: 'core.noop', name: 'noop' }] } };
+				}
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					gets += 1;
+					const w = sampleWorkflow();
+					if (gets === 1) return { data: { workflow: w } }; // before the edit: task doesn't exist yet
+					const created = {
+						id: 'cc03',
+						name: 'notify',
+						actionId: 'noop-id',
+						action: { ref: 'core.noop' },
+						input: {},
+						metadata: { x: 0, y: 0 },
+						next: [],
+						packOverrides: updates >= 2 ? sentOverrides : defaultedOverrides,
+					};
+					w.tasks = [...sampleTasks(), created];
+					return { data: { workflow: w } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					updates += 1;
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: String(1000 + updates * 500) } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{
+								op: 'add_task',
+								id: 'cc03',
+								name: 'notify',
+								action: 'core.noop',
+								packOverrides: sentOverrides,
+							},
+						],
+					},
+				},
+				deps,
+			);
+
+			assert.strictEqual(updates, 2, 'the save is replayed once to self-heal the packOverrides mode');
+			assert.match(output, /auto-corrected packOverrides/i);
+			assert.ok(
+				!/WARNING — the server did not store/i.test(output),
+				'the warning is dropped once the heal succeeds',
+			);
+		});
+
+		test('buddy_workflow_edit keeps the warning when the packOverrides self-heal replay still diverges (#174)', async () => {
+			let gets = 0;
+			let updates = 0;
+			const sentOverrides = [
+				{
+					packId: 'pack-1',
+					packConfigId: 'cfg-1',
+					configSelectionMode: 'USE_SELECTED_ID',
+					configFallbackMode: 'FAIL_ACTION',
+				},
+			];
+			const defaultedOverrides = [
+				{
+					packId: 'pack-1',
+					packConfigId: 'cfg-1',
+					configSelectionMode: 'USE_DEFAULT',
+					configFallbackMode: 'USE_DEFAULT',
+				},
+			];
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyActionSearch')) {
+					return { data: { actionsForOrg: [{ id: 'noop-id', ref: 'core.noop', name: 'noop' }] } };
+				}
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					gets += 1;
+					const w = sampleWorkflow();
+					if (gets === 1) return { data: { workflow: w } };
+					// The server keeps defaulting the mode even after the heal replay —
+					// the warning should survive rather than being dropped.
+					const created = {
+						id: 'cc03',
+						name: 'notify',
+						actionId: 'noop-id',
+						action: { ref: 'core.noop' },
+						input: {},
+						metadata: { x: 0, y: 0 },
+						next: [],
+						packOverrides: defaultedOverrides,
+					};
+					w.tasks = [...sampleTasks(), created];
+					return { data: { workflow: w } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					updates += 1;
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: String(1000 + updates * 500) } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{
+								op: 'add_task',
+								id: 'cc03',
+								name: 'notify',
+								action: 'core.noop',
+								packOverrides: sentOverrides,
+							},
+						],
+					},
+				},
+				deps,
+			);
+
+			assert.strictEqual(updates, 2, 'exactly one heal replay is attempted, not a retry loop');
+			assert.match(output, /WARNING — the server did not store/i);
+			assert.match(output, /task "notify": packOverrides\.0\.configSelectionMode/);
+		});
+
 		test('buddy_workflow_edit skips the verification read when no operation carries input', async () => {
 			const { deps, calls } = makeDeps();
 			await runWorkflowTool(
@@ -3593,7 +3753,11 @@ suite('Unit: workflowTools', () => {
 						return {
 							data: {
 								taskLogs: [
-									{ originalWorkflowTaskName: 'root_task', status: 'succeeded', taskExecutionId: 'te-1' },
+									{
+										originalWorkflowTaskName: 'root_task',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
 								],
 							},
 						};
@@ -3710,7 +3874,11 @@ suite('Unit: workflowTools', () => {
 				inlinedSections <= 5 * 5,
 				`no more than MAX_INLINE_SUB_EXECUTIONS per level across up to 5 levels; got ${inlinedSections}`,
 			);
-			assert.match(output, /truncated at 25 fetches/, 'truncation is stated in the output when the budget is hit');
+			assert.match(
+				output,
+				/truncated at 25 fetches/,
+				'truncation is stated in the output when the budget is hit',
+			);
 			assert.match(
 				output,
 				/more sub-execution\(s\) not inlined/,
@@ -3727,7 +3895,11 @@ suite('Unit: workflowTools', () => {
 						return {
 							data: {
 								taskLogs: [
-									{ originalWorkflowTaskName: 'root_task', status: 'succeeded', taskExecutionId: 'te-1' },
+									{
+										originalWorkflowTaskName: 'root_task',
+										status: 'succeeded',
+										taskExecutionId: 'te-1',
+									},
 								],
 							},
 						};
@@ -3766,7 +3938,11 @@ suite('Unit: workflowTools', () => {
 				},
 				deps,
 			);
-			assert.match(output, /Sub-execution Child Flow \(exec-child, succeeded\):/, 'level 1 child is still inlined');
+			assert.match(
+				output,
+				/Sub-execution Child Flow \(exec-child, succeeded\):/,
+				'level 1 child is still inlined',
+			);
 			assert.match(
 				output,
 				/could not fetch children of sub-execution exec-child.*grandchild lookup boom/,
@@ -4813,12 +4989,16 @@ suite('Unit: workflowTools', () => {
 				deps,
 			);
 			assert.match(output, /Nested diagnosis \(level 1/, 'level 1 nested section present');
-			assert.match(output, /child_setup: succeeded/, "level 1 section includes the sibling task, not just child_task");
+			assert.match(
+				output,
+				/child_setup: succeeded/,
+				'level 1 section includes the sibling task, not just child_task',
+			);
 			assert.match(output, /Nested diagnosis \(level 2/, 'level 2 nested section present');
 			assert.match(
 				output,
 				/grand_setup: succeeded/,
-				"level 2 section includes the sibling task, not just grand_task",
+				'level 2 section includes the sibling task, not just grand_task',
 			);
 		});
 

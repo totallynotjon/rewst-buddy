@@ -902,6 +902,41 @@ async function verifySavedTaskValues(
  * workflow, apply operations to the whole graph, and save with the correct
  * openedAt token — retrying once on a version conflict.
  */
+/**
+ * Rewst's updateWorkflow resolver can silently default a newly created task's
+ * packOverrides configSelectionMode/configFallbackMode on the SAME write that
+ * creates the task, while honoring them on a follow-up update of that
+ * already-existing task (server-side quirk — #174). Re-sends just the healable
+ * tasks' packOverrides in one corrective updateWorkflow call, replaying the
+ * "call update_task a second time" workaround programmatically. Returns false
+ * (no self-heal attempted/succeeded) on any fetch or mutation error, leaving
+ * the original verification warning as the caller's fallback.
+ */
+async function healCreatedTaskPackOverrides(
+	deps: GraphqlToolDeps,
+	workflowId: string,
+	orgId: string,
+	healable: RawTask[],
+	comment: string,
+): Promise<boolean> {
+	try {
+		const fresh = await fetchWorkflow(deps, workflowId, orgId);
+		const byId = new Map(fresh.tasks.map(t => [t.id, t]));
+		for (const task of healable) {
+			const current = byId.get(task.id);
+			if (current) current.packOverrides = task.packOverrides;
+		}
+		const result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
+			workflow: workflowToInput(fresh, fresh.tasks, {}),
+			openedAt: fresh.updatedAt,
+			comment: `${comment} (auto-correct packOverrides mode on newly created task(s))`,
+		});
+		return !firstErrorMessage(result as ExecResult);
+	} catch {
+		return false;
+	}
+}
+
 export async function applyWorkflowMutation(
 	deps: GraphqlToolDeps,
 	workflowId: string,
@@ -913,6 +948,7 @@ export async function applyWorkflowMutation(
 	const apply = (source: RawWorkflow) => applyOperations(source.tasks, operations, actionIdByRef);
 
 	const workflow = await fetchWorkflow(deps, workflowId, orgId);
+	const originalTaskIds = new Set(workflow.tasks.map(t => t.id));
 	let { tasks, applied, workflow: overrides, verifyFields } = apply(workflow);
 	if (!(await deps.confirmMutation(`update workflow "${workflow.name}" (${applied.length} operation(s))`))) {
 		throw new Error('Workflow change was not confirmed.');
@@ -942,7 +978,21 @@ export async function applyWorkflowMutation(
 		const fields = verifyFields.get(task.id);
 		return fields ? [{ task, fields }] : [];
 	});
-	const verification = toVerify.length > 0 ? await verifySavedTaskValues(deps, workflowId, orgId, toVerify) : '';
+	let verification = toVerify.length > 0 ? await verifySavedTaskValues(deps, workflowId, orgId, toVerify) : '';
+
+	const healable = toVerify
+		.filter(({ task, fields }) => fields.packOverrides && !originalTaskIds.has(task.id))
+		.map(({ task }) => task);
+	if (healable.length > 0 && /packOverrides/.test(verification)) {
+		const healed = await healCreatedTaskPackOverrides(deps, workflowId, orgId, healable, comment);
+		if (healed) {
+			verification = await verifySavedTaskValues(deps, workflowId, orgId, toVerify);
+			if (!/packOverrides/.test(verification)) {
+				verification += `\n\nNote: auto-corrected packOverrides on ${healable.length} newly created task(s) — the server ignored the requested selection/fallback mode on creation but accepted it on this follow-up update.`;
+			}
+		}
+	}
+
 	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.${verification}`;
 }
 

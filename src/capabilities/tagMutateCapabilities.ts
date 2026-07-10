@@ -167,12 +167,20 @@ async function runDeleteTag(input: Record<string, unknown>, ctx: CapabilityConte
 	const name = current.name ?? '(unnamed)';
 	const scope: MutationScope = { scopeId: tagId, scopeName: name, orgId, orgName };
 	const summary = `Delete tag "${name}" (${tagId}) in org "${orgName}" (${orgId})`;
-	return withMutationApproval(scope, summary, async () => {
-		const data = await rawGraphqlOrThrow(ctx.session, DELETE_TAG, { id: tagId });
-		const deletedId = (data as { deleteTag?: string | null } | undefined)?.deleteTag;
-		if (!deletedId) throw new Error('deleteTag returned no id; the mutation may have failed.');
-		return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);
-	});
+	// A delete always prompts fresh: approval scopes key only on [orgId, resourceId],
+	// so without this a prior non-delete approval for this same tag would otherwise
+	// silently pre-approve deleting it too (#177).
+	return withMutationApproval(
+		scope,
+		summary,
+		async () => {
+			const data = await rawGraphqlOrThrow(ctx.session, DELETE_TAG, { id: tagId });
+			const deletedId = (data as { deleteTag?: string | null } | undefined)?.deleteTag;
+			if (!deletedId) throw new Error('deleteTag returned no id; the mutation may have failed.');
+			return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);
+		},
+		{ alwaysPrompt: true },
+	);
 }
 
 export const TAG_MUTATE_CAPABILITIES: Capability[] = [

@@ -4,10 +4,12 @@ import {
 	type Capability,
 	type CapabilityContext,
 } from '@capabilities';
+import { LinkManager, type TemplateLink } from '@models';
 import { createMockSession, Fixtures, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { _resetApprovedMutationScopes, type MutationScope } from '../ui/chat/tools/graphqlTool';
+import vscode from 'vscode';
+import { _resetApprovedMutationScopes, approveMutationScope, type MutationScope } from '../ui/chat/tools/graphqlTool';
 import { TEMPLATE_MUTATE_CAPABILITIES } from './templateMutateCapabilities';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -30,11 +32,13 @@ suite('Unit: templateMutateCapabilities', () => {
 		initTestEnvironment();
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
+		LinkManager._resetForTesting();
 	});
 
 	teardown(() => {
 		_resetApprovedMutationScopes();
 		_resetMcpMutationApproverForTesting();
+		LinkManager._resetForTesting();
 	});
 
 	suite('buddy_create_template', () => {
@@ -316,6 +320,69 @@ suite('Unit: templateMutateCapabilities', () => {
 			assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 0);
 			assert.strictEqual(wrapper.getCallsFor('updateTemplateName').length, 0);
 		});
+
+		test('updates the local link cache and fires onLinksSaved when a linked template is renamed (#176)', async () => {
+			const { ctx, wrapper } = sandboxCtx();
+			wrapper
+				.when('getTemplate', {
+					data: Fixtures.getTemplateQuery({ id: 't-1', orgId: 'org-sandbox', name: 'Old Name' }),
+				})
+				.when('updateTemplateName', {
+					data: {
+						__typename: 'Mutation',
+						template: Fixtures.fullTemplate({ id: 't-1', orgId: 'org-sandbox', name: 'New Name' }),
+					},
+				});
+			setMcpMutationApprover(async () => true);
+
+			const uri = vscode.Uri.file('/tmp/rewst-buddy-rename-test/old-name.j2');
+			const link: TemplateLink = {
+				type: 'Template',
+				uriString: uri.toString(),
+				org: { id: 'org-sandbox', name: 'Sandbox' },
+				template: { id: 't-1', name: 'Old Name', updatedAt: '', orgId: 'org-sandbox' } as any,
+				bodyHash: 'hash',
+			};
+			LinkManager.addLink(link);
+
+			let fired = false;
+			const off = LinkManager.onLinksSaved(() => {
+				fired = true;
+			});
+			try {
+				await cap('buddy_rename_template').run(
+					{ orgId: 'org-sandbox', templateId: 't-1', name: 'New Name' },
+					ctx,
+				);
+			} finally {
+				off.dispose();
+			}
+
+			assert.strictEqual(LinkManager.getTemplateLink(uri).template.name, 'New Name');
+			assert.ok(fired, 'onLinksSaved should fire so the status bar refreshes');
+		});
+
+		test('does not throw when renaming a template with no local link', async () => {
+			const { ctx, wrapper } = sandboxCtx();
+			wrapper
+				.when('getTemplate', {
+					data: Fixtures.getTemplateQuery({ id: 't-unlinked', orgId: 'org-sandbox', name: 'Old Name' }),
+				})
+				.when('updateTemplateName', {
+					data: {
+						__typename: 'Mutation',
+						template: Fixtures.fullTemplate({ id: 't-unlinked', orgId: 'org-sandbox', name: 'New Name' }),
+					},
+				});
+			setMcpMutationApprover(async () => true);
+
+			const output = await cap('buddy_rename_template').run(
+				{ orgId: 'org-sandbox', templateId: 't-unlinked', name: 'New Name' },
+				ctx,
+			);
+
+			assert.strictEqual(JSON.parse(output).status, 'renamed');
+		});
 	});
 
 	suite('buddy_delete_template', () => {
@@ -390,6 +457,30 @@ suite('Unit: templateMutateCapabilities', () => {
 			assert.strictEqual(approverCalled, false);
 			assert.strictEqual(wrapper.getCallsFor('getTemplate').length, 0);
 			assert.strictEqual(wrapper.getCallsFor('deleteTemplate').length, 0);
+		});
+
+		test('still prompts even when a prior non-delete mutation on the same template was approved (#177)', async () => {
+			const { ctx, wrapper } = sandboxCtx();
+			wrapper
+				.when('getTemplate', {
+					data: Fixtures.getTemplateQuery({ id: 't-1', orgId: 'org-sandbox', name: 'Doomed' }),
+				})
+				.when('deleteTemplate', { data: { __typename: 'Mutation', deleteTemplate: 't-1' } });
+			// Simulate any earlier non-delete mutation (rename/update body/etc.) on this
+			// same template having been approved this session — the scope key is only
+			// [orgId, templateId], shared by every mutation on this resource.
+			approveMutationScope({ scopeId: 't-1', scopeName: 'Doomed', orgId: 'org-sandbox', orgName: 'Sandbox' });
+
+			let approverCalled = false;
+			setMcpMutationApprover(async () => {
+				approverCalled = true;
+				return true;
+			});
+
+			await cap('buddy_delete_template').run({ orgId: 'org-sandbox', templateId: 't-1' }, ctx);
+
+			assert.ok(approverCalled, 'delete must still prompt even though the shared scope was already approved');
+			assert.strictEqual(wrapper.getCallsFor('deleteTemplate').length, 1);
 		});
 	});
 

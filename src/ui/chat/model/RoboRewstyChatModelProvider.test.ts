@@ -8,6 +8,7 @@ import { onDidChangeContextUsage, type ContextUsage } from './contextUsage';
 import { conversationMap } from './conversationMap';
 import {
 	MAX_BUDDY_TOOL_ROUNDS,
+	MAX_NATIVE_REDIRECT_ATTEMPTS,
 	normalizeBuddyToolRounds,
 	RoboRewstyChatModelProvider,
 	truncateArgsLabel,
@@ -613,7 +614,7 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 		assert.ok(out.includes('Deploy.'), 'final answer from the Buddy path streams');
 	});
 
-	test('stops after a repeated native Rewst tool attempt while Buddy tools are enabled', async () => {
+	test('stops only after exhausting the escalating redirect ceiling', async () => {
 		const nativeAttempt: ConversationEvent[] = [
 			{ kind: 'conversation', conversationId: 'conv-1' },
 			{
@@ -626,7 +627,12 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 			{ kind: 'complete', content: 'ignored', sources: [], conversationId: 'conv-1' },
 		];
 		let buddyRan = false;
-		const harness = makeHarness([nativeAttempt, nativeAttempt, completeTurn('unreachable', 'conv-1')], {
+		// MAX_NATIVE_REDIRECT_ATTEMPTS corrections are attempted (each triggering one
+		// more backend turn), and the native tool is requested again on that final
+		// turn too — only then does the loop give up.
+		const turns = Array.from({ length: MAX_NATIVE_REDIRECT_ATTEMPTS + 1 }, () => nativeAttempt);
+		turns.push(completeTurn('unreachable', 'conv-1'));
+		const harness = makeHarness(turns, {
 			buddyToolSpecs: () => [BUDDY_GET_SPEC],
 			runBuddyTool: async () => {
 				buddyRan = true;
@@ -636,12 +642,54 @@ suite('Unit: RoboRewstyChatModelProvider', () => {
 
 		await harness.run([message(User, [text('look up workflow w1')])]);
 
-		assert.strictEqual(harness.captured.length, 2, 'one correction is attempted, then the loop stops');
+		assert.strictEqual(
+			harness.captured.length,
+			MAX_NATIVE_REDIRECT_ATTEMPTS + 1,
+			`${MAX_NATIVE_REDIRECT_ATTEMPTS} corrections are attempted (${MAX_NATIVE_REDIRECT_ATTEMPTS + 1} backend turns total), then the loop stops`,
+		);
 		assert.strictEqual(buddyRan, false, 'no local Buddy tool runs without a fenced Buddy request');
 		assert.strictEqual(callsOf(harness.parts).length, 0, 'no VS Code tool call is emitted for native activity');
 		const out = visibleText(harness.parts);
 		assert.ok(out.includes('Stopped after a server-side Rewst tool was requested again'), 'stop note is visible');
-		assert.ok(!out.includes('unreachable'), 'no third backend turn is started');
+		assert.ok(!out.includes('unreachable'), 'no turn beyond the ceiling is started');
+		const lastCorrection = harness.captured[harness.captured.length - 1];
+		assert.ok(
+			lastCorrection.message.includes(
+				`attempt ${MAX_NATIVE_REDIRECT_ATTEMPTS} of ${MAX_NATIVE_REDIRECT_ATTEMPTS}`,
+			),
+			`expected the final correction to name attempt ${MAX_NATIVE_REDIRECT_ATTEMPTS}, got: ${lastCorrection.message}`,
+		);
+	});
+
+	test('a redirect that succeeds on a later attempt reaches a final answer instead of stopping', async () => {
+		const nativeAttempt: ConversationEvent[] = [
+			{ kind: 'conversation', conversationId: 'conv-1' },
+			{
+				kind: 'status',
+				label: 'Running Rewst tool: listWorkflow…',
+				activity: true,
+				tool: { name: 'listWorkflow' },
+			},
+			{ kind: 'chunk', text: 'ignored' },
+			{ kind: 'complete', content: 'ignored', sources: [], conversationId: 'conv-1' },
+		];
+		// Three native-tool attempts (not just one) before the backend finally
+		// follows the correction and answers — this only succeeds if the ceiling
+		// is greater than 1.
+		const harness = makeHarness(
+			[nativeAttempt, nativeAttempt, nativeAttempt, completeTurn('Recovered on a later attempt.', 'conv-1')],
+			{ buddyToolSpecs: () => [BUDDY_GET_SPEC] },
+		);
+
+		await harness.run([message(User, [text('look up workflow w1')])]);
+
+		assert.strictEqual(harness.captured.length, 4, 'three corrections were attempted before the answer');
+		const out = visibleText(harness.parts);
+		assert.ok(out.includes('Recovered on a later attempt.'), 'the final answer streams after recovering');
+		assert.ok(
+			!out.includes('Stopped after a server-side Rewst tool was requested again'),
+			'the loop does not give up before reaching the ceiling',
+		);
 	});
 
 	test('a downgrade after a native-tool redirect resets the redirect budget for the fresh attempt', async () => {

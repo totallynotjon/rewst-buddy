@@ -56,4 +56,45 @@ suite('Unit: statelessTranscript', () => {
 		assert.match(transcript, /Before\s+After/);
 		assert.ok(!transcript.includes('Searching documentation'));
 	});
+
+	test('caps and frames terminal tool output as likely-unrelated', () => {
+		const call = new vscode.LanguageModelToolCallPart('call-1', 'run_in_terminal', { command: 'ls' });
+		const longOutput = 'x'.repeat(5_000);
+		const result = new vscode.LanguageModelToolResultPart('call-1', [text(longOutput)]);
+		const transcript = serializeVisibleChat([
+			message(User, [text('what does the terminal say?')]),
+			message(Assistant, [text('Checking.'), call]),
+			message(User, [result]),
+		]);
+
+		assert.match(transcript, /Editor tool result: run_in_terminal/);
+		assert.match(
+			transcript,
+			/raw terminal output — likely unrelated to the current request unless the user explicitly asked about the terminal/,
+		);
+		assert.ok(
+			!transcript.includes(longOutput),
+			'the full 5,000-char terminal output should be capped, not included verbatim',
+		);
+	});
+
+	test('does not cap or frame non-terminal tool output beyond the default cap', () => {
+		const call = new vscode.LanguageModelToolCallPart('call-1', 'read_file', { path: 'a.txt' });
+		const longOutput = 'y'.repeat(5_000);
+		const result = new vscode.LanguageModelToolResultPart('call-1', [text(longOutput)]);
+		const transcript = serializeVisibleChat([
+			message(User, [text('check a.txt')]),
+			message(Assistant, [text('Looking.'), call]),
+			message(User, [result]),
+		]);
+
+		assert.ok(
+			!transcript.includes('raw terminal output'),
+			'non-terminal tool output is not framed as terminal output',
+		);
+		assert.ok(
+			transcript.includes(longOutput),
+			'non-terminal tool output is not capped by the tighter terminal limit',
+		);
+	});
 });

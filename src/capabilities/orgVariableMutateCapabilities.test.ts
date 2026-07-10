@@ -8,7 +8,7 @@ import type { Session } from '@sessions';
 import { initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
-import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
+import { _resetApprovedMutationScopes, approveMutationScope } from '../ui/chat/tools/graphqlTool';
 import { ORG_VARIABLE_MUTATE_CAPABILITIES } from './orgVariableMutateCapabilities';
 
 const { suite, test, setup, teardown } = Mocha;
@@ -299,6 +299,25 @@ suite('Unit: orgVariableMutateCapabilities', () => {
 
 			assert.strictEqual(callsFor(calls, 'delete').length, 0);
 			assert.strictEqual(JSON.parse(output).status, 'approval_required');
+		});
+
+		test('still prompts even when a prior non-delete mutation on the same variable was approved (#177)', async () => {
+			const { ctx, calls } = makeCtx({ byId: inOrgRow, delete: { data: { deleteOrgVariable: 'v1' } } });
+			// Simulate any earlier non-delete mutation (e.g. update) on this same
+			// variable having been approved this session — the scope key is only
+			// [orgId, variableId].
+			approveMutationScope({ scopeId: 'v1', scopeName: 'API_KEY', orgId: 'org-sandbox', orgName: 'Sandbox' });
+
+			let approverCalled = false;
+			setMcpMutationApprover(async () => {
+				approverCalled = true;
+				return true;
+			});
+
+			await cap('buddy_delete_org_variable').run({ orgId: 'org-sandbox', variableId: 'v1' }, ctx);
+
+			assert.ok(approverCalled, 'delete must still prompt even though the shared scope was already approved');
+			assert.strictEqual(callsFor(calls, 'delete').length, 1);
 		});
 	});
 
