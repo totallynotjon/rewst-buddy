@@ -1,10 +1,9 @@
 import * as fs from 'fs';
 import * as Mocha from 'mocha';
+import * as os from 'os';
+import * as path from 'path';
 import { askRewstAi, Session } from '@sessions';
 import { clearCachedSession, getTestSession, hasTestToken, initTestEnvironment } from '@test';
-
-const DUMP_DIR =
-	'/tmp/claude-1000/-home-jon-Documents-dev-rewst-buddy-full-rewst-buddy-vscode/caede6c9-7b18-4ffa-9c11-f454ffffef6f/scratchpad';
 
 const { suite, test, suiteSetup, suiteTeardown } = Mocha;
 
@@ -134,7 +133,10 @@ suite('Integration: conversation length limit inspection', function () {
 		console.log(`title: ${convo.title}  type: ${convo.type}  updatedAt: ${convo.updatedAt}`);
 		const meta = convo.metadata as Record<string, unknown> | null | undefined;
 		const metaJson = JSON.stringify(convo.metadata ?? null);
-		fs.writeFileSync(`${DUMP_DIR}/convo-metadata.json`, JSON.stringify(convo.metadata ?? null, null, 2));
+		const dumpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewst-buddy-conversation-limit-'));
+		const metadataDumpPath = path.join(dumpDir, 'convo-metadata.json');
+		fs.writeFileSync(metadataDumpPath, JSON.stringify(convo.metadata ?? null, null, 2));
+		console.log(`metadata dump: ${metadataDumpPath}`);
 		console.log(`conversation.metadata: ${metaJson.length} bytes, top-level keys:`);
 		console.log(`  [${meta && typeof meta === 'object' ? Object.keys(meta).join(', ') : typeof meta}]`);
 		// Scan the whole serialized metadata for length-limit signal words.

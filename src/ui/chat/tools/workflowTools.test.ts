@@ -2495,6 +2495,84 @@ suite('Unit: workflowTools', () => {
 			assert.match(output, /task "notify": packOverrides\.0\.configSelectionMode/);
 		});
 
+		test('buddy_workflow_edit keeps the packOverrides warning when self-heal verification cannot re-read (#174)', async () => {
+			let gets = 0;
+			let updates = 0;
+			const sentOverrides = [
+				{
+					packId: 'pack-1',
+					packConfigId: 'cfg-1',
+					configSelectionMode: 'USE_SELECTED_ID',
+					configFallbackMode: 'FAIL_ACTION',
+				},
+			];
+			const defaultedOverrides = [
+				{
+					packId: 'pack-1',
+					packConfigId: 'cfg-1',
+					configSelectionMode: 'USE_DEFAULT',
+					configFallbackMode: 'USE_DEFAULT',
+				},
+			];
+			const execute: GraphqlToolDeps['execute'] = async query => {
+				if (query.includes('RewstBuddyActionSearch')) {
+					return { data: { actionsForOrg: [{ id: 'noop-id', ref: 'core.noop', name: 'noop' }] } };
+				}
+				if (query.includes('RewstBuddyWorkflowGet')) {
+					gets += 1;
+					if (gets === 4) return { errors: [{ message: 'temporary read failure' }] };
+					const w = sampleWorkflow();
+					if (gets === 1) return { data: { workflow: w } };
+					const created = {
+						id: 'cc03',
+						name: 'notify',
+						actionId: 'noop-id',
+						action: { ref: 'core.noop' },
+						input: {},
+						metadata: { x: 0, y: 0 },
+						next: [],
+						packOverrides: defaultedOverrides,
+					};
+					w.tasks = [...sampleTasks(), created];
+					return { data: { workflow: w } };
+				}
+				if (query.includes('RewstBuddyWorkflowUpdate')) {
+					updates += 1;
+					return { data: { updateWorkflow: { id: 'wf-1', updatedAt: String(1000 + updates * 500) } } };
+				}
+				return { data: {} };
+			};
+			const deps: GraphqlToolDeps = { isEnabled: () => true, confirmMutation: async () => true, execute };
+
+			const output = await runWorkflowTool(
+				{
+					tool: 'buddy_workflow_edit',
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						operations: [
+							{
+								op: 'add_task',
+								id: 'cc03',
+								name: 'notify',
+								action: 'core.noop',
+								packOverrides: sentOverrides,
+							},
+						],
+					},
+				},
+				deps,
+			);
+
+			assert.strictEqual(updates, 2, 'the self-heal write still succeeds before the verification read fails');
+			assert.strictEqual(gets, 4, 'the final verification read is attempted');
+			assert.match(output, /WARNING — the server did not store/i);
+			assert.match(output, /task "notify": packOverrides\.0\.configSelectionMode/);
+			assert.ok(!/auto-corrected packOverrides/i.test(output), 'failed verification must not claim success');
+		});
+
 		test('buddy_workflow_edit skips the verification read when no operation carries input', async () => {
 			const { deps, calls } = makeDeps();
 			await runWorkflowTool(

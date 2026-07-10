@@ -84,6 +84,11 @@ interface TaskVerifyFields {
 	mockInput?: boolean;
 }
 
+interface TaskVerification {
+	message: string;
+	readOk: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Fetch helpers
 // ---------------------------------------------------------------------------
@@ -852,7 +857,7 @@ async function verifySavedTaskValues(
 	workflowId: string,
 	orgId: string,
 	toVerify: { task: RawTask; fields: TaskVerifyFields }[],
-): Promise<string> {
+): Promise<TaskVerification> {
 	try {
 		const saved = await fetchWorkflow(deps, workflowId, orgId);
 		const storedById = new Map(saved.tasks.map(t => [t.id, t]));
@@ -881,15 +886,20 @@ async function verifySavedTaskValues(
 			];
 			problems.push(...lines.map(line => `- task "${sent.name}": ${line}`));
 		}
-		if (problems.length === 0) return '';
-		return (
-			`\n\nWARNING — the server did not store some task values as sent. Rewst may filter task input against the action's inputSchema or normalize advanced task configuration such as org overrides, integration overrides, mocking, while the save still reports success.\n` +
-			`${problems.join('\n')}\n` +
-			`Check the action's accepted parameters, advanced configuration or field mapping with buddy_action_search describe mode, then re-apply with matching keys, types, and supported configuration values.`
-		);
+		if (problems.length === 0) return { message: '', readOk: true };
+		return {
+			message:
+				`\n\nWARNING — the server did not store some task values as sent. Rewst may filter task input against the action's inputSchema or normalize advanced task configuration such as org overrides, integration overrides, mocking, while the save still reports success.\n` +
+				`${problems.join('\n')}\n` +
+				`Check the action's accepted parameters, advanced configuration or field mapping with buddy_action_search describe mode, then re-apply with matching keys, types, and supported configuration values.`,
+			readOk: true,
+		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		return `\n\nNote: the edit saved, but the tool could not verify the stored task inputs (${message}); re-read with buddy_workflow_get to confirm.`;
+		return {
+			message: `\n\nNote: the edit saved, but the tool could not verify the stored task inputs (${message}); re-read with buddy_workflow_get to confirm.`,
+			readOk: false,
+		};
 	}
 }
 
@@ -987,7 +997,10 @@ export async function applyWorkflowMutation(
 		const fields = verifyFields.get(task.id);
 		return fields ? [{ task, fields }] : [];
 	});
-	let verification = toVerify.length > 0 ? await verifySavedTaskValues(deps, workflowId, orgId, toVerify) : '';
+	let verification: TaskVerification =
+		toVerify.length > 0
+			? await verifySavedTaskValues(deps, workflowId, orgId, toVerify)
+			: { message: '', readOk: true };
 
 	// Scoped per task (not just "does the warning mention packOverrides anywhere"):
 	// only a task this batch created, whose OWN divergence line is present, is a
@@ -996,19 +1009,30 @@ export async function applyWorkflowMutation(
 	const healable = toVerify
 		.filter(({ task, fields }) => fields.packOverrides && !originalTaskIds.has(task.id))
 		.map(({ task }) => task)
-		.filter(task => verification.includes(`task "${task.name}": packOverrides`));
+		.filter(task => verification.message.includes(`task "${task.name}": packOverrides`));
 	if (healable.length > 0) {
 		const heal = await healCreatedTaskPackOverrides(deps, workflowId, orgId, healable, comment);
 		if (heal.ok) {
 			if (heal.updatedAt) updated = { ...updated, updatedAt: heal.updatedAt };
-			verification = await verifySavedTaskValues(deps, workflowId, orgId, toVerify);
-			if (!/packOverrides/.test(verification)) {
-				verification += `\n\nNote: auto-corrected packOverrides on ${healable.length} newly created task(s) — the server ignored the requested selection/fallback mode on creation but accepted it on this follow-up update.`;
+			const originalVerification = verification;
+			const healedVerification = await verifySavedTaskValues(deps, workflowId, orgId, toVerify);
+			if (healedVerification.readOk) {
+				verification = healedVerification;
+				if (!/packOverrides/.test(verification.message)) {
+					verification = {
+						...verification,
+						message:
+							verification.message +
+							`\n\nNote: auto-corrected packOverrides on ${healable.length} newly created task(s) — the server ignored the requested selection/fallback mode on creation but accepted it on this follow-up update.`,
+					};
+				}
+			} else {
+				verification = originalVerification;
 			}
 		}
 	}
 
-	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.${verification}`;
+	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.${verification.message}`;
 }
 
 // ---------------------------------------------------------------------------
