@@ -1,3 +1,4 @@
+import { LinkManager, type TemplateLink } from '@models';
 import { z } from 'zod';
 import type { MutationScope } from '../ui/chat/tools/graphqlTool';
 import type { ToolSpecDefinition } from '../ui/chat/tools/toolProtocol';
@@ -136,7 +137,20 @@ async function runRenameTemplate(input: Record<string, unknown>, ctx: Capability
 		if (!template?.id) {
 			throw new Error('updateTemplateName returned no template; the mutation may have failed.');
 		}
-		return JSON.stringify({ status: 'renamed', id: template.id, name: template.name ?? name }, null, 2);
+		const newName = template.name ?? name;
+		// Keep the local link cache (and its status bar / tree label) in sync — a
+		// rename otherwise leaves the cached name stale until the next sync (#176).
+		// updatedAt must move forward too: leaving it stale makes the next auto-fetch
+		// check see a provably-newer remote and needlessly re-fetch/re-save the
+		// unchanged body.
+		for (const link of LinkManager.getTemplateLinkFromId(templateId)) {
+			const updated: TemplateLink = {
+				...link,
+				template: { ...link.template, name: newName, updatedAt: template.updatedAt ?? link.template.updatedAt },
+			};
+			LinkManager.addLink(updated);
+		}
+		return JSON.stringify({ status: 'renamed', id: template.id, name: newName }, null, 2);
 	});
 }
 
@@ -158,14 +172,22 @@ async function runDeleteTemplate(input: Record<string, unknown>, ctx: Capability
 	const { name } = await requireTemplateInOrg(ctx, templateId, orgId);
 	const scope: MutationScope = { scopeId: templateId, scopeName: name, orgId, orgName };
 	const summary = `Delete template "${name}" (${templateId}) in org "${orgName}" (${orgId})`;
-	return withMutationApproval(scope, summary, async () => {
-		const response = await ctx.session.sdk?.deleteTemplate({ id: templateId });
-		const deletedId = response?.deleteTemplate;
-		if (!deletedId) {
-			throw new Error('deleteTemplate returned no id; the mutation may have failed.');
-		}
-		return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);
-	});
+	// A delete always prompts fresh: approval scopes key only on [orgId, resourceId],
+	// so without this a prior non-delete approval for this same template (rename,
+	// body update) would otherwise silently pre-approve deleting it too (#177).
+	return withMutationApproval(
+		scope,
+		summary,
+		async () => {
+			const response = await ctx.session.sdk?.deleteTemplate({ id: templateId });
+			const deletedId = response?.deleteTemplate;
+			if (!deletedId) {
+				throw new Error('deleteTemplate returned no id; the mutation may have failed.');
+			}
+			return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);
+		},
+		{ alwaysPrompt: true },
+	);
 }
 
 export const TEMPLATE_MUTATE_CAPABILITIES: Capability[] = [

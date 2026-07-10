@@ -2,6 +2,14 @@ import vscode from 'vscode';
 
 const MAX_ENTRY_CHARS = 8_000;
 const MAX_TOTAL_CHARS = 64_000;
+// Terminal-reading tools (VS Code agent mode's run_in_terminal, get_terminal_output,
+// etc.) can surface scrollback from an unrelated session in the same integrated
+// terminal. Cap and frame that output much tighter than other tool results so the
+// backend doesn't treat leftover terminal text as an implicit directive (#168).
+const TERMINAL_TOOL_NAME_PATTERN = /terminal/i;
+const MAX_TERMINAL_OUTPUT_CHARS = 2_000;
+const TERMINAL_OUTPUT_FRAME =
+	'(raw terminal output — likely unrelated to the current request unless the user explicitly asked about the terminal)';
 
 type RequestMessage = Pick<vscode.LanguageModelChatRequestMessage, 'role' | 'content'>;
 
@@ -75,8 +83,12 @@ function serializePart(part: unknown, calls: ReadonlyMap<string, ToolCallInfo>):
 		const call = calls.get(candidate.callId);
 		const name = call?.name ?? 'tool';
 		const args = call?.input === undefined ? '' : ` ${safeJson(call.input)}`;
-		const output = candidate.content.map(textOf).filter(Boolean).join('\n');
-		return `Editor tool result: ${name}${args}\n${output}`;
+		const rawOutput = candidate.content.map(textOf).filter(Boolean).join('\n');
+		if (TERMINAL_TOOL_NAME_PATTERN.test(name)) {
+			const output = truncate(rawOutput, MAX_TERMINAL_OUTPUT_CHARS);
+			return `Editor tool result: ${name}${args}\n${TERMINAL_OUTPUT_FRAME}\n${output}`;
+		}
+		return `Editor tool result: ${name}${args}\n${rawOutput}`;
 	}
 
 	return '';

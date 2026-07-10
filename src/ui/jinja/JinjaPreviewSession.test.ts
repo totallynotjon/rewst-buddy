@@ -242,6 +242,35 @@ suite('Unit: JinjaPreviewSession', () => {
 			}
 		});
 
+		test('renders immediately with no context picked, treating mergedVars as empty', async () => {
+			const uri = writeTemplateFile('t-no-context.j2', '{{ CTX }}');
+			const org = Fixtures.orgModel({ id: 'org-no-context', name: 'Org No Context' });
+			linkFile(uri, org.id, 'tpl-no-context');
+			const { restore } = stubShowTextDocument();
+
+			let renderCalled = false;
+			const fakeSession = fakeRenderSession(org.id, (query, vars) => {
+				assert.ok(query.includes('RewstBuddyRenderJinja'));
+				renderCalled = true;
+				return { data: { renderJinja: { result: vars?.vars } } };
+			});
+			const restoreGetSession = stub(SessionManager, 'getSessionForOrg', (async () => fakeSession) as any);
+
+			try {
+				const state = await JinjaPreviewSession.createOrShow(uri, extContext);
+				assert.strictEqual(state.mergedVars, undefined, 'no context was picked');
+
+				await JinjaPreviewSession._renderForTesting(uri);
+
+				assert.ok(renderCalled, 'render should proceed even with no context picked, using empty vars');
+				const rendered = JinjaRenderedContentProvider.provideTextDocumentContent(state.renderedUri);
+				assert.strictEqual(rendered, formatRenderedSuccess({}, false));
+			} finally {
+				restore();
+				restoreGetSession();
+			}
+		});
+
 		test('session-lookup failure shows a session error comment and never calls evaluateRenderJinja', async () => {
 			const uri = writeTemplateFile('t-session-err.j2', '{{ CTX }}');
 			const org = Fixtures.orgModel({ id: 'org-session-err', name: 'Org Session Err' });
@@ -351,6 +380,10 @@ suite('Unit: JinjaPreviewSession', () => {
 
 			try {
 				const state = await JinjaPreviewSession.createOrShow(uri, extContext);
+				// createOrShow itself now renders eagerly with the valid seed overrides
+				// (#173); reset the flag so this test only measures the invalid-JSON
+				// render attempted below.
+				renderCalled = false;
 				JinjaPreviewSession._setMergedVarsForTesting(uri, { a: 1 });
 
 				const overridesDoc = await vscode.workspace.openTextDocument(state.overridesUri);
@@ -512,7 +545,7 @@ suite('Unit: JinjaPreviewSession', () => {
 			}
 		});
 
-		test('pickContext cancel (user dismisses picker) exits without persisting context or rendering', async () => {
+		test('pickContext cancel (user dismisses picker) exits without persisting context or picking one', async () => {
 			const uri = writeTemplateFile('t-cancel.j2', '{{ CTX }}');
 			const org = Fixtures.orgModel({ id: 'org-cancel', name: 'Org Cancel' });
 			linkFile(uri, org.id, 'tpl-cancel');
@@ -546,7 +579,9 @@ suite('Unit: JinjaPreviewSession', () => {
 				// No context should have been saved
 				const remembered = getLastContext(extContext, 'tpl-cancel');
 				assert.strictEqual(remembered, undefined, 'should not persist context when picker is cancelled');
-				// mergedVars should remain unset (no render happened)
+				// mergedVars should remain unset — the picker was cancelled, so no context
+				// was merged in (a render still fires eagerly with empty vars, but that's
+				// covered by the "no context picked" render test, not this one)
 				const state = await JinjaPreviewSession.createOrShow(uri, extContext);
 				assert.strictEqual(state.mergedVars, undefined, 'mergedVars should be unset after cancel');
 			} finally {

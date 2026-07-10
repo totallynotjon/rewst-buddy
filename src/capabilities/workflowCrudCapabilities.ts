@@ -124,12 +124,21 @@ async function runDeleteWorkflow(input: Record<string, unknown>, ctx: Capability
 	const name = current.name ?? '(unnamed)';
 	const scope: MutationScope = { scopeId: workflowId, scopeName: name, orgId, orgName };
 	const summary = `Delete workflow "${name}" (${workflowId}) and its triggers, tasks, and history in org "${orgName}" (${orgId})`;
-	return withMutationApproval(scope, summary, async () => {
-		const data = await rawGraphqlOrThrow(ctx.session, DELETE_WORKFLOW, { id: workflowId });
-		const deletedId = (data as { deleteWorkflow?: string | null } | undefined)?.deleteWorkflow;
-		if (!deletedId) throw new Error('deleteWorkflow returned no id; the mutation may have failed.');
-		return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);
-	});
+	// A delete always prompts fresh: approval scopes key only on [orgId, resourceId],
+	// so without this a prior non-delete approval for this same workflow (e.g. an
+	// auto-layout, which unlike run/edit is not always-prompt) would otherwise
+	// silently pre-approve deleting it too (#177).
+	return withMutationApproval(
+		scope,
+		summary,
+		async () => {
+			const data = await rawGraphqlOrThrow(ctx.session, DELETE_WORKFLOW, { id: workflowId });
+			const deletedId = (data as { deleteWorkflow?: string | null } | undefined)?.deleteWorkflow;
+			if (!deletedId) throw new Error('deleteWorkflow returned no id; the mutation may have failed.');
+			return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);
+		},
+		{ alwaysPrompt: true },
+	);
 }
 
 export const WORKFLOW_CRUD_CAPABILITIES: Capability[] = [

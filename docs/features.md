@@ -93,7 +93,7 @@ The `Preview Jinja Render` command opens a native 3-pane layout beside your link
 **How it works:**
 
 1. Open a linked template file and run `Preview Jinja Render` from the command palette, the editor title bar (`$(eye)` icon), the right-click context menu, or the `Ctrl+Shift+Enter` / `Cmd+Shift+Enter` keybinding.
-2. Two panes open to the right of the template, stacked top/bottom: a **vars/overrides** file on top and a read-only **rendered output** document below it. Both are named after the template (e.g. `My Template (a1b2c3d4).vars.jsonc`), not a raw id. Click **Pick Jinja Preview Context** (editor title bar `$(target)` icon, or the same menus/keybinding pattern) to select a workflow and one of its recent executions — the execution's context snapshots are fetched and merged once.
+2. Two panes open to the right of the template, stacked top/bottom: a **vars/overrides** file on top and a read-only **rendered output** document below it. Both are named after the template (e.g. `My Template (a1b2c3d4).vars.jsonc`), not a raw id. The rendered pane starts updating immediately, even with no execution context picked — undefined variables render per Jinja's normal semantics. Click **Pick Jinja Preview Context** (editor title bar `$(target)` icon, or the same menus/keybinding pattern) to select a workflow and one of its recent executions and merge its context in — the execution's context snapshots are fetched and merged once.
 3. Edit the template (or select a sub-expression), or edit the vars/overrides file, and the rendered-output pane re-renders within 300 ms of your last keystroke, calling the same server-side render engine as `buddy_render_jinja`.
 
 **Key behaviours:**

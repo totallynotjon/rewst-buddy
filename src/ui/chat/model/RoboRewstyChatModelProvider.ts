@@ -35,6 +35,10 @@ const FAMILY = 'roborewsty';
 // Backstop on in-process buddy tool rounds within one chat response, so a backend
 // that keeps requesting tools without ever answering can't loop indefinitely.
 export const MAX_BUDDY_TOOL_ROUNDS = 8;
+// Backstop on native-Rewst-tool redirect corrections within one backend attempt.
+// We pretty much never want the "stopped" message to actually surface, so this
+// escalates through many attempts before giving up (#175).
+export const MAX_NATIVE_REDIRECT_ATTEMPTS = 25;
 // The backend manages its own context window; these are picker-display
 // estimates, not enforced limits.
 const MAX_INPUT_TOKENS = 128_000;
@@ -113,10 +117,23 @@ function sanitizeArgsForPrompt(args: string): string {
 	return args.replace(/[`<>]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-function buildNativeToBuddyCorrection(tool: NativeRewstToolStatus['tool'], buddySpecs: readonly ToolSpec[]): string {
+/** A stronger, still-neutral opening line once the first correction wasn't followed. */
+function escalationPrefix(attempt: number, maxAttempts: number): string[] {
+	return attempt > 1
+		? [`This is correction attempt ${attempt} of ${maxAttempts}; the previous transport note was not followed.`]
+		: [];
+}
+
+function buildNativeToBuddyCorrection(
+	tool: NativeRewstToolStatus['tool'],
+	buddySpecs: readonly ToolSpec[],
+	attempt: number,
+	maxAttempts: number,
+): string {
 	const names = formatBuddyToolList(buddySpecs);
 	const sanitizedArgs = tool.args ? sanitizeArgsForPrompt(tool.args) : '';
 	const lines = [
+		...escalationPrefix(attempt, maxAttempts),
 		`Transport note: the previous server-side Rewst tool status was for ${formatInlineName(tool.name)}.`,
 	];
 	if (sanitizedArgs) {
@@ -132,9 +149,14 @@ function buildNativeToBuddyCorrection(tool: NativeRewstToolStatus['tool'], buddy
 	return lines.join('\n');
 }
 
-function buildNativeToEditorCorrection(tool: NativeRewstToolStatus['tool']): string {
+function buildNativeToEditorCorrection(
+	tool: NativeRewstToolStatus['tool'],
+	attempt: number,
+	maxAttempts: number,
+): string {
 	const sanitizedArgs = tool.args ? sanitizeArgsForPrompt(tool.args) : '';
 	const lines = [
+		...escalationPrefix(attempt, maxAttempts),
 		`Transport note: the previous server-side Rewst tool status was for ${formatInlineName(tool.name)}, which is a VS Code editor tool that must never be invoked as a native Rewst function call.`,
 	];
 	if (sanitizedArgs) {
@@ -398,7 +420,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 				),
 			);
 		};
-		let redirectedNativeRewstTool = false;
+		let nativeRewstToolRedirectAttempts = 0;
 		// Outer loop: a reuse turn that the backend can't follow downgrades to
 		// a fresh, stateless turn ONCE. The first attempt reuses when recovery
 		// found a conversation; the retry always starts fresh.
@@ -444,7 +466,7 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 							break;
 						case 'status':
 							if (shouldRedirectNativeRewstTool(event)) {
-								if (redirectedNativeRewstTool) {
+								if (nativeRewstToolRedirectAttempts >= MAX_NATIVE_REDIRECT_ATTEMPTS) {
 									emitText(gate.push(''));
 									needsSeparator = true;
 									emitText(
@@ -454,10 +476,19 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 									emitBreadcrumb();
 									return;
 								}
-								redirectedNativeRewstTool = true;
+								nativeRewstToolRedirectAttempts++;
 								message = editorToolNames.has(event.tool.name)
-									? buildNativeToEditorCorrection(event.tool)
-									: buildNativeToBuddyCorrection(event.tool, allBuddySpecs);
+									? buildNativeToEditorCorrection(
+											event.tool,
+											nativeRewstToolRedirectAttempts,
+											MAX_NATIVE_REDIRECT_ATTEMPTS,
+										)
+									: buildNativeToBuddyCorrection(
+											event.tool,
+											allBuddySpecs,
+											nativeRewstToolRedirectAttempts,
+											MAX_NATIVE_REDIRECT_ATTEMPTS,
+										);
 								needsSeparator = true;
 								continue turns;
 							}
@@ -613,8 +644,8 @@ export class RoboRewstyChatModelProvider implements vscode.LanguageModelChatProv
 			needsSeparator = trailingResults !== undefined;
 			lastStatusLabel = undefined;
 			// The stateless retry is a fresh attempt, so its first native tool should
-			// get its own redirect rather than the abandoned reuse turn's stop.
-			redirectedNativeRewstTool = false;
+			// get its own redirect budget rather than the abandoned reuse turn's.
+			nativeRewstToolRedirectAttempts = 0;
 		}
 	}
 

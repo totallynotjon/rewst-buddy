@@ -181,12 +181,20 @@ async function runDeleteOrgVariable(input: Record<string, unknown>, ctx: Capabil
 	const name = current.name ?? '(unnamed)';
 	const scope: MutationScope = { scopeId: variableId, scopeName: name, orgId, orgName };
 	const summary = `Delete variable "${name}" (${variableId}) in org "${orgName}" (${orgId})`;
-	return withMutationApproval(scope, summary, async () => {
-		const data = await rawGraphqlOrThrow(ctx.session, DELETE_ORG_VARIABLE, { id: variableId });
-		const deletedId = (data as { deleteOrgVariable?: string | null } | undefined)?.deleteOrgVariable;
-		if (!deletedId) throw new Error('deleteOrgVariable returned no id; the mutation may have failed.');
-		return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);
-	});
+	// A delete always prompts fresh: approval scopes key only on [orgId, resourceId],
+	// so without this a prior non-delete approval for this same variable would
+	// otherwise silently pre-approve deleting it too (#177).
+	return withMutationApproval(
+		scope,
+		summary,
+		async () => {
+			const data = await rawGraphqlOrThrow(ctx.session, DELETE_ORG_VARIABLE, { id: variableId });
+			const deletedId = (data as { deleteOrgVariable?: string | null } | undefined)?.deleteOrgVariable;
+			if (!deletedId) throw new Error('deleteOrgVariable returned no id; the mutation may have failed.');
+			return JSON.stringify({ status: 'deleted', id: deletedId, name }, null, 2);
+		},
+		{ alwaysPrompt: true },
+	);
 }
 
 export const ORG_VARIABLE_MUTATE_CAPABILITIES: Capability[] = [

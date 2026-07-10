@@ -150,8 +150,10 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 			if (isLive()) JinjaRenderedContentProvider.update(state.renderedUri, formatInvalidOverrides(parsed.error));
 			return;
 		}
-		if (!state.mergedVars) return; // no context picked yet — leave the placeholder up
 
+		// No execution context picked yet is not a reason to withhold a render —
+		// Jinja renders undefined variables per its normal semantics server-side, so
+		// render eagerly with whatever overrides are present (#173).
 		const vars = mergeVars(state.mergedVars, parsed.vars ?? {});
 
 		let freshSession: Awaited<ReturnType<typeof SessionManager.getSessionForOrg>>;
@@ -296,6 +298,11 @@ export const JinjaPreviewSession = new (class JinjaPreviewSessionImpl implements
 					formatRenderedError(`Could not load remembered context: ${errMsg(e)}`),
 				);
 			}
+		} else {
+			// No remembered context — still render immediately with empty/override-only
+			// vars instead of leaving the panel on a static placeholder until the first
+			// edit or context pick (#173).
+			await this.doRender(state);
 		}
 
 		return state;

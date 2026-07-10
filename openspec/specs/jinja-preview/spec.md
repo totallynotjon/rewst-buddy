@@ -38,7 +38,10 @@ for the same document reveals the existing panel instead of opening a duplicate.
 
 Picking a context SHALL: list workflows reachable from the file's org, list that workflow's recent
 executions, then fetch and merge that execution's context snapshots into one object held for the
-life of the picked context (re-fetched only on a new pick, never per keystroke).
+life of the picked context (re-fetched only on a new pick, never per keystroke). Rendering SHALL
+NOT be gated on a context having been picked: with no context picked, an unset merged context is
+treated as an empty object and the panel renders using only whatever overrides are present in the
+vars file, since Jinja resolves undefined variables per its own normal semantics server-side.
 
 #### Scenario: Pick context, then edit repeatedly
 
@@ -51,7 +54,8 @@ life of the picked context (re-fetched only on a new pick, never per keystroke).
 
 - **GIVEN** a Jinja Preview panel with no context picked
 - **WHEN** the panel is shown
-- **THEN** it displays a "Pick Jinja Preview Context" prompt and does not attempt to render
+- **THEN** it renders immediately using an empty base context merged with whatever overrides are in
+  the vars file, rather than blocking on a "Pick Jinja Preview Context" prompt
 
 ### Requirement: Last-picked context is remembered per template
 

@@ -532,6 +532,23 @@ manual re-read, not fail the edit.
 - **THEN** it reports the applied operations and notes that the stored inputs
   could not be verified
 
+#### Scenario: A newly created task's packOverrides mode is self-corrected
+
+- **GIVEN** an `add_task` operation supplies `packOverrides` with a
+  `configSelectionMode`/`configFallbackMode` other than the default, and the
+  server stores `USE_DEFAULT` for that field on the same write that creates the
+  task (a known server-side quirk: the mode is honored on an update of an
+  already-existing task but not on the task's creation)
+- **WHEN** the verification read detects that divergence for a task the batch
+  itself created
+- **THEN** the tool automatically replays one corrective `updateWorkflow` call
+  resending that task's `packOverrides`, then re-verifies
+- **AND** if the replay's stored values now match what was sent, the tool
+  result omits the divergence warning and instead notes that the mode was
+  auto-corrected
+- **AND** if the replay still diverges, the original divergence warning is
+  kept and no further replay is attempted
+
 ### Requirement: Rate-limit, audit, and attribute tool calls
 
 The system SHALL rate-limit tool calls, audit every call (tool, org, outcome,
@@ -779,33 +796,52 @@ from a cached error.
 ### Requirement: Reuse approvals only for reusable mutation scopes
 
 The system SHALL remember approval for mutation scopes that are safe to reuse
-within the current extension session, such as repeated writes to the same
-approved GraphQL scope or repeated auto-layouts of the same workflow, in a
-single process-global cache keyed by organization id and resource id. This
-cache is not transport-specific: it is shared by both the in-process Cage-Free
-Rewsty chat tool path and the external MCP transport, behind the one
+within the current extension session — a typed write capability (e.g. rename,
+update body, create) whose `scopeId` has been verified against a real fetched
+resource id, or a repeated auto-layout of the same workflow — in a single
+process-global cache keyed by organization id and resource id. This cache is
+not transport-specific: it is shared by both the in-process Cage-Free Rewsty
+chat tool path and the external MCP transport, behind the one
 mutation-approval modal both paths call — see ai-chat's `Run in-process Buddy
 tools with a per-response cap` requirement for the chat-side description of
 this same mechanism. The system SHALL still require fresh approval for
-operations whose execution itself is the risky action: running a workflow, and
+operations whose execution itself is the risky action: running a workflow,
 editing a workflow's definition (each edit is a distinct graph change the user
-has not seen).
+has not seen), any delete-type mutation (delete template, delete tag, delete
+org variable, delete workflow) regardless of any prior non-delete approval
+already recorded for that same resource — the approval scope is keyed only by
+organization and resource id, with no operation-type component, so a delete
+sharing a resource's scope with an earlier rename/update approval must never
+silently reuse it (#177) — and `buddy_graphql_mutate`, whose caller supplies an
+arbitrary `scopeId` alongside an arbitrary mutation document with no
+verification that the two are related, so a scope-keyed approval there has no
+fixed relationship to what any given call actually does and MUST NOT be
+reused, even for a byte-identical repeat of the same query and scope (#177
+follow-up).
 
-#### Scenario: Reused raw GraphQL mutation approval
+#### Scenario: Reused mutation approval for a typed write capability
 
-- **GIVEN** a raw GraphQL mutation scope was approved for an org and resource
+- **GIVEN** a typed write capability's mutation scope (e.g. `buddy_update_org_variable`, `buddy_workflow_autolayout`) was approved for an org and resource
 - **WHEN** the same mutation scope is requested again in the same session
 - **THEN** the mutation can run without prompting again
 
 #### Scenario: Approval reuse crosses the chat/MCP transport boundary
 
-- **GIVEN** a mutation scope was approved through the in-process Cage-Free
-  Rewsty chat tool path
+- **GIVEN** a typed write capability's mutation scope was approved through the
+  in-process Cage-Free Rewsty chat tool path
 - **WHEN** the same org+resource scope is requested again through the external
   MCP transport in the same extension session
 - **THEN** the mutation can run without prompting again
 - **AND** the reverse also holds: a scope approved through the external MCP
   transport is reused for the in-process chat path
+
+#### Scenario: buddy_graphql_mutate never reuses a scope approval
+
+- **GIVEN** `buddy_graphql_mutate` was approved and run for a given org, scopeId,
+  and query
+- **WHEN** `buddy_graphql_mutate` is called again with the same org and scopeId,
+  whether the query is identical or different
+- **THEN** the user is prompted again before the mutation runs
 
 #### Scenario: Workflow run approval is always fresh
 
@@ -818,6 +854,14 @@ has not seen).
 - **GIVEN** a workflow edit was approved previously for a workflow
 - **WHEN** another edit to the same workflow is requested in the same session
 - **THEN** the user is prompted again before the edit is saved
+
+#### Scenario: Approving a non-delete mutation does not pre-approve a delete on the same resource
+
+- **GIVEN** a non-delete mutation (e.g. rename, update, or auto-layout) on a
+  resource was approved in the current session
+- **WHEN** a delete-type mutation is requested for that same org+resource
+- **THEN** the user is prompted again before the delete runs, rather than the
+  delete silently reusing the earlier approval
 
 ### Requirement: Diagnose a failed execution in one call
 

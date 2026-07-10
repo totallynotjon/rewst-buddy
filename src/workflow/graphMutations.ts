@@ -84,6 +84,12 @@ interface TaskVerifyFields {
 	mockInput?: boolean;
 }
 
+interface TaskVerification {
+	message: string;
+	readOk: boolean;
+	storedById?: Map<string, RawTask>;
+}
+
 // ---------------------------------------------------------------------------
 // Fetch helpers
 // ---------------------------------------------------------------------------
@@ -847,12 +853,35 @@ export function sentValueDivergences(sent: unknown, stored: unknown, path: strin
 	return storedValueMatches(sent, stored) ? [] : [`${path}: sent ${briefValue(sent)}, stored ${briefValue(stored)}`];
 }
 
+type TaskVerifyFieldName = keyof TaskVerifyFields;
+
+function taskFieldDivergences(sent: RawTask, stored: RawTask, field: TaskVerifyFieldName): string[] {
+	switch (field) {
+		case 'input':
+			return sentValueDivergences(sent.input ?? {}, stored.input ?? {}, 'input');
+		case 'with':
+			return sentValueDivergences(sent.with ?? {}, stored.with ?? {}, 'with');
+		case 'runAsOrgId':
+			return sentValueDivergences(sent.runAsOrgId ?? null, stored.runAsOrgId ?? null, 'runAsOrgId');
+		case 'packOverrides':
+			return sentValueDivergences(sent.packOverrides ?? [], stored.packOverrides ?? [], 'packOverrides');
+		case 'isMocked':
+			return sentValueDivergences(sent.isMocked ?? null, stored.isMocked ?? null, 'isMocked');
+		case 'mockInput':
+			return sentValueDivergences(sent.mockInput ?? null, stored.mockInput ?? null, 'mockInput');
+	}
+}
+
+function hasTaskFieldDivergence(sent: RawTask, stored: RawTask, field: TaskVerifyFieldName): boolean {
+	return taskFieldDivergences(sent, stored, field).length > 0;
+}
+
 async function verifySavedTaskValues(
 	deps: GraphqlToolDeps,
 	workflowId: string,
 	orgId: string,
 	toVerify: { task: RawTask; fields: TaskVerifyFields }[],
-): Promise<string> {
+): Promise<TaskVerification> {
 	try {
 		const saved = await fetchWorkflow(deps, workflowId, orgId);
 		const storedById = new Map(saved.tasks.map(t => [t.id, t]));
@@ -864,38 +893,75 @@ async function verifySavedTaskValues(
 				continue;
 			}
 			const lines = [
-				...(fields.input ? sentValueDivergences(sent.input ?? {}, stored.input ?? {}, 'input') : []),
-				...(fields.with ? sentValueDivergences(sent.with ?? {}, stored.with ?? {}, 'with') : []),
-				...(fields.runAsOrgId
-					? sentValueDivergences(sent.runAsOrgId ?? null, stored.runAsOrgId ?? null, 'runAsOrgId')
-					: []),
-				...(fields.packOverrides
-					? sentValueDivergences(sent.packOverrides ?? [], stored.packOverrides ?? [], 'packOverrides')
-					: []),
-				...(fields.isMocked
-					? sentValueDivergences(sent.isMocked ?? null, stored.isMocked ?? null, 'isMocked')
-					: []),
-				...(fields.mockInput
-					? sentValueDivergences(sent.mockInput ?? null, stored.mockInput ?? null, 'mockInput')
-					: []),
+				...(fields.input ? taskFieldDivergences(sent, stored, 'input') : []),
+				...(fields.with ? taskFieldDivergences(sent, stored, 'with') : []),
+				...(fields.runAsOrgId ? taskFieldDivergences(sent, stored, 'runAsOrgId') : []),
+				...(fields.packOverrides ? taskFieldDivergences(sent, stored, 'packOverrides') : []),
+				...(fields.isMocked ? taskFieldDivergences(sent, stored, 'isMocked') : []),
+				...(fields.mockInput ? taskFieldDivergences(sent, stored, 'mockInput') : []),
 			];
 			problems.push(...lines.map(line => `- task "${sent.name}": ${line}`));
 		}
-		if (problems.length === 0) return '';
-		return (
-			`\n\nWARNING — the server did not store some task values as sent. Rewst may filter task input against the action's inputSchema or normalize advanced task configuration such as org overrides, integration overrides, mocking, while the save still reports success.\n` +
-			`${problems.join('\n')}\n` +
-			`Check the action's accepted parameters, advanced configuration or field mapping with buddy_action_search describe mode, then re-apply with matching keys, types, and supported configuration values.`
-		);
+		if (problems.length === 0) return { message: '', readOk: true, storedById };
+		return {
+			message:
+				`\n\nWARNING — the server did not store some task values as sent. Rewst may filter task input against the action's inputSchema or normalize advanced task configuration such as org overrides, integration overrides, mocking, while the save still reports success.\n` +
+				`${problems.join('\n')}\n` +
+				`Check the action's accepted parameters, advanced configuration or field mapping with buddy_action_search describe mode, then re-apply with matching keys, types, and supported configuration values.`,
+			readOk: true,
+			storedById,
+		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		return `\n\nNote: the edit saved, but the tool could not verify the stored task inputs (${message}); re-read with buddy_workflow_get to confirm.`;
+		return {
+			message: `\n\nNote: the edit saved, but the tool could not verify the stored task inputs (${message}); re-read with buddy_workflow_get to confirm.`,
+			readOk: false,
+		};
 	}
 }
 
 // ---------------------------------------------------------------------------
 // Shared write pipeline
 // ---------------------------------------------------------------------------
+
+type UpdateWorkflowResult = { updateWorkflow?: { name?: string; updatedAt?: string } } | undefined;
+
+/**
+ * Rewst's updateWorkflow resolver can silently default a newly created task's
+ * packOverrides configSelectionMode/configFallbackMode on the SAME write that
+ * creates the task, while honoring them on a follow-up update of that
+ * already-existing task (server-side quirk — #174). Re-sends just the healable
+ * tasks' packOverrides in one corrective updateWorkflow call, replaying the
+ * "call update_task a second time" workaround programmatically. Returns
+ * `ok: false` (no self-heal attempted/succeeded) on any fetch or mutation
+ * error, leaving the original verification warning as the caller's fallback.
+ */
+async function healCreatedTaskPackOverrides(
+	deps: GraphqlToolDeps,
+	workflowId: string,
+	orgId: string,
+	healable: RawTask[],
+	comment: string,
+): Promise<{ ok: boolean; updatedAt?: string }> {
+	try {
+		const fresh = await fetchWorkflow(deps, workflowId, orgId);
+		const byId = new Map(fresh.tasks.map(t => [t.id, t]));
+		for (const task of healable) {
+			const current = byId.get(task.id);
+			if (current) current.packOverrides = task.packOverrides;
+		}
+		const result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
+			workflow: workflowToInput(fresh, fresh.tasks, {}),
+			openedAt: fresh.updatedAt,
+			comment: `${comment} (auto-correct packOverrides mode on newly created task(s))`,
+		});
+		if (firstErrorMessage(result as ExecResult)) return { ok: false };
+		const updated = (result.data as UpdateWorkflowResult)?.updateWorkflow;
+		return { ok: true, updatedAt: updated?.updatedAt };
+	} catch {
+		return { ok: false };
+	}
+}
 
 /**
  * The shared workflow write pipeline: resolve action refs, read the current
@@ -913,6 +979,12 @@ export async function applyWorkflowMutation(
 	const apply = (source: RawWorkflow) => applyOperations(source.tasks, operations, actionIdByRef);
 
 	const workflow = await fetchWorkflow(deps, workflowId, orgId);
+	// Tracks task ids that existed before this edit, so a task created by one of
+	// this batch's own add_task operations can be told apart from a pre-existing
+	// one for the packOverrides self-heal below. Recomputed from `fresh` on a
+	// version-conflict retry so a task another edit concurrently created between
+	// our read and write is never misclassified as "created by this batch".
+	let originalTaskIds = new Set(workflow.tasks.map(t => t.id));
 	let { tasks, applied, workflow: overrides, verifyFields } = apply(workflow);
 	if (!(await deps.confirmMutation(`update workflow "${workflow.name}" (${applied.length} operation(s))`))) {
 		throw new Error('Workflow change was not confirmed.');
@@ -926,6 +998,7 @@ export async function applyWorkflowMutation(
 	let error = firstErrorMessage(result as ExecResult);
 	if (error && /newer version/i.test(error)) {
 		const fresh = await fetchWorkflow(deps, workflowId, orgId);
+		originalTaskIds = new Set(fresh.tasks.map(t => t.id));
 		({ tasks, applied, workflow: overrides, verifyFields } = apply(fresh));
 		result = await deps.execute(WORKFLOW_UPDATE_MUTATION, {
 			workflow: workflowToInput(fresh, tasks, overrides),
@@ -936,14 +1009,54 @@ export async function applyWorkflowMutation(
 	}
 	if (error) throw new Error(`updateWorkflow failed: ${error}`);
 
-	const updated = (result.data as { updateWorkflow?: { name?: string; updatedAt?: string } } | undefined)
-		?.updateWorkflow;
+	let updated = (result.data as UpdateWorkflowResult)?.updateWorkflow;
 	const toVerify = tasks.flatMap(task => {
 		const fields = verifyFields.get(task.id);
 		return fields ? [{ task, fields }] : [];
 	});
-	const verification = toVerify.length > 0 ? await verifySavedTaskValues(deps, workflowId, orgId, toVerify) : '';
-	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.${verification}`;
+	let verification: TaskVerification =
+		toVerify.length > 0
+			? await verifySavedTaskValues(deps, workflowId, orgId, toVerify)
+			: { message: '', readOk: true };
+
+	// Scoped per task (not just "does the warning mention packOverrides anywhere"):
+	// only a task this batch created, whose OWN divergence line is present, is a
+	// heal candidate — an unrelated task's divergence must never trigger a
+	// pointless corrective write for a created task that already matched.
+	const healable = toVerify
+		.filter(({ task, fields }) => {
+			const stored = verification.storedById?.get(task.id);
+			return (
+				fields.packOverrides &&
+				!originalTaskIds.has(task.id) &&
+				!!stored &&
+				hasTaskFieldDivergence(task, stored, 'packOverrides')
+			);
+		})
+		.map(({ task }) => task);
+	if (healable.length > 0) {
+		const heal = await healCreatedTaskPackOverrides(deps, workflowId, orgId, healable, comment);
+		if (heal.ok) {
+			if (heal.updatedAt) updated = { ...updated, updatedAt: heal.updatedAt };
+			const originalVerification = verification;
+			const healedVerification = await verifySavedTaskValues(deps, workflowId, orgId, toVerify);
+			if (healedVerification.readOk) {
+				verification = healedVerification;
+				if (!/packOverrides/.test(verification.message)) {
+					verification = {
+						...verification,
+						message:
+							verification.message +
+							`\n\nNote: auto-corrected packOverrides on ${healable.length} newly created task(s) — the server ignored the requested selection/fallback mode on creation but accepted it on this follow-up update.`,
+					};
+				}
+			} else {
+				verification = originalVerification;
+			}
+		}
+	}
+
+	return `Applied ${applied.length} operation(s) to "${workflow.name}":\n${applied.map(line => `- ${line}`).join('\n')}\n\nSaved. New version token: ${updated?.updatedAt ?? '(unknown)'}.${verification.message}`;
 }
 
 // ---------------------------------------------------------------------------

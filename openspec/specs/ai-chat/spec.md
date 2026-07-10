@@ -55,6 +55,38 @@ so rolled-back turns are not reattached later.
 - **AND** the old backend conversation is forgotten so hidden rolled-back turns
   cannot leak into the new branch
 
+### Requirement: Cap and frame high-noise tool output in the stateless transcript
+
+When a fresh backend conversation is started with a stateless visible
+transcript, the system SHALL serialize editor tool results by tool name. A
+tool result whose tool name matches a terminal-reading tool (e.g.
+`run_in_terminal`, `get_terminal_output`) SHALL be capped far tighter than
+other tool results and prefixed with an explicit note that the content is raw
+terminal output likely unrelated to the current request, so leftover
+scrollback from an unrelated terminal session (a different Claude Code or CLI
+run in the same integrated terminal) is not treated by the backend as an
+implicit directive. Other tool results SHALL keep the standard, more generous
+per-entry cap.
+
+Source: `src/ui/chat/model/statelessTranscript.ts`.
+
+#### Scenario: Terminal tool output is capped and framed
+
+- **GIVEN** the visible chat history includes a terminal-reading tool's result
+  with output far longer than the terminal-specific cap
+- **WHEN** the stateless transcript is serialized
+- **THEN** that tool result is truncated to the tighter terminal cap
+- **AND** it is prefixed with a note marking it as likely-unrelated raw
+  terminal output
+
+#### Scenario: Non-terminal tool output is unaffected
+
+- **GIVEN** the visible chat history includes a non-terminal editor tool's
+  result (e.g. a file read)
+- **WHEN** the stateless transcript is serialized
+- **THEN** that tool result keeps the standard per-entry cap and is not
+  prefixed with the terminal-output note
+
 ### Requirement: Honor conversation type and custom instructions
 
 The system SHALL send the configured conversation type
@@ -169,7 +201,13 @@ When local Buddy tools are available, including when the external MCP bridge is
 disabled, the system SHALL prevent backend-native Rewst tool activity from being
 rendered as the final path. It SHALL interrupt the native attempt, send a neutral
 correction that names the local `vscode-tool` transport, carry through any
-resolved native tool arguments, and suppress abandoned native output.
+resolved native tool arguments, and suppress abandoned native output. A repeated
+native-tool attempt within the same backend turn sequence SHALL escalate through
+the configured redirect-attempt budget — each subsequent correction states its
+attempt number, still within the same neutral, transport-focused wording rules —
+before finally giving up and surfacing a stop message; the ceiling is
+intentionally high because surfacing that stop message is a last resort, not an
+expected outcome.
 
 #### Scenario: Backend tries a native Rewst tool
 
@@ -192,6 +230,23 @@ resolved native tool arguments, and suppress abandoned native output.
 - **GIVEN** no Buddy tools are available locally
 - **WHEN** the backend emits native Rewst tool activity
 - **THEN** that native activity is allowed to stream normally
+
+#### Scenario: A later correction attempt succeeds
+
+- **GIVEN** the backend has repeated a native Rewst tool attempt across several
+  corrections, still below the configured redirect-attempt budget
+- **WHEN** the backend finally follows a later correction and answers using the
+  local tool protocol instead
+- **THEN** the final answer streams normally and no stop message is shown
+
+#### Scenario: The redirect ceiling is exhausted
+
+- **GIVEN** the backend has repeated a native Rewst tool attempt
+  until the configured redirect-attempt budget is exhausted despite escalating
+  corrections
+- **WHEN** the native tool is attempted once more
+- **THEN** the extension gives up and shows the stop message asking the user to
+  ask again, instead of attempting another correction
 
 ### Requirement: Surface sources and context usage
 
