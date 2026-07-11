@@ -1,5 +1,5 @@
 export const TEMPLATE_PATTERN =
-	/template\s*\(\s*["']([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})["']\s*\)/g;
+	/(?<![\w.])template\s*\(\s*(?=(?:"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"|'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'))["']([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})["']\s*\)/g;
 
 export interface TemplateMatch {
 	templateId: string;
@@ -41,7 +41,7 @@ export function findAllTemplateReferences(text: string): string[] {
 	return [...ids];
 }
 
-const TEMPLATE_CALL_PREFIX_PATTERN = /template\s*\(\s*(["'])/g;
+const TEMPLATE_CALL_PREFIX_PATTERN = /(?<![\w.])template\s*\(\s*(["'])/g;
 
 /** True when `character` sits inside an open (unclosed-quote) `template("`/`template('` call. */
 export function isInsideTemplateCallPrefix(line: string, character: number): boolean {
@@ -51,7 +51,17 @@ export function isInsideTemplateCallPrefix(line: string, character: number): boo
 		const quote = match[1];
 		const quoteStart = match.index + match[0].length;
 		if (character < quoteStart) continue;
-		const closeIdx = line.indexOf(quote, quoteStart);
+		let closeIdx = -1;
+		for (let i = quoteStart; i < line.length; i++) {
+			if (line[i] === '\\') {
+				i++;
+				continue;
+			}
+			if (line[i] === quote) {
+				closeIdx = i;
+				break;
+			}
+		}
 		if (closeIdx === -1 || character <= closeIdx) return true;
 	}
 	return false;

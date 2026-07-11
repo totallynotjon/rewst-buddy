@@ -393,7 +393,13 @@ export async function callTool(
 		const ctx = await resolveContext(capability, args, orgId, settings);
 		// Validate/refresh the session only after the scope gate passes, so an
 		// out-of-scope request triggers no authenticated Rewst traffic.
-		if (capability.requiresOrg !== false) await ensureValidSession(ctx.session);
+		// Org-scoped capabilities always validate before network access. The
+		// requiresOrg:false execution-log/link readers can still perform
+		// authenticated requests through a selected session, so refresh those too;
+		// purely local discovery/cache capabilities remain session-check-free.
+		if (capability.requiresOrg !== false || capability.scopedSessions) {
+			await ensureValidSession(ctx.session);
+		}
 		try {
 			// Tag the in-flight call with its origin so the deep approval modal can
 			// name the caller (the chat vs an external MCP client).
@@ -425,9 +431,17 @@ export function listResources(settings: McpSettings = readMcpSettings()): McpRes
 	const workflowsExposed = isCapabilityExposed('buddy_list_workflows', settings);
 	if (!templatesExposed && !workflowsExposed) return [];
 	const resources: McpResourceDescriptor[] = [];
+	const strictScope = strictReadScopeActive(settings);
+	const effective = effectiveAllowedOrgs(settings);
 	for (const session of SessionManager.getActiveSessions()) {
 		const { id, name } = session.profile.org;
 		if (!id) continue;
+		// Resource listing is itself a discovery surface. Keep it consistent with
+		// readResource/callTool so a strict working-org scope cannot be bypassed by
+		// enumerating another active session's org URI before attempting a read.
+		if (strictScope && !effective.has(id) && !session.profile.allManagedOrgs.some(org => effective.has(org.id))) {
+			continue;
+		}
 		if (templatesExposed) {
 			resources.push({ uri: `rewst://${id}/templates`, name: `${name} templates`, mimeType: 'text/plain' });
 		}

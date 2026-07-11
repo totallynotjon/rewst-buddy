@@ -12,7 +12,14 @@ export interface RegionConfig {
 // The WS endpoint lives at /subscriptions, not /graphql (a WS upgrade against
 // /graphql falls through to Apollo's HTTP handler and returns 400).
 export function getSubscriptionsUrl(config: RegionConfig): string {
-	return config.subscriptionsUrl ?? config.graphqlUrl.replace(/^http/, 'ws').replace(/\/graphql$/, '/subscriptions');
+	if (config.subscriptionsUrl) return config.subscriptionsUrl;
+
+	const url = new URL(config.graphqlUrl);
+	url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+	url.pathname = '/subscriptions';
+	url.search = '';
+	url.hash = '';
+	return url.toString();
 }
 
 export function getRegionConfigs(): RegionConfig[] {
