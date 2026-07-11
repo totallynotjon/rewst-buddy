@@ -439,7 +439,10 @@ export function listResources(settings: McpSettings = readMcpSettings()): McpRes
 		// Resource listing is itself a discovery surface. Keep it consistent with
 		// readResource/callTool so a strict working-org scope cannot be bypassed by
 		// enumerating another active session's org URI before attempting a read.
-		if (strictScope && !effective.has(id) && !session.profile.allManagedOrgs.some(org => effective.has(org.id))) {
+		if (strictScope && !effective.has(id)) {
+			// Only advertise URIs for orgs that are directly in scope. If only a
+			// managed sub-org is in scope, advertising the primary-org URI would
+			// produce a URI that readResource cannot resolve for that session.
 			continue;
 		}
 		if (templatesExposed) {

@@ -1,5 +1,6 @@
 import { context } from '@global';
-import { initTestEnvironment } from '@test';
+import type { Restore } from '@test';
+import { initTestEnvironment, stub } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
@@ -10,20 +11,6 @@ import { createCommand } from './GenericCommand';
 const { suite, test, setup, teardown } = Mocha;
 
 type RegisteredCallback = (...args: unknown[]) => Promise<unknown>;
-
-interface Restore {
-	restore(): void;
-}
-
-function stub<T extends object, K extends keyof T>(object: T, key: K, value: T[K]): Restore {
-	const original = object[key];
-	Object.defineProperty(object, key, { configurable: true, writable: true, value });
-	return {
-		restore() {
-			Object.defineProperty(object, key, { configurable: true, writable: true, value: original });
-		},
-	};
-}
 
 suite('Unit: CommandInitiater', () => {
 	const restores: Restore[] = [];
@@ -46,7 +33,7 @@ suite('Unit: CommandInitiater', () => {
 	});
 
 	teardown(() => {
-		while (restores.length) restores.pop()!.restore();
+		while (restores.length) restores.pop()!();
 	});
 
 	test('registers both normal and prefix aliases for every exported command class', () => {

@@ -1,24 +1,11 @@
-import { initTestEnvironment } from '@test';
+import type { Restore } from '@test';
+import { initTestEnvironment, stub } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
 import { readMcpSettings } from './settings';
 
 const { suite, test, setup, teardown } = Mocha;
-
-interface Restore {
-	restore(): void;
-}
-
-function stub<T extends object, K extends keyof T>(object: T, key: K, value: T[K]): Restore {
-	const original = object[key];
-	Object.defineProperty(object, key, { configurable: true, writable: true, value });
-	return {
-		restore() {
-			Object.defineProperty(object, key, { configurable: true, writable: true, value: original });
-		},
-	};
-}
 
 suite('Unit: readMcpSettings()', () => {
 	const restores: Restore[] = [];
@@ -28,7 +15,7 @@ suite('Unit: readMcpSettings()', () => {
 	});
 
 	teardown(() => {
-		while (restores.length) restores.pop()!.restore();
+		while (restores.length) restores.pop()!();
 	});
 
 	function configure(values: Record<string, unknown>): string[] {
@@ -83,7 +70,7 @@ suite('Unit: readMcpSettings()', () => {
 
 	test('treats malformed non-array allowlists as empty', () => {
 		for (const malformed of ['org-1', { org: 'org-1' }, null, 7]) {
-			while (restores.length) restores.pop()!.restore();
+			while (restores.length) restores.pop()!();
 			configure({ alwaysAllowedOrgs: malformed });
 			assert.deepStrictEqual(readMcpSettings().alwaysAllowedOrgs, [], JSON.stringify(malformed));
 		}
@@ -102,7 +89,7 @@ suite('Unit: readMcpSettings()', () => {
 
 	test('defaults unknown, malformed, and future working-scope values to strict', () => {
 		for (const malformed of ['STRICT', 'read', '', null, true, 1]) {
-			while (restores.length) restores.pop()!.restore();
+			while (restores.length) restores.pop()!();
 			configure({ workingOrgScope: malformed });
 			assert.strictEqual(readMcpSettings().workingOrgScope, 'strict', JSON.stringify(malformed));
 		}

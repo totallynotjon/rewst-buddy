@@ -1,5 +1,6 @@
 import { LinkManager } from '@models';
-import { initTestEnvironment } from '@test';
+import type { Restore } from '@test';
+import { initTestEnvironment, stub } from '@test';
 import { log } from '@utils';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
@@ -7,20 +8,6 @@ import vscode from 'vscode';
 import { removeLinkForUri } from './linkCore';
 
 const { suite, test, setup, teardown } = Mocha;
-
-interface Restore {
-	restore(): void;
-}
-
-function stub<T extends object, K extends keyof T>(object: T, key: K, value: T[K]): Restore {
-	const original = object[key];
-	Object.defineProperty(object, key, { configurable: true, writable: true, value });
-	return {
-		restore() {
-			Object.defineProperty(object, key, { configurable: true, writable: true, value: original });
-		},
-	};
-}
 
 suite('Unit: removeLinkForUri()', () => {
 	const restores: Restore[] = [];
@@ -35,7 +22,7 @@ suite('Unit: removeLinkForUri()', () => {
 	});
 
 	teardown(() => {
-		while (restores.length) restores.pop()!.restore();
+		while (restores.length) restores.pop()!();
 		LinkManager._resetForTesting();
 	});
 

@@ -1,4 +1,5 @@
-import { initTestEnvironment } from '@test';
+import type { Restore } from '@test';
+import { initTestEnvironment, stub } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import vscode from 'vscode';
@@ -12,20 +13,6 @@ import { RevealInExplorer } from './RevealInExplorer';
 import { RevealInOS } from './RevealInOS';
 
 const { suite, test, setup, teardown } = Mocha;
-
-interface Restore {
-	restore(): void;
-}
-
-function stub<T extends object, K extends keyof T>(object: T, key: K, value: T[K]): Restore {
-	const original = object[key];
-	Object.defineProperty(object, key, { configurable: true, writable: true, value });
-	return {
-		restore() {
-			Object.defineProperty(object, key, { configurable: true, writable: true, value: original });
-		},
-	};
-}
 
 suite('Unit: basic UI command adapters', () => {
 	const restores: Restore[] = [];
@@ -53,7 +40,7 @@ suite('Unit: basic UI command adapters', () => {
 	});
 
 	teardown(() => {
-		while (restores.length) restores.pop()!.restore();
+		while (restores.length) restores.pop()!();
 	});
 
 	test('CopyPath writes the platform filesystem path', async () => {
@@ -129,7 +116,7 @@ suite('Unit: basic UI command adapters', () => {
 
 	test('awaits and propagates a delegated VS Code command failure', async () => {
 		const expected = new Error('chat command unavailable');
-		restores.pop()!.restore();
+		restores.pop()!();
 		restores.push(
 			stub(vscode.commands, 'executeCommand', (async () => {
 				throw expected;
@@ -145,7 +132,7 @@ suite('Unit: basic UI command adapters', () => {
 	test('awaits and propagates clipboard write failures', async () => {
 		const expected = new Error('clipboard unavailable');
 		const clipboardRestore = restores.pop()!;
-		clipboardRestore.restore();
+		clipboardRestore();
 		restores.push(
 			stub(vscode.env, 'clipboard', {
 				readText: async () => '',

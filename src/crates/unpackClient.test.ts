@@ -1,9 +1,9 @@
+import type { Session } from '@sessions';
 import { createMockSession, initTestEnvironment } from '@test';
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import type { AddressInfo } from 'node:net';
 import { WebSocketServer, type WebSocket as WsSocket } from 'ws';
-import type { Session } from '@sessions';
 import type { UnpackCrateInput } from './crateUnpack';
 import { runUnpackCrate } from './unpackClient';
 
@@ -170,12 +170,9 @@ suite('Unit: runUnpackCrate transport boundaries', () => {
 		// storage or constructing transport state — cancellation is cheap and must
 		// not touch credentials.
 		//
-		// Implementation status (target, not yet met): runUnpackCrate currently
-		// reads secrets and builds the client BEFORE the `signal.aborted` check
-		// (getCookies runs at the top of the function; the guard sits after
-		// createClient), so this test is RED until an early `if (signal?.aborted)
-		// throw` guard is added ahead of getCookies. This asserts the intended
-		// guarantee rather than being softened to match the current ordering bug.
+		// runUnpackCrate checks signal.aborted at the top of the function, before
+		// getCookies and client creation, so a pre-aborted signal is caught before
+		// any credentials are read or transport state is constructed.
 		let error: unknown;
 		try {
 			await runUnpackCrate({ session, input, signal: controller.signal });
