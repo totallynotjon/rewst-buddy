@@ -2,4 +2,4 @@
 category: Changed
 ---
 
-- **Expanded test coverage and sandbox safety** — Added broad unit and sandbox integration coverage across commands, sessions, MCP, chat providers, workflow helpers, UI providers, and utility boundaries. Integration sessions default to Jon's Sandbox organization, while production fixes harden URL/path handling, template parsing, and MCP organization scoping.
+- **Expanded test coverage** — Broad unit coverage added across utilities, UI, MCP, and sessions. Production fixes: hardened filename sanitization, cookie parsing, WebSocket URL construction, Jinja/template pattern matching, markdown fence parsing, and MCP org scoping.
