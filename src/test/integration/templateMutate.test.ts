@@ -16,11 +16,8 @@ const { suite, test, suiteSetup, suiteTeardown, setup } = Mocha;
 /**
  * Live verification for the template write capabilities. These create and delete
  * a real, throwaway template, so the suite is opt-in: it runs only when a token
- * is present AND REWST_TEST_WRITE=1, and it always targets the token's own
- * primary org (use a sandbox token). The template is removed in teardown even if
- * an assertion fails. When the session also manages a second org, the run doubles
- * as a live proof that a write carrying a non-target orgId is refused before it
- * mutates.
+ * is present AND REWST_TEST_WRITE=1, and it always targets REWST_TEST_ORG_ID.
+ * The template is removed in teardown even if an assertion fails.
  */
 function writeTestsEnabled(): boolean {
 	return hasTestToken() && process.env.REWST_TEST_WRITE === '1';
@@ -38,8 +35,6 @@ suite('Integration: template write tools', function () {
 	let session: Session;
 	let ctx: CapabilityContext;
 	let targetOrgId: string;
-	/** A second org the same session manages, used for the org-guard probe. */
-	let otherOrgId: string | undefined;
 
 	suiteSetup(async function () {
 		if (!writeTestsEnabled()) {
@@ -51,9 +46,8 @@ suite('Integration: template write tools', function () {
 
 		targetOrgId = session.profile.org.id;
 		if (!targetOrgId) {
-			throw new Error('Refusing to run: the test session has no primary org id.');
+			throw new Error('Refusing to run: the test session has no sandbox org id.');
 		}
-		otherOrgId = session.profile.allManagedOrgs.find(org => org.id && org.id !== targetOrgId)?.id;
 		ctx = { session, orgId: targetOrgId, sessions: [session] };
 
 		console.log(`\n[itest] target org: ${session.profile.org.name} (${targetOrgId})`);
@@ -101,24 +95,6 @@ suite('Integration: template write tools', function () {
 			);
 			assert.strictEqual(updated.status, 'updated');
 			assert.strictEqual((await session.getTemplate(templateId!)).body, '{{ 2 + 2 }}');
-
-			// Org guard (live): the same write with a different managed orgId must be
-			// refused before mutating. This only reads the target template; the other
-			// org is never written.
-			if (otherOrgId) {
-				const guardCtx: CapabilityContext = { session, orgId: otherOrgId, sessions: [session] };
-				await assert.rejects(
-					() =>
-						cap('buddy_update_template_body').run(
-							{ orgId: otherOrgId, templateId, body: 'SHOULD NOT APPLY' },
-							guardCtx,
-						),
-					/is not in org/,
-				);
-				assert.strictEqual((await session.getTemplate(templateId!)).body, '{{ 2 + 2 }}');
-
-				console.log('[itest] org guard refused a cross-org write to', otherOrgId);
-			}
 
 			const renamed = JSON.parse(
 				await cap('buddy_rename_template').run(

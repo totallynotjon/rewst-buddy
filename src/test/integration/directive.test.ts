@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { askRewstAi, Session } from '@sessions';
-import { clearCachedSession, getTestSession, getTestToken, hasTestToken, initTestEnvironment } from '@test';
+import { clearCachedSession, getTestSession, hasTestToken, initTestEnvironment } from '@test';
 import { buildEngineeringDirective } from '../../ui/chat/model/engineeringDirective';
 import {
 	buildToolInstructions,
@@ -31,9 +31,8 @@ suite('Integration: engineering directive steering', function () {
 		}
 		initTestEnvironment();
 		session = await getTestSession();
-		// askRewstAi reads the cookie from secrets, keyed by the primary org.
-		const context = initTestEnvironment();
-		await context.secrets.store(session.profile.org.id, getTestToken());
+		// getTestSession stored the validated cookie under the session user id,
+		// which is the same key askRewstAi reads.
 	});
 
 	suiteTeardown(() => {

@@ -1,7 +1,8 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { Session } from '@sessions';
-import { hasTestToken, getTestSession, getTestSdk, clearCachedSession, initTestEnvironment } from '@test';
+import { hasTestToken, getTestOrgId, getTestSession, getTestSdk, clearCachedSession, initTestEnvironment } from '@test';
+import { randomUUID } from 'crypto';
 
 const { suite, test, suiteSetup, suiteTeardown } = Mocha;
 
@@ -81,6 +82,61 @@ suite('Integration: Session', function () {
 			const isValid = await session.validate();
 
 			assert.strictEqual(isValid, true, 'Session should be valid');
+		});
+
+		test('should expose only the configured sandbox in the integration profile tree', async function () {
+			if (!hasTestToken()) {
+				this.skip();
+				return;
+			}
+			const session = await getTestSession();
+			const orgId = getTestOrgId();
+			assert.strictEqual(session.profile.org.id, orgId);
+			assert.deepStrictEqual(
+				session.profile.allManagedOrgs.map(org => org.id),
+				[orgId],
+			);
+			assert.strictEqual(session.profile.user.orgId, orgId);
+		});
+
+		test('should fail closed when REWST_TEST_ORG_ID is not managed instead of using the token primary org', async function () {
+			if (!hasTestToken()) {
+				this.skip();
+				return;
+			}
+			const original = process.env.REWST_TEST_ORG_ID;
+			const unavailable = randomUUID();
+			clearCachedSession();
+			process.env.REWST_TEST_ORG_ID = unavailable;
+			try {
+				await assert.rejects(
+					() => getTestSession(),
+					new RegExp(`REWST_TEST_ORG_ID ${unavailable} is not managed.*No fallback`, 's'),
+				);
+			} finally {
+				if (original === undefined) delete process.env.REWST_TEST_ORG_ID;
+				else process.env.REWST_TEST_ORG_ID = original;
+				clearCachedSession();
+			}
+		});
+
+		test('should keep raw GraphQL workflow reads inside the configured sandbox filter', async function () {
+			if (!hasTestToken()) {
+				this.skip();
+				return;
+			}
+			const session = await getTestSession();
+			const orgId = getTestOrgId();
+			const { data, errors } = await session.rawGraphql(
+				'query RbItestScopedSessionRead($orgId: ID!) { workflows(where: { orgId: $orgId }, limit: 10) { id orgId } }',
+				{ orgId },
+			);
+			assert.ok(!errors || (Array.isArray(errors) && errors.length === 0), JSON.stringify(errors));
+			const rows = (data as { workflows?: { id: string; orgId: string }[] } | undefined)?.workflows ?? [];
+			assert.ok(
+				rows.every(row => row.orgId === orgId),
+				JSON.stringify(rows),
+			);
 		});
 	});
 

@@ -19,7 +19,7 @@ const { suite, test, suiteSetup, suiteTeardown, setup } = Mocha;
  * cloned root's body was rewritten to point at the cloned child — exercising the
  * end-to-end approval + create + updateTemplate flow against a real session.
  * Opt-in (token + REWST_TEST_WRITE=1) and always targets the token's own primary
- * org (use a sandbox token). Every created template — sources and clones — is
+ * configured sandbox org. Every created template — sources and clones — is
  * deleted in the finally block even if an assertion fails.
  */
 function writeTestsEnabled(): boolean {
@@ -48,7 +48,7 @@ suite('Integration: template bundle clone', function () {
 		session = await getTestSession();
 		targetOrgId = session.profile.org.id;
 		if (!targetOrgId) {
-			throw new Error('Refusing to run: the test session has no primary org id.');
+			throw new Error('Refusing to run: the test session has no sandbox org id.');
 		}
 		ctx = { session, orgId: targetOrgId, sessions: [session] };
 		console.log(`\n[itest] target org: ${session.profile.org.name} (${targetOrgId})`);

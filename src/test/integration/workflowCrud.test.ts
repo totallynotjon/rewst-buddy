@@ -15,7 +15,7 @@ const { suite, test, suiteSetup, suiteTeardown, setup } = Mocha;
 
 /**
  * Live verification for buddy_create_workflow / buddy_delete_workflow, opt-in behind
- * REWST_TEST_WRITE=1 and scoped to the token's own primary org. Creates an empty
+ * REWST_TEST_WRITE=1 and scoped to REWST_TEST_ORG_ID. Creates an empty
  * workflow and deletes it; cleans up in teardown.
  */
 function writeTestsEnabled(): boolean {
@@ -37,7 +37,6 @@ suite('Integration: workflow CRUD tools', function () {
 	let session: Session;
 	let ctx: CapabilityContext;
 	let targetOrgId: string;
-	let otherOrgId: string | undefined;
 
 	suiteSetup(async function () {
 		if (!writeTestsEnabled()) {
@@ -47,8 +46,7 @@ suite('Integration: workflow CRUD tools', function () {
 		initTestEnvironment();
 		session = await getTestSession();
 		targetOrgId = session.profile.org.id;
-		if (!targetOrgId) throw new Error('Refusing to run: the test session has no primary org id.');
-		otherOrgId = session.profile.allManagedOrgs.find(org => org.id && org.id !== targetOrgId)?.id;
+		if (!targetOrgId) throw new Error('Refusing to run: the test session has no sandbox org id.');
 		ctx = { session, orgId: targetOrgId, sessions: [session] };
 		console.log(`\n[itest] target org: ${session.profile.org.name} (${targetOrgId})`);
 	});
@@ -87,16 +85,6 @@ suite('Integration: workflow CRUD tools', function () {
 			const wf = await byId(id!);
 			assert.ok(wf, 'workflow exists after create');
 			assert.strictEqual(wf!.orgId, targetOrgId, 'created workflow is in the target org');
-
-			if (otherOrgId) {
-				const guardCtx: CapabilityContext = { session, orgId: otherOrgId, sessions: [session] };
-				await assert.rejects(
-					() => cap('buddy_delete_workflow').run({ orgId: otherOrgId, workflowId: id }, guardCtx),
-					/is not in org/,
-				);
-				assert.ok(await byId(id!), 'workflow still present after refused cross-org delete');
-				console.log('[itest] org guard refused a cross-org delete to', otherOrgId);
-			}
 
 			const deleted = JSON.parse(
 				await cap('buddy_delete_workflow').run({ orgId: targetOrgId, workflowId: id }, ctx),

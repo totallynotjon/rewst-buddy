@@ -383,18 +383,20 @@ unset REWST_TEST_TOKEN && npm run test:grep:integration -- "an explicit insert e
 
 **Always `unset REWST_TEST_TOKEN` before integration runs.** `.vscode-test.mjs` loads the token from `.env`, but an already-exported `REWST_TEST_TOKEN` (often a stale copy inherited from the VS Code process tree) silently wins over the file. A stale exported token makes every session fail with `newSdk: could not initialize with any region` even when `.env` is fresh. `unset` in the same command line, as shown above, so the `.env` value is the one the tests see.
 
+**Every live operation is sandbox-scoped.** Set `REWST_TEST_ORG_ID` in `.env` to a disposable sandbox org (it defaults to Jon's sandbox). The shared `getTestSession()` helper fails closed unless the token manages that exact org, then exposes a test `SessionProfile` whose org tree contains only that sandbox. It never falls back to the token's primary org. Do not add live cross-org guard probes or global accessible-org index probes: those may read a production org when the token is production-capable. Keep cross-org enforcement tests mocked/unit-level. Write suites additionally require `REWST_TEST_WRITE=1` and must clean up every created sandbox resource in `finally` or suite teardown.
+
 Use `vscode-test --grep`, not `vscode-test -- --grep`. The extra `--` prevents the VS Code test CLI from applying Mocha's grep and can accidentally run the full suite. `.vscode-test.mjs` defines labeled configs: `unit` and `integration` carry a config-level `mocha.grep` (which silently wins over CLI `--grep`), so the targeted scripts run the grep-dedicated labels instead — `test:grep` uses `--label grep` (offline, no `.env`) and `test:grep:integration` uses `--label grep-integration` (loads `.env` / `REWST_TEST_TOKEN` for live runs). Never run the grep labels without a `--grep` pattern.
 
 ### Test Structure
 
 - **Unit tests** (colocated `*.test.ts` files): Test isolated logic without external dependencies. These run fast and don't require authentication. Place tests next to the source file they test (e.g., `src/models/LinkManager.test.ts`).
-- **Integration tests** (`src/test/integration/`): Test real API interactions. Require `REWST_TEST_TOKEN` environment variable.
+- **Integration tests** (`src/test/integration/`): Test real API interactions. Require `REWST_TEST_TOKEN`; every org operation is hard-bound to the sandbox in `REWST_TEST_ORG_ID`.
 - **Test helpers** (`src/test/helpers/`): Centralized test utilities, accessible via `@test` alias.
 
 ### Test Helpers
 
 ```typescript
-import { initTestEnvironment, hasTestToken, getTestSession } from '@test';
+import { initTestEnvironment, hasTestToken, getTestOrgId, getTestSession } from '@test';
 
 // Initialize mocks (required in beforeEach)
 initTestEnvironment();
@@ -402,7 +404,8 @@ initTestEnvironment();
 // Check if integration tests can run
 if (hasTestToken()) {
 	const session = await getTestSession();
-	// ... test with real API
+	const orgId = getTestOrgId();
+	// Every API variable and capability input must use this orgId.
 }
 ```
 
@@ -410,7 +413,8 @@ if (hasTestToken()) {
 | ----------------------------------------- | ------------------------------------------------------------------ |
 | `initTestEnvironment`                     | Set up mock VS Code context and globals                            |
 | `hasTestToken`                            | Check if `REWST_TEST_TOKEN` is available                           |
-| `getTestSession`                          | Create authenticated session for integration tests                 |
+| `getTestOrgId`                            | Return the only sandbox org id live tests may target               |
+| `getTestSession`                          | Create an authenticated, sandbox-only test session profile         |
 | `createMockContext`                       | Create mock `vscode.ExtensionContext`                              |
 | `createMockWrapper`                       | Create a MockWrapper instance for mocking SDK calls                |
 | `MockWrapper`                             | Class for configuring mock GraphQL responses with fluent API       |

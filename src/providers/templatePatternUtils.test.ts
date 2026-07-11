@@ -60,6 +60,27 @@ suite('Unit: TEMPLATE_PATTERN', () => {
 		const match = TEMPLATE_PATTERN.exec(line);
 		assert.ok(match);
 	});
+
+	test('does not match template as a suffix of another identifier', () => {
+		for (const line of [
+			'mytemplate("550e8400-e29b-41d4-a716-446655440000")',
+			'_template("550e8400-e29b-41d4-a716-446655440000")',
+			'not_template("550e8400-e29b-41d4-a716-446655440000")',
+		]) {
+			TEMPLATE_PATTERN.lastIndex = 0;
+			assert.strictEqual(TEMPLATE_PATTERN.exec(line), null, line);
+		}
+	});
+
+	test('does not match malformed quoting or a missing close parenthesis', () => {
+		for (const line of [
+			'template("550e8400-e29b-41d4-a716-446655440000\')',
+			'template("550e8400-e29b-41d4-a716-446655440000"',
+		]) {
+			TEMPLATE_PATTERN.lastIndex = 0;
+			assert.strictEqual(TEMPLATE_PATTERN.exec(line), null, line);
+		}
+	});
 });
 
 suite('Unit: findTemplateAtPosition()', () => {
@@ -113,6 +134,11 @@ suite('Unit: findTemplateAtPosition()', () => {
 		assert.ok(result2);
 		assert.strictEqual(result2.templateId, '22222222-2222-2222-2222-222222222222');
 	});
+
+	test('returns null for negative and beyond-line cursor positions', () => {
+		assert.strictEqual(findTemplateAtPosition(line, -1), null);
+		assert.strictEqual(findTemplateAtPosition(line, line.length + 1), null);
+	});
 });
 
 suite('Unit: findAllTemplateReferences()', () => {
@@ -156,6 +182,13 @@ suite('Unit: findAllTemplateReferences()', () => {
 		].join('\n');
 		const refs = findAllTemplateReferences(text);
 		assert.deepStrictEqual(refs, ['11111111-1111-1111-1111-111111111111']);
+	});
+
+	test('preserves first-seen order while deduplicating across line breaks and quote styles', () => {
+		const first = '11111111-1111-1111-1111-111111111111';
+		const second = '22222222-2222-2222-2222-222222222222';
+		const text = `template('${second}')\ntemplate("${first}")\ntemplate("${second}")`;
+		assert.deepStrictEqual(findAllTemplateReferences(text), [second, first]);
 	});
 });
 
@@ -203,5 +236,16 @@ suite('Unit: isInsideTemplateCallPrefix()', () => {
 		const line = 'template("11111111-1111-1111-1111-111111111111") template("';
 		const character = line.indexOf(') ') + 1;
 		assert.strictEqual(isInsideTemplateCallPrefix(line, character), false);
+	});
+
+	test('does not trigger completion for methods whose names merely end in template', () => {
+		for (const line of ['mytemplate("', 'not_template("', 'object.template("']) {
+			assert.strictEqual(isInsideTemplateCallPrefix(line, line.length), false, line);
+		}
+	});
+
+	test('handles an escaped quote inside a partially typed template id', () => {
+		const line = 'template("prefix\\"still-inside';
+		assert.strictEqual(isInsideTemplateCallPrefix(line, line.length), true);
 	});
 });

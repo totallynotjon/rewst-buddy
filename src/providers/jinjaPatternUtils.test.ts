@@ -63,6 +63,28 @@ suite('Unit: findJinjaFilterTriggerAtPosition()', () => {
 		assert.ok(trigger);
 		assert.strictEqual(trigger!.partial, 'up');
 	});
+
+	test('handles escaped quotes before a real filter pipe', () => {
+		const line = '{{ "quoted \\"| value" | up }}';
+		const character = line.indexOf('up') + 2;
+		assert.deepStrictEqual(findJinjaFilterTriggerAtPosition(line, character), { partial: 'up' });
+	});
+
+	test('does not accept the wrong closing delimiter for an expression span', () => {
+		const line = '{{ value | up %}';
+		assert.strictEqual(findJinjaFilterTriggerAtPosition(line, line.indexOf('up') + 2), null);
+	});
+
+	test('supports whitespace-control delimiters', () => {
+		const line = '{{- value | up -}}';
+		assert.deepStrictEqual(findJinjaFilterTriggerAtPosition(line, line.indexOf('up') + 2), { partial: 'up' });
+	});
+
+	test('returns null for invalid cursor positions', () => {
+		const line = '{{ value | up }}';
+		assert.strictEqual(findJinjaFilterTriggerAtPosition(line, -1), null);
+		assert.strictEqual(findJinjaFilterTriggerAtPosition(line, line.length + 10), null);
+	});
 });
 
 suite('Unit: findJinjaFilterNameAtPosition()', () => {
@@ -89,6 +111,16 @@ suite('Unit: findJinjaFilterNameAtPosition()', () => {
 		const character = line.indexOf('upper') + 2;
 		assert.strictEqual(findJinjaFilterNameAtPosition(line, character), 'upper');
 	});
+
+	test('finds underscore and numeric filter names', () => {
+		const line = '{{ value | custom_filter2 }}';
+		assert.strictEqual(findJinjaFilterNameAtPosition(line, line.indexOf('filter2')), 'custom_filter2');
+	});
+
+	test('does not find a filter through a mismatched span closer', () => {
+		const line = '{% value | upper }}';
+		assert.strictEqual(findJinjaFilterNameAtPosition(line, line.indexOf('upper')), null);
+	});
 });
 
 suite('Unit: findJinjaKeywordTokens()', () => {
@@ -112,5 +144,27 @@ suite('Unit: findJinjaKeywordTokens()', () => {
 	test('does not flag keywords as substrings of identifiers', () => {
 		const line = '{{ forms }}';
 		assert.deepStrictEqual(findJinjaKeywordTokens(line), []);
+	});
+
+	test('does not highlight keyword-looking words inside string literals', () => {
+		const line = `{{ "if for else" ~ 'try catch endif' }}`;
+		assert.deepStrictEqual(findJinjaKeywordTokens(line), []);
+	});
+
+	test('reports exact token offsets across multiple spans', () => {
+		const line = 'before {% if ready %} middle {{ [x for x in xs] }}';
+		const tokens = findJinjaKeywordTokens(line);
+		assert.deepStrictEqual(
+			tokens.map(token => [token.keyword, line.slice(token.start, token.end)]),
+			[
+				['if', 'if'],
+				['for', 'for'],
+				['in', 'in'],
+			],
+		);
+	});
+
+	test('ignores Jinja comments', () => {
+		assert.deepStrictEqual(findJinjaKeywordTokens('{# if for try #}'), []);
 	});
 });

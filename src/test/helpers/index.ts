@@ -3,9 +3,11 @@ export {
 	clearCachedSession,
 	getTestSdk,
 	getTestSession,
+	getTestOrgId,
 	getTestToken,
 	hasTestToken,
 	skipWithoutToken,
+	DEFAULT_REWST_TEST_ORG_ID,
 } from './testSession';
 
 // Mock SDK wrapper utilities

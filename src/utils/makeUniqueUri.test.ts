@@ -58,4 +58,58 @@ suite('Unit: makeUniqueUri', () => {
 		assert.strictEqual(path.basename(first.fsPath), 'Dup');
 		assert.strictEqual(path.basename(second.fsPath), 'Dup(1)');
 	});
+
+	test('blank and whitespace-only remote names still produce a file inside the target folder', async () => {
+		for (const name of ['', '   ', '\t\n']) {
+			const uri = await makeUniqueUri(folderUri, name);
+			assert.notStrictEqual(uri.toString(), folderUri.toString(), JSON.stringify(name));
+			assert.strictEqual(path.dirname(uri.fsPath), tmpDir, JSON.stringify(name));
+			assert.ok(path.basename(uri.fsPath).length > 0, JSON.stringify(name));
+		}
+	});
+
+	test('dot-segment names cannot resolve to the folder itself or its parent', async () => {
+		for (const name of ['.', '..']) {
+			const uri = await makeUniqueUri(folderUri, name);
+			assert.strictEqual(path.dirname(uri.fsPath), tmpDir, name);
+			assert.notStrictEqual(uri.toString(), folderUri.toString(), name);
+			assert.notStrictEqual(uri.fsPath, path.dirname(tmpDir), name);
+		}
+	});
+
+	test('sanitizes ASCII control characters that are unsafe or invisible in explorer views', async () => {
+		const uri = await makeUniqueUri(folderUri, 'line\nbreak\ttemplate\0.jinja');
+		for (const char of path.basename(uri.fsPath)) {
+			const code = char.charCodeAt(0);
+			assert.ok(code > 31 && code !== 127, `unsafe control code ${code}`);
+		}
+	});
+
+	test('avoids Windows reserved device basenames for cross-platform workspaces', async () => {
+		for (const name of ['CON', 'con.txt', 'NUL.jinja', 'COM1', 'LPT9.yaml']) {
+			const uri = await makeUniqueUri(folderUri, name);
+			assert.doesNotMatch(path.basename(uri.fsPath), /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i, name);
+		}
+	});
+
+	test('removes trailing spaces and periods that Windows silently rewrites', async () => {
+		for (const name of ['template. ', 'template...', 'name   ']) {
+			const uri = await makeUniqueUri(folderUri, name);
+			assert.doesNotMatch(path.basename(uri.fsPath), /[ .]$/, JSON.stringify(name));
+		}
+	});
+
+	test('bounds very long remote names to a filesystem-safe component length', async () => {
+		const uri = await makeUniqueUri(folderUri, `${'a'.repeat(400)}.jinja`);
+		assert.ok(Buffer.byteLength(path.basename(uri.fsPath), 'utf8') <= 255);
+		assert.match(path.basename(uri.fsPath), /\.jinja$/);
+	});
+
+	test('keeps hidden-file names and multi-part extensions intact', async () => {
+		assert.strictEqual(path.basename((await makeUniqueUri(folderUri, '.env')).fsPath), '.env');
+		assert.strictEqual(
+			path.basename((await makeUniqueUri(folderUri, 'template.test.jinja')).fsPath),
+			'template.test.jinja',
+		);
+	});
 });

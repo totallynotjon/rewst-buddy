@@ -38,7 +38,7 @@ suite('Integration: crate unpack planning probes', function () {
 		initTestEnvironment();
 		session = await getTestSession();
 		orgId = session.profile.org.id;
-		if (!orgId) throw new Error('Refusing to run: the test session has no primary org id.');
+		if (!orgId) throw new Error('Refusing to run: the test session has no sandbox org id.');
 		console.log(`\n[itest] target org: ${session.profile.org.name} (${orgId})`);
 	});
 
