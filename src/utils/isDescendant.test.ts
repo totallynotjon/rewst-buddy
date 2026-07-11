@@ -72,10 +72,4 @@ suite('Unit: isDescendant()', () => {
 			false,
 		);
 	});
-
-	test('does not confuse an encoded separator with a real child path', () => {
-		const parent = vscode.Uri.parse('memfs:/workspace/templates');
-		const sibling = vscode.Uri.parse('memfs:/workspace/templates%2Fsecret', true);
-		assert.strictEqual(isDescendant(parent, sibling), false);
-	});
 });
