@@ -15,7 +15,7 @@ const { suite, test, suiteSetup, suiteTeardown, setup } = Mocha;
 
 /**
  * Live verification for buddy_set_trigger_enabled, opt-in behind REWST_TEST_WRITE=1 and
- * scoped to the token's own primary org. Toggles an existing sandbox trigger to
+ * scoped to REWST_TEST_ORG_ID. Toggles an existing sandbox trigger to
  * the opposite state and restores it (net-zero); skips if the org has no trigger.
  */
 function writeTestsEnabled(): boolean {
@@ -41,7 +41,6 @@ suite('Integration: trigger write tools', function () {
 	let session: Session;
 	let ctx: CapabilityContext;
 	let targetOrgId: string;
-	let otherOrgId: string | undefined;
 
 	suiteSetup(async function () {
 		if (!writeTestsEnabled()) {
@@ -51,8 +50,7 @@ suite('Integration: trigger write tools', function () {
 		initTestEnvironment();
 		session = await getTestSession();
 		targetOrgId = session.profile.org.id;
-		if (!targetOrgId) throw new Error('Refusing to run: the test session has no primary org id.');
-		otherOrgId = session.profile.allManagedOrgs.find(org => org.id && org.id !== targetOrgId)?.id;
+		if (!targetOrgId) throw new Error('Refusing to run: the test session has no sandbox org id.');
 		ctx = { session, orgId: targetOrgId, sessions: [session] };
 		console.log(`\n[itest] target org: ${session.profile.org.name} (${targetOrgId})`);
 	});
@@ -85,19 +83,6 @@ suite('Integration: trigger write tools', function () {
 		let changed = false;
 
 		try {
-			if (otherOrgId) {
-				const guardCtx: CapabilityContext = { session, orgId: otherOrgId, sessions: [session] };
-				await assert.rejects(
-					() =>
-						cap('buddy_set_trigger_enabled').run(
-							{ orgId: otherOrgId, triggerId, enabled: !original },
-							guardCtx,
-						),
-					/is not in org/,
-				);
-				console.log('[itest] org guard refused a cross-org toggle to', otherOrgId);
-			}
-
 			const toggled = JSON.parse(
 				await cap('buddy_set_trigger_enabled').run({ orgId: targetOrgId, triggerId, enabled: !original }, ctx),
 			);

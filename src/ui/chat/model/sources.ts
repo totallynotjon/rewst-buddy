@@ -5,14 +5,19 @@ import type { ConversationSource } from '@sessions';
  * response text (a model provider has no reference/citation channel — text is
  * the only surface).
  */
+function escapeMarkdownLinkSyntax(text: string): string {
+	return text.replace(/[\\[\]()]/g, '\\$&');
+}
+
 export function renderSourcesMarkdown(sources: readonly ConversationSource[]): string {
 	if (sources.length === 0) return '';
 	const lines = sources.map(source => {
-		const section = source.section ? ` — ${source.section}` : '';
-		if (/^https?:\/\//.test(source.source)) {
-			return `- [${source.label}](${source.source})${section}`;
+		const label = escapeMarkdownLinkSyntax(source.label);
+		const section = source.section ? ` — ${escapeMarkdownLinkSyntax(source.section)}` : '';
+		if (/^https?:\/\//i.test(source.source)) {
+			return `- [${label}](${source.source})${section}`;
 		}
-		return `- ${source.label}${section}`;
+		return `- ${label}${section}`;
 	});
 	return `\n\n**Sources**\n${lines.join('\n')}\n`;
 }

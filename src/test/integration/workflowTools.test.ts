@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { log } from '@utils';
-import { getTestSession, getTestToken, hasTestToken, initTestEnvironment } from '@test';
+import { getTestOrgId, getTestSession, getTestToken, hasTestToken, initTestEnvironment } from '@test';
 import { runWorkflowTool } from '@workflow';
 import type { GraphqlToolDeps } from '../../ui/chat/tools/graphqlTool';
 
@@ -9,7 +9,7 @@ const { suite, test, suiteSetup } = Mocha;
 
 // Defaults to the sandbox "Learning Workflow"; override per environment.
 const WORKFLOW_ID = process.env.REWST_TEST_WORKFLOW_ID ?? '019ecc4c-b826-70b0-a8c7-e87ff2377833';
-const ORG_ID = process.env.REWST_TEST_WORKFLOW_ORG_ID ?? '01940973-8a88-7109-8ba7-d64bfbb18950';
+const ORG_ID = getTestOrgId();
 
 interface GraphSummary {
 	workflow: { id: string; name: string; orgId: string; orgName?: string };
@@ -141,25 +141,6 @@ suite('Integration: workflowTools', function () {
 		const out = await runWorkflowTool({ tool: 'buddy_execution_logs', args: { executionId } }, deps);
 		// Real field names (originalWorkflowTaskName, order arg) resolved without a GraphQL error.
 		assert.match(out, new RegExp(`Execution ${executionId}: \\d+ task\\(s\\), \\d+ failed`), out);
-	});
-
-	test('buddy_workflow_search builds the cross-org index and finds a workflow with its org name', async () => {
-		// First call builds the cache (validates the accessible-orgs + workflows-list queries live).
-		const all = await runWorkflowTool({ tool: 'buddy_workflow_search', args: { refresh: true } }, deps);
-		assert.match(all, /index: \d+ workflows across \d+ org\(s\)/, all);
-
-		// The configured sandbox workflow should be findable; results carry the org name.
-		const name = (
-			JSON.parse(
-				await runWorkflowTool(
-					{ tool: 'buddy_workflow_get', args: { workflowId: WORKFLOW_ID, orgId: ORG_ID } },
-					deps,
-				),
-			) as GraphSummary
-		).workflow.name;
-		const hit = await runWorkflowTool({ tool: 'buddy_workflow_search', args: { query: name } }, deps);
-		assert.ok(hit.includes(WORKFLOW_ID), `search should surface the workflow id\n${hit}`);
-		assert.match(hit, /org: .+ \(/, 'each result shows the org name');
 	});
 
 	test('buddy_workflow_get surfaces the org name for the approval args', async () => {

@@ -3,6 +3,20 @@ import { context } from '@global';
 
 let cachedSession: Session | undefined;
 
+/** Jon's sandbox. Override for another contributor's sandbox in `.env`. */
+export const DEFAULT_REWST_TEST_ORG_ID = '01940973-8a88-7109-8ba7-d64bfbb18950';
+
+/**
+ * The only organization integration tests may target. This never falls back to
+ * the authenticated user's primary organization: a production session token is
+ * allowed, but every org-scoped operation must still point at an explicitly
+ * configured sandbox.
+ */
+export function getTestOrgId(): string {
+	const configured = process.env.REWST_TEST_ORG_ID?.trim();
+	return configured || DEFAULT_REWST_TEST_ORG_ID;
+}
+
 /**
  * Check if a test token is available in the environment.
  * Integration tests should skip if this returns false.
@@ -43,23 +57,39 @@ export async function getTestSession(): Promise<Session> {
 		throw new Error('Failed to get user from test token');
 	}
 
+	const targetOrgId = getTestOrgId();
+	const visibleOrgs = [
+		response.user.organization,
+		...(response.user.allManagedOrgs ?? []),
+		...(response.user.organization?.managedAndSubOrgs ?? []),
+	].filter((org): org is NonNullable<typeof org> => org != null);
+	const targetOrg = visibleOrgs.find(org => org.id === targetOrgId);
+	if (!targetOrg) {
+		throw new Error(
+			`Refusing to run integration tests: REWST_TEST_ORG_ID ${targetOrgId} is not managed by this token. ` +
+				`No fallback to the token's primary org is allowed.`,
+		);
+	}
+	const scopedOrganization = { ...targetOrg, managedAndSubOrgs: [targetOrg] };
+	const scopedUser = {
+		...response.user,
+		orgId: targetOrgId,
+		organization: scopedOrganization,
+		allManagedOrgs: [targetOrg],
+	};
+
 	const profile: SessionProfile = {
 		region: regionConfig,
 		org: {
-			id: response.user.orgId ?? '',
-			name: response.user.organization?.name ?? 'Test Org',
+			id: targetOrgId,
+			name: targetOrg.name ?? `Sandbox ${targetOrgId}`,
 		},
-		allManagedOrgs: response.user.allManagedOrgs.map(org => ({
-			id: org.id ?? '',
-			name: org.name,
-		})),
+		allManagedOrgs: [{ id: targetOrgId, name: targetOrg.name }],
 		label: 'Test Session',
-		user: response.user,
+		user: scopedUser,
 	};
 
-	if (!profile.org.id) {
-		throw new Error('getTestSession: the test token resolved no primary org id.');
-	}
+	if (profile.org.id !== targetOrgId) throw new Error('getTestSession: sandbox org binding failed closed.');
 	const userId = profile.user.id;
 	if (!userId) {
 		throw new Error('getTestSession: the test token resolved no user id.');

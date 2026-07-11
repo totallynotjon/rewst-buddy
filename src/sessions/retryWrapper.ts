@@ -7,8 +7,10 @@ export interface RetryOptions {
 	maxDelay: number;
 }
 
-function isRetryableError(error: Error): boolean {
-	const message = error.message.toLowerCase();
+function isRetryableError(error: unknown): boolean {
+	const rawMessage = error instanceof Error ? error.message : typeof error === 'string' ? error : undefined;
+	if (!rawMessage) return false;
+	const message = rawMessage.toLowerCase();
 
 	return (
 		message.includes('connect etimedout') ||
@@ -32,7 +34,7 @@ export function createRetryWrapper(
 		operationName: string,
 	): Promise<T> => {
 		log.trace('retryWrapper: starting operation', operationName);
-		let lastError: Error | null = null;
+		let lastError: unknown = null;
 
 		for (let attempt = 0; attempt <= options.maxRetries; attempt++) {
 			try {
@@ -50,11 +52,12 @@ export function createRetryWrapper(
 				}
 				return result;
 			} catch (error) {
-				lastError = error as Error;
+				lastError = error;
+				const errorMessage = error instanceof Error ? error.message : String(error);
 
 				if (attempt === options.maxRetries) {
 					log.error(
-						`retryWrapper: '${operationName}' failed after ${options.maxRetries} retries: ${lastError.message}`,
+						`retryWrapper: '${operationName}' failed after ${options.maxRetries} retries: ${errorMessage}`,
 					);
 					break;
 				}
@@ -63,7 +66,7 @@ export function createRetryWrapper(
 				if (!shouldRetry) {
 					log.debug('retryWrapper: non-retryable error', {
 						operation: operationName,
-						error: lastError.message,
+						error: errorMessage,
 					});
 					break;
 				}
@@ -74,7 +77,7 @@ export function createRetryWrapper(
 					attempt: attempt + 1,
 					maxAttempts: options.maxRetries + 1,
 					delayMs: delay,
-					error: lastError.message,
+					error: errorMessage,
 				});
 
 				await new Promise(resolve => setTimeout(resolve, delay));

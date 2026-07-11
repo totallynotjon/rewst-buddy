@@ -41,4 +41,35 @@ suite('Unit: isDescendant()', () => {
 		const notChild = vscode.Uri.file('/home/user/project-backup/file.txt');
 		assert.strictEqual(isDescendant(parent, notChild), false);
 	});
+
+	test('handles a parent URI with a trailing slash', () => {
+		const parent = vscode.Uri.parse('file:///home/user/project/');
+		const child = vscode.Uri.parse('file:///home/user/project/src/file.txt');
+		assert.strictEqual(isDescendant(parent, child), true);
+	});
+
+	test('treats every path under the filesystem root as a descendant', () => {
+		assert.strictEqual(isDescendant(vscode.Uri.file('/'), vscode.Uri.file('/tmp/file.txt')), true);
+	});
+
+	test('ignores query and fragment components when the resource path is the same', () => {
+		const parent = vscode.Uri.parse('memfs:/workspace');
+		const candidate = vscode.Uri.parse('memfs:/workspace/file?version=2#selection');
+		assert.strictEqual(isDescendant(parent, candidate), true);
+	});
+
+	test('rejects a candidate containing unresolved parent-directory traversal', () => {
+		const parent = vscode.Uri.parse('memfs:/workspace/templates');
+		const escaped = vscode.Uri.parse('memfs:/workspace/templates/../secrets/token.txt', true);
+		assert.strictEqual(isDescendant(parent, escaped), false);
+	});
+
+	test('rejects different schemes and authorities even when paths match', () => {
+		const parent = vscode.Uri.parse('vscode-remote://ssh-remote+one/workspace');
+		assert.strictEqual(isDescendant(parent, vscode.Uri.parse('file:///workspace/file')), false);
+		assert.strictEqual(
+			isDescendant(parent, vscode.Uri.parse('vscode-remote://ssh-remote+two/workspace/file')),
+			false,
+		);
+	});
 });

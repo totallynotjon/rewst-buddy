@@ -52,4 +52,62 @@ suite('Unit: getTemplateURLParams', () => {
 			/Template ID in URL is not valid uuid/,
 		);
 	});
+
+	test('accepts query parameters and fragments copied from the Rewst app', async () => {
+		const params = await getTemplateURLParams(
+			`https://app.rewst.io/organizations/${ORG_ID}/templates/${TEMPLATE_ID}?tab=editor#body`,
+		);
+		assert.strictEqual(params.orgId, ORG_ID);
+		assert.strictEqual(params.templateId, TEMPLATE_ID);
+		assert.strictEqual(params.baseURL.search, '?tab=editor');
+		assert.strictEqual(params.baseURL.hash, '#body');
+	});
+
+	test('accepts a harmless trailing slash after the template id', async () => {
+		const params = await getTemplateURLParams(
+			`https://app.rewst.io/organizations/${ORG_ID}/templates/${TEMPLATE_ID}/`,
+		);
+		assert.strictEqual(params.templateId, TEMPLATE_ID);
+	});
+
+	test('rejects extra path segments that could identify a different resource', async () => {
+		await assert.rejects(
+			() =>
+				getTemplateURLParams(`https://app.rewst.io/organizations/${ORG_ID}/templates/${TEMPLATE_ID}/history/1`),
+			/path does not match/,
+		);
+	});
+
+	test('rejects non-http schemes even when their path has valid ids', async () => {
+		for (const scheme of ['file', 'ftp', 'javascript']) {
+			await assert.rejects(
+				() => getTemplateURLParams(`${scheme}://app.rewst.io/organizations/${ORG_ID}/templates/${TEMPLATE_ID}`),
+				// Must be rejected specifically for the disallowed scheme, not by any
+				// generic URL error — no permissive `|URL` fallback.
+				/scheme|protocol/i,
+			);
+		}
+	});
+
+	test('rejects URLs containing embedded credentials', async () => {
+		await assert.rejects(
+			() =>
+				getTemplateURLParams(
+					`https://user:password@app.rewst.io/organizations/${ORG_ID}/templates/${TEMPLATE_ID}`,
+				),
+			// Must be rejected specifically for embedded credentials (userinfo),
+			// not by any generic URL error — no permissive `|URL` fallback.
+			/credential|userinfo/i,
+		);
+	});
+
+	test('accepts uppercase UUID hex without changing the captured ids', async () => {
+		const upperOrg = ORG_ID.toUpperCase();
+		const upperTemplate = TEMPLATE_ID.toUpperCase();
+		const params = await getTemplateURLParams(
+			`https://app.rewst.io/organizations/${upperOrg}/templates/${upperTemplate}`,
+		);
+		assert.strictEqual(params.orgId, upperOrg);
+		assert.strictEqual(params.templateId, upperTemplate);
+	});
 });

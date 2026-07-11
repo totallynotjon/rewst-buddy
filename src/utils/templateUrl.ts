@@ -23,8 +23,18 @@ export async function getTemplateURLParams(templateURL: string | undefined): Pro
 		throw new Error(`Invalid URL ${templateURL}`);
 	}
 
+	if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+		log.error(`Unsupported URL scheme '${url.protocol}'`);
+		throw new Error('Template URL scheme must be http or https');
+	}
+	if (url.username || url.password) {
+		log.error('Template URL must not contain embedded credentials');
+		throw new Error('Template URL contains embedded credentials');
+	}
+
 	const template = new UrlPattern('/organizations/(:orgId)/templates/(:templateId)');
-	const params = template.match(url.pathname);
+	const normalizedPath = url.pathname.replace(/\/+$/, '');
+	const params = template.match(normalizedPath);
 
 	if (!params) {
 		log.error(`path does not match "/organizations/(:orgId)/templates/(:templateId)" ${templateURL}`);

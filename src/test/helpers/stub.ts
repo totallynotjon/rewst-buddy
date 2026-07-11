@@ -13,7 +13,10 @@
  * }
  * ```
  */
-export function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): () => void {
+/** A restore function returned by {@link stub}. Call it to undo the stub. */
+export type Restore = () => void;
+
+export function stub<T extends object, K extends keyof T>(obj: T, key: K, impl: T[K]): Restore {
 	const original = obj[key];
 	Object.defineProperty(obj, key, { value: impl, configurable: true, writable: true });
 	return () => Object.defineProperty(obj, key, { value: original, configurable: true, writable: true });

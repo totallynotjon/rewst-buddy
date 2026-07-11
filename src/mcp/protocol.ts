@@ -22,8 +22,11 @@ export function mcpAuthorizationHeader(token: string): string {
 /** Extracts the bearer token from an `Authorization` header value, if present. */
 export function parseBearerToken(authorization: string | undefined): string | undefined {
 	if (typeof authorization !== 'string') return undefined;
-	const match = /^Bearer[ \t]+(\S.*)$/i.exec(authorization.trim());
-	return match ? match[1].trim() : undefined;
+	const match = /^Bearer[ \t]+(\S+)$/i.exec(authorization.trim());
+	if (!match) return undefined;
+	const token = match[1];
+	// eslint-disable-next-line no-control-regex
+	return /[\x00-\x1f\x7f]/.test(token) ? undefined : token;
 }
 
 /** Stable error codes so the agent gets actionable messages, not opaque 500s. */

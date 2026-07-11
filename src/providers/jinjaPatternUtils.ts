@@ -18,20 +18,29 @@ const JINJA_KEYWORDS = new Set(['try', 'catch', 'endtry', 'for', 'endfor', 'in',
 const IDENTIFIER_PATTERN = /[A-Za-z_][A-Za-z0-9_]*/g;
 const FILTER_NAME_PATTERN = /\|\s*([A-Za-z_][A-Za-z0-9_]*)/g;
 
-/** Finds every `{{ }}`/`{% %}` span on a single line. An unclosed span runs to end of line. */
+/** Finds every `{{ }}`/`{% %}` span on a single line. An unclosed span runs to end of line; a span closed by the wrong delimiter type (e.g. `{{` closed by `%}`) is not a valid span at all. */
 function findJinjaSpans(line: string): JinjaSpan[] {
 	const spans: JinjaSpan[] = [];
 	let i = 0;
 	while (i < line.length) {
 		if (line.startsWith('{{', i) || line.startsWith('{%', i)) {
+			const isExpr = line.startsWith('{{', i);
 			const contentStart = i + 2;
-			const closeBrace = line.indexOf('}}', contentStart);
-			const closePct = line.indexOf('%}', contentStart);
-			const candidates = [closeBrace, closePct].filter(idx => idx !== -1);
-			const closeIdx = candidates.length ? Math.min(...candidates) : -1;
-			const end = closeIdx === -1 ? line.length : closeIdx;
-			spans.push({ start: contentStart, end });
-			i = closeIdx === -1 ? line.length : closeIdx + 2;
+			const matchClose = isExpr ? '}}' : '%}';
+			const otherClose = isExpr ? '%}' : '}}';
+			const matchIdx = line.indexOf(matchClose, contentStart);
+			const otherIdx = line.indexOf(otherClose, contentStart);
+			if (matchIdx !== -1 && (otherIdx === -1 || matchIdx <= otherIdx)) {
+				spans.push({ start: contentStart, end: matchIdx });
+				i = matchIdx + 2;
+				continue;
+			}
+			if (otherIdx !== -1) {
+				i = contentStart;
+				continue;
+			}
+			spans.push({ start: contentStart, end: line.length });
+			i = line.length;
 			continue;
 		}
 		i++;
@@ -43,21 +52,35 @@ function findEnclosingJinjaSpan(line: string, character: number): JinjaSpan | nu
 	return findJinjaSpans(line).find(span => character >= span.start && character <= span.end) ?? null;
 }
 
-/** Last `|` before `to`, ignoring pipes inside single/double-quoted string literals. */
-function lastUnquotedPipeIndex(line: string, from: number, to: number): number {
+/** Returns `content` with quoted string literals blanked out (same length/offsets), honoring `\`-escaped quotes. */
+function blankQuotedLiterals(content: string): string {
+	const chars = content.split('');
 	let quote: string | null = null;
-	let lastPipe = -1;
-	for (let i = from; i < to; i++) {
-		const ch = line[i];
+	for (let i = 0; i < chars.length; i++) {
+		const ch = chars[i];
 		if (quote) {
+			if (ch === '\\' && i + 1 < chars.length) {
+				chars[i] = ' ';
+				chars[i + 1] = ' ';
+				i++;
+				continue;
+			}
 			if (ch === quote) quote = null;
-		} else if (ch === '"' || ch === "'") {
+			chars[i] = ' ';
+			continue;
+		}
+		if (ch === '"' || ch === "'") {
 			quote = ch;
-		} else if (ch === '|') {
-			lastPipe = i;
+			chars[i] = ' ';
 		}
 	}
-	return lastPipe;
+	return chars.join('');
+}
+
+/** Last `|` before `to`, ignoring pipes inside single/double-quoted string literals. */
+function lastUnquotedPipeIndex(line: string, from: number, to: number): number {
+	const idx = blankQuotedLiterals(line.slice(from, to)).lastIndexOf('|');
+	return idx === -1 ? -1 : from + idx;
 }
 
 /** Detects a filter-completion trigger: cursor right after `|` (with an optional partial name) inside a Jinja span. */
@@ -90,7 +113,7 @@ export function findJinjaFilterNameAtPosition(line: string, character: number): 
 export function findJinjaKeywordTokens(line: string): JinjaKeywordToken[] {
 	const tokens: JinjaKeywordToken[] = [];
 	for (const span of findJinjaSpans(line)) {
-		const content = line.slice(span.start, span.end);
+		const content = blankQuotedLiterals(line.slice(span.start, span.end));
 		IDENTIFIER_PATTERN.lastIndex = 0;
 		let match: RegExpExecArray | null;
 		while ((match = IDENTIFIER_PATTERN.exec(content)) !== null) {

@@ -15,7 +15,7 @@ const { suite, test, suiteSetup, suiteTeardown, setup } = Mocha;
 
 /**
  * Live verification for the org-variable write capabilities, opt-in behind
- * REWST_TEST_WRITE=1 and always scoped to the token's own primary org. Creates,
+ * REWST_TEST_WRITE=1 and always scoped to REWST_TEST_ORG_ID. Creates,
  * updates, and deletes a throwaway variable, asserting the update mutates in
  * place (no duplicate) and the delete removes it. Cleans up in teardown.
  */
@@ -41,7 +41,6 @@ suite('Integration: org variable write tools', function () {
 	let session: Session;
 	let ctx: CapabilityContext;
 	let targetOrgId: string;
-	let otherOrgId: string | undefined;
 
 	suiteSetup(async function () {
 		if (!writeTestsEnabled()) {
@@ -52,8 +51,7 @@ suite('Integration: org variable write tools', function () {
 		// getTestSession stores the validated cookie in secrets, so session.rawGraphql works.
 		session = await getTestSession();
 		targetOrgId = session.profile.org.id;
-		if (!targetOrgId) throw new Error('Refusing to run: the test session has no primary org id.');
-		otherOrgId = session.profile.allManagedOrgs.find(org => org.id && org.id !== targetOrgId)?.id;
+		if (!targetOrgId) throw new Error('Refusing to run: the test session has no sandbox org id.');
 		ctx = { session, orgId: targetOrgId, sessions: [session] };
 		console.log(`\n[itest] target org: ${session.profile.org.name} (${targetOrgId})`);
 	});
@@ -98,21 +96,6 @@ suite('Integration: org variable write tools', function () {
 			assert.strictEqual(rows.length, 1, 'exactly one variable after create');
 			assert.strictEqual(rows[0].id, id);
 			assert.strictEqual(rows[0].value, 'created-value');
-
-			// Org guard (live): updating with a non-target managed orgId must be refused
-			// before mutating. This only reads the variable; the other org is untouched.
-			if (otherOrgId) {
-				const guardCtx: CapabilityContext = { session, orgId: otherOrgId, sessions: [session] };
-				await assert.rejects(
-					() =>
-						cap('buddy_update_org_variable').run(
-							{ orgId: otherOrgId, variableId: id, value: 'NOPE' },
-							guardCtx,
-						),
-					/is not in org/,
-				);
-				console.log('[itest] org guard refused a cross-org update to', otherOrgId);
-			}
 
 			const updated = JSON.parse(
 				await cap('buddy_update_org_variable').run(

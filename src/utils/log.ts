@@ -87,7 +87,7 @@ class Logger {
 				console.error(`[ERROR] ${message}`, error, ...args);
 			}
 			return new Error(fullMessage);
-		} else if (error) {
+		} else if (error !== undefined) {
 			const errorMsg = String(error);
 			const fullMessage = `${message} ${errorMsg}`;
 			this.logChannel.error(message, error, ...args);

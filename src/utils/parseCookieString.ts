@@ -3,10 +3,20 @@ export function parseCookieString(cookieString: string): Record<string, string> 
 
 	cookieString.split(';').forEach(pair => {
 		const trimmedPair = pair.trim();
-		const [key, value] = trimmedPair.split('=');
+		if (!trimmedPair) {
+			return;
+		}
 
-		if (key && value) {
-			cookies[key] = value;
+		const separatorIndex = trimmedPair.indexOf('=');
+		if (separatorIndex === -1) {
+			return;
+		}
+
+		const key = trimmedPair.slice(0, separatorIndex).trim();
+		const value = trimmedPair.slice(separatorIndex + 1);
+
+		if (key) {
+			Object.defineProperty(cookies, key, { value, enumerable: true, writable: true, configurable: true });
 		}
 	});
 

@@ -51,6 +51,10 @@ export interface UnpackTransportOptions {
  * object (its id is the new workflow) or throws with the server's failure.
  */
 export async function runUnpackCrate(options: UnpackTransportOptions): Promise<UnpackSuccess> {
+	if (options.signal?.aborted) {
+		throw new Error('Crate unpack was cancelled before it started.');
+	}
+
 	const { session } = options;
 	const cookie = toCookieHeader(await session.getCookies(), session.profile.region);
 	const url = getSubscriptionsUrl(session.profile.region);
