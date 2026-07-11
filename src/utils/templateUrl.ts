@@ -33,7 +33,8 @@ export async function getTemplateURLParams(templateURL: string | undefined): Pro
 	}
 
 	const template = new UrlPattern('/organizations/(:orgId)/templates/(:templateId)');
-	const params = template.match(url.pathname);
+	const normalizedPath = url.pathname.replace(/\/+$/, '');
+	const params = template.match(normalizedPath);
 
 	if (!params) {
 		log.error(`path does not match "/organizations/(:orgId)/templates/(:templateId)" ${templateURL}`);

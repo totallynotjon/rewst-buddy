@@ -24,7 +24,7 @@ export async function makeUniqueUri(
 	// because workspaces may later be opened on another platform.
 	filename = filename
 		.trim()
-		.replace(/[<>:"/\\|?*]/g, '_')
+		.replace(/[ <>:"/\\|?*]/g, '_')
 		.split('')
 		.map(character => {
 			const code = character.charCodeAt(0);

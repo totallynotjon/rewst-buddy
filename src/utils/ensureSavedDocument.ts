@@ -14,7 +14,7 @@ export async function getDocumentFromArgs(args: any[]): Promise<vscode.TextDocum
 		return vscode.workspace.openTextDocument(uri);
 	}
 
-	const editor = vscode.window.activeTextEditor;
+	const editor = vscode.window.activeTextEditor ?? vscode.window.visibleTextEditors[0];
 	if (!editor) {
 		throw log.error('No active editor');
 	}

@@ -5,6 +5,10 @@ import vscode from 'vscode';
  * Handles encoding using TextEncoder for UTF-8 output.
  */
 export async function writeTextFile(uri: vscode.Uri, content: string): Promise<void> {
+	if (uri.scheme === 'file') {
+		const parentPath = uri.fsPath.replace(/[\\/][^\\/]*$/, '') || uri.fsPath;
+		await vscode.workspace.fs.stat(vscode.Uri.file(parentPath));
+	}
 	const encoder = new TextEncoder();
 	const data = encoder.encode(content);
 	await vscode.workspace.fs.writeFile(uri, data);
