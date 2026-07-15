@@ -14,6 +14,7 @@ Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`, `mcpServer.ts`,
 `instructions.ts`, `McpDefinitionProvider.ts`, `runtime.ts`, `settings.ts`, `throttle.ts`),
 `src/commands/mcp/`, `src/capabilities/*Capabilities.ts`,
 `src/capabilities/workflowImpactCapability.ts`,
+`src/capabilities/workflowLintCapability.ts`, `src/workflow/lint.ts`,
 `src/models/WorkingScopeManager.ts`, `src/ui/chat/tools/graphqlTool.ts`,
 `src/ui/chat/tools/workflowTools.ts`, `src/extension.ts`.
 
@@ -1357,3 +1358,19 @@ silently omitting levels. Per-node fetch errors SHALL degrade gracefully
 - **WHEN** `buddy_execution_logs` runs
 - **THEN** the error is appended as a note and the rest of the tree is still
   returned
+
+### Requirement: Guide safe retry-loop counters in lint findings (#180)
+
+When `buddy_workflow_lint` flags a task-level retry config
+(`task-retry-configured`), the finding message SHALL recommend a Jinja
+idiom for a manual retry-loop counter that defaults safely on first use,
+so authors do not need a separate task to initialize the counter before
+the loop starts.
+
+#### Scenario: Task-retry-configured finding recommends a self-defaulting counter
+
+- **GIVEN** a task has a non-null `retry` config
+- **WHEN** `buddy_workflow_lint` audits the workflow
+- **THEN** the `task-retry-configured` finding message includes a Jinja
+  default-then-cast pattern (`CTX.retry|d|int`) for tracking the retry
+  attempt count without a prior initialization task
