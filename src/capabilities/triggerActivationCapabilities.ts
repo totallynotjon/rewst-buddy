@@ -44,7 +44,7 @@ const setTriggerActivationSchema = z.object({
 	orgId: ORG_ID_FIELD,
 	triggerId: requiredStringField('triggerId').describe('Id of the trigger whose activation to edit.'),
 	orgIds: z
-		.array(requiredStringField('orgIds'))
+		.array(requiredStringField('orgIds'), { error: 'orgIds must be an array of org id strings.' })
 		.optional()
 		.describe(
 			'The exact, complete set of org ids to activate the trigger for (top-level activatedForOrgIds, full-replace). This overwrites the current explicit activation, so pass the whole intended set; an empty list deactivates the trigger for all orgs. The current explicit activatedForOrgIds is not readable, so this tool cannot add/remove against it — use buddy_get_trigger to see the resolved activatedForOrgs for context (it may include orgs activated by tag or auto-activate, which are not the explicit set).',

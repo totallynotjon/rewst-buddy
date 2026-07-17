@@ -141,6 +141,35 @@ suite('Unit: triggerActivationCapabilities', () => {
 			assert.deepStrictEqual(output.resolvedActivatedForOrgs.after, ['orgZ']);
 		});
 
+		test('uses a fresh post-approval read for the diff baseline, not the pre-approval preview', async () => {
+			// read#0 is the pre-approval preview (verifies org, names the trigger);
+			// read#1 is the fresh post-approval "before" (the diff/output baseline);
+			// read#2 is the "after". If the handler reused the preview as the
+			// baseline (skipping the second read), the baseline would show orgA/false
+			// instead of the fresh orgFresh/true.
+			const { ctx, calls } = makeCtx({
+				read: [
+					readResult({ activatedForOrgs: [{ id: 'orgA' }], autoActivateManagedOrgs: false }),
+					readResult({ activatedForOrgs: [{ id: 'orgFresh' }], autoActivateManagedOrgs: true }),
+					readResult({ activatedForOrgs: [{ id: 'orgB' }], autoActivateManagedOrgs: false }),
+				],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_activation').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', orgIds: ['orgB'] },
+					ctx,
+				),
+			);
+
+			assert.strictEqual(callsFor(calls, 'read').length, 3, 'preview + fresh before + after');
+			assert.deepStrictEqual(output.resolvedActivatedForOrgs.before, ['orgFresh'], 'baseline is the fresh read');
+			assert.strictEqual(output.autoActivateManagedOrgs.before, true, 'autoActivate baseline is the fresh read');
+			assert.deepStrictEqual(output.changed.activatedForOrgIds, { before: ['orgFresh'], after: ['orgB'] });
+		});
+
 		test('dedupes the requested org set', async () => {
 			const { ctx, calls } = makeCtx({
 				read: [readResult(), readResult(), readResult({ activatedForOrgs: [{ id: 'orgZ' }] })],
