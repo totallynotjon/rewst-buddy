@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import * as Mocha from 'mocha';
 import { Session } from '@sessions';
-import { clearCachedSession, getTestSession, hasTestToken, initTestEnvironment } from '@test';
+import { clearCachedSession, getTestOrgId, getTestSession, hasTestToken, initTestEnvironment } from '@test';
 import {
 	_resetMcpMutationApproverForTesting,
 	setMcpMutationApprover,
@@ -53,8 +53,12 @@ suite('Integration: trigger tag tools', function () {
 		}
 		initTestEnvironment();
 		session = await getTestSession();
-		targetOrgId = session.profile.org.id;
-		if (!targetOrgId) throw new Error('Refusing to run: the test session has no sandbox org id.');
+		// getTestSession fails closed unless the token manages this exact org, but
+		// every API variable still targets the configured sandbox id explicitly.
+		targetOrgId = getTestOrgId();
+		if (session.profile.org.id !== targetOrgId) {
+			throw new Error('Refusing to run: the test session is not bound to the configured sandbox org.');
+		}
 		ctx = { session, orgId: targetOrgId, sessions: [session] };
 		console.log(`\n[itest] target org: ${session.profile.org.name} (${targetOrgId})`);
 	});
@@ -109,6 +113,9 @@ suite('Integration: trigger tag tools', function () {
 		const originalTagIds = (trigger.tags ?? []).map(t => t.id);
 
 		const tagsResp = await session.rawGraphql(LIST_TAGS, { orgId: targetOrgId });
+		if (Array.isArray(tagsResp.errors) ? tagsResp.errors.length > 0 : tagsResp.errors != null) {
+			throw new Error(`LIST_TAGS GraphQL error: ${JSON.stringify(tagsResp.errors)}`);
+		}
 		const allTagIds = ((tagsResp.data as { tags?: { id: string }[] } | undefined)?.tags ?? []).map(t => t.id);
 		const spareTagId = allTagIds.find(id => !originalTagIds.includes(id));
 		if (!spareTagId) {
@@ -119,13 +126,16 @@ suite('Integration: trigger tag tools', function () {
 
 		let dirty = false;
 		try {
+			// Marked dirty before the mutation: the write can land even if the
+			// post-write reread or JSON parsing throws, and restoring an unchanged
+			// tag set is safer than leaking a partial mutation.
+			dirty = true;
 			const added = JSON.parse(
 				await cap('buddy_set_trigger_tags').run(
 					{ orgId: targetOrgId, triggerId: trigger.id, operation: 'add', tagIds: [spareTagId] },
 					ctx,
 				),
 			);
-			dirty = true;
 			assert.strictEqual(added.status, 'updated');
 			assert.ok(added.tagIds.after.includes(spareTagId), 'spare tag is present after add');
 			for (const id of originalTagIds) {

@@ -143,8 +143,6 @@ export async function requireTriggerState(
 		id: triggerId,
 		orgId,
 		fetch: () => fetchTriggerState(ctx, orgId, triggerId),
-		// The query is already org-filtered, so a returned row is in-org by construction.
-		inOrg: () => true,
 	});
 }
 

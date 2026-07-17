@@ -290,6 +290,8 @@ suite('Unit: workflowLint', () => {
 		assert.strictEqual(retryFindings[0].taskId, 't1');
 		assert.ok(retryFindings[0].message.includes('my_task'));
 		assert.ok(retryFindings[0].message.includes('CTX.retry|d|int'));
+		assert.ok(retryFindings[0].message.includes('CTX.retry|d|int + 1'));
+		assert.ok(retryFindings[0].message.includes('CTX.retry|d|int <= 3'));
 	});
 
 	test('action-without-timeout no longer mentions retry', () => {

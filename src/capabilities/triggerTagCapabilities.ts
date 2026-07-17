@@ -107,14 +107,18 @@ function mergeTagIds(operation: TagOperation, current: string[], requested: stri
 async function runSetTriggerTags(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	const { orgId, triggerId, operation, tagIds } = parseCapabilityInput(setTriggerTagsSchema, input);
 	const orgName = orgDisplayName(ctx);
-	const before: TriggerState = await requireTriggerState(ctx, triggerId, orgId);
-	const name = before.name ?? '(unnamed)';
-	const currentTagIds = tagIdsOf(before);
-	const nextTagIds = mergeTagIds(operation, currentTagIds, dedupe(tagIds));
+	// Pre-approval read only verifies org ownership and names the trigger in the
+	// approval prompt; the merge is recomputed from a fresh read after approval,
+	// so a tag change made while the prompt was open is not overwritten.
+	const preview: TriggerState = await requireTriggerState(ctx, triggerId, orgId);
+	const name = preview.name ?? '(unnamed)';
 
 	const scope: MutationScope = { scopeId: triggerId, scopeName: name, orgId, orgName };
 	const summary = `${operation} tags on trigger "${name}" (${triggerId}) in org "${orgName}" (${orgId})`;
 	return withMutationApproval(scope, summary, async () => {
+		const before = await requireTriggerState(ctx, triggerId, orgId);
+		const currentTagIds = tagIdsOf(before);
+		const nextTagIds = mergeTagIds(operation, currentTagIds, dedupe(tagIds));
 		const result = await runTriggerUpdate(ctx, {
 			triggerId,
 			orgId,

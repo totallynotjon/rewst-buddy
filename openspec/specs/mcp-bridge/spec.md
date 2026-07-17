@@ -1416,7 +1416,9 @@ with `add`, `remove`, and `replace` operations over a trigger's tag set (the
 `activatedForTagIds` input). Because the wire semantics of `activatedForTagIds`
 are full-replace, `add` and `remove` SHALL first read the trigger's current
 tags and send the merged result, so an edit never silently drops tags the
-caller did not name. `replace` SHALL set the tag set to exactly the requested
+caller did not name; the merge SHALL be computed from a fresh read taken after
+per-call approval, so a tag change made while the approval prompt was open is
+not overwritten. `replace` SHALL set the tag set to exactly the requested
 ids. An unknown operation SHALL be rejected, and an empty or non-string tag
 list SHALL be rejected, before any mutation.
 
@@ -1426,6 +1428,13 @@ list SHALL be rejected, before any mutation.
 - **WHEN** `buddy_set_trigger_tags` runs with `add` and tag Z
 - **THEN** the mutation sends tags X, Y, and Z, and X and Y remain on the
   trigger
+
+#### Scenario: A tag change during approval is not dropped
+
+- **GIVEN** a trigger whose tags gain tag Z while the approval prompt is open
+- **WHEN** an `add` of tag Y is approved
+- **THEN** the mutation is merged against a fresh post-approval read and sends
+  tags X, Z, and Y — the concurrently added tag Z is preserved
 
 #### Scenario: Remove keeps the untouched tags
 

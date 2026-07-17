@@ -138,6 +138,14 @@ suite('Unit: triggerTagCapabilities', () => {
 			);
 		});
 
+		test('rejects a returned row whose orgId mismatches the requested org', async () => {
+			const { ctx } = makeCtx({ read: readResult({ orgId: 'org-other' }) });
+			await assert.rejects(
+				() => cap('buddy_get_trigger').run({ orgId: 'org-sandbox', triggerId: 't1' }, ctx),
+				/Trigger t1 is not in org org-sandbox/,
+			);
+		});
+
 		test('requires a triggerId', async () => {
 			const { ctx } = makeCtx({});
 			await assert.rejects(
@@ -164,7 +172,7 @@ suite('Unit: triggerTagCapabilities', () => {
 
 		test('add merges new tags with existing ones (never drops)', async () => {
 			const { ctx, calls } = makeCtx({
-				read: [readResult(), readResult({ tags: [{ id: 'tagX' }, { id: 'tagY' }] })],
+				read: [readResult(), readResult(), readResult({ tags: [{ id: 'tagX' }, { id: 'tagY' }] })],
 				update: UPDATE_OK,
 			});
 			setMcpMutationApprover(async () => true);
@@ -187,8 +195,35 @@ suite('Unit: triggerTagCapabilities', () => {
 			assert.deepStrictEqual(output.tagIds.after, ['tagX', 'tagY']);
 		});
 
+		test('add merges against a fresh post-approval read (concurrent tag change preserved)', async () => {
+			// The tag set changes while the approval prompt is open: the fresh
+			// post-approval read returns tagX + tagConcurrent, and the merge must
+			// build on that state rather than the stale pre-approval read.
+			const { ctx, calls } = makeCtx({
+				read: [
+					readResult(),
+					readResult({ tags: [{ id: 'tagX' }, { id: 'tagConcurrent' }] }),
+					readResult({ tags: [{ id: 'tagX' }, { id: 'tagConcurrent' }, { id: 'tagY' }] }),
+				],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_tags').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', tagIds: ['tagY'] },
+					ctx,
+				),
+			);
+
+			const sent = callsFor(calls, 'update')[0].variables as { trigger: { activatedForTagIds: string[] } };
+			assert.deepStrictEqual(sent.trigger.activatedForTagIds, ['tagX', 'tagConcurrent', 'tagY']);
+			assert.deepStrictEqual(output.tagIds.before, ['tagX', 'tagConcurrent']);
+			assert.deepStrictEqual(output.tagIds.after, ['tagX', 'tagConcurrent', 'tagY']);
+		});
+
 		test('add is idempotent for a tag already present', async () => {
-			const { ctx, calls } = makeCtx({ read: [readResult(), readResult()], update: UPDATE_OK });
+			const { ctx, calls } = makeCtx({ read: [readResult(), readResult(), readResult()], update: UPDATE_OK });
 			setMcpMutationApprover(async () => true);
 			await cap('buddy_set_trigger_tags').run(
 				{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', tagIds: ['tagX'] },
@@ -200,7 +235,11 @@ suite('Unit: triggerTagCapabilities', () => {
 
 		test('remove sends the remaining tags', async () => {
 			const { ctx, calls } = makeCtx({
-				read: [readResult({ tags: [{ id: 'tagX' }, { id: 'tagY' }] }), readResult({ tags: [{ id: 'tagX' }] })],
+				read: [
+					readResult({ tags: [{ id: 'tagX' }, { id: 'tagY' }] }),
+					readResult({ tags: [{ id: 'tagX' }, { id: 'tagY' }] }),
+					readResult({ tags: [{ id: 'tagX' }] }),
+				],
 				update: UPDATE_OK,
 			});
 			setMcpMutationApprover(async () => true);
@@ -220,7 +259,7 @@ suite('Unit: triggerTagCapabilities', () => {
 
 		test('replace sets the tag set exactly', async () => {
 			const { ctx, calls } = makeCtx({
-				read: [readResult(), readResult({ tags: [{ id: 'tagZ' }] })],
+				read: [readResult(), readResult(), readResult({ tags: [{ id: 'tagZ' }] })],
 				update: UPDATE_OK,
 			});
 			setMcpMutationApprover(async () => true);
@@ -236,7 +275,7 @@ suite('Unit: triggerTagCapabilities', () => {
 
 		test('reports a before/after diff of the changed tags', async () => {
 			const { ctx } = makeCtx({
-				read: [readResult(), readResult({ tags: [{ id: 'tagX' }, { id: 'tagY' }] })],
+				read: [readResult(), readResult(), readResult({ tags: [{ id: 'tagX' }, { id: 'tagY' }] })],
 				update: UPDATE_OK,
 			});
 			setMcpMutationApprover(async () => true);
@@ -248,6 +287,32 @@ suite('Unit: triggerTagCapabilities', () => {
 				),
 			);
 			assert.deepStrictEqual(output.changed.tagIds, { before: ['tagX'], after: ['tagX', 'tagY'] });
+		});
+
+		test('surfaces a non-tag side effect in the diff', async () => {
+			// The post-write read reports an activation-org shift the edit did not
+			// request; the diff must surface it alongside the tag change.
+			const { ctx } = makeCtx({
+				read: [
+					readResult(),
+					readResult(),
+					readResult({
+						tags: [{ id: 'tagX' }, { id: 'tagY' }],
+						activatedForOrgs: [{ id: 'orgB', name: 'Org B' }],
+					}),
+				],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_tags').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', tagIds: ['tagY'] },
+					ctx,
+				),
+			);
+			assert.deepStrictEqual(output.changed.tagIds, { before: ['tagX'], after: ['tagX', 'tagY'] });
+			assert.deepStrictEqual(output.changed.activatedForOrgIds, { before: ['orgA'], after: ['orgB'] });
 		});
 
 		test('refuses a trigger in another org before approving', async () => {
