@@ -1,0 +1,493 @@
+import * as assert from 'assert';
+import * as Mocha from 'mocha';
+import { initTestEnvironment } from '@test';
+import {
+	_resetMcpMutationApproverForTesting,
+	setMcpMutationApprover,
+	type Capability,
+	type CapabilityContext,
+} from '@capabilities';
+import type { Session } from '@sessions';
+import { _resetApprovedMutationScopes } from '../ui/chat/tools/graphqlTool';
+import { TRIGGER_ACTIVATION_CAPABILITIES } from './triggerActivationCapabilities';
+
+const { suite, test, setup, teardown } = Mocha;
+
+function cap(name: string): Capability {
+	const capability = TRIGGER_ACTIVATION_CAPABILITIES.find(c => c.spec.name === name);
+	if (!capability) throw new Error(`missing capability ${name}`);
+	return capability;
+}
+
+interface GraphqlResult {
+	data?: unknown;
+	errors?: unknown;
+}
+// 'read' is the trigger-state query (used by both the verification read and the
+// helper's before/after reads); 'update' is the updateTrigger mutation.
+type Op = 'read' | 'update';
+type OpResponses = Partial<Record<Op, GraphqlResult | GraphqlResult[]>>;
+
+function routeOp(query: string): Op | 'unknown' {
+	if (query.includes('TriggerStateById')) return 'read';
+	if (query.includes('UpdateTrigger')) return 'update';
+	return 'unknown';
+}
+
+/**
+ * Mock context. `read` may be a single response or an array consumed in order,
+ * so a test can return a different post-write state than the pre-write read.
+ */
+function makeCtx(responses: OpResponses, orgId = 'org-sandbox', orgName = 'Sandbox') {
+	const calls: { op: string; variables: Record<string, unknown> | undefined }[] = [];
+	const readQueue = Array.isArray(responses.read) ? [...responses.read] : undefined;
+	const session = {
+		profile: { org: { id: orgId, name: orgName }, allManagedOrgs: [{ id: orgId, name: orgName }] },
+		rawGraphql: async (query: string, variables?: Record<string, unknown>) => {
+			const op = routeOp(query);
+			calls.push({ op, variables });
+			if (op === 'read' && readQueue) {
+				const next = readQueue.shift();
+				if (!next) throw new Error('read queue exhausted');
+				return next;
+			}
+			const r = responses[op as keyof OpResponses] as GraphqlResult | undefined;
+			if (!r) throw new Error(`no mock configured for op "${op}"`);
+			return r;
+		},
+	} as unknown as Session;
+	const ctx: CapabilityContext = { session, orgId, sessions: [session] };
+	return { ctx, calls };
+}
+
+function callsFor(calls: { op: string; variables: Record<string, unknown> | undefined }[], op: string) {
+	return calls.filter(c => c.op === op);
+}
+
+function triggerRow(overrides: Record<string, unknown> = {}) {
+	return {
+		id: 't1',
+		name: 'Nightly',
+		enabled: true,
+		orgId: 'org-sandbox',
+		workflowId: 'wf1',
+		formId: null,
+		description: 'desc',
+		autoActivateManagedOrgs: false,
+		criteria: null,
+		parameters: null,
+		state: null,
+		cloneOverrides: { activatedForOrgIds: ['orgClone'] },
+		tags: [{ id: 'tagX', name: 'X' }],
+		activatedForOrgs: [{ id: 'orgA', name: 'Org A' }],
+		...overrides,
+	};
+}
+
+function readResult(overrides: Record<string, unknown> = {}): GraphqlResult {
+	return { data: { triggers: [triggerRow(overrides)] } };
+}
+
+const UPDATE_OK: GraphqlResult = { data: { updateTrigger: { id: 't1', name: 'Nightly', orgId: 'org-sandbox' } } };
+
+function sentTrigger(calls: { op: string; variables: Record<string, unknown> | undefined }[]) {
+	return callsFor(calls, 'update')[0].variables as {
+		trigger: Record<string, unknown>;
+		createPatch: boolean;
+	};
+}
+
+suite('Unit: triggerActivationCapabilities', () => {
+	setup(() => {
+		initTestEnvironment();
+		_resetApprovedMutationScopes();
+		_resetMcpMutationApproverForTesting();
+	});
+
+	teardown(() => {
+		_resetApprovedMutationScopes();
+		_resetMcpMutationApproverForTesting();
+	});
+
+	suite('buddy_set_trigger_activation', () => {
+		test('is a write capability, org-scoped', () => {
+			const c = cap('buddy_set_trigger_activation');
+			assert.strictEqual(c.access, 'write');
+			assert.notStrictEqual(c.requiresOrg, false);
+		});
+
+		test('add merges new orgs with existing ones (never drops)', async () => {
+			const { ctx, calls } = makeCtx({
+				read: [readResult(), readResult(), readResult({ activatedForOrgs: [{ id: 'orgA' }, { id: 'orgB' }] })],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_activation').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgB'] },
+					ctx,
+				),
+			);
+
+			const sent = sentTrigger(calls);
+			assert.deepStrictEqual(sent.trigger.activatedForOrgIds, ['orgA', 'orgB']);
+			assert.strictEqual(sent.createPatch, true);
+			assert.strictEqual(output.status, 'updated');
+			assert.deepStrictEqual(output.activatedForOrgIds.before, ['orgA']);
+			assert.deepStrictEqual(output.activatedForOrgIds.after, ['orgA', 'orgB']);
+		});
+
+		test('add merges against a fresh post-approval read (concurrent org change preserved)', async () => {
+			const { ctx, calls } = makeCtx({
+				read: [
+					readResult(),
+					readResult({ activatedForOrgs: [{ id: 'orgA' }, { id: 'orgConcurrent' }] }),
+					readResult({ activatedForOrgs: [{ id: 'orgA' }, { id: 'orgConcurrent' }, { id: 'orgB' }] }),
+				],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_activation').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgB'] },
+					ctx,
+				),
+			);
+
+			const sent = sentTrigger(calls);
+			assert.deepStrictEqual(sent.trigger.activatedForOrgIds, ['orgA', 'orgConcurrent', 'orgB']);
+			assert.deepStrictEqual(output.activatedForOrgIds.before, ['orgA', 'orgConcurrent']);
+			assert.deepStrictEqual(output.activatedForOrgIds.after, ['orgA', 'orgConcurrent', 'orgB']);
+		});
+
+		test('add is idempotent for an org already activated', async () => {
+			const { ctx, calls } = makeCtx({ read: [readResult(), readResult(), readResult()], update: UPDATE_OK });
+			setMcpMutationApprover(async () => true);
+			await cap('buddy_set_trigger_activation').run(
+				{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgA'] },
+				ctx,
+			);
+			assert.deepStrictEqual(sentTrigger(calls).trigger.activatedForOrgIds, ['orgA']);
+		});
+
+		test('remove sends the remaining orgs', async () => {
+			const { ctx, calls } = makeCtx({
+				read: [
+					readResult({ activatedForOrgs: [{ id: 'orgA' }, { id: 'orgB' }] }),
+					readResult({ activatedForOrgs: [{ id: 'orgA' }, { id: 'orgB' }] }),
+					readResult({ activatedForOrgs: [{ id: 'orgA' }] }),
+				],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+
+			await cap('buddy_set_trigger_activation').run(
+				{ orgId: 'org-sandbox', triggerId: 't1', operation: 'remove', orgIds: ['orgB'] },
+				ctx,
+			);
+			const sent = sentTrigger(calls);
+			assert.deepStrictEqual(sent.trigger.activatedForOrgIds, ['orgA']);
+			assert.strictEqual(sent.createPatch, true);
+		});
+
+		test('replace sets the activation set exactly (dedupes)', async () => {
+			const { ctx, calls } = makeCtx({
+				read: [readResult(), readResult(), readResult({ activatedForOrgs: [{ id: 'orgZ' }] })],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+
+			await cap('buddy_set_trigger_activation').run(
+				{ orgId: 'org-sandbox', triggerId: 't1', operation: 'replace', orgIds: ['orgZ', 'orgZ'] },
+				ctx,
+			);
+			assert.deepStrictEqual(sentTrigger(calls).trigger.activatedForOrgIds, ['orgZ']);
+		});
+
+		test('replace with an empty list deactivates all orgs', async () => {
+			const { ctx, calls } = makeCtx({
+				read: [readResult(), readResult(), readResult({ activatedForOrgs: [] })],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_activation').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', operation: 'replace', orgIds: [] },
+					ctx,
+				),
+			);
+			assert.deepStrictEqual(sentTrigger(calls).trigger.activatedForOrgIds, []);
+			assert.deepStrictEqual(output.activatedForOrgIds.after, []);
+		});
+
+		test('never sends cloneOverrides (org edit leaves clone overrides untouched)', async () => {
+			const { ctx, calls } = makeCtx({
+				read: [readResult(), readResult(), readResult({ activatedForOrgs: [{ id: 'orgA' }, { id: 'orgB' }] })],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+			await cap('buddy_set_trigger_activation').run(
+				{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgB'] },
+				ctx,
+			);
+			const sent = sentTrigger(calls);
+			assert.ok(!('cloneOverrides' in sent.trigger), 'cloneOverrides is not part of the update input');
+			assert.ok(!('activatedForTagIds' in sent.trigger), 'the activation tool does not touch tags');
+		});
+
+		test('sets autoActivateManagedOrgs alone without an org edit', async () => {
+			const { ctx, calls } = makeCtx({
+				read: [readResult(), readResult(), readResult({ autoActivateManagedOrgs: true })],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_activation').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', autoActivateManagedOrgs: true },
+					ctx,
+				),
+			);
+			const sent = sentTrigger(calls);
+			assert.strictEqual(sent.trigger.autoActivateManagedOrgs, true);
+			assert.ok(!('activatedForOrgIds' in sent.trigger), 'no org edit means no activatedForOrgIds');
+			assert.strictEqual(sent.createPatch, true);
+			assert.strictEqual(output.operation, null);
+			assert.deepStrictEqual(output.autoActivateManagedOrgs, { before: false, after: true });
+		});
+
+		test('sets an org edit and autoActivateManagedOrgs together', async () => {
+			const { ctx, calls } = makeCtx({
+				read: [
+					readResult(),
+					readResult(),
+					readResult({ activatedForOrgs: [{ id: 'orgA' }, { id: 'orgB' }], autoActivateManagedOrgs: true }),
+				],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+			await cap('buddy_set_trigger_activation').run(
+				{
+					orgId: 'org-sandbox',
+					triggerId: 't1',
+					operation: 'add',
+					orgIds: ['orgB'],
+					autoActivateManagedOrgs: true,
+				},
+				ctx,
+			);
+			const sent = sentTrigger(calls);
+			assert.deepStrictEqual(sent.trigger.activatedForOrgIds, ['orgA', 'orgB']);
+			assert.strictEqual(sent.trigger.autoActivateManagedOrgs, true);
+		});
+
+		test('reports a before/after diff of the changed activation orgs', async () => {
+			const { ctx } = makeCtx({
+				read: [readResult(), readResult(), readResult({ activatedForOrgs: [{ id: 'orgA' }, { id: 'orgB' }] })],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_activation').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgB'] },
+					ctx,
+				),
+			);
+			assert.deepStrictEqual(output.changed.activatedForOrgIds, { before: ['orgA'], after: ['orgA', 'orgB'] });
+		});
+
+		test('surfaces a non-activation side effect in the diff', async () => {
+			// The post-write read reports a tag shift the edit did not request; the
+			// diff must surface it alongside the activation change (the #181 concern).
+			const { ctx } = makeCtx({
+				read: [
+					readResult(),
+					readResult(),
+					readResult({ activatedForOrgs: [{ id: 'orgA' }, { id: 'orgB' }], tags: [{ id: 'tagY' }] }),
+				],
+				update: UPDATE_OK,
+			});
+			setMcpMutationApprover(async () => true);
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_activation').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgB'] },
+					ctx,
+				),
+			);
+			assert.deepStrictEqual(output.changed.activatedForOrgIds, { before: ['orgA'], after: ['orgA', 'orgB'] });
+			assert.deepStrictEqual(output.changed.tagIds, { before: ['tagX'], after: ['tagY'] });
+		});
+
+		test('refuses a trigger in another org before approving', async () => {
+			const { ctx, calls } = makeCtx({ read: { data: { triggers: [] } } });
+			let approverCalled = false;
+			setMcpMutationApprover(async () => {
+				approverCalled = true;
+				return true;
+			});
+			await assert.rejects(
+				() =>
+					cap('buddy_set_trigger_activation').run(
+						{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgB'] },
+						ctx,
+					),
+				/Trigger t1 is not in org org-sandbox/,
+			);
+			assert.strictEqual(approverCalled, false);
+			assert.strictEqual(callsFor(calls, 'update').length, 0);
+		});
+
+		test('a prior approval is never reused: a later edit prompts anew', async () => {
+			// replace can clear all activation, so an approval granted for a benign
+			// add on the same trigger must not let it through silently.
+			const { ctx, calls } = makeCtx({ read: readResult(), update: UPDATE_OK });
+			setMcpMutationApprover(async () => true);
+			await cap('buddy_set_trigger_activation').run(
+				{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgB'] },
+				ctx,
+			);
+
+			setMcpMutationApprover(async () => false);
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_activation').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', operation: 'replace', orgIds: [] },
+					ctx,
+				),
+			);
+			assert.strictEqual(output.status, 'approval_required');
+			assert.strictEqual(callsFor(calls, 'update').length, 1, 'the denied replace did not mutate');
+		});
+
+		test('does not mutate when approval is denied', async () => {
+			const { ctx, calls } = makeCtx({ read: readResult(), update: UPDATE_OK });
+			setMcpMutationApprover(async () => false);
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_activation').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgB'] },
+					ctx,
+				),
+			);
+			assert.strictEqual(callsFor(calls, 'update').length, 0);
+			assert.strictEqual(output.status, 'approval_required');
+		});
+
+		test('rejects an unknown operation', async () => {
+			const { ctx, calls } = makeCtx({ read: readResult() });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() =>
+					cap('buddy_set_trigger_activation').run(
+						{ orgId: 'org-sandbox', triggerId: 't1', operation: 'toggle', orgIds: ['orgB'] },
+						ctx,
+					),
+				/"operation" must be one of add, remove, replace/,
+			);
+			assert.strictEqual(callsFor(calls, 'read').length, 0);
+		});
+
+		test('rejects operation without orgIds', async () => {
+			const { ctx, calls } = makeCtx({ read: readResult() });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() =>
+					cap('buddy_set_trigger_activation').run(
+						{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add' },
+						ctx,
+					),
+				/operation and orgIds must be provided together/,
+			);
+			assert.strictEqual(callsFor(calls, 'read').length, 0);
+		});
+
+		test('rejects orgIds without operation', async () => {
+			const { ctx } = makeCtx({ read: readResult() });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() =>
+					cap('buddy_set_trigger_activation').run(
+						{ orgId: 'org-sandbox', triggerId: 't1', orgIds: ['orgB'] },
+						ctx,
+					),
+				/operation and orgIds must be provided together/,
+			);
+		});
+
+		test('rejects add with an empty org list', async () => {
+			const { ctx } = makeCtx({ read: readResult() });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() =>
+					cap('buddy_set_trigger_activation').run(
+						{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: [] },
+						ctx,
+					),
+				/Missing required non-empty string array argument "orgIds"/,
+			);
+		});
+
+		test('rejects an org list containing an empty string', async () => {
+			const { ctx } = makeCtx({ read: readResult() });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() =>
+					cap('buddy_set_trigger_activation').run(
+						{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['   '] },
+						ctx,
+					),
+				/Missing required string argument "orgIds"/,
+			);
+		});
+
+		test('rejects a call that changes nothing', async () => {
+			const { ctx, calls } = makeCtx({ read: readResult() });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() => cap('buddy_set_trigger_activation').run({ orgId: 'org-sandbox', triggerId: 't1' }, ctx),
+				/Provide an org activation change/,
+			);
+			assert.strictEqual(callsFor(calls, 'read').length, 0);
+		});
+
+		test('rejects a non-boolean autoActivateManagedOrgs', async () => {
+			const { ctx } = makeCtx({ read: readResult() });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() =>
+					cap('buddy_set_trigger_activation').run(
+						{ orgId: 'org-sandbox', triggerId: 't1', autoActivateManagedOrgs: 'yes' },
+						ctx,
+					),
+				/"autoActivateManagedOrgs" must be a boolean/,
+			);
+		});
+
+		test('propagates a mutation GraphQL error', async () => {
+			const { ctx } = makeCtx({ read: readResult(), update: { errors: [{ message: 'boom' }] } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() =>
+					cap('buddy_set_trigger_activation').run(
+						{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgB'] },
+						ctx,
+					),
+				/GraphQL error/,
+			);
+		});
+
+		test('throws when the mutation returns no trigger', async () => {
+			const { ctx } = makeCtx({ read: readResult(), update: { data: { updateTrigger: {} } } });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() =>
+					cap('buddy_set_trigger_activation').run(
+						{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', orgIds: ['orgB'] },
+						ctx,
+					),
+				/returned no trigger/,
+			);
+		});
+	});
+});

@@ -5,7 +5,15 @@ import type { Capability, CapabilityContext } from './Capability';
 import { readCapability, writeCapability } from './capabilityFactories';
 import { ORG_ID_FIELD, json, parseCapabilityInput, requiredStringField, toInputSchema } from './inputHelpers';
 import { orgDisplayName, withMutationApproval } from './mutationApproval';
-import { dedupe, requireTriggerState, runTriggerUpdate, tagIdsOf, type TriggerState } from './triggerUpdate';
+import {
+	dedupe,
+	mergeIdSet,
+	requireTriggerState,
+	runTriggerUpdate,
+	tagIdsOf,
+	type IdSetOperation,
+	type TriggerState,
+} from './triggerUpdate';
 
 /**
  * Read + tag-edit capabilities for Rewst triggers.
@@ -67,7 +75,6 @@ async function runGetTrigger(input: Record<string, unknown>, ctx: CapabilityCont
 // --- buddy_set_trigger_tags ------------------------------------------------
 
 const TAG_OPERATIONS = ['add', 'remove', 'replace'] as const;
-type TagOperation = (typeof TAG_OPERATIONS)[number];
 
 const TAG_IDS_ERROR = 'Missing required non-empty string array argument "tagIds".';
 
@@ -92,18 +99,6 @@ const setTriggerTagsSpec: ToolSpecDefinition = {
 	inputSchema: toInputSchema(setTriggerTagsSchema),
 };
 
-function mergeTagIds(operation: TagOperation, current: string[], requested: string[]): string[] {
-	const requestedSet = new Set(requested);
-	switch (operation) {
-		case 'add':
-			return dedupe([...current, ...requested]);
-		case 'remove':
-			return current.filter(id => !requestedSet.has(id));
-		case 'replace':
-			return dedupe(requested);
-	}
-}
-
 async function runSetTriggerTags(input: Record<string, unknown>, ctx: CapabilityContext): Promise<string> {
 	const { orgId, triggerId, operation, tagIds } = parseCapabilityInput(setTriggerTagsSchema, input);
 	const orgName = orgDisplayName(ctx);
@@ -121,7 +116,7 @@ async function runSetTriggerTags(input: Record<string, unknown>, ctx: Capability
 	const runApproved = async () => {
 		const before = await requireTriggerState(ctx, triggerId, orgId);
 		const currentTagIds = tagIdsOf(before);
-		const nextTagIds = mergeTagIds(operation, currentTagIds, dedupe(tagIds));
+		const nextTagIds = mergeIdSet(operation, currentTagIds, dedupe(tagIds));
 		const result = await runTriggerUpdate(ctx, {
 			triggerId,
 			orgId,

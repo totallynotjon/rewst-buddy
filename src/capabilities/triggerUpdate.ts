@@ -3,10 +3,10 @@ import { rawGraphqlOrThrow, requireResourceInOrg } from './inputHelpers';
 
 /**
  * Shared read-modify-write plumbing for updateTrigger, reused by every dedicated
- * trigger edit tool (buddy_set_trigger_tags now, buddy_set_trigger_activation in
- * a follow-up). It reads the full current trigger state first, applies only the
- * requested delta, always sends createPatch: true so the edit is revertable, then
- * re-reads and reports a before/after diff of the changed fields.
+ * trigger edit tool (buddy_set_trigger_tags, buddy_set_trigger_activation). It
+ * reads the full current trigger state first, applies only the requested delta,
+ * always sends createPatch: true so the edit is revertable, then re-reads and
+ * reports a before/after diff of the changed fields.
  *
  * Field-name traps this module encodes (see the Trigger output type in
  * schema.graphql and CLAUDE.md's capability-authoring note):
@@ -158,6 +158,27 @@ export function activatedOrgIdsOf(state: TriggerState): string[] {
 
 export function dedupe(ids: string[]): string[] {
 	return [...new Set(ids)];
+}
+
+/** The add/remove/replace operations the dedicated trigger edit tools expose. */
+export type IdSetOperation = 'add' | 'remove' | 'replace';
+
+/**
+ * Merges a requested id set into the current one for a full-replace input field
+ * (activatedForTagIds, activatedForOrgIds). `add` appends (deduped), `remove`
+ * drops the requested ids, `replace` sets exactly the requested ids (deduped).
+ * The result is what the caller sends as the full field value.
+ */
+export function mergeIdSet(operation: IdSetOperation, current: string[], requested: string[]): string[] {
+	const requestedSet = new Set(requested);
+	switch (operation) {
+		case 'add':
+			return dedupe([...current, ...requested]);
+		case 'remove':
+			return current.filter(id => !requestedSet.has(id));
+		case 'replace':
+			return dedupe(requested);
+	}
 }
 
 /**
