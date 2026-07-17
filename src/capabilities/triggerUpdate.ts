@@ -186,6 +186,23 @@ function comparable(state: TriggerState): Record<string, unknown> {
 export type TriggerFieldDiff = Record<string, { before: unknown; after: unknown }>;
 
 /**
+ * JSON.stringify with object keys in sorted order at every nesting level, so
+ * two reads of the same raw field (criteria, parameters, cloneOverrides) that
+ * differ only in key order compare equal. Array order is preserved — it can be
+ * meaningful in these fields.
+ */
+function stableStringify(value: unknown): string | undefined {
+	return JSON.stringify(value, (_key, val: unknown) => {
+		if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+			return Object.fromEntries(
+				Object.entries(val as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)),
+			);
+		}
+		return val;
+	});
+}
+
+/**
  * Field-by-field before/after diff over the comparable projection. Only fields
  * whose serialized value changed are included. This surfaces both the requested
  * change and any side-effect the write did not ask for (e.g. an activation-org
@@ -196,7 +213,7 @@ export function diffTriggerStates(before: TriggerState, after: TriggerState): Tr
 	const a = comparable(after);
 	const diff: TriggerFieldDiff = {};
 	for (const key of Object.keys(a)) {
-		if (JSON.stringify(b[key]) !== JSON.stringify(a[key])) {
+		if (stableStringify(b[key]) !== stableStringify(a[key])) {
 			diff[key] = { before: b[key], after: a[key] };
 		}
 	}

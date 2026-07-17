@@ -1419,8 +1419,11 @@ tags and send the merged result, so an edit never silently drops tags the
 caller did not name; the merge SHALL be computed from a fresh read taken after
 per-call approval, so a tag change made while the approval prompt was open is
 not overwritten. `replace` SHALL set the tag set to exactly the requested
-ids. An unknown operation SHALL be rejected, and an empty or non-string tag
-list SHALL be rejected, before any mutation.
+ids. Because `replace` can clear the whole tag set and approval scopes carry
+no operation component, every call SHALL prompt for approval anew — an
+approval granted for an earlier edit of the same trigger SHALL NOT be
+reused. An unknown operation SHALL be rejected, and an empty or non-string
+tag list SHALL be rejected, before any mutation.
 
 #### Scenario: Add preserves existing tags
 
@@ -1441,6 +1444,13 @@ list SHALL be rejected, before any mutation.
 - **GIVEN** a trigger whose tags are X and Y
 - **WHEN** `buddy_set_trigger_tags` runs with `remove` and tag Y
 - **THEN** the mutation sends tag X only, and X remains on the trigger
+
+#### Scenario: A prior approval is not reused by a later edit
+
+- **GIVEN** an approved `add` on a trigger
+- **WHEN** a later `replace` targets the same trigger and the user denies it
+- **THEN** the `replace` does not mutate and returns the approval-required
+  result — the earlier approval is not silently reused
 
 #### Scenario: Reject an unknown operation
 
@@ -1469,3 +1479,11 @@ is surfaced rather than hidden.
 - **WHEN** the edit completes
 - **THEN** the result reports the tag ids before and after and any other field
   that changed between the pre-write and post-write reads
+
+#### Scenario: Key order alone is not a change
+
+- **GIVEN** a raw object field (criteria, parameters, cloneOverrides) whose
+  keys the API returns in a different order after the write
+- **WHEN** the diff is computed
+- **THEN** the field is not reported as changed — only a genuine value change
+  appears in the diff

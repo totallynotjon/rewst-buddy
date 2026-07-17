@@ -115,7 +115,10 @@ async function runSetTriggerTags(input: Record<string, unknown>, ctx: Capability
 
 	const scope: MutationScope = { scopeId: triggerId, scopeName: name, orgId, orgName };
 	const summary = `${operation} tags on trigger "${name}" (${triggerId}) in org "${orgName}" (${orgId})`;
-	return withMutationApproval(scope, summary, async () => {
+	// alwaysPrompt: approval scopes key on [orgId, resourceId] with no operation
+	// component, and replace can clear the whole tag set — an approval granted
+	// for a benign add must not be silently reused for it (#177 rationale).
+	const runApproved = async () => {
 		const before = await requireTriggerState(ctx, triggerId, orgId);
 		const currentTagIds = tagIdsOf(before);
 		const nextTagIds = mergeTagIds(operation, currentTagIds, dedupe(tagIds));
@@ -134,7 +137,8 @@ async function runSetTriggerTags(input: Record<string, unknown>, ctx: Capability
 			changed: result.changed,
 			notes: NOT_READABLE_NOTE,
 		});
-	});
+	};
+	return withMutationApproval(scope, summary, runApproved, { alwaysPrompt: true });
 }
 
 export const TRIGGER_TAG_CAPABILITIES: Capability[] = [

@@ -18,6 +18,7 @@ export const vitestSuites = [
 	'src/context/BaseGlobal.test.ts',
 	'src/mcp/protocol.test.ts',
 	'src/capabilities/inputHelpers.test.ts',
+	'src/capabilities/triggerUpdate.test.ts',
 	'src/sessions/conversation/conversationEvents.test.ts',
 	'src/ui/chat/model/sources.test.ts',
 	'src/test/tdd.test.ts',

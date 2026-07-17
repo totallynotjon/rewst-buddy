@@ -334,6 +334,27 @@ suite('Unit: triggerTagCapabilities', () => {
 			assert.strictEqual(callsFor(calls, 'update').length, 0);
 		});
 
+		test('a prior approval is never reused: a later edit prompts anew', async () => {
+			// replace can clear the whole tag set, so an approval granted for a
+			// benign add on the same trigger must not let it through silently.
+			const { ctx, calls } = makeCtx({ read: readResult(), update: UPDATE_OK });
+			setMcpMutationApprover(async () => true);
+			await cap('buddy_set_trigger_tags').run(
+				{ orgId: 'org-sandbox', triggerId: 't1', operation: 'add', tagIds: ['tagY'] },
+				ctx,
+			);
+
+			setMcpMutationApprover(async () => false);
+			const output = JSON.parse(
+				await cap('buddy_set_trigger_tags').run(
+					{ orgId: 'org-sandbox', triggerId: 't1', operation: 'replace', tagIds: ['tagZ'] },
+					ctx,
+				),
+			);
+			assert.strictEqual(output.status, 'approval_required');
+			assert.strictEqual(callsFor(calls, 'update').length, 1, 'the denied replace did not mutate');
+		});
+
 		test('does not mutate when approval is denied', async () => {
 			const { ctx, calls } = makeCtx({ read: readResult(), update: UPDATE_OK });
 			setMcpMutationApprover(async () => false);
