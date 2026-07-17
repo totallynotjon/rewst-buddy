@@ -18,8 +18,8 @@ const { suite, test, suiteSetup, suiteTeardown, setup } = Mocha;
  * REWST_TEST_WRITE=1 and scoped to REWST_TEST_ORG_ID. The write test flips the
  * trigger's autoActivateManagedOrgs to its inverse and back (net-zero),
  * restoring the original value in finally; it skips when the sandbox has no
- * trigger. It deliberately does not add/remove org activations, since a sandbox
- * has no disposable sub-org to activate safely.
+ * trigger. It deliberately does not replace org activations, since a sandbox has
+ * no disposable sub-org to activate safely.
  */
 function writeTestsEnabled(): boolean {
 	return hasTestToken() && process.env.REWST_TEST_WRITE === '1';
