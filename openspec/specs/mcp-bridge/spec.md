@@ -1374,3 +1374,89 @@ the loop starts.
 - **THEN** the `task-retry-configured` finding message includes a Jinja
   default-then-cast pattern (`CTX.retry|d|int`) for tracking the retry
   attempt count without a prior initialization task
+
+### Requirement: Read a trigger's activation-related fields (#181)
+
+The system SHALL provide `buddy_get_trigger`, a read tool that fetches one
+trigger by `orgId` and trigger id and surfaces the activation-related fields
+the trigger list omits: the resolved `tags` (and their ids), the resolved
+`activatedForOrgs`, `cloneOverrides`, `autoActivateManagedOrgs`, `description`,
+`criteria`, `parameters`, `state`, `formId`, `enabled`, `workflowId`, and
+`name`. Because the top-level `activatedForOrgIds` updateTrigger input is not
+exposed on the `Trigger` output type, the tool SHALL NOT fabricate it; it
+SHALL surface the resolved `activatedForOrgs` list instead and state in its
+output that the top-level `activatedForOrgIds` input is not independently
+readable. A trigger id that does not belong to the requested org SHALL be
+rejected with a "not in org" error.
+
+#### Scenario: Surface tags and resolved activation orgs
+
+- **GIVEN** a trigger with tags and resolved activation orgs
+- **WHEN** `buddy_get_trigger` is called with its org and id
+- **THEN** the result includes the tag ids and the resolved `activatedForOrgs`
+  list
+
+#### Scenario: Honest about the unreadable input field
+
+- **WHEN** `buddy_get_trigger` returns a trigger
+- **THEN** the result notes that the top-level `activatedForOrgIds` input is
+  not independently readable, and does not present a top-level
+  `activatedForOrgIds` value
+
+#### Scenario: Trigger belongs to a different org
+
+- **GIVEN** a trigger id that belongs to a different org the session manages
+- **WHEN** `buddy_get_trigger` is called with a mismatched `orgId`
+- **THEN** it is rejected with a "not in org" error
+
+### Requirement: Edit trigger tags without dropping existing tags (#181)
+
+The system SHALL provide `buddy_set_trigger_tags`, an approval-gated write tool
+with `add`, `remove`, and `replace` operations over a trigger's tag set (the
+`activatedForTagIds` input). Because the wire semantics of `activatedForTagIds`
+are full-replace, `add` and `remove` SHALL first read the trigger's current
+tags and send the merged result, so an edit never silently drops tags the
+caller did not name. `replace` SHALL set the tag set to exactly the requested
+ids. An unknown operation SHALL be rejected, and an empty or non-string tag
+list SHALL be rejected, before any mutation.
+
+#### Scenario: Add preserves existing tags
+
+- **GIVEN** a trigger whose tags are X and Y
+- **WHEN** `buddy_set_trigger_tags` runs with `add` and tag Z
+- **THEN** the mutation sends tags X, Y, and Z, and X and Y remain on the
+  trigger
+
+#### Scenario: Remove keeps the untouched tags
+
+- **GIVEN** a trigger whose tags are X and Y
+- **WHEN** `buddy_set_trigger_tags` runs with `remove` and tag Y
+- **THEN** the mutation sends tag X only, and X remains on the trigger
+
+#### Scenario: Reject an unknown operation
+
+- **WHEN** `buddy_set_trigger_tags` is called with an operation other than
+  `add`, `remove`, or `replace`
+- **THEN** it is rejected before any read or mutation
+
+### Requirement: Trigger edits create a revertable patch and report a diff (#181)
+
+Every dedicated trigger edit SHALL route through a shared updateTrigger helper
+that reads the trigger's full state first, applies only the requested delta,
+sends `createPatch: true` on the mutation so the change is captured as a
+revertable trigger patch, then re-reads the trigger and returns a before/after
+diff of the changed fields. The diff SHALL cover activation-related fields (not
+only the field the caller changed), so a side effect the write did not request
+is surfaced rather than hidden.
+
+#### Scenario: Every edit sends createPatch true
+
+- **WHEN** any dedicated trigger edit tool runs its mutation
+- **THEN** the updateTrigger variables include `createPatch: true`
+
+#### Scenario: Report a before/after diff
+
+- **GIVEN** a trigger edit changes the tag set
+- **WHEN** the edit completes
+- **THEN** the result reports the tag ids before and after and any other field
+  that changed between the pre-write and post-write reads

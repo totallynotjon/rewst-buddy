@@ -21,6 +21,7 @@ import { TEMPLATE_MUTATE_CAPABILITIES } from './templateMutateCapabilities';
 import { TEMPLATE_SYNC_CAPABILITIES } from './templateSyncCapabilities';
 import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
 import { TRIGGER_MUTATE_CAPABILITIES } from './triggerMutateCapabilities';
+import { TRIGGER_TAG_CAPABILITIES } from './triggerTagCapabilities';
 import { WORKFLOW_CRUD_CAPABILITIES } from './workflowCrudCapabilities';
 import { workflowImpactCapability } from './workflowImpactCapability';
 import {
@@ -50,6 +51,7 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...TAG_MUTATE_CAPABILITIES,
 	...WORKFLOW_CRUD_CAPABILITIES,
 	...TRIGGER_MUTATE_CAPABILITIES,
+	...TRIGGER_TAG_CAPABILITIES,
 	...TEMPLATE_MUTATE_CAPABILITIES,
 	...TEMPLATE_SYNC_CAPABILITIES,
 	...TEMPLATE_LINK_CAPABILITIES,
