@@ -14,6 +14,7 @@ Source: `src/mcp/` (`McpServerController.ts`, `McpActions.ts`, `mcpServer.ts`,
 `instructions.ts`, `McpDefinitionProvider.ts`, `runtime.ts`, `settings.ts`, `throttle.ts`),
 `src/commands/mcp/`, `src/capabilities/*Capabilities.ts`,
 `src/capabilities/workflowImpactCapability.ts`,
+`src/capabilities/workflowLintCapability.ts`, `src/workflow/lint.ts`,
 `src/models/WorkingScopeManager.ts`, `src/ui/chat/tools/graphqlTool.ts`,
 `src/ui/chat/tools/workflowTools.ts`, `src/extension.ts`.
 
@@ -1357,3 +1358,132 @@ silently omitting levels. Per-node fetch errors SHALL degrade gracefully
 - **WHEN** `buddy_execution_logs` runs
 - **THEN** the error is appended as a note and the rest of the tree is still
   returned
+
+### Requirement: Guide safe retry-loop counters in lint findings (#180)
+
+When `buddy_workflow_lint` flags a task-level retry config
+(`task-retry-configured`), the finding message SHALL recommend a Jinja
+idiom for a manual retry-loop counter that defaults safely on first use,
+so authors do not need a separate task to initialize the counter before
+the loop starts.
+
+#### Scenario: Task-retry-configured finding recommends a self-defaulting counter
+
+- **GIVEN** a task has a non-null `retry` config
+- **WHEN** `buddy_workflow_lint` audits the workflow
+- **THEN** the `task-retry-configured` finding message includes a Jinja
+  default-then-cast pattern (`CTX.retry|d|int`) for tracking the retry
+  attempt count without a prior initialization task
+
+### Requirement: Read a trigger's activation-related fields (#181)
+
+The system SHALL provide `buddy_get_trigger`, a read tool that fetches one
+trigger by `orgId` and trigger id and surfaces the activation-related fields
+the trigger list omits: the resolved `tags` (and their ids), the resolved
+`activatedForOrgs`, `cloneOverrides`, `autoActivateManagedOrgs`, `description`,
+`criteria`, `parameters`, `state`, `formId`, `enabled`, `workflowId`, and
+`name`. Because the top-level `activatedForOrgIds` updateTrigger input is not
+exposed on the `Trigger` output type, the tool SHALL NOT fabricate it; it
+SHALL surface the resolved `activatedForOrgs` list instead and state in its
+output that the top-level `activatedForOrgIds` input is not independently
+readable. A trigger id that does not belong to the requested org SHALL be
+rejected with a "not in org" error.
+
+#### Scenario: Surface tags and resolved activation orgs
+
+- **GIVEN** a trigger with tags and resolved activation orgs
+- **WHEN** `buddy_get_trigger` is called with its org and id
+- **THEN** the result includes the tag ids and the resolved `activatedForOrgs`
+  list
+
+#### Scenario: Honest about the unreadable input field
+
+- **WHEN** `buddy_get_trigger` returns a trigger
+- **THEN** the result notes that the top-level `activatedForOrgIds` input is
+  not independently readable, and does not present a top-level
+  `activatedForOrgIds` value
+
+#### Scenario: Trigger belongs to a different org
+
+- **GIVEN** a trigger id that belongs to a different org the session manages
+- **WHEN** `buddy_get_trigger` is called with a mismatched `orgId`
+- **THEN** it is rejected with a "not in org" error
+
+### Requirement: Edit trigger tags without dropping existing tags (#181)
+
+The system SHALL provide `buddy_set_trigger_tags`, an approval-gated write tool
+with `add`, `remove`, and `replace` operations over a trigger's tag set (the
+`activatedForTagIds` input). Because the wire semantics of `activatedForTagIds`
+are full-replace, `add` and `remove` SHALL first read the trigger's current
+tags and send the merged result, so an edit never silently drops tags the
+caller did not name; the merge SHALL be computed from a fresh read taken after
+per-call approval, so a tag change made while the approval prompt was open is
+not overwritten. `replace` SHALL set the tag set to exactly the requested
+ids. Because `replace` can clear the whole tag set and approval scopes carry
+no operation component, every call SHALL prompt for approval anew — an
+approval granted for an earlier edit of the same trigger SHALL NOT be
+reused. An unknown operation SHALL be rejected, and an empty or non-string
+tag list SHALL be rejected, before any mutation.
+
+#### Scenario: Add preserves existing tags
+
+- **GIVEN** a trigger whose tags are X and Y
+- **WHEN** `buddy_set_trigger_tags` runs with `add` and tag Z
+- **THEN** the mutation sends tags X, Y, and Z, and X and Y remain on the
+  trigger
+
+#### Scenario: A tag change during approval is not dropped
+
+- **GIVEN** a trigger whose tags gain tag Z while the approval prompt is open
+- **WHEN** an `add` of tag Y is approved
+- **THEN** the mutation is merged against a fresh post-approval read and sends
+  tags X, Z, and Y — the concurrently added tag Z is preserved
+
+#### Scenario: Remove keeps the untouched tags
+
+- **GIVEN** a trigger whose tags are X and Y
+- **WHEN** `buddy_set_trigger_tags` runs with `remove` and tag Y
+- **THEN** the mutation sends tag X only, and X remains on the trigger
+
+#### Scenario: A prior approval is not reused by a later edit
+
+- **GIVEN** an approved `add` on a trigger
+- **WHEN** a later `replace` targets the same trigger and the user denies it
+- **THEN** the `replace` does not mutate and returns the approval-required
+  result — the earlier approval is not silently reused
+
+#### Scenario: Reject an unknown operation
+
+- **WHEN** `buddy_set_trigger_tags` is called with an operation other than
+  `add`, `remove`, or `replace`
+- **THEN** it is rejected before any read or mutation
+
+### Requirement: Trigger edits create a revertable patch and report a diff (#181)
+
+Every dedicated trigger edit SHALL route through a shared updateTrigger helper
+that reads the trigger's full state first, applies only the requested delta,
+sends `createPatch: true` on the mutation so the change is captured as a
+revertable trigger patch, then re-reads the trigger and returns a before/after
+diff of the changed fields. The diff SHALL cover activation-related fields (not
+only the field the caller changed), so a side effect the write did not request
+is surfaced rather than hidden.
+
+#### Scenario: Every edit sends createPatch true
+
+- **WHEN** any dedicated trigger edit tool runs its mutation
+- **THEN** the updateTrigger variables include `createPatch: true`
+
+#### Scenario: Report a before/after diff
+
+- **GIVEN** a trigger edit changes the tag set
+- **WHEN** the edit completes
+- **THEN** the result reports the tag ids before and after and any other field
+  that changed between the pre-write and post-write reads
+
+#### Scenario: Key order alone is not a change
+
+- **GIVEN** a raw object field (criteria, parameters, cloneOverrides) whose
+  keys the API returns in a different order after the write
+- **WHEN** the diff is computed
+- **THEN** the field is not reported as changed — only a genuine value change
+  appears in the diff

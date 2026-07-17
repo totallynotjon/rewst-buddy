@@ -160,7 +160,7 @@ export function lintWorkflow(workflow: RawWorkflow): LintFinding[] {
 				severity: 'warning',
 				taskId: task.id,
 				taskName: task.name,
-				message: `Task "${task.name}" (${task.id}) has a task-level retry config; the Rewst engine can fail to initialize such a task. Replace it with a loop: a sub-workflow wrapper with a delay task on the failure path.`,
+				message: `Task "${task.name}" (${task.id}) has a task-level retry config; the Rewst engine can fail to initialize such a task. Replace it with a loop: a sub-workflow wrapper with a delay task on the failure path. Track the attempt count with a CTX variable that defaults safely on first use, e.g. \`CTX.retry|d|int\` (an unset CTX.retry becomes '' via the bare \`d\` filter, then 0 via \`int\`) — no separate initialization task is needed. Increment it with \`CTX.retry|d|int + 1\` and gate the loop with a condition such as \`CTX.retry|d|int <= 3\`.`,
 			});
 		}
 
