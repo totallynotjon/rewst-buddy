@@ -24,7 +24,7 @@ const graphqlMutateSpec: ToolSpec = {
 	name: 'buddy_graphql_mutate',
 	args: '{"orgId": string, "query": string, "variables"?: object, "scopeId": string, "scopeName": string, "orgName"?: string}',
 	description:
-		"Run an arbitrary GraphQL mutation against one Rewst organization with the user's session. The dangerous GraphQL mutation setting must be enabled. The request includes the mutation document, optional variables, and the Rewst resource scope that VS Code uses for approval. For editing a trigger's tags, prefer the dedicated buddy_set_trigger_tags tool, which reads the current tags first and merges the change so existing tags are not dropped; for a trigger's org activation or autoActivateManagedOrgs, prefer buddy_set_trigger_activation, which full-replaces the explicit org activation with the exact set given (the input is not readable, so it cannot merge).",
+		"Run an arbitrary GraphQL mutation against one Rewst organization with the user's session. The dangerous GraphQL mutation setting must be enabled. The request includes the mutation document, optional variables, and the Rewst resource scope that VS Code uses for approval. For editing a trigger's tags, prefer the dedicated buddy_set_trigger_tags tool, which reads the current tags first and merges the change so existing tags are not dropped; for a trigger's org activation or autoActivateManagedOrgs, prefer buddy_set_trigger_activation, which full-replaces the explicit org activation with the exact set given (the current explicit activation set is not readable, so it cannot merge).",
 	inputSchema: {
 		type: 'object',
 		properties: {

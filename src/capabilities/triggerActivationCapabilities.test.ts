@@ -375,6 +375,19 @@ suite('Unit: triggerActivationCapabilities', () => {
 			);
 		});
 
+		test('rejects a non-array orgIds value', async () => {
+			const { ctx } = makeCtx({ read: readResult() });
+			setMcpMutationApprover(async () => true);
+			await assert.rejects(
+				() =>
+					cap('buddy_set_trigger_activation').run(
+						{ orgId: 'org-sandbox', triggerId: 't1', orgIds: 'orgZ' as unknown as string[] },
+						ctx,
+					),
+				/orgIds must be an array of org id strings/,
+			);
+		});
+
 		test('rejects a call that changes nothing', async () => {
 			const { ctx, calls } = makeCtx({ read: readResult() });
 			setMcpMutationApprover(async () => true);
