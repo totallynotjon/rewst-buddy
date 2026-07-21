@@ -10,6 +10,7 @@
 		"MD010": false, // hard tabs — the repo indents with tabs
 		"MD041": false, // first-line heading — changelog.d notes start with YAML frontmatter
 		"MD007": false, // unordered list indentation style
+		"MD024": { "siblings_only": true }, // repeated ### Added/Changed/Fixed across CHANGELOG releases is the keep-a-changelog format
 		"MD036": false, // emphasis used as a pseudo-heading (we do this deliberately)
 		"MD038": false // spaces inside code spans (intentional in a few examples)
 	}
