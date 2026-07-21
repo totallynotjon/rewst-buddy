@@ -1458,6 +1458,64 @@ tag list SHALL be rejected, before any mutation.
   `add`, `remove`, or `replace`
 - **THEN** it is rejected before any read or mutation
 
+### Requirement: Set trigger org activation without echoing the resolved set (#181)
+
+The system SHALL provide `buddy_set_trigger_activation`, an approval-gated write
+tool that sets which orgs a trigger is explicitly activated for (the top-level
+`activatedForOrgIds` input) and/or the trigger's `autoActivateManagedOrgs`
+setting. Because the top-level `activatedForOrgIds` input is full-replace and is
+not exposed on the `Trigger` output type — the readable `activatedForOrgs` is
+the resolved union (explicit, tag-, auto-, and clone-activated orgs), not the
+explicit set — the tool SHALL NOT read `activatedForOrgs` and echo it back as
+`activatedForOrgIds`, which would silently pin dynamically-activated orgs as
+explicit ones. Instead the org edit is full-replace: the tool SHALL overwrite
+the explicit activation with exactly the `orgIds` supplied (an empty list
+deactivates the trigger for all orgs) and SHALL NOT offer add/remove against the
+current set. The tool SHALL send only the fields it changes, so `cloneOverrides`
+(including its own `cloneOverrides.activatedForOrgIds`, which is distinct from
+top-level activation), `parameters`, `criteria`, and `tags` survive an
+activation edit untouched. A call that sets neither `orgIds` nor
+`autoActivateManagedOrgs` SHALL be rejected. Because a full-replace can clear all
+activation and approval scopes carry no operation component, every call SHALL
+prompt for approval anew — an approval granted for an earlier edit of the same
+trigger SHALL NOT be reused. The tool SHALL NOT edit tags (that is
+`buddy_set_trigger_tags`) and SHALL route through the shared updateTrigger helper
+so the edit is a revertable patch reported with a before/after diff.
+
+#### Scenario: Overwrite with exactly the requested orgs
+
+- **GIVEN** a trigger whose resolved `activatedForOrgs` is org A
+- **WHEN** `buddy_set_trigger_activation` runs with `orgIds` of org Z
+- **THEN** the mutation sends `activatedForOrgIds` of exactly org Z — org A is
+  not merged back in
+
+#### Scenario: An empty list clears activation
+
+- **GIVEN** a trigger activated for org A
+- **WHEN** `buddy_set_trigger_activation` runs with an empty `orgIds` list
+- **THEN** the mutation sends an empty `activatedForOrgIds` and the trigger is
+  deactivated for all orgs
+
+#### Scenario: cloneOverrides is left untouched
+
+- **GIVEN** a trigger with a `cloneOverrides.activatedForOrgIds` value
+- **WHEN** an org activation edit runs
+- **THEN** the updateTrigger input does not include `cloneOverrides`, so the
+  stored clone overrides survive the merge update
+
+#### Scenario: Set autoActivateManagedOrgs alone
+
+- **WHEN** `buddy_set_trigger_activation` runs with only
+  `autoActivateManagedOrgs` (including the value `false`) and no `orgIds`
+- **THEN** the mutation sends only `autoActivateManagedOrgs` (and
+  `createPatch: true`) and reports its before/after value
+
+#### Scenario: Reject a call that changes nothing
+
+- **WHEN** `buddy_set_trigger_activation` is called with neither `orgIds` nor
+  `autoActivateManagedOrgs`
+- **THEN** it is rejected before any read or mutation
+
 ### Requirement: Trigger edits create a revertable patch and report a diff (#181)
 
 Every dedicated trigger edit SHALL route through a shared updateTrigger helper

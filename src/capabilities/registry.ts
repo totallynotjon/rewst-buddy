@@ -19,6 +19,7 @@ import { TEMPLATE_CLONE_CAPABILITIES } from './templateCloneCapabilities';
 import { TEMPLATE_LINK_CAPABILITIES } from './templateLinkCapabilities';
 import { TEMPLATE_MUTATE_CAPABILITIES } from './templateMutateCapabilities';
 import { TEMPLATE_SYNC_CAPABILITIES } from './templateSyncCapabilities';
+import { TRIGGER_ACTIVATION_CAPABILITIES } from './triggerActivationCapabilities';
 import { TRIGGER_FORM_CAPABILITIES } from './triggerFormCapabilities';
 import { TRIGGER_MUTATE_CAPABILITIES } from './triggerMutateCapabilities';
 import { TRIGGER_TAG_CAPABILITIES } from './triggerTagCapabilities';
@@ -52,6 +53,7 @@ export const CAPABILITY_REGISTRY: Capability[] = [
 	...WORKFLOW_CRUD_CAPABILITIES,
 	...TRIGGER_MUTATE_CAPABILITIES,
 	...TRIGGER_TAG_CAPABILITIES,
+	...TRIGGER_ACTIVATION_CAPABILITIES,
 	...TEMPLATE_MUTATE_CAPABILITIES,
 	...TEMPLATE_SYNC_CAPABILITIES,
 	...TEMPLATE_LINK_CAPABILITIES,

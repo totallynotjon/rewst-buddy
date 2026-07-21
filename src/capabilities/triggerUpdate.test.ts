@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { suite, test } from '../test/tdd';
-import { diffTriggerStates, type TriggerState } from './triggerUpdate';
+import { diffTriggerStates, mergeIdSet, type TriggerState } from './triggerUpdate';
 
 function state(overrides: Partial<TriggerState> = {}): TriggerState {
 	return {
@@ -75,5 +75,31 @@ suite('Unit: diffTriggerStates', () => {
 			],
 		});
 		assert.deepStrictEqual(diffTriggerStates(before, after), {});
+	});
+});
+
+suite('Unit: mergeIdSet', () => {
+	test('add appends new ids and dedupes', () => {
+		assert.deepStrictEqual(mergeIdSet('add', ['a', 'b'], ['b', 'c']), ['a', 'b', 'c']);
+	});
+
+	test('add is idempotent for ids already present', () => {
+		assert.deepStrictEqual(mergeIdSet('add', ['a', 'b'], ['a']), ['a', 'b']);
+	});
+
+	test('remove drops the requested ids and keeps order of the rest', () => {
+		assert.deepStrictEqual(mergeIdSet('remove', ['a', 'b', 'c'], ['b']), ['a', 'c']);
+	});
+
+	test('remove of an absent id is a no-op', () => {
+		assert.deepStrictEqual(mergeIdSet('remove', ['a', 'b'], ['z']), ['a', 'b']);
+	});
+
+	test('replace sets exactly the requested ids, deduped', () => {
+		assert.deepStrictEqual(mergeIdSet('replace', ['a', 'b'], ['c', 'c', 'd']), ['c', 'd']);
+	});
+
+	test('replace with an empty list clears the set', () => {
+		assert.deepStrictEqual(mergeIdSet('replace', ['a', 'b'], []), []);
 	});
 });
