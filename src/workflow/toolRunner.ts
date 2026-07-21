@@ -47,7 +47,14 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 		case WORKFLOW_AUTOLAYOUT_TOOL_NAME: {
 			const { workflowId, orgId } = requireScopeFields(WORKFLOW_AUTOLAYOUT_TOOL_NAME, request.args);
 			const comment = asStringArg(request.args, 'comment') ?? 'Auto-laid out by Cage-Free Rewsty';
-			return applyWorkflowMutation(bound, workflowId, orgId, [{ op: 'autolayout' }], comment);
+			const section = asStringArg(request.args, 'section');
+			return applyWorkflowMutation(
+				bound,
+				workflowId,
+				orgId,
+				[section ? { op: 'autolayout', section } : { op: 'autolayout' }],
+				comment,
+			);
 		}
 		case WORKFLOW_RUN_TOOL_NAME:
 			return runWorkflowRun(request, bound);

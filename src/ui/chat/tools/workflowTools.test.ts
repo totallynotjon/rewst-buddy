@@ -1527,6 +1527,90 @@ suite('Unit: workflowTools', () => {
 		});
 	});
 
+	suite('section autolayout (#188)', () => {
+		const noop = (id: string, dos: string[][] = [], p?: { x: number; y: number }) => ({
+			id,
+			name: id,
+			actionId: 'noop-id',
+			action: { ref: 'core.noop' },
+			input: {},
+			metadata: p ? { ...p } : {},
+			next: dos.map(d => ({ when: '{{ SUCCEEDED }}', label: '', do: d, publish: [] })),
+		});
+
+		test('the autolayout operation accepts a section anchor and leaves the rest in place', () => {
+			const tasks = [
+				noop('s', [['a']], { x: 0, y: 0 }),
+				noop('a', [['b']], { x: 0, y: 168 }),
+				noop('b', [['c'], ['d']], { x: 0, y: 336 }),
+				noop('c', [['e']], { x: 0, y: 504 }),
+				noop('d', [['e']], { x: 500, y: 504 }),
+				noop('e', [['f']], { x: 0, y: 672 }),
+				noop('f', [], { x: 0, y: 840 }),
+			];
+			const { tasks: out, applied } = applyOperations(
+				tasks as never,
+				[{ op: 'autolayout', section: 'b' }],
+				NO_ACTIONS,
+			);
+			assert.match(applied[0], /autolayout section/);
+			assert.ok(
+				!applied.some(entry => entry.includes('automatic after structural edits')),
+				'a section autolayout counts as explicit positioning',
+			);
+			const get = (id: string) => out.find(t => t.id === id)!.metadata as { x: number; y: number };
+			assert.deepStrictEqual(get('s'), { x: 0, y: 0 }, 'upstream task untouched');
+			assert.deepStrictEqual(get('a'), { x: 0, y: 168 }, 'upstream task untouched');
+			assert.strictEqual(get('c').y, get('d').y, 'the diamond arms share a recomputed row');
+		});
+
+		test('an over-long transition line adds a reorganization note to the applied list', () => {
+			const tasks = [
+				noop('start', [['n1'], ['n6']]),
+				noop('n1', [['n2']]),
+				noop('n2', [['n3']]),
+				noop('n3', [['n4']]),
+				noop('n4', [['n5']]),
+				noop('n5', [['n6']]),
+				noop('n6'),
+			];
+			const { applied } = applyOperations(tasks as never, [{ op: 'autolayout' }], NO_ACTIONS);
+			const note = applied.find(entry => entry.includes('transition line'));
+			assert.ok(note, 'a long-line note is present');
+			assert.match(note!, /start -> n6/);
+			assert.match(note!, /section/);
+		});
+
+		test('a short flow gets no long-line note', () => {
+			const { applied } = applyOperations(sampleTasks() as never, [{ op: 'autolayout' }], NO_ACTIONS);
+			assert.ok(!applied.some(entry => entry.includes('transition line')));
+		});
+
+		test('buddy_workflow_autolayout spec and edit grammar document the section option', () => {
+			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_AUTOLAYOUT_TOOL_NAME)!;
+			assert.match(spec.description, /section/);
+			assert.match(spec.description, /single-entry\/single-exit/);
+			const schema = spec.inputSchema as { properties: Record<string, unknown>; required?: string[] };
+			assert.ok('section' in schema.properties, 'inputSchema advertises section');
+			assert.ok(!schema.required?.includes('section'), 'section stays optional');
+			assert.match(workflowEditOperationGrammar(), /autolayout \{section\?\}/);
+		});
+
+		test('autolayout confirmation names the section when one is given', () => {
+			const args = {
+				workflowId: 'wf-1',
+				workflowName: 'WF',
+				orgId: 'org-1',
+				orgName: 'Acme',
+				section: 'END',
+			};
+			const confirmation = workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, args);
+			assert.ok(confirmation, 'unapproved scope prompts');
+			assert.match(confirmation!.message, /section/i);
+			assert.match(confirmation!.message, /END/);
+		});
+	});
+
 	suite('workflowEditScope()', () => {
 		test('returns the scope when all four fields are present', () => {
 			const scope = workflowEditScope(WORKFLOW_EDIT_TOOL_NAME, {
@@ -2795,6 +2879,28 @@ suite('Unit: workflowTools', () => {
 			);
 			assert.match(output, /autolayout/);
 			assert.match(output, /2000/);
+			assert.ok(
+				calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')),
+				'it saved',
+			);
+		});
+
+		test('buddy_workflow_autolayout forwards a section anchor', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						section: 'end',
+					},
+				},
+				deps,
+			);
+			assert.match(output, /autolayout section/);
 			assert.ok(
 				calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')),
 				'it saved',

@@ -1223,6 +1223,82 @@ positions changed.
 - **WHEN** `buddy_workflow_edit` saves the batch
 - **THEN** only `layoutNewTasks` runs and no auto-layout entry appears
 
+### Requirement: Section-scoped auto-layout (#188)
+
+The system SHALL support re-arranging only a section of a workflow canvas: the
+`autolayout` operation SHALL accept an optional `section` (a task name/id or an
+array of them) and the `buddy_workflow_autolayout` tool SHALL accept an
+optional `section` input (a single task name/id) that forwards to it. The
+section is the smallest single-entry/single-exit chunk of the graph containing
+the named task(s) — a set of tasks crossed by at most one inbound and one
+outbound transition, where the inbound transition lands on the chunk's entry
+task and the outbound transition leaves from its exit task; loop back-edges
+count as ordinary lines when counting crossings. The chunk SHALL be re-laid
+out in isolation anchored at its previous top-left corner, and tasks outside
+the chunk SHALL NOT be re-arranged — they only shift to absorb the chunk's
+size change (tasks below the old chunk move by the height delta; tasks to its
+right within its rows move by the width delta), enabling targeted,
+divide-and-conquer tidying of large workflows. A section `autolayout` counts
+as explicit positioning, so it SHALL suppress the automatic post-structural
+full layout. When the smallest valid chunk is the entire workflow, a full
+auto-layout SHALL run and the applied entry SHALL say the section spans the
+whole workflow. Anchor tasks that cannot be isolated into such a chunk
+(disconnected flows) SHALL be rejected with an error that names full
+autolayout as the fallback.
+
+#### Scenario: Section autolayout around a branch task
+
+- **GIVEN** a chain whose middle contains a diamond (one task fanning out to
+  two arms that rejoin), with every task already positioned
+- **WHEN** `buddy_workflow_edit` applies `{op: "autolayout", section: "<the
+fan-out task>"}`
+- **THEN** only the diamond chunk's positions are recomputed, tasks upstream
+  of the chunk keep their exact positions, and the applied list includes an
+  `autolayout section` entry naming the chunk's entry and exit
+
+#### Scenario: Surroundings shift by the section's size delta
+
+- **GIVEN** a section whose re-layout grows it by two rank rows
+- **WHEN** the section autolayout is applied
+- **THEN** every task below the section's old bottom edge moves down by
+  exactly the height delta and tasks beside it within its rows move by the
+  width delta
+
+#### Scenario: Smallest section is the whole workflow
+
+- **GIVEN** an anchor task with two inbound and two outbound transitions in a
+  graph where no smaller single-entry/single-exit chunk contains it
+- **WHEN** the section autolayout is applied
+- **THEN** a full auto-layout runs and the applied entry says the section
+  spans the whole workflow
+
+### Requirement: Over-long transition lines are flagged (#188)
+
+After any `buddy_workflow_edit` batch that changed positions (a structural
+edit or explicit positioning), the system SHALL measure each transition's
+drawn line center-to-center and, when any line exceeds the readable limit
+(1000 canvas pixels), append a note to the `applied` list counting the
+over-long lines, naming the longest offenders with their approximate lengths,
+and recommending a section autolayout or restructuring into sub-workflows.
+Content-only batches SHALL NOT add the note. The auto-layout ranking SHALL
+also include a tightening pass that pulls a task down toward its children
+when that strictly shortens the total line length (e.g. a side root feeding a
+deep join no longer hangs at the top of the canvas).
+
+#### Scenario: A rank-skipping transition draws a long line
+
+- **GIVEN** a seven-task chain whose first task also transitions directly to
+  the last task
+- **WHEN** an `autolayout` operation is applied
+- **THEN** the applied list includes a note naming that transition and its
+  approximate length and suggesting a section autolayout
+
+#### Scenario: Short flows stay quiet
+
+- **GIVEN** a two-task workflow
+- **WHEN** an `autolayout` operation is applied
+- **THEN** no long-line note appears in the applied list
+
 ### Requirement: List recently edited workflows (#155)
 
 The system SHALL provide a `buddy_recent_workflow_edits` tool that lists one

@@ -186,7 +186,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	{
 		name: WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 		description:
-			'Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Graph-structure edits re-run this layout automatically; call this tool to tidy a workflow without making another change. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use buddy_workflow_edit with a reposition operation instead.',
+			'Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Graph-structure edits re-run this layout automatically; call this tool to tidy a workflow without making another change. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. Pass section (a task name or id) to re-arrange ONLY part of the canvas: the smallest single-entry/single-exit chunk of the flow containing that task is laid out in place and the surrounding tasks shift to absorb the size change, so the rest of the canvas keeps its arrangement — repeat with different sections for targeted, divide-and-conquer tidying of a large workflow. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use buddy_workflow_edit with a reposition operation instead.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -194,6 +194,11 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 				workflowName: { type: 'string', description: 'The workflow name, shown in the approval prompt.' },
 				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
 				orgName: { type: 'string', description: 'The org name, shown in the approval prompt.' },
+				section: {
+					type: 'string',
+					description:
+						'Optional task name or id: re-arrange only the smallest single-entry/single-exit chunk containing this task, shifting the surrounding tasks to fit instead of moving them all.',
+				},
 				comment: { type: 'string', description: 'Optional patch comment describing the change.' },
 			},
 			required: ['workflowId', 'workflowName', 'orgId', 'orgName'],
@@ -275,7 +280,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 				includeSubExecutions: {
 					type: 'boolean',
 					description:
-						"Also inline the full task logs of the first few sub-workflow executions this run spawned (default false). Combine with depth > 1 to inline task logs at every nested level, not just the first — each level still caps at the first few sub-executions and the whole walk shares one fetch budget.",
+						'Also inline the full task logs of the first few sub-workflow executions this run spawned (default false). Combine with depth > 1 to inline task logs at every nested level, not just the first — each level still caps at the first few sub-executions and the whole walk shares one fetch budget.',
 				},
 				depth: {
 					type: 'number',
@@ -303,7 +308,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 			'pass orgId to route directly. For the full task-by-task list of the top-level execution instead ' +
 			'of just its failing task, use buddy_execution_logs. ' +
 			'Pass depth (default 3, max 5) to control how many nested failing executions are diagnosed inline: ' +
-			"the top-level section stays narrowed to the single failing task, but each auto-drilled nested " +
+			'the top-level section stays narrowed to the single failing task, but each auto-drilled nested ' +
 			"level shows that sub-execution's complete task log (not just its failing task), so a preceding " +
 			'or sibling task can explain the failure. Failures while drilling degrade to a note rather than failing the call.',
 		inputSchema: {

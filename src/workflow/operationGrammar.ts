@@ -91,6 +91,7 @@ export function workflowEditOperationGrammar(): string {
 		'disconnect {from, to?|transitionId?}',
 		'set_transition {from, to?|transitionId?, set:{when?, label? (required when the condition is custom), publish?, to?}}',
 		'reposition {task, x, y} (move a task to canvas coordinates)',
+		'autolayout {section?} (recompute task positions; with section — a task name/id or array of them — only the smallest single-entry/single-exit chunk containing those tasks is re-arranged and the surrounding tasks shift to fit)',
 		'mocking: set isMocked:true and mockInput: {"mock_result": {...}}; every leaf value under mock_result must be a string/Jinja expression (use "{{ 42 }}" for numbers, "{{ true }}" for booleans, "{{- [{\'a\': 1}] -}}" for arrays/objects); mocked tasks skip their action and return the rendered mock_result',
 		'set_inputs {inputs: [{name, type?, title?, default?, description?, required?, multiline?}]} (replace the workflow\'s run/call inputs; an input default is a Jinja expression like "{{ false }}" or "{{ CTX.x }}" — raw booleans/numbers are wrapped for you)',
 		'set_output {outputs: {name: "<jinja>"} object or [{name, value}] array} (replace the workflow\'s caller-visible outputs; raw booleans/numbers are wrapped for you)',

@@ -105,7 +105,10 @@ export function workflowEditConfirmation(name: string, input: unknown): Workflow
 	const args = asObject(input);
 	let message: string;
 	if (name === 'buddy_workflow_autolayout') {
-		message = `Auto-layout "${scope.scopeName}" — re-arranges every task into a clean top-down layout.`;
+		const section = str(args.section);
+		message = section
+			? `Auto-layout a section of "${scope.scopeName}" around "${section}" — re-arranges only that single-entry/single-exit chunk and shifts the surrounding tasks to fit.`
+			: `Auto-layout "${scope.scopeName}" — re-arranges every task into a clean top-down layout.`;
 	} else if (name === 'buddy_workflow_run') {
 		message = `Run workflow "${scope.scopeName}" — executes the workflow's automation.`;
 	} else {

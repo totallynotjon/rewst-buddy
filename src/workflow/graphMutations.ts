@@ -10,7 +10,14 @@
 import { randomUUID } from 'crypto';
 import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asStringArg } from '../ui/chat/tools/toolProtocol';
-import { autoLayout, layoutNewTasks, setPosition } from './layout';
+import {
+	MAX_TRANSITION_LENGTH,
+	autoLayout,
+	findLongEdges,
+	layoutNewTasks,
+	layoutSectionContaining,
+	setPosition,
+} from './layout';
 import { ADD_TASK_FIELDS, PACK_OVERRIDE_FIELDS, UPDATE_TASK_SET_FIELDS } from './operationGrammar';
 import {
 	type ExecResult,
@@ -714,9 +721,33 @@ export function applyOperations(
 				break;
 			}
 			case 'autolayout': {
-				autoLayout(next);
+				const rawSection = operation.section;
+				if (rawSection != null) {
+					const refs = (Array.isArray(rawSection) ? rawSection : [rawSection]).map(ref => str(ref));
+					if (refs.length === 0 || refs.some(ref => !ref)) {
+						throw new Error('autolayout "section" must be a task name/id or an array of task names/ids.');
+					}
+					const anchors = refs.map(ref => resolveTask(next, ref!));
+					const result = layoutSectionContaining(
+						next,
+						anchors.map(anchor => anchor.id),
+					);
+					const nameOf = (id?: string) =>
+						id === undefined ? undefined : (next.find(t => t.id === id)?.name ?? id);
+					applied.push(
+						result.wholeGraph
+							? `autolayout (the smallest single-entry/single-exit section around ${anchors
+									.map(a => a.name)
+									.join(', ')} spans the whole workflow; ${next.length} node(s) re-arranged)`
+							: `autolayout section (${result.memberIds.length} node(s) from ${
+									nameOf(result.entryId) ?? 'the start'
+								} to ${nameOf(result.exitId) ?? 'the end'}; ${result.shifted} surrounding node(s) shifted to fit)`,
+					);
+				} else {
+					autoLayout(next);
+					applied.push(`autolayout (${next.length} node(s) re-arranged)`);
+				}
 				explicitPositioning = true;
-				applied.push(`autolayout (${next.length} node(s) re-arranged)`);
 				break;
 			}
 			case 'set_inputs': {
@@ -794,6 +825,19 @@ export function applyOperations(
 		applied.push('autolayout (automatic after structural edits)');
 	} else {
 		layoutNewTasks(next);
+	}
+	if (structural || explicitPositioning) {
+		const longEdges = findLongEdges(next);
+		if (longEdges.length) {
+			const preview = longEdges
+				.slice(0, 3)
+				.map(edge => `${edge.from} -> ${edge.to} ~${edge.length}px`)
+				.join(', ');
+			applied.push(
+				`note: ${longEdges.length} transition line(s) exceed ${MAX_TRANSITION_LENGTH}px (${preview}); ` +
+					'tighten the layout with a section autolayout ({op:"autolayout", section:"<task>"}) or restructure the flow into sub-workflows',
+			);
+		}
 	}
 	return { tasks: next, applied, workflow, verifyFields };
 }

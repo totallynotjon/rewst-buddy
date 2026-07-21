@@ -197,6 +197,20 @@ export function autoLayout(tasks: RawTask[]): void {
 
 	// 3. Rank the main flow, then apply the loop exception to its back-edges.
 	const rank = mainSet.size ? computeRanks(mainSet) : new Map<string, number>();
+
+	// 3b. Tighten: pull a task down toward its children when that strictly
+	// shortens total line length (strictly more child lines shrink than parent
+	// lines grow), so a side root doesn't hang at the top of the canvas with
+	// one long line to a deep join (#188).
+	for (const id of mainIds.slice().sort((a, b) => rank.get(b)! - rank.get(a)!)) {
+		const kids = forwardChildren(id).filter(v => mainSet.has(v));
+		if (kids.length === 0) continue;
+		const parents = forwardParents.get(id)!.filter(p => mainSet.has(p));
+		if (parents.length > 0 && parents.length >= kids.length) continue;
+		const minChild = Math.min(...kids.map(k => rank.get(k)!));
+		if (minChild - rank.get(id)! > 1) rank.set(id, minChild - 1);
+	}
+
 	for (const key of backEdges) {
 		const [u, v] = key.split(' ');
 		if (mainSet.has(u) && mainSet.has(v)) rank.set(u, rank.get(v)!);
@@ -284,4 +298,289 @@ export function autoLayout(tasks: RawTask[]): void {
 			prevBottom = y + NODE_HEIGHT;
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Section detection (#188): the smallest single-entry/single-exit chunk of the
+// graph containing a set of anchor tasks, found with iterative dominator /
+// post-dominator sets (the classic SESE-region characterization: a node is in
+// the region when the entry dominates it and the exit post-dominates it),
+// then verified directly by counting boundary-crossing transitions.
+// ---------------------------------------------------------------------------
+
+export interface SectionInfo {
+	/** Section member task ids, in task-array order. */
+	memberIds: string[];
+	/** The member receiving the single inbound line (undefined for a root). */
+	entryId?: string;
+	/** The member emitting the single outbound line (undefined for a terminal). */
+	exitId?: string;
+	/** True when no chunk smaller than the whole workflow isolates the anchors. */
+	wholeGraph: boolean;
+}
+
+/**
+ * Dominator sets by iterative fixed point, restricted to nodes reachable from
+ * `root`. dom[v] is a boolean array over node indexes; unreachable nodes get
+ * an empty set so they never qualify as candidates or members.
+ */
+function computeDominators(succ: number[][], root: number, total: number): boolean[][] {
+	const pred: number[][] = Array.from({ length: total }, () => []);
+	for (let u = 0; u < total; u++) for (const v of succ[u]) pred[v].push(u);
+	const reachable = new Set<number>([root]);
+	const queue = [root];
+	while (queue.length) {
+		const u = queue.pop()!;
+		for (const v of succ[u]) {
+			if (!reachable.has(v)) {
+				reachable.add(v);
+				queue.push(v);
+			}
+		}
+	}
+	const dom: boolean[][] = Array.from({ length: total }, (_, v) => Array(total).fill(reachable.has(v) && v !== root));
+	dom[root] = Array(total).fill(false);
+	dom[root][root] = true;
+	for (const v of reachable) if (v !== root) dom[v][v] = true;
+	let changed = true;
+	while (changed) {
+		changed = false;
+		for (const v of reachable) {
+			if (v === root) continue;
+			const preds = pred[v].filter(p => reachable.has(p));
+			for (let i = 0; i < total; i++) {
+				if (i === v || !dom[v][i]) continue;
+				if (!preds.every(p => dom[p][i])) {
+					dom[v][i] = false;
+					changed = true;
+				}
+			}
+		}
+	}
+	for (let v = 0; v < total; v++) if (!reachable.has(v)) dom[v] = Array(total).fill(false);
+	return dom;
+}
+
+/**
+ * Finds the smallest section (single inbound transition, single outbound
+ * transition, counting loop back-edges as ordinary lines) containing every
+ * anchor task. Falls back to the whole graph when nothing smaller closes, and
+ * throws when the anchors cannot be isolated at all (disconnected flows).
+ */
+export function findSection(tasks: RawTask[], anchorIds: string[]): SectionInfo {
+	if (tasks.length === 0) throw new Error('findSection: the workflow has no tasks.');
+	const index = new Map(tasks.map((t, i) => [t.id, i]));
+	for (const anchor of anchorIds) {
+		if (!index.has(anchor)) throw new Error(`findSection: no task with id "${anchor}".`);
+	}
+	const n = tasks.length;
+	const SOURCE = n;
+	const SINK = n + 1;
+	const total = n + 2;
+
+	const succ: number[][] = Array.from({ length: total }, () => []);
+	const edges: [number, number][] = [];
+	for (const task of tasks) {
+		const u = index.get(task.id)!;
+		for (const transition of task.next ?? []) {
+			for (const target of transition.do ?? []) {
+				const v = index.get(target);
+				if (v !== undefined) {
+					succ[u].push(v);
+					edges.push([u, v]);
+				}
+			}
+		}
+	}
+	const indegree = Array<number>(n).fill(0);
+	for (const [, v] of edges) indegree[v]++;
+	const roots = tasks.map((_, i) => i).filter(i => indegree[i] === 0);
+	for (const r of roots.length ? roots : [0]) succ[SOURCE].push(r);
+	const terminals = tasks.map((_, i) => i).filter(i => succ[i].length === 0);
+	for (const t of terminals.length ? terminals : [n - 1]) succ[t].push(SINK);
+
+	const reversed: number[][] = Array.from({ length: total }, () => []);
+	for (let u = 0; u < total; u++) for (const v of succ[u]) reversed[v].push(u);
+
+	const dom = computeDominators(succ, SOURCE, total);
+	const pdom = computeDominators(reversed, SINK, total);
+
+	const anchorIdx = anchorIds.map(a => index.get(a)!);
+	const candidateEntries: number[] = [];
+	const candidateExits: number[] = [];
+	for (let i = 0; i < total; i++) {
+		if (anchorIdx.every(a => dom[a][i])) candidateEntries.push(i);
+		if (anchorIdx.every(a => pdom[a][i])) candidateExits.push(i);
+	}
+
+	let best: Set<number> | undefined;
+	let bestBoundary: { entry?: number; exit?: number } = {};
+	for (const d of candidateEntries) {
+		for (const p of candidateExits) {
+			const members = new Set<number>();
+			for (let v = 0; v < n; v++) if (dom[v][d] && pdom[v][p]) members.add(v);
+			if (members.size === 0 || (best && members.size >= best.size)) continue;
+			let entry: number | undefined;
+			let exit: number | undefined;
+			let inbound = 0;
+			let outbound = 0;
+			for (const [u, v] of edges) {
+				if (!members.has(u) && members.has(v)) {
+					inbound++;
+					entry = v;
+				} else if (members.has(u) && !members.has(v)) {
+					outbound++;
+					exit = u;
+				}
+			}
+			if (inbound > 1 || outbound > 1) continue;
+			// The inbound line must land on the dominator candidate itself and
+			// the outbound line must leave from the post-dominator candidate —
+			// otherwise a back-edge into the middle of the set would masquerade
+			// as the entry (the set is not a canonical single-entry/single-exit
+			// region even though only two lines cross it).
+			if (inbound === 1 && entry !== d) continue;
+			if (outbound === 1 && exit !== p) continue;
+			best = members;
+			bestBoundary = { entry: inbound === 1 ? entry : undefined, exit: outbound === 1 ? exit : undefined };
+		}
+	}
+	if (!best) {
+		throw new Error(
+			'findSection: the anchor task(s) cannot be isolated into a single-entry/single-exit chunk — ' +
+				'the flow around them is disconnected from the main graph. Run a full autolayout instead.',
+		);
+	}
+	const chosen = best;
+	return {
+		memberIds: tasks.filter((_, i) => chosen.has(i)).map(t => t.id),
+		entryId: bestBoundary.entry !== undefined ? tasks[bestBoundary.entry].id : undefined,
+		exitId: bestBoundary.exit !== undefined ? tasks[bestBoundary.exit].id : undefined,
+		wholeGraph: chosen.size === tasks.length,
+	};
+}
+
+export interface SectionLayoutResult extends SectionInfo {
+	/** How many tasks outside the section were shifted to absorb the size change. */
+	shifted: number;
+}
+
+interface BBox {
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+}
+
+function membersBBox(members: RawTask[]): BBox | undefined {
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxRight = -Infinity;
+	let maxBottom = -Infinity;
+	for (const task of members) {
+		const position = positionOf(task);
+		if (!position) continue;
+		minX = Math.min(minX, position.x);
+		minY = Math.min(minY, position.y);
+		maxRight = Math.max(maxRight, position.x + nodeWidth(task));
+		maxBottom = Math.max(maxBottom, position.y + NODE_HEIGHT);
+	}
+	if (!Number.isFinite(minX)) return undefined;
+	return { x: minX, y: minY, w: maxRight - minX, h: maxBottom - minY };
+}
+
+/**
+ * Section-scoped auto-layout (#188): finds the smallest single-entry/
+ * single-exit chunk containing the anchors, re-lays out only that chunk in
+ * place (anchored at its old top-left corner), and band-shifts the untouched
+ * surroundings by the chunk's size delta — tasks below the old chunk move
+ * down/up by the height change, tasks to its right within its rows move by
+ * the width change. When the smallest chunk is the whole workflow this
+ * degrades to a full autoLayout.
+ */
+export function layoutSectionContaining(tasks: RawTask[], anchorIds: string[]): SectionLayoutResult {
+	const section = findSection(tasks, anchorIds);
+	if (section.wholeGraph) {
+		autoLayout(tasks);
+		return { ...section, shifted: 0 };
+	}
+	const memberSet = new Set(section.memberIds);
+	const members = tasks.filter(t => memberSet.has(t.id));
+	const old = membersBBox(members);
+	autoLayout(members);
+	const fresh = membersBBox(members)!;
+	if (!old) return { ...section, shifted: 0 };
+
+	// Anchor the re-laid-out chunk at its old top-left corner.
+	const shiftX = old.x - fresh.x;
+	const shiftY = old.y - fresh.y;
+	for (const member of members) {
+		const position = positionOf(member)!;
+		setPosition(member, position.x + shiftX, position.y + shiftY);
+	}
+
+	const heightDelta = fresh.h - old.h;
+	const widthDelta = fresh.w - old.w;
+	let shifted = 0;
+	for (const task of tasks) {
+		if (memberSet.has(task.id)) continue;
+		const position = positionOf(task);
+		if (!position) continue;
+		if (heightDelta !== 0 && position.y >= old.y + old.h) {
+			setPosition(task, position.x, position.y + heightDelta);
+			shifted++;
+			continue;
+		}
+		const inBand = position.y + NODE_HEIGHT > old.y && position.y < old.y + Math.max(old.h, fresh.h);
+		if (widthDelta !== 0 && inBand && position.x >= old.x + old.w) {
+			setPosition(task, position.x + widthDelta, position.y);
+			shifted++;
+		}
+	}
+	return { ...section, shifted };
+}
+
+// ---------------------------------------------------------------------------
+// Line-length limit (#188): flag transitions whose drawn line would be very
+// long so the caller can suggest a section autolayout or restructuring.
+// ---------------------------------------------------------------------------
+
+/**
+ * The longest transition line considered readable, center to center in canvas
+ * pixels — about six rank rows or three node widths, calibrated against the
+ * geometry constants above.
+ */
+export const MAX_TRANSITION_LENGTH = 1000;
+
+export interface LongEdge {
+	from: string;
+	to: string;
+	length: number;
+}
+
+/** All transitions whose line exceeds `limit`, longest first, deduplicated per task pair. */
+export function findLongEdges(tasks: RawTask[], limit: number = MAX_TRANSITION_LENGTH): LongEdge[] {
+	const byId = new Map(tasks.map(t => [t.id, t]));
+	const seen = new Set<string>();
+	const long: LongEdge[] = [];
+	for (const task of tasks) {
+		const from = positionOf(task);
+		if (!from) continue;
+		const fromCenter = { x: from.x + nodeWidth(task) / 2, y: from.y + NODE_HEIGHT / 2 };
+		for (const transition of task.next ?? []) {
+			for (const target of transition.do ?? []) {
+				if (target === task.id || seen.has(`${task.id} ${target}`)) continue;
+				seen.add(`${task.id} ${target}`);
+				const other = byId.get(target);
+				const to = other ? positionOf(other) : undefined;
+				if (!other || !to) continue;
+				const length = Math.hypot(
+					to.x + nodeWidth(other) / 2 - fromCenter.x,
+					to.y + NODE_HEIGHT / 2 - fromCenter.y,
+				);
+				if (length > limit) long.push({ from: task.name, to: other.name, length: Math.round(length) });
+			}
+		}
+	}
+	return long.sort((a, b) => b.length - a.length);
 }
