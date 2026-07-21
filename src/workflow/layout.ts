@@ -499,7 +499,11 @@ function membersBBox(members: RawTask[]): BBox | undefined {
  * degrades to a full autoLayout.
  */
 export function layoutSectionContaining(tasks: RawTask[], anchorIds: string[]): SectionLayoutResult {
-	const section = findSection(tasks, anchorIds);
+	return layoutSection(tasks, findSection(tasks, anchorIds));
+}
+
+/** The layout half of layoutSectionContaining, for callers that already found the section. */
+export function layoutSection(tasks: RawTask[], section: SectionInfo): SectionLayoutResult {
 	if (section.wholeGraph) {
 		autoLayout(tasks);
 		return { ...section, shifted: 0 };

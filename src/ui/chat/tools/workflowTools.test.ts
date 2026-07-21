@@ -1374,8 +1374,8 @@ suite('Unit: workflowTools', () => {
 			const ops: WorkflowOperation[] = [{ op: 'add_task', name: 'orphan', action: 'core.noop' }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
 			const orphan = tasks.find(t => t.name === 'orphan')!.metadata as { x: number; y: number };
-			// add_task without x/y is a structural op — auto-layout runs and assigns
-			// all positions, so we just verify the orphan got a finite position.
+			// add_task without x/y is a structural op — the automatic layout pass
+			// places the unconnected task without moving the rest of the canvas.
 			assert.ok(Number.isFinite(orphan.x), 'orphan x should be finite');
 			assert.ok(Number.isFinite(orphan.y), 'orphan y should be finite');
 		});
@@ -1584,6 +1584,48 @@ suite('Unit: workflowTools', () => {
 		test('a short flow gets no long-line note', () => {
 			const { applied } = applyOperations(sampleTasks() as never, [{ op: 'autolayout' }], NO_ACTIONS);
 			assert.ok(!applied.some(entry => entry.includes('transition line')));
+		});
+
+		test('a structural edit re-lays out only the section around the change', () => {
+			// Insert a task on one arm of a positioned diamond: only the diamond
+			// chunk is re-arranged; upstream tasks keep their exact positions and
+			// downstream tasks shift by the chunk's growth.
+			const tasks = [
+				noop('s', [['a']], { x: 0, y: 0 }),
+				noop('a', [['b']], { x: 0, y: 168 }),
+				noop('b', [['c'], ['d']], { x: 0, y: 336 }),
+				noop('c', [['e']], { x: 0, y: 504 }),
+				noop('d', [['e']], { x: 500, y: 504 }),
+				noop('e', [['f']], { x: 0, y: 672 }),
+				noop('f', [], { x: 0, y: 840 }),
+			];
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'n', action: 'core.noop' },
+				{ op: 'connect', from: 'c', to: 'n' },
+				{ op: 'connect', from: 'n', to: 'e' },
+			];
+			const { tasks: out, applied } = applyOperations(tasks as never, ops, NOOP_REF);
+			assert.ok(
+				applied.some(entry => entry.includes('autolayout section (automatic after structural edits')),
+				'the automatic pass is section-scoped',
+			);
+			const get = (id: string) => out.find(t => t.id === id)!.metadata as { x: number; y: number };
+			assert.deepStrictEqual(get('s'), { x: 0, y: 0 }, 'upstream task untouched');
+			assert.deepStrictEqual(get('a'), { x: 0, y: 168 }, 'upstream task untouched');
+			// The chunk grew from three rows (b / c+d / e) to four (b / c+d / n / e),
+			// so f below it moves down by exactly one row step.
+			assert.strictEqual(get('f').y, 840 + 168, 'downstream task shifted by the growth');
+			const added = out.find(t => t.name === 'n')!.metadata as { x: number; y: number };
+			assert.ok(Number.isFinite(added.x) && Number.isFinite(added.y), 'new task placed');
+		});
+
+		test('edits spanning the whole graph fall back to the full automatic layout', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'special', action: 'core.noop' },
+				{ op: 'connect', from: 'start', to: 'special', when: '{{ RESULT.flag }}', label: 'flag set' },
+			];
+			const { applied } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			assert.ok(applied.includes('autolayout (automatic after structural edits)'), 'full layout fallback');
 		});
 
 		test('buddy_workflow_autolayout spec and edit grammar document the section option', () => {

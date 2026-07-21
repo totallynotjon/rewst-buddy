@@ -1189,22 +1189,43 @@ apply time so a batch cannot defer labeling to a later call.
 - **WHEN** `buddy_workflow_edit` applies the batch
 - **THEN** the call errors asking for a label in the same operation
 
-### Requirement: Auto-layout after structural edits (#163)
+### Requirement: Auto-layout after structural edits (#163, #188)
 
-The system SHALL automatically run a full auto-layout pass after any
+The system SHALL automatically adjust the layout after any
 `buddy_workflow_edit` batch that changes the graph structure
 (`add_task`, `delete_task`, `connect`, `disconnect`, `set_transition`), unless
 the same batch also positions tasks explicitly (`reposition`, `autolayout`, or
-`add_task` with numeric `x` and `y`). Content-only edits (rename, input
-changes, `set_inputs`, `set_output`) SHALL NOT trigger auto-layout. When
-auto-layout runs automatically, the `applied` list SHALL include an
-`autolayout (automatic after structural edits)` entry so the caller knows
-positions changed.
+`add_task` with numeric `x` and `y`). The automatic pass SHALL be
+section-scoped rather than a full re-arrangement: the smallest
+single-entry/single-exit chunk containing every structurally edited task (an
+added task, the endpoints of a changed transition, a deleted task's former
+neighbors) is re-laid out per `Section-scoped auto-layout (#188)` and the
+`applied` list includes an
+`autolayout section (automatic after structural edits: …)` entry naming the
+chunk and how many surrounding tasks shifted. The system SHALL fall back to a
+full auto-layout — with the `autolayout (automatic after structural edits)`
+applied entry — when the smallest chunk spans the whole workflow or the edited
+tasks cannot be isolated into one. When the chunk contains no positioned task
+(a brand-new pocket of the canvas, or nothing left to anchor to), new tasks
+SHALL be placed by the position-less-task pass without moving anything else.
+Content-only edits (rename, input changes, `set_inputs`, `set_output`) SHALL
+NOT trigger auto-layout.
 
-#### Scenario: Structural edit triggers auto-layout
+#### Scenario: Structural edit triggers a section-scoped auto-layout
 
-- **GIVEN** a batch containing an `add_task` operation with no explicit
-  position
+- **GIVEN** a positioned workflow and a batch that inserts a task into the
+  middle of a diamond (an `add_task` plus two `connect`s, no explicit
+  position)
+- **WHEN** `buddy_workflow_edit` saves the batch
+- **THEN** only the chunk around the edit is re-arranged, tasks upstream of
+  the chunk keep their exact positions, tasks below it shift by the chunk's
+  growth, and the applied list includes
+  `autolayout section (automatic after structural edits: …)`
+
+#### Scenario: Edits spanning the whole graph fall back to the full layout
+
+- **GIVEN** a batch whose edited tasks are not contained by any chunk smaller
+  than the whole workflow
 - **WHEN** `buddy_workflow_edit` saves the batch
 - **THEN** a full auto-layout runs and the applied list includes
   `autolayout (automatic after structural edits)`

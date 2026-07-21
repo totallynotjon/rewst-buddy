@@ -14,8 +14,11 @@ import {
 	MAX_TRANSITION_LENGTH,
 	autoLayout,
 	findLongEdges,
+	findSection,
 	layoutNewTasks,
+	layoutSection,
 	layoutSectionContaining,
+	positionOf,
 	setPosition,
 } from './layout';
 import { ADD_TASK_FIELDS, PACK_OVERRIDE_FIELDS, UPDATE_TASK_SET_FIELDS } from './operationGrammar';
@@ -549,6 +552,9 @@ export function applyOperations(
 
 	let structural = false;
 	let explicitPositioning = false;
+	// Tasks a structural op touched — the anchors for the automatic
+	// section-scoped layout pass after the batch (#188).
+	const touched = new Set<string>();
 
 	for (const operation of operations) {
 		const op = operation.op;
@@ -588,6 +594,7 @@ export function applyOperations(
 					explicitPositioning = true;
 				}
 				structural = true;
+				touched.add(id);
 				next.push(task);
 				if ('input' in operation) markVerify(id, 'input');
 				if ('with' in operation) markVerify(id, 'with');
@@ -624,6 +631,15 @@ export function applyOperations(
 				const ref = str(operation.id) ?? str(operation.name);
 				if (!ref) throw new Error('delete_task requires "id" or "name".');
 				const task = resolveTask(next, ref);
+				// The deleted task's former neighbors anchor the layout pass.
+				for (const other of next) {
+					if (other === task) continue;
+					if ((other.next ?? []).some(t => (t.do ?? []).includes(task.id))) touched.add(other.id);
+				}
+				for (const transition of task.next ?? []) {
+					for (const target of transition.do ?? []) if (target !== task.id) touched.add(target);
+				}
+				touched.delete(task.id);
 				const index = next.indexOf(task);
 				next.splice(index, 1);
 				for (const other of next) {
@@ -663,6 +679,8 @@ export function applyOperations(
 						? [...existing.slice(0, terminalIndex), transition, ...existing.slice(terminalIndex)]
 						: [...existing, transition];
 				structural = true;
+				touched.add(from.id);
+				touched.add(to.id);
 				applied.push(`connect ${from.name} -> ${to.name} when ${transition.when}`);
 				break;
 			}
@@ -683,6 +701,8 @@ export function applyOperations(
 					return true;
 				});
 				structural = true;
+				touched.add(from.id);
+				if (toId) touched.add(toId);
 				applied.push(`disconnect ${from.name} (${before - (from.next?.length ?? 0)} edge(s) removed)`);
 				break;
 			}
@@ -705,6 +725,8 @@ export function applyOperations(
 					);
 				}
 				structural = true;
+				touched.add(from.id);
+				for (const target of transition.do ?? []) touched.add(target);
 				applied.push(`set_transition on ${from.name}`);
 				break;
 			}
@@ -821,8 +843,7 @@ export function applyOperations(
 	orderTransitionsByCondition(next);
 	ensureTaskDefaults(next);
 	if (structural && !explicitPositioning) {
-		autoLayout(next);
-		applied.push('autolayout (automatic after structural edits)');
+		autoLayoutAfterEdits(next, touched, applied);
 	} else {
 		layoutNewTasks(next);
 	}
@@ -840,6 +861,54 @@ export function applyOperations(
 		}
 	}
 	return { tasks: next, applied, workflow, verifyFields };
+}
+
+/**
+ * The automatic layout pass after a structural batch (#163, #188): instead of
+ * re-arranging the whole canvas, re-lay out only the smallest single-entry/
+ * single-exit section containing the tasks the batch touched, shifting the
+ * surroundings to fit. Falls back to the full auto-layout when that section
+ * spans the whole workflow or the anchors cannot be isolated, and to plain
+ * new-task placement when the section has no positioned task to anchor to
+ * (a brand-new pocket of the canvas).
+ */
+function autoLayoutAfterEdits(next: RawTask[], touched: Set<string>, applied: string[]): void {
+	const present = new Set(next.map(t => t.id));
+	const anchors = [...touched].filter(id => present.has(id));
+	if (anchors.length === 0) {
+		// e.g. deleting an unconnected task — nothing else needs to move.
+		layoutNewTasks(next);
+		return;
+	}
+	{
+		try {
+			const section = findSection(next, anchors);
+			if (!section.wholeGraph) {
+				const memberSet = new Set(section.memberIds);
+				const anchored = next.some(t => memberSet.has(t.id) && positionOf(t));
+				if (!anchored) {
+					// Nothing in the section has a position yet; place new tasks
+					// without disturbing the rest of the canvas.
+					layoutNewTasks(next);
+					return;
+				}
+				const result = layoutSection(next, section);
+				const nameOf = (id?: string) =>
+					id === undefined ? undefined : (next.find(t => t.id === id)?.name ?? id);
+				applied.push(
+					`autolayout section (automatic after structural edits: ${result.memberIds.length} node(s) from ${
+						nameOf(result.entryId) ?? 'the start'
+					} to ${nameOf(result.exitId) ?? 'the end'}; ${result.shifted} surrounding node(s) shifted)`,
+				);
+				layoutNewTasks(next);
+				return;
+			}
+		} catch {
+			// The anchors cannot be isolated (disconnected flow) — fall through.
+		}
+	}
+	autoLayout(next);
+	applied.push('autolayout (automatic after structural edits)');
 }
 
 // ---------------------------------------------------------------------------
