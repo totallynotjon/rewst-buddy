@@ -470,9 +470,9 @@ suite('Unit: workflowTools', () => {
 			assert.match(added.id, /^[0-9a-f]{32}$/, 'id is de-dashed hex');
 			assert.strictEqual(added.actionId, 'noop-id');
 			assert.deepStrictEqual(added.input, { x: 1 });
-			// structural add_task without explicit x/y triggers automatic auto-layout, so applied has 2 entries
+			// structural add_task without explicit x/y triggers automatic section-scoped auto-layout, so applied has 2 entries
 			assert.strictEqual(applied.length, 2);
-			assert.match(applied[1], /autolayout \(automatic/);
+			assert.match(applied[1], /autolayout section \(automatic/);
 		});
 
 		test('connect links by name, including a task added in the same edit', () => {
@@ -1374,8 +1374,8 @@ suite('Unit: workflowTools', () => {
 			const ops: WorkflowOperation[] = [{ op: 'add_task', name: 'orphan', action: 'core.noop' }];
 			const { tasks } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
 			const orphan = tasks.find(t => t.name === 'orphan')!.metadata as { x: number; y: number };
-			// add_task without x/y is a structural op — auto-layout runs and assigns
-			// all positions, so we just verify the orphan got a finite position.
+			// add_task without x/y is a structural op — the automatic layout pass
+			// places the unconnected task without moving the rest of the canvas.
 			assert.ok(Number.isFinite(orphan.x), 'orphan x should be finite');
 			assert.ok(Number.isFinite(orphan.y), 'orphan y should be finite');
 		});
@@ -1524,6 +1524,207 @@ suite('Unit: workflowTools', () => {
 			assert.notDeepStrictEqual(start, { x: 9999, y: -9999 }, 'the stale position was replaced');
 			assert.ok(Number.isFinite(start.x) && Number.isFinite(start.y));
 			assert.match(applied[0], /autolayout/);
+		});
+	});
+
+	suite('section autolayout (#188)', () => {
+		const noop = (id: string, dos: string[][] = [], p?: { x: number; y: number }) => ({
+			id,
+			name: id,
+			actionId: 'noop-id',
+			action: { ref: 'core.noop' },
+			input: {},
+			metadata: p ? { ...p } : {},
+			next: dos.map(d => ({ when: '{{ SUCCEEDED }}', label: '', do: d, publish: [] })),
+		});
+
+		test('the autolayout operation accepts a section anchor and leaves the rest in place', () => {
+			const tasks = [
+				noop('s', [['a']], { x: 0, y: 0 }),
+				noop('a', [['b']], { x: 0, y: 168 }),
+				noop('b', [['c'], ['d']], { x: 0, y: 336 }),
+				noop('c', [['e']], { x: 0, y: 504 }),
+				noop('d', [['e']], { x: 500, y: 504 }),
+				noop('e', [['f']], { x: 0, y: 672 }),
+				noop('f', [], { x: 0, y: 840 }),
+			];
+			const { tasks: out, applied } = applyOperations(
+				tasks as never,
+				[{ op: 'autolayout', section: 'b' }],
+				NO_ACTIONS,
+			);
+			assert.match(applied[0], /autolayout section/);
+			assert.ok(
+				!applied.some(entry => entry.includes('automatic after structural edits')),
+				'a section autolayout counts as explicit positioning',
+			);
+			const get = (id: string) => out.find(t => t.id === id)!.metadata as { x: number; y: number };
+			assert.deepStrictEqual(get('s'), { x: 0, y: 0 }, 'upstream task untouched');
+			assert.deepStrictEqual(get('a'), { x: 0, y: 168 }, 'upstream task untouched');
+			assert.strictEqual(get('c').y, get('d').y, 'the diamond arms share a recomputed row');
+		});
+
+		test('an over-long transition line adds a reorganization note to the applied list', () => {
+			const tasks = [
+				noop('start', [['n1'], ['n6']]),
+				noop('n1', [['n2']]),
+				noop('n2', [['n3']]),
+				noop('n3', [['n4']]),
+				noop('n4', [['n5']]),
+				noop('n5', [['n6']]),
+				noop('n6'),
+			];
+			const { applied } = applyOperations(tasks as never, [{ op: 'autolayout' }], NO_ACTIONS);
+			const note = applied.find(entry => entry.includes('transition line'));
+			assert.ok(note, 'a long-line note is present');
+			assert.match(note!, /start -> n6/);
+			assert.match(note!, /section/);
+		});
+
+		test('a short flow gets no long-line note', () => {
+			const { applied } = applyOperations(sampleTasks() as never, [{ op: 'autolayout' }], NO_ACTIONS);
+			assert.ok(!applied.some(entry => entry.includes('transition line')));
+		});
+
+		test('a structural edit re-lays out only the section around the change', () => {
+			// Insert a task on one arm of a positioned diamond: only the diamond
+			// chunk is re-arranged; upstream tasks keep their exact positions and
+			// downstream tasks shift by the chunk's growth.
+			const tasks = [
+				noop('s', [['a']], { x: 0, y: 0 }),
+				noop('a', [['b']], { x: 0, y: 168 }),
+				noop('b', [['c'], ['d']], { x: 0, y: 336 }),
+				noop('c', [['e']], { x: 0, y: 504 }),
+				noop('d', [['e']], { x: 500, y: 504 }),
+				noop('e', [['f']], { x: 0, y: 672 }),
+				noop('f', [], { x: 0, y: 840 }),
+			];
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'n', action: 'core.noop' },
+				{ op: 'connect', from: 'c', to: 'n' },
+				{ op: 'connect', from: 'n', to: 'e' },
+			];
+			const { tasks: out, applied } = applyOperations(tasks as never, ops, NOOP_REF);
+			assert.ok(
+				applied.some(entry => entry.includes('autolayout section (automatic after structural edits')),
+				'the automatic pass is section-scoped',
+			);
+			const get = (id: string) => out.find(t => t.id === id)!.metadata as { x: number; y: number };
+			assert.deepStrictEqual(get('s'), { x: 0, y: 0 }, 'upstream task untouched');
+			assert.deepStrictEqual(get('a'), { x: 0, y: 168 }, 'upstream task untouched');
+			// The chunk grew from three rows (b / c+d / e) to four (b / c+d / n / e),
+			// so f below it moves down by exactly one row step.
+			assert.strictEqual(get('f').y, 840 + 168, 'downstream task shifted by the growth');
+			const added = out.find(t => t.name === 'n')!.metadata as { x: number; y: number };
+			assert.ok(Number.isFinite(added.x) && Number.isFinite(added.y), 'new task placed');
+		});
+
+		test('edits spanning the whole graph fall back to the full automatic layout', () => {
+			const ops: WorkflowOperation[] = [
+				{ op: 'add_task', name: 'special', action: 'core.noop' },
+				{ op: 'connect', from: 'start', to: 'special', when: '{{ RESULT.flag }}', label: 'flag set' },
+			];
+			const { applied } = applyOperations(sampleTasks() as never, ops, NOOP_REF);
+			assert.ok(applied.includes('autolayout (automatic after structural edits)'), 'full layout fallback');
+		});
+
+		test('buddy_workflow_autolayout spec and edit grammar document the section option', () => {
+			const spec = WORKFLOW_TOOL_SPECS.find(tool => tool.name === WORKFLOW_AUTOLAYOUT_TOOL_NAME)!;
+			assert.match(spec.description, /section/);
+			assert.match(spec.description, /single-entry\/single-exit/);
+			const schema = spec.inputSchema as { properties: Record<string, unknown>; required?: string[] };
+			assert.ok('section' in schema.properties, 'inputSchema advertises section');
+			assert.ok(!schema.required?.includes('section'), 'section stays optional');
+			assert.match(workflowEditOperationGrammar(), /autolayout \{section\?\}/);
+		});
+
+		test('autolayout confirmation names the section when one is given', () => {
+			const args = {
+				workflowId: 'wf-1',
+				workflowName: 'WF',
+				orgId: 'org-1',
+				orgName: 'Acme',
+				section: 'END',
+			};
+			const confirmation = workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, args);
+			assert.ok(confirmation, 'unapproved scope prompts');
+			assert.match(confirmation!.message, /section/i);
+			assert.match(confirmation!.message, /END/);
+		});
+
+		test('a section autolayout approval does not unlock full-canvas autolayout', () => {
+			const base = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme' };
+			const sectionScope = workflowEditScope(WORKFLOW_AUTOLAYOUT_TOOL_NAME, { ...base, section: 'END' })!;
+			assert.notStrictEqual(sectionScope.scopeId, 'wf-1', 'section calls carry a distinct approval scope');
+			approveMutationScope(sectionScope);
+			// Full-canvas call still prompts …
+			assert.ok(
+				workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, base),
+				'full-canvas autolayout is not covered by a section approval',
+			);
+			// … while another section call reuses the section approval.
+			assert.strictEqual(
+				workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, { ...base, section: 'other' }),
+				undefined,
+			);
+		});
+
+		test('a full-canvas autolayout approval does not silently cover section calls', () => {
+			const base = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme' };
+			approveMutationScope(workflowEditScope(WORKFLOW_AUTOLAYOUT_TOOL_NAME, base)!);
+			assert.strictEqual(workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, base), undefined);
+			assert.ok(
+				workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, { ...base, section: 'END' }),
+				'section calls keep their own approval scope',
+			);
+		});
+
+		test('set_transition retargeting re-anchors the abandoned old target', () => {
+			const tasks = [
+				noop('a', [['b']], { x: 0, y: 0 }),
+				noop('b', [], { x: 999, y: 999 }),
+				noop('c', [], { x: 0, y: 200 }),
+			];
+			(tasks[0].next![0] as { id?: string }).id = 't1';
+			const { tasks: out } = applyOperations(
+				tasks as never,
+				[{ op: 'set_transition', from: 'a', transitionId: 't1', set: { to: 'c' } }],
+				NO_ACTIONS,
+			);
+			const b = out.find(t => t.id === 'b')!.metadata as { x: number; y: number };
+			assert.notDeepStrictEqual(b, { x: 999, y: 999 }, 'the orphaned old target is re-laid out, not left stale');
+		});
+
+		test('disconnect by transitionId re-anchors the orphaned target', () => {
+			const tasks = [noop('s', [['m']], { x: 0, y: 0 }), noop('m', [], { x: 999, y: 999 })];
+			(tasks[0].next![0] as { id?: string }).id = 't1';
+			const { tasks: out } = applyOperations(
+				tasks as never,
+				[{ op: 'disconnect', from: 's', transitionId: 't1' }],
+				NO_ACTIONS,
+			);
+			const m = out.find(t => t.id === 'm')!.metadata as { x: number; y: number };
+			assert.notDeepStrictEqual(m, { x: 999, y: 999 }, 'the orphaned target is re-laid out, not left stale');
+		});
+
+		test('explicit positioning in a structural batch adds a skipped-layout note', () => {
+			const tasks = [
+				noop('a', [], { x: 0, y: 300 }),
+				noop('b', [], { x: 0, y: 0 }),
+				noop('d', [], { x: 1000, y: 1000 }),
+			];
+			const { applied } = applyOperations(
+				tasks as never,
+				[
+					{ op: 'connect', from: 'a', to: 'b' },
+					{ op: 'reposition', task: 'd', x: 1001, y: 1001 },
+				],
+				NO_ACTIONS,
+			);
+			assert.ok(
+				applied.some(entry => entry.includes('automatic layout skipped')),
+				'the caller is told the automatic pass was suppressed',
+			);
 		});
 	});
 
@@ -2799,6 +3000,45 @@ suite('Unit: workflowTools', () => {
 				calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')),
 				'it saved',
 			);
+		});
+
+		test('buddy_workflow_autolayout forwards a section anchor', async () => {
+			const { deps, calls } = makeDeps();
+			const output = await runWorkflowTool(
+				{
+					tool: WORKFLOW_AUTOLAYOUT_TOOL_NAME,
+					args: {
+						workflowId: 'wf-1',
+						workflowName: 'Sample',
+						orgId: 'org-1',
+						orgName: 'Acme',
+						section: 'end',
+					},
+				},
+				deps,
+			);
+			assert.match(output, /autolayout section/);
+			assert.ok(
+				calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')),
+				'it saved',
+			);
+		});
+
+		test('buddy_workflow_autolayout accepts an array section and rejects other shapes', async () => {
+			const { deps } = makeDeps();
+			const base = { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' };
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_AUTOLAYOUT_TOOL_NAME, args: { ...base, section: ['end'] } },
+				deps,
+			);
+			assert.match(output, /autolayout section/);
+			for (const bad of [42, '', [], ['end', 7], {}] as unknown[]) {
+				await assert.rejects(
+					runWorkflowTool({ tool: WORKFLOW_AUTOLAYOUT_TOOL_NAME, args: { ...base, section: bad } }, deps),
+					/section/,
+					`section=${JSON.stringify(bad)} must be rejected, not silently ignored`,
+				);
+			}
 		});
 
 		test('buddy_workflow_executions lists failed runs newest-first and passes the status filter', async () => {

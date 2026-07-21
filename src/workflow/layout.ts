@@ -26,12 +26,16 @@ export function nodeWidth(task: RawTask): number {
 	return WIDTH_BASE + WIDTH_PER_TRANSITION * Math.max(1, (task.next ?? []).length);
 }
 
-/** A task's canvas position, if its metadata carries numeric x/y. */
+/** A task's canvas position, if its metadata carries finite numeric x/y — a
+ * NaN/Infinity coordinate is treated as unpositioned rather than poisoning
+ * bounding boxes and shifts downstream. */
 export function positionOf(task: RawTask): { x: number; y: number } | undefined {
 	const metadata = task.metadata;
 	if (metadata && typeof metadata === 'object') {
 		const { x, y } = metadata as { x?: unknown; y?: unknown };
-		if (typeof x === 'number' && typeof y === 'number') return { x, y };
+		if (typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) {
+			return { x, y };
+		}
 	}
 	return undefined;
 }
@@ -55,12 +59,14 @@ function overlaps(a: Box, b: Box): boolean {
 
 /**
  * Places any task that still lacks a position: directly below the action it is
- * connected from (same column, one node-height-plus-gap down), or below the
- * lowest existing node when it has no parent. If the spot would overlap an
- * existing node, it is nudged right by a node width until clear.
- * Existing positions are never moved.
+ * connected from (same column, one node-height-plus-gap down), directly above
+ * its first positioned target when it has no positioned parent (so a new root
+ * does not sink below its own children), or below the lowest existing node
+ * otherwise. If the spot would overlap an existing node, it is nudged right by
+ * a node width until clear. Existing positions are never moved.
+ * Returns how many tasks were placed.
  */
-export function layoutNewTasks(tasks: RawTask[]): void {
+export function layoutNewTasks(tasks: RawTask[]): number {
 	const placed: Box[] = [];
 	for (const task of tasks) {
 		const position = positionOf(task);
@@ -69,20 +75,33 @@ export function layoutNewTasks(tasks: RawTask[]): void {
 	const baseX = placed.length ? Math.min(...placed.map(b => b.x)) : 0;
 	const lowestBottom = placed.length ? Math.max(...placed.map(b => b.y + b.h)) : 0;
 
+	let placedCount = 0;
+	const byId = new Map(tasks.map(t => [t.id, t]));
 	for (const task of tasks) {
 		if (positionOf(task)) continue;
 		const parent = tasks.find(candidate => (candidate.next ?? []).some(t => (t.do ?? []).includes(task.id)));
-		const parentBox = parent
-			? placed.find(b => positionOf(parent)?.x === b.x && positionOf(parent)?.y === b.y)
-			: undefined;
+		const parentPosition = parent ? positionOf(parent) : undefined;
+		const childPosition = parentPosition
+			? undefined
+			: (task.next ?? [])
+					.flatMap(t => t.do ?? [])
+					.map(target => (target === task.id ? undefined : byId.get(target)))
+					.map(child => (child ? positionOf(child) : undefined))
+					.find(p => p !== undefined);
 		const w = nodeWidth(task);
-		let x = parentBox ? parentBox.x : baseX;
-		const y = parentBox ? parentBox.y + NODE_HEIGHT + V_GAP : lowestBottom + V_GAP;
+		let x = parentPosition ? parentPosition.x : childPosition ? childPosition.x : baseX;
+		const y = parentPosition
+			? parentPosition.y + NODE_HEIGHT + V_GAP
+			: childPosition
+				? childPosition.y - NODE_HEIGHT - V_GAP
+				: lowestBottom + V_GAP;
 		const padded = (): Box => ({ x: x - H_GAP, y: y - V_GAP, w: w + 2 * H_GAP, h: NODE_HEIGHT + 2 * V_GAP });
 		while (placed.some(box => overlaps(padded(), box))) x += w + H_GAP;
 		setPosition(task, x, y);
 		placed.push({ x, y, w, h: NODE_HEIGHT });
+		placedCount++;
 	}
+	return placedCount;
 }
 
 // One vertical row per rank.
@@ -197,6 +216,23 @@ export function autoLayout(tasks: RawTask[]): void {
 
 	// 3. Rank the main flow, then apply the loop exception to its back-edges.
 	const rank = mainSet.size ? computeRanks(mainSet) : new Map<string, number>();
+
+	// 3b. Tighten: pull a task down toward its children when that strictly
+	// shortens total line length (strictly more child lines shrink than parent
+	// lines grow), so a side root doesn't hang at the top of the canvas with
+	// one long line to a deep join (#188). The primary root — the workflow's
+	// entry — is exempt so the START anchor never leaves the top row.
+	const primaryRoot = roots.length ? roots[0] : firstId;
+	for (const id of mainIds.slice().sort((a, b) => rank.get(b)! - rank.get(a)!)) {
+		if (id === primaryRoot) continue;
+		const kids = forwardChildren(id).filter(v => mainSet.has(v));
+		if (kids.length === 0) continue;
+		const parents = forwardParents.get(id)!.filter(p => mainSet.has(p));
+		if (parents.length > 0 && parents.length >= kids.length) continue;
+		const minChild = Math.min(...kids.map(k => rank.get(k)!));
+		if (minChild - rank.get(id)! > 1) rank.set(id, minChild - 1);
+	}
+
 	for (const key of backEdges) {
 		const [u, v] = key.split(' ');
 		if (mainSet.has(u) && mainSet.has(v)) rank.set(u, rank.get(v)!);
@@ -284,4 +320,375 @@ export function autoLayout(tasks: RawTask[]): void {
 			prevBottom = y + NODE_HEIGHT;
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Section detection (#188): the smallest single-entry/single-exit chunk of the
+// graph containing a set of anchor tasks, found with iterative dominator /
+// post-dominator sets (the classic SESE-region characterization: a node is in
+// the region when the entry dominates it and the exit post-dominates it),
+// then verified directly by counting boundary-crossing transitions.
+// ---------------------------------------------------------------------------
+
+export interface SectionInfo {
+	/** Section member task ids, in task-array order. */
+	memberIds: string[];
+	/** The member receiving the single inbound line (undefined for a root). */
+	entryId?: string;
+	/** The member emitting the single outbound line (undefined for a terminal). */
+	exitId?: string;
+	/** True when no chunk smaller than the whole workflow isolates the anchors. */
+	wholeGraph: boolean;
+}
+
+/**
+ * Dominator sets by iterative fixed point, restricted to nodes reachable from
+ * `root`. dom[v][i] === 1 means node i dominates node v; unreachable nodes get
+ * an empty row so they never qualify as candidates or members. The refinement
+ * walks nodes in reverse postorder, so it converges in a few passes instead of
+ * O(n) passes on chain-shaped graphs.
+ */
+function computeDominators(succ: number[][], root: number, total: number): Uint8Array[] {
+	const pred: number[][] = Array.from({ length: total }, () => []);
+	for (let u = 0; u < total; u++) for (const v of succ[u]) pred[v].push(u);
+
+	// Iterative DFS: state 0 = unvisited, 1 = on stack, 2 = done (reachable).
+	const state = new Uint8Array(total);
+	const order: number[] = [];
+	const stack: [number, number][] = [[root, 0]];
+	state[root] = 1;
+	while (stack.length) {
+		const frame = stack[stack.length - 1];
+		const u = frame[0];
+		if (frame[1] < succ[u].length) {
+			const v = succ[u][frame[1]++];
+			if (state[v] === 0) {
+				state[v] = 1;
+				stack.push([v, 0]);
+			}
+		} else {
+			stack.pop();
+			state[u] = 2;
+			order.push(u);
+		}
+	}
+	order.reverse();
+
+	const reachable = (v: number): boolean => state[v] === 2;
+	const dom: Uint8Array[] = Array.from({ length: total }, (_, v) => {
+		const row = new Uint8Array(total);
+		if (v === root) row[root] = 1;
+		else if (reachable(v)) row.fill(1);
+		return row;
+	});
+	let changed = true;
+	while (changed) {
+		changed = false;
+		for (const v of order) {
+			if (v === root) continue;
+			const preds = pred[v].filter(p => reachable(p));
+			const row = dom[v];
+			for (let i = 0; i < total; i++) {
+				if (i === v || row[i] === 0) continue;
+				let keep = true;
+				for (const p of preds) {
+					if (dom[p][i] === 0) {
+						keep = false;
+						break;
+					}
+				}
+				if (!keep) {
+					row[i] = 0;
+					changed = true;
+				}
+			}
+		}
+	}
+	return dom;
+}
+
+/**
+ * Finds the smallest section (single inbound transition, single outbound
+ * transition, counting loop back-edges as ordinary lines and parallel
+ * duplicate transitions as one line) containing every anchor task. When
+ * nothing smaller closes — including flows a stray orphaned cycle feeds into —
+ * it falls back to the whole graph rather than failing.
+ */
+export function findSection(tasks: RawTask[], anchorIds: string[]): SectionInfo {
+	if (tasks.length === 0) throw new Error('findSection: the workflow has no tasks.');
+	const index = new Map(tasks.map((t, i) => [t.id, i]));
+	for (const anchor of anchorIds) {
+		if (!index.has(anchor)) throw new Error(`findSection: no task with id "${anchor}".`);
+	}
+	const n = tasks.length;
+	const SOURCE = n;
+	const SINK = n + 1;
+	const total = n + 2;
+
+	const succ: number[][] = Array.from({ length: total }, () => []);
+	const edges: [number, number][] = [];
+	const edgeSeen = new Set<number>();
+	for (const task of tasks) {
+		const u = index.get(task.id)!;
+		for (const transition of task.next ?? []) {
+			for (const target of transition.do ?? []) {
+				const v = index.get(target);
+				if (v === undefined || edgeSeen.has(u * total + v)) continue;
+				edgeSeen.add(u * total + v);
+				succ[u].push(v);
+				edges.push([u, v]);
+			}
+		}
+	}
+	const indegree = Array<number>(n).fill(0);
+	for (const [, v] of edges) indegree[v]++;
+	const roots = tasks.map((_, i) => i).filter(i => indegree[i] === 0);
+	for (const r of roots.length ? roots : [0]) succ[SOURCE].push(r);
+	const terminals = tasks.map((_, i) => i).filter(i => succ[i].length === 0);
+	for (const t of terminals.length ? terminals : [n - 1]) succ[t].push(SINK);
+
+	const reversed: number[][] = Array.from({ length: total }, () => []);
+	for (let u = 0; u < total; u++) for (const v of succ[u]) reversed[v].push(u);
+
+	const dom = computeDominators(succ, SOURCE, total);
+	const pdom = computeDominators(reversed, SINK, total);
+
+	const anchorIdx = anchorIds.map(a => index.get(a)!);
+	const rowSize = (row: Uint8Array): number => {
+		let size = 0;
+		for (const bit of row) size += bit;
+		return size;
+	};
+	const candidateEntries: number[] = [];
+	const candidateExits: number[] = [];
+	for (let i = 0; i < total; i++) {
+		if (anchorIdx.every(a => dom[a][i] === 1)) candidateEntries.push(i);
+		if (anchorIdx.every(a => pdom[a][i] === 1)) candidateExits.push(i);
+	}
+	// Nearest (deepest) candidates first: a deeper dominator has more
+	// dominators of its own, and near pairs give the small member sets, so the
+	// early-exit below usually fires on the first few pairs.
+	candidateEntries.sort((a, b) => rowSize(dom[b]) - rowSize(dom[a]) || a - b);
+	candidateExits.sort((a, b) => rowSize(pdom[b]) - rowSize(pdom[a]) || a - b);
+	const minPossible = new Set(anchorIdx).size;
+
+	let best: Set<number> | undefined;
+	let bestBoundary: { entry?: number; exit?: number } = {};
+	search: for (const d of candidateEntries) {
+		for (const p of candidateExits) {
+			const members = new Set<number>();
+			for (let v = 0; v < n; v++) if (dom[v][d] === 1 && pdom[v][p] === 1) members.add(v);
+			if (members.size === 0 || (best && members.size >= best.size)) continue;
+			let entry: number | undefined;
+			let exit: number | undefined;
+			let inbound = 0;
+			let outbound = 0;
+			for (const [u, v] of edges) {
+				if (!members.has(u) && members.has(v)) {
+					inbound++;
+					entry = v;
+				} else if (members.has(u) && !members.has(v)) {
+					outbound++;
+					exit = u;
+				}
+			}
+			if (inbound > 1 || outbound > 1) continue;
+			// The inbound line must land on the dominator candidate itself and
+			// the outbound line must leave from the post-dominator candidate —
+			// otherwise a back-edge into the middle of the set would masquerade
+			// as the entry (the set is not a canonical single-entry/single-exit
+			// region even though only two lines cross it).
+			if (inbound === 1 && entry !== d) continue;
+			if (outbound === 1 && exit !== p) continue;
+			best = members;
+			bestBoundary = { entry: inbound === 1 ? entry : undefined, exit: outbound === 1 ? exit : undefined };
+			if (best.size <= minPossible) break search;
+		}
+	}
+	if (!best) {
+		// No candidate closes — e.g. an orphaned (unreachable) cycle has an edge
+		// into the anchors' flow that no member set can absorb. Degrade to the
+		// whole graph so the caller can still run a full layout.
+		return { memberIds: tasks.map(t => t.id), entryId: undefined, exitId: undefined, wholeGraph: true };
+	}
+	const chosen = best;
+	return {
+		memberIds: tasks.filter((_, i) => chosen.has(i)).map(t => t.id),
+		entryId: bestBoundary.entry !== undefined ? tasks[bestBoundary.entry].id : undefined,
+		exitId: bestBoundary.exit !== undefined ? tasks[bestBoundary.exit].id : undefined,
+		wholeGraph: chosen.size === tasks.length,
+	};
+}
+
+export interface SectionLayoutResult extends SectionInfo {
+	/** How many tasks outside the section were shifted to absorb the size change. */
+	shifted: number;
+	/**
+	 * True when the section could not be re-arranged in isolation and a full
+	 * canvas layout ran instead (whole-graph section, or a non-member task
+	 * sitting inside the section's old bounding box would have been overlapped).
+	 */
+	usedFullLayout: boolean;
+}
+
+interface BBox {
+	x: number;
+	y: number;
+	w: number;
+	h: number;
+}
+
+function membersBBox(members: RawTask[]): BBox | undefined {
+	let minX = Infinity;
+	let minY = Infinity;
+	let maxRight = -Infinity;
+	let maxBottom = -Infinity;
+	for (const task of members) {
+		const position = positionOf(task);
+		if (!position) continue;
+		minX = Math.min(minX, position.x);
+		minY = Math.min(minY, position.y);
+		maxRight = Math.max(maxRight, position.x + nodeWidth(task));
+		maxBottom = Math.max(maxBottom, position.y + NODE_HEIGHT);
+	}
+	if (!Number.isFinite(minX)) return undefined;
+	return { x: minX, y: minY, w: maxRight - minX, h: maxBottom - minY };
+}
+
+/**
+ * Section-scoped auto-layout (#188): finds the smallest single-entry/
+ * single-exit chunk containing the anchors, re-lays out only that chunk in
+ * place (anchored at its old top-left corner), and band-shifts the untouched
+ * surroundings by the chunk's size delta — tasks below the old chunk move
+ * down/up by the height change, tasks to its right within its rows move by
+ * the width change. When the smallest chunk is the whole workflow this
+ * degrades to a full autoLayout.
+ */
+export function layoutSectionContaining(tasks: RawTask[], anchorIds: string[]): SectionLayoutResult {
+	return layoutSection(tasks, findSection(tasks, anchorIds));
+}
+
+/** The layout half of layoutSectionContaining, for callers that already found the section. */
+export function layoutSection(tasks: RawTask[], section: SectionInfo): SectionLayoutResult {
+	if (section.wholeGraph) {
+		autoLayout(tasks);
+		return { ...section, shifted: 0, usedFullLayout: true };
+	}
+	const memberSet = new Set(section.memberIds);
+	const members = tasks.filter(t => memberSet.has(t.id));
+	const old = membersBBox(members);
+
+	// Band-shifting assumes no outside task sits inside the section's old
+	// bounding box; a hand-arranged intruder there would be run over by the
+	// fresh layout. Degrade to a full re-arrange instead of overlapping it.
+	if (old) {
+		const intruder = tasks.some(task => {
+			if (memberSet.has(task.id)) return false;
+			const position = positionOf(task);
+			if (!position) return false;
+			return (
+				position.x < old.x + old.w &&
+				old.x < position.x + nodeWidth(task) &&
+				position.y < old.y + old.h &&
+				old.y < position.y + NODE_HEIGHT
+			);
+		});
+		if (intruder) {
+			autoLayout(tasks);
+			return { ...section, shifted: 0, usedFullLayout: true };
+		}
+	}
+
+	autoLayout(members);
+	const fresh = membersBBox(members)!;
+	if (!old) {
+		// Nothing in the section had a position: park it below the existing
+		// flow instead of leaving it at the canvas origin.
+		const outside = tasks
+			.filter(t => !memberSet.has(t.id))
+			.map(positionOf)
+			.filter(p => p !== undefined);
+		if (outside.length) {
+			const baseX = Math.min(...outside.map(p => p!.x));
+			const bottom = Math.max(...outside.map(p => p!.y + NODE_HEIGHT));
+			for (const member of members) {
+				const position = positionOf(member)!;
+				setPosition(member, position.x - fresh.x + baseX, position.y - fresh.y + bottom + V_GAP);
+			}
+		}
+		return { ...section, shifted: 0, usedFullLayout: false };
+	}
+
+	// Anchor the re-laid-out chunk at its old top-left corner.
+	const shiftX = old.x - fresh.x;
+	const shiftY = old.y - fresh.y;
+	for (const member of members) {
+		const position = positionOf(member)!;
+		setPosition(member, position.x + shiftX, position.y + shiftY);
+	}
+
+	const heightDelta = fresh.h - old.h;
+	const widthDelta = fresh.w - old.w;
+	let shifted = 0;
+	for (const task of tasks) {
+		if (memberSet.has(task.id)) continue;
+		const position = positionOf(task);
+		if (!position) continue;
+		if (heightDelta !== 0 && position.y >= old.y + old.h) {
+			setPosition(task, position.x, position.y + heightDelta);
+			shifted++;
+			continue;
+		}
+		const inBand = position.y + NODE_HEIGHT > old.y && position.y < old.y + Math.max(old.h, fresh.h);
+		if (widthDelta !== 0 && inBand && position.x >= old.x + old.w) {
+			setPosition(task, position.x + widthDelta, position.y);
+			shifted++;
+		}
+	}
+	return { ...section, shifted, usedFullLayout: false };
+}
+
+// ---------------------------------------------------------------------------
+// Line-length limit (#188): flag transitions whose drawn line would be very
+// long so the caller can suggest a section autolayout or restructuring.
+// ---------------------------------------------------------------------------
+
+/**
+ * The longest transition line considered readable, center to center in canvas
+ * pixels — about six rank rows or three node widths, calibrated against the
+ * geometry constants above.
+ */
+export const MAX_TRANSITION_LENGTH = 1000;
+
+export interface LongEdge {
+	from: string;
+	to: string;
+	length: number;
+}
+
+/** All transitions whose line exceeds `limit`, longest first, deduplicated per task pair. */
+export function findLongEdges(tasks: RawTask[], limit: number = MAX_TRANSITION_LENGTH): LongEdge[] {
+	const byId = new Map(tasks.map(t => [t.id, t]));
+	const seen = new Set<string>();
+	const long: LongEdge[] = [];
+	for (const task of tasks) {
+		const from = positionOf(task);
+		if (!from) continue;
+		const fromCenter = { x: from.x + nodeWidth(task) / 2, y: from.y + NODE_HEIGHT / 2 };
+		for (const transition of task.next ?? []) {
+			for (const target of transition.do ?? []) {
+				if (target === task.id || seen.has(`${task.id} ${target}`)) continue;
+				seen.add(`${task.id} ${target}`);
+				const other = byId.get(target);
+				const to = other ? positionOf(other) : undefined;
+				if (!other || !to) continue;
+				const length = Math.hypot(
+					to.x + nodeWidth(other) / 2 - fromCenter.x,
+					to.y + NODE_HEIGHT / 2 - fromCenter.y,
+				);
+				if (length > limit) long.push({ from: task.name, to: other.name, length: Math.round(length) });
+			}
+		}
+	}
+	return long.sort((a, b) => b.length - a.length);
 }

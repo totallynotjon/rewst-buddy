@@ -818,7 +818,19 @@ arbitrary `scopeId` alongside an arbitrary mutation document with no
 verification that the two are related, so a scope-keyed approval there has no
 fixed relationship to what any given call actually does and MUST NOT be
 reused, even for a byte-identical repeat of the same query and scope (#177
-follow-up).
+follow-up). A section-scoped `buddy_workflow_autolayout` (a `section` input is
+present) SHALL be remembered under a separate approval scope from the
+full-canvas auto-layout of the same workflow, in both directions: approving a
+section re-arrange never silently authorizes a later full-canvas re-arrange,
+and vice versa (#188).
+
+#### Scenario: A section autolayout approval does not cover full-canvas autolayout
+
+- **GIVEN** the user approved a `buddy_workflow_autolayout` call with a
+  `section` for a workflow
+- **WHEN** a `buddy_workflow_autolayout` call without a `section` targets the
+  same workflow in the same session
+- **THEN** a fresh approval prompt is required
 
 #### Scenario: Reused mutation approval for a typed write capability
 
@@ -1189,22 +1201,47 @@ apply time so a batch cannot defer labeling to a later call.
 - **WHEN** `buddy_workflow_edit` applies the batch
 - **THEN** the call errors asking for a label in the same operation
 
-### Requirement: Auto-layout after structural edits (#163)
+### Requirement: Auto-layout after structural edits (#163, #188)
 
-The system SHALL automatically run a full auto-layout pass after any
+The system SHALL automatically adjust the layout after any
 `buddy_workflow_edit` batch that changes the graph structure
 (`add_task`, `delete_task`, `connect`, `disconnect`, `set_transition`), unless
 the same batch also positions tasks explicitly (`reposition`, `autolayout`, or
-`add_task` with numeric `x` and `y`). Content-only edits (rename, input
-changes, `set_inputs`, `set_output`) SHALL NOT trigger auto-layout. When
-auto-layout runs automatically, the `applied` list SHALL include an
-`autolayout (automatic after structural edits)` entry so the caller knows
-positions changed.
+`add_task` with numeric `x` and `y`). The automatic pass SHALL be
+section-scoped rather than a full re-arrangement: the smallest
+single-entry/single-exit chunk containing every structurally edited task (an
+added task, the endpoints of a changed transition, a deleted task's former
+neighbors) is re-laid out per `Section-scoped auto-layout (#188)` and the
+`applied` list includes an
+`autolayout section (automatic after structural edits: …)` entry naming the
+chunk and how many surrounding tasks shifted. The system SHALL fall back to a
+full auto-layout — with the `autolayout (automatic after structural edits)`
+applied entry — when the smallest chunk spans the whole workflow or when the
+section pass itself degrades (per `Section-scoped auto-layout (#188)`, e.g. a
+positioned non-member task sits inside the chunk's old bounding box). A
+structurally edited task's neighborhood includes the target a `set_transition`
+retargets away from and the target(s) of a transition removed by
+`disconnect`, so an orphaned task is re-anchored rather than left at its
+stale position. When a batch mixes structural edits with explicit positioning
+(which suppresses the automatic pass), the `applied` list SHALL carry a note
+saying the automatic layout was skipped. Content-only edits (rename, input
+changes, `set_inputs`, `set_output`) SHALL NOT trigger auto-layout.
 
-#### Scenario: Structural edit triggers auto-layout
+#### Scenario: Structural edit triggers a section-scoped auto-layout
 
-- **GIVEN** a batch containing an `add_task` operation with no explicit
-  position
+- **GIVEN** a positioned workflow and a batch that inserts a task into the
+  middle of a diamond (an `add_task` plus two `connect`s, no explicit
+  position)
+- **WHEN** `buddy_workflow_edit` saves the batch
+- **THEN** only the chunk around the edit is re-arranged, tasks upstream of
+  the chunk keep their exact positions, tasks below it shift by the chunk's
+  growth, and the applied list includes
+  `autolayout section (automatic after structural edits: …)`
+
+#### Scenario: Edits spanning the whole graph fall back to the full layout
+
+- **GIVEN** a batch whose edited tasks are not contained by any chunk smaller
+  than the whole workflow
 - **WHEN** `buddy_workflow_edit` saves the batch
 - **THEN** a full auto-layout runs and the applied list includes
   `autolayout (automatic after structural edits)`
@@ -1222,6 +1259,92 @@ positions changed.
   input
 - **WHEN** `buddy_workflow_edit` saves the batch
 - **THEN** only `layoutNewTasks` runs and no auto-layout entry appears
+
+### Requirement: Section-scoped auto-layout (#188)
+
+The system SHALL support re-arranging only a section of a workflow canvas: the
+`autolayout` operation SHALL accept an optional `section` (a task name/id or an
+array of them) and the `buddy_workflow_autolayout` tool SHALL accept an
+optional `section` input (a single task name/id) that forwards to it. The
+section is the smallest single-entry/single-exit chunk of the graph containing
+the named task(s) — a set of tasks crossed by at most one inbound and one
+outbound transition, where the inbound transition lands on the chunk's entry
+task and the outbound transition leaves from its exit task; loop back-edges
+count as ordinary lines when counting crossings. The chunk SHALL be re-laid
+out in isolation anchored at its previous top-left corner, and tasks outside
+the chunk SHALL NOT be re-arranged — they only shift to absorb the chunk's
+size change (tasks below the old chunk move by the height delta; tasks to its
+right within its rows move by the width delta), enabling targeted,
+divide-and-conquer tidying of large workflows. A section `autolayout` counts
+as explicit positioning, so it SHALL suppress the automatic post-structural
+full layout. When the smallest valid chunk is the entire workflow, a full
+auto-layout SHALL run and the applied entry SHALL say the section spans the
+whole workflow. When no chunk closes at all — for example an orphaned cycle
+feeds an edge into the anchors' flow — the section SHALL degrade to the whole
+graph rather than erroring. The band shift assumes no outside task sits
+inside the chunk's old bounding box: when a positioned non-member task
+overlaps that box, the system SHALL fall back to a full auto-layout (with an
+applied entry explaining why) rather than overlap the intruding task. A chunk
+in which no task has a position yet SHALL be parked below the existing flow
+rather than at the canvas origin, and a task whose stored coordinates are not
+finite numbers SHALL be treated as unpositioned rather than poisoning the
+chunk's bounding box. The `buddy_workflow_autolayout` tool's `section` input
+SHALL accept a task name/id or a non-empty array of them and SHALL reject any
+other shape with an error — a malformed `section` must never silently degrade
+into a full-canvas re-arrange.
+
+#### Scenario: Section autolayout around a branch task
+
+- **GIVEN** a chain whose middle contains a diamond (one task fanning out to
+  two arms that rejoin), with every task already positioned
+- **WHEN** `buddy_workflow_edit` applies `{op: "autolayout", section: "<the
+fan-out task>"}`
+- **THEN** only the diamond chunk's positions are recomputed, tasks upstream
+  of the chunk keep their exact positions, and the applied list includes an
+  `autolayout section` entry naming the chunk's entry and exit
+
+#### Scenario: Surroundings shift by the section's size delta
+
+- **GIVEN** a section whose re-layout grows it by two rank rows
+- **WHEN** the section autolayout is applied
+- **THEN** every task below the section's old bottom edge moves down by
+  exactly the height delta and tasks beside it within its rows move by the
+  width delta
+
+#### Scenario: Smallest section is the whole workflow
+
+- **GIVEN** an anchor task with two inbound and two outbound transitions in a
+  graph where no smaller single-entry/single-exit chunk contains it
+- **WHEN** the section autolayout is applied
+- **THEN** a full auto-layout runs and the applied entry says the section
+  spans the whole workflow
+
+### Requirement: Over-long transition lines are flagged (#188)
+
+After any `buddy_workflow_edit` batch that changed positions (a structural
+edit or explicit positioning), the system SHALL measure each transition's
+drawn line center-to-center and, when any line exceeds the readable limit
+(1000 canvas pixels), append a note to the `applied` list counting the
+over-long lines, naming the longest offenders with their approximate lengths,
+and recommending a section autolayout or restructuring into sub-workflows.
+Content-only batches SHALL NOT add the note. The auto-layout ranking SHALL
+also include a tightening pass that pulls a task down toward its children
+when that strictly shortens the total line length (e.g. a side root feeding a
+deep join no longer hangs at the top of the canvas).
+
+#### Scenario: A rank-skipping transition draws a long line
+
+- **GIVEN** a seven-task chain whose first task also transitions directly to
+  the last task
+- **WHEN** an `autolayout` operation is applied
+- **THEN** the applied list includes a note naming that transition and its
+  approximate length and suggesting a section autolayout
+
+#### Scenario: Short flows stay quiet
+
+- **GIVEN** a two-task workflow
+- **WHEN** an `autolayout` operation is applied
+- **THEN** no long-line note appears in the applied list
 
 ### Requirement: List recently edited workflows (#155)
 

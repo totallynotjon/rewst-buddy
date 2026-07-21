@@ -47,7 +47,23 @@ export async function runWorkflowTool(request: ToolRequest, deps: GraphqlToolDep
 		case WORKFLOW_AUTOLAYOUT_TOOL_NAME: {
 			const { workflowId, orgId } = requireScopeFields(WORKFLOW_AUTOLAYOUT_TOOL_NAME, request.args);
 			const comment = asStringArg(request.args, 'comment') ?? 'Auto-laid out by Cage-Free Rewsty';
-			return applyWorkflowMutation(bound, workflowId, orgId, [{ op: 'autolayout' }], comment);
+			// Validate section here rather than silently coercing: a malformed
+			// section must never degrade into a full-canvas re-arrange.
+			const rawSection = request.args.section;
+			let operation: WorkflowOperation = { op: 'autolayout' };
+			if (rawSection !== undefined && rawSection !== null) {
+				const isName = (value: unknown): value is string => typeof value === 'string' && value.trim() !== '';
+				if (isName(rawSection)) {
+					operation = { op: 'autolayout', section: rawSection };
+				} else if (Array.isArray(rawSection) && rawSection.length > 0 && rawSection.every(isName)) {
+					operation = { op: 'autolayout', section: rawSection };
+				} else {
+					throw new Error(
+						'buddy_workflow_autolayout "section" must be a task name/id or a non-empty array of task names/ids.',
+					);
+				}
+			}
+			return applyWorkflowMutation(bound, workflowId, orgId, [operation], comment);
 		}
 		case WORKFLOW_RUN_TOOL_NAME:
 			return runWorkflowRun(request, bound);

@@ -161,7 +161,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	},
 	{
 		name: WORKFLOW_EDIT_TOOL_NAME,
-		description: `Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations that change the graph structure (add_task, delete_task, connect, disconnect, set_transition) automatically re-run the full auto-layout after the batch, unless the batch positions tasks explicitly (reposition, autolayout, or add_task with x/y). ${workflowEditOperationGrammar()}. Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. Loop inputs use with: {items, concurrency}; inside the loop body, {{ item() }} is the current element. At most one outgoing transition runs: the first condition that evaluates true in listed order. publish entries apply whenever that transition is taken, including on {{ FAILED }}. This tool does not expose parallel task controls. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. A caller reads that sub-workflow task result as RESULT.<output-key>, matching the callee's set_output contract. ${RESULT_SHAPE_STEERING} Saving an edit is a mutation and requires user approval every time. ${WORKFLOW_COMPOSITION_STEERING} ${WORKFLOW_IMPACT_STEERING} ${WORKFLOW_RETRY_STEERING} ${WORKFLOW_WITH_ITEMS_STEERING} ${WORKFLOW_DATA_PASSING_STEERING} ${WORKFLOW_START_STEERING} ${SET_VARIABLE_STEERING}`,
+		description: `Edit a Rewst workflow by applying high-level operations. The tool reads the current workflow, applies the operations to the full graph, and saves it back with conflict detection and an undoable patch — you never resend the whole workflow or manage version tokens yourself. Operations that change the graph structure (add_task, delete_task, connect, disconnect, set_transition) automatically re-lay out the smallest single-entry/single-exit section around the edited tasks after the batch, shifting the surrounding tasks to fit (falling back to a full auto-layout when no smaller section isolates the edits), unless the batch positions tasks explicitly (reposition, autolayout, or add_task with x/y). ${workflowEditOperationGrammar()}. Define workflow inputs ONLY with set_inputs: it writes the input name list, the action parameters that actually drive the run/call form, and the inputSchema together. Do not put inputs in varsSchema, which is a separate variables map. Loop inputs use with: {items, concurrency}; inside the loop body, {{ item() }} is the current element. At most one outgoing transition runs: the first condition that evaluates true in listed order. publish entries apply whenever that transition is taken, including on {{ FAILED }}. This tool does not expose parallel task controls. To call another workflow as a sub-workflow, set subWorkflowId (or action) to that workflow's id — a workflow's id is its action id; there is no separate run-workflow action. A caller reads that sub-workflow task result as RESULT.<output-key>, matching the callee's set_output contract. ${RESULT_SHAPE_STEERING} Saving an edit is a mutation and requires user approval every time. ${WORKFLOW_COMPOSITION_STEERING} ${WORKFLOW_IMPACT_STEERING} ${WORKFLOW_RETRY_STEERING} ${WORKFLOW_WITH_ITEMS_STEERING} ${WORKFLOW_DATA_PASSING_STEERING} ${WORKFLOW_START_STEERING} ${SET_VARIABLE_STEERING}`,
 		// NOTE: RESULT_SHAPE_STEERING, WORKFLOW_COMPOSITION_STEERING, WORKFLOW_IMPACT_STEERING, WORKFLOW_RETRY_STEERING, WORKFLOW_WITH_ITEMS_STEERING, WORKFLOW_DATA_PASSING_STEERING, WORKFLOW_START_STEERING, and SET_VARIABLE_STEERING are embedded verbatim above — do not paraphrase them here.
 		inputSchema: {
 			type: 'object',
@@ -186,7 +186,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 	{
 		name: WORKFLOW_AUTOLAYOUT_TOOL_NAME,
 		description:
-			'Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Graph-structure edits re-run this layout automatically; call this tool to tidy a workflow without making another change. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use buddy_workflow_edit with a reposition operation instead.',
+			'Auto-arrange a Rewst workflow: recompute every task position into a clean top-down layout (each task one layer below the actions that lead to it, laid left-to-right with spacing), then save. Graph-structure edits re-run this layout automatically; call this tool to tidy a workflow without making another change. Use this to tidy a messy or programmatically built workflow, or after adding several tasks. Pass section (a task name or id) to re-arrange ONLY part of the canvas: the smallest single-entry/single-exit chunk of the flow containing that task is laid out in place and the surrounding tasks shift to absorb the size change, so the rest of the canvas keeps its arrangement — repeat with different sections for targeted, divide-and-conquer tidying of a large workflow. This is a mutation: it MUST include workflowId, workflowName, orgId, orgName (get them from buddy_workflow_get) and requires user approval, remembered per workflow for the session. For positioning a single task, use buddy_workflow_edit with a reposition operation instead.',
 		inputSchema: {
 			type: 'object',
 			properties: {
@@ -194,6 +194,11 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 				workflowName: { type: 'string', description: 'The workflow name, shown in the approval prompt.' },
 				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
 				orgName: { type: 'string', description: 'The org name, shown in the approval prompt.' },
+				section: {
+					anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
+					description:
+						'Optional task name or id (or a non-empty array of them): re-arrange only the smallest single-entry/single-exit chunk containing the task(s), shifting the surrounding tasks to fit instead of moving them all. Approval for a section layout is remembered separately from full-canvas layout.',
+				},
 				comment: { type: 'string', description: 'Optional patch comment describing the change.' },
 			},
 			required: ['workflowId', 'workflowName', 'orgId', 'orgName'],
@@ -275,7 +280,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 				includeSubExecutions: {
 					type: 'boolean',
 					description:
-						"Also inline the full task logs of the first few sub-workflow executions this run spawned (default false). Combine with depth > 1 to inline task logs at every nested level, not just the first — each level still caps at the first few sub-executions and the whole walk shares one fetch budget.",
+						'Also inline the full task logs of the first few sub-workflow executions this run spawned (default false). Combine with depth > 1 to inline task logs at every nested level, not just the first — each level still caps at the first few sub-executions and the whole walk shares one fetch budget.',
 				},
 				depth: {
 					type: 'number',
@@ -303,7 +308,7 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 			'pass orgId to route directly. For the full task-by-task list of the top-level execution instead ' +
 			'of just its failing task, use buddy_execution_logs. ' +
 			'Pass depth (default 3, max 5) to control how many nested failing executions are diagnosed inline: ' +
-			"the top-level section stays narrowed to the single failing task, but each auto-drilled nested " +
+			'the top-level section stays narrowed to the single failing task, but each auto-drilled nested ' +
 			"level shows that sub-execution's complete task log (not just its failing task), so a preceding " +
 			'or sibling task can explain the failure. Failures while drilling degrade to a note rather than failing the call.',
 		inputSchema: {
