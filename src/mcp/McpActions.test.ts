@@ -809,7 +809,9 @@ suite('Unit: McpActions', () => {
 			);
 
 			assert.ok(!result.isError);
-			assert.match(result.text, /Applied 1 operation/);
+			// The reposition plus the note reporting the fixture's one unpositioned task placed = 2 entries.
+			assert.match(result.text, /Applied 2 operation/);
+			assert.match(result.text, /placed 1 previously unpositioned task/);
 			assert.match(result.text, /New version token: 2000/);
 			assert.strictEqual(approvals, 1);
 			const calls = wrapper.getCallsFor('rawGraphql');

@@ -470,9 +470,9 @@ suite('Unit: workflowTools', () => {
 			assert.match(added.id, /^[0-9a-f]{32}$/, 'id is de-dashed hex');
 			assert.strictEqual(added.actionId, 'noop-id');
 			assert.deepStrictEqual(added.input, { x: 1 });
-			// structural add_task without explicit x/y triggers automatic auto-layout, so applied has 2 entries
+			// structural add_task without explicit x/y triggers automatic section-scoped auto-layout, so applied has 2 entries
 			assert.strictEqual(applied.length, 2);
-			assert.match(applied[1], /autolayout \(automatic/);
+			assert.match(applied[1], /autolayout section \(automatic/);
 		});
 
 		test('connect links by name, including a task added in the same edit', () => {
