@@ -1651,6 +1651,81 @@ suite('Unit: workflowTools', () => {
 			assert.match(confirmation!.message, /section/i);
 			assert.match(confirmation!.message, /END/);
 		});
+
+		test('a section autolayout approval does not unlock full-canvas autolayout', () => {
+			const base = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme' };
+			const sectionScope = workflowEditScope(WORKFLOW_AUTOLAYOUT_TOOL_NAME, { ...base, section: 'END' })!;
+			assert.notStrictEqual(sectionScope.scopeId, 'wf-1', 'section calls carry a distinct approval scope');
+			approveMutationScope(sectionScope);
+			// Full-canvas call still prompts …
+			assert.ok(
+				workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, base),
+				'full-canvas autolayout is not covered by a section approval',
+			);
+			// … while another section call reuses the section approval.
+			assert.strictEqual(
+				workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, { ...base, section: 'other' }),
+				undefined,
+			);
+		});
+
+		test('a full-canvas autolayout approval does not silently cover section calls', () => {
+			const base = { workflowId: 'wf-1', workflowName: 'WF', orgId: 'org-1', orgName: 'Acme' };
+			approveMutationScope(workflowEditScope(WORKFLOW_AUTOLAYOUT_TOOL_NAME, base)!);
+			assert.strictEqual(workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, base), undefined);
+			assert.ok(
+				workflowEditConfirmation(WORKFLOW_AUTOLAYOUT_TOOL_NAME, { ...base, section: 'END' }),
+				'section calls keep their own approval scope',
+			);
+		});
+
+		test('set_transition retargeting re-anchors the abandoned old target', () => {
+			const tasks = [
+				noop('a', [['b']], { x: 0, y: 0 }),
+				noop('b', [], { x: 999, y: 999 }),
+				noop('c', [], { x: 0, y: 200 }),
+			];
+			(tasks[0].next![0] as { id?: string }).id = 't1';
+			const { tasks: out } = applyOperations(
+				tasks as never,
+				[{ op: 'set_transition', from: 'a', transitionId: 't1', set: { to: 'c' } }],
+				NO_ACTIONS,
+			);
+			const b = out.find(t => t.id === 'b')!.metadata as { x: number; y: number };
+			assert.notDeepStrictEqual(b, { x: 999, y: 999 }, 'the orphaned old target is re-laid out, not left stale');
+		});
+
+		test('disconnect by transitionId re-anchors the orphaned target', () => {
+			const tasks = [noop('s', [['m']], { x: 0, y: 0 }), noop('m', [], { x: 999, y: 999 })];
+			(tasks[0].next![0] as { id?: string }).id = 't1';
+			const { tasks: out } = applyOperations(
+				tasks as never,
+				[{ op: 'disconnect', from: 's', transitionId: 't1' }],
+				NO_ACTIONS,
+			);
+			const m = out.find(t => t.id === 'm')!.metadata as { x: number; y: number };
+			assert.notDeepStrictEqual(m, { x: 999, y: 999 }, 'the orphaned target is re-laid out, not left stale');
+		});
+
+		test('explicit positioning in a structural batch adds a skipped-layout note', () => {
+			const tasks = [
+				noop('a', [], { x: 0, y: 300 }),
+				noop('b', [], { x: 0, y: 0 }),
+				noop('d', [], { x: 1000, y: 1000 }),
+			];
+			const { applied } = applyOperations(
+				tasks as never,
+				[
+					{ op: 'connect', from: 'a', to: 'b' },
+					{ op: 'reposition', task: 'd', x: 1001, y: 1001 },
+				],
+				NO_ACTIONS,
+			);
+			assert.ok(
+				applied.some(entry => entry.includes('automatic layout skipped')),
+				'the caller is told the automatic pass was suppressed',
+			);
+		});
 	});
 
 	suite('workflowEditScope()', () => {
@@ -2947,6 +3022,23 @@ suite('Unit: workflowTools', () => {
 				calls.some(c => c.query.includes('RewstBuddyWorkflowUpdate')),
 				'it saved',
 			);
+		});
+
+		test('buddy_workflow_autolayout accepts an array section and rejects other shapes', async () => {
+			const { deps } = makeDeps();
+			const base = { workflowId: 'wf-1', workflowName: 'Sample', orgId: 'org-1', orgName: 'Acme' };
+			const output = await runWorkflowTool(
+				{ tool: WORKFLOW_AUTOLAYOUT_TOOL_NAME, args: { ...base, section: ['end'] } },
+				deps,
+			);
+			assert.match(output, /autolayout section/);
+			for (const bad of [42, '', [], ['end', 7], {}] as unknown[]) {
+				await assert.rejects(
+					runWorkflowTool({ tool: WORKFLOW_AUTOLAYOUT_TOOL_NAME, args: { ...base, section: bad } }, deps),
+					/section/,
+					`section=${JSON.stringify(bad)} must be rejected, not silently ignored`,
+				);
+			}
 		});
 
 		test('buddy_workflow_executions lists failed runs newest-first and passes the status filter', async () => {

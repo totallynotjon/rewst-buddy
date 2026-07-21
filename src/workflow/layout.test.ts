@@ -5,6 +5,7 @@ import {
 	autoLayout,
 	findLongEdges,
 	findSection,
+	layoutNewTasks,
 	layoutSectionContaining,
 	nodeWidth,
 	positionOf,
@@ -105,6 +106,41 @@ suite('Unit: workflowLayoutSections', () => {
 		test('throws on an unknown anchor id', () => {
 			assert.throws(() => findSection(diamondChain(), ['nope']), /nope/);
 		});
+
+		test('an orphan cycle feeding the main flow falls back to the whole graph instead of throwing', () => {
+			// x <-> y is unreachable from any root, and y also feeds m: that edge
+			// can never be absorbed, so no candidate closes — degrade, don't fail.
+			const tasks = [
+				node('s', [['m']]),
+				node('m', [['t']]),
+				node('t'),
+				node('x', [['y']]),
+				node('y', [['x'], ['m']]),
+			];
+			const section = findSection(tasks, ['m']);
+			assert.strictEqual(section.wholeGraph, true);
+			assert.strictEqual(section.memberIds.length, tasks.length);
+		});
+
+		test('an anchor inside an isolated cycle falls back to the whole graph', () => {
+			const tasks = [node('s', [['e']]), node('e'), node('x', [['y']]), node('y', [['x']])];
+			const section = findSection(tasks, ['x']);
+			assert.strictEqual(section.wholeGraph, true);
+		});
+
+		test('duplicate parallel transitions to one target count as one inbound line', () => {
+			const tasks = [node('s', [['m'], ['m']]), node('m', [['e']]), node('e')];
+			const section = findSection(tasks, ['m']);
+			assert.deepStrictEqual(section.memberIds, ['m']);
+		});
+	});
+
+	suite('positionOf()', () => {
+		test('rejects non-finite coordinates', () => {
+			assert.strictEqual(positionOf(node('a', [], { x: NaN, y: 5 })), undefined);
+			assert.strictEqual(positionOf(node('a', [], { x: 5, y: Infinity })), undefined);
+			assert.deepStrictEqual(positionOf(node('a', [], { x: -5.5, y: 0 })), { x: -5.5, y: 0 });
+		});
 	});
 
 	suite('layoutSectionContaining()', () => {
@@ -171,8 +207,67 @@ suite('Unit: workflowLayoutSections', () => {
 			];
 			const result = layoutSectionContaining(tasks, ['s']);
 			assert.strictEqual(result.wholeGraph, true);
+			assert.strictEqual(result.usedFullLayout, true);
 			// Full layout normalizes the left edge to 0.
 			assert.strictEqual(Math.min(...tasks.map(t => pos(t).x)), 0);
+		});
+
+		test('a corrupt member coordinate is ignored instead of poisoning the anchor', () => {
+			const tasks = [
+				node('s', [['a']], { x: 0, y: 0 }),
+				node('a', [['b']], { x: 0, y: 168 }),
+				node('b', [['c'], ['d']], { x: 0, y: 336 }),
+				node('c', [['e']], { x: NaN as number, y: 336 }),
+				node('d', [['e']], { x: 500, y: 336 }),
+				node('e', [['f']], { x: 0, y: 504 }),
+				node('f', [], { x: 0, y: 672 }),
+			];
+			layoutSectionContaining(tasks, ['b']);
+			const map = byId(tasks);
+			// Anchor survives: the section stays at the finite members' top-left.
+			const members = ['b', 'c', 'd', 'e'].map(id => map.get(id)!);
+			assert.strictEqual(Math.min(...members.map(m => pos(m).x)), 0);
+			assert.strictEqual(Math.min(...members.map(m => pos(m).y)), 336);
+			for (const t of tasks) {
+				assert.ok(Number.isFinite(pos(t).x) && Number.isFinite(pos(t).y), `${t.id} finite`);
+			}
+			assert.deepStrictEqual(pos(map.get('s')!), { x: 0, y: 0 }, 'upstream untouched');
+		});
+
+		test('an unpositioned section parks below the existing flow, not at the origin', () => {
+			// b has no position; s and f do. The single-node section {b} must not
+			// land on top of s at (0,0).
+			const tasks = [node('s', [['b']], { x: 0, y: 0 }), node('b', [['f']]), node('f', [], { x: 0, y: 600 })];
+			layoutSectionContaining(tasks, ['b']);
+			const map = byId(tasks);
+			assert.deepStrictEqual(pos(map.get('s')!), { x: 0, y: 0 });
+			assert.deepStrictEqual(pos(map.get('f')!), { x: 0, y: 600 });
+			// Below the lowest existing box (600 + 88) plus the vertical gap.
+			assert.deepStrictEqual(pos(map.get('b')!), { x: 0, y: 600 + NODE_HEIGHT + 80 });
+		});
+
+		test('a stranger inside the old section box degrades to a full re-arrange without overlaps', () => {
+			const tasks = [
+				node('a', [['b']], { x: 0, y: -300 }),
+				node('b', [['c'], ['d']], { x: 0, y: 0 }),
+				node('c', [['e']], { x: 900, y: 100 }),
+				node('d', [['e']], { x: 1400, y: 500 }),
+				node('e', [['f']], { x: 1800, y: 900 }),
+				node('f', [], { x: 0, y: 1200 }),
+				// Parked in the hollow of the {b,c,d,e} bounding box.
+				node('x', [], { x: 250, y: 100 }),
+			];
+			const result = layoutSectionContaining(tasks, ['b']);
+			assert.strictEqual(result.usedFullLayout, true, 'degrades rather than running the stranger over');
+			const box = (t: RawTask) => ({ ...pos(t), w: nodeWidth(t), h: NODE_HEIGHT });
+			for (let i = 0; i < tasks.length; i++) {
+				for (let j = i + 1; j < tasks.length; j++) {
+					const p = box(tasks[i]);
+					const q = box(tasks[j]);
+					const hit = p.x < q.x + q.w && q.x < p.x + p.w && p.y < q.y + q.h && q.y < p.y + p.h;
+					assert.ok(!hit, `${tasks[i].id} overlaps ${tasks[j].id}`);
+				}
+			}
 		});
 	});
 
@@ -192,6 +287,20 @@ suite('Unit: workflowLayoutSections', () => {
 			autoLayout(tasks);
 			const map = byId(tasks);
 			assert.strictEqual(pos(map.get('r')!).y, pos(map.get('d')!).y, 'r shares the rank right above e');
+		});
+
+		test('the primary root is never pulled off the top row', () => {
+			// start's only child is a deep join; without the exemption it would
+			// sink to the row above j, leaving the workflow entry mid-canvas.
+			const tasks = [
+				node('start', [['j']]),
+				node('r2', [['a']]),
+				node('a', [['b']]),
+				node('b', [['j']]),
+				node('j'),
+			];
+			autoLayout(tasks);
+			assert.strictEqual(pos(byId(tasks).get('start')!).y, 0, 'the entry stays on the top row');
 		});
 
 		test('a straight chain is not disturbed by tightening', () => {
@@ -238,6 +347,20 @@ suite('Unit: workflowLayoutSections', () => {
 		test('tasks without positions are skipped instead of crashing', () => {
 			const tasks = [node('u', [['v']]), node('v')];
 			assert.deepStrictEqual(findLongEdges(tasks), []);
+		});
+	});
+
+	suite('layoutNewTasks()', () => {
+		test('an unpositioned root with a positioned child is placed above the child, not below the flow', () => {
+			const tasks = [node('a', [['b']]), node('b', [], { x: 0, y: 300 })];
+			layoutNewTasks(tasks);
+			assert.deepStrictEqual(pos(tasks[0]), { x: 0, y: 300 - ROW_STEP });
+		});
+
+		test('reports how many tasks it placed', () => {
+			const tasks = [node('a', [['b']], { x: 0, y: 0 }), node('b'), node('c')];
+			assert.strictEqual(layoutNewTasks(tasks), 2);
+			assert.strictEqual(layoutNewTasks(tasks), 0);
 		});
 	});
 });

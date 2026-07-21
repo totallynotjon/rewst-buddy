@@ -12,13 +12,13 @@ import { type GraphqlToolDeps } from '../ui/chat/tools/graphqlTool';
 import { asStringArg } from '../ui/chat/tools/toolProtocol';
 import {
 	MAX_TRANSITION_LENGTH,
+	type SectionLayoutResult,
 	autoLayout,
 	findLongEdges,
 	findSection,
 	layoutNewTasks,
 	layoutSection,
 	layoutSectionContaining,
-	positionOf,
 	setPosition,
 } from './layout';
 import { ADD_TASK_FIELDS, PACK_OVERRIDE_FIELDS, UPDATE_TASK_SET_FIELDS } from './operationGrammar';
@@ -693,7 +693,12 @@ export function applyOperations(
 				const toId = toRef ? resolveTask(next, toRef).id : undefined;
 				const before = (from.next ?? []).length;
 				from.next = (from.next ?? []).filter(transition => {
-					if (transitionId) return transition.id !== transitionId;
+					if (transitionId) {
+						if (transition.id !== transitionId) return true;
+						// Anchor the orphaned target(s) of the removed transition.
+						for (const target of transition.do ?? []) touched.add(target);
+						return false;
+					}
 					if (toId) {
 						transition.do = (transition.do ?? []).filter(target => target !== toId);
 						return (transition.do ?? []).length > 0;
@@ -716,6 +721,9 @@ export function applyOperations(
 				if ('label' in set) transition.label = set.label as string;
 				if ('publish' in set) transition.publish = normalizePublish(set.publish);
 				if ('to' in set) {
+					// Anchor the abandoned old target(s) as well as the new ones,
+					// so a retarget re-lays out the task left behind.
+					for (const target of transition.do ?? []) touched.add(target);
 					const targets = Array.isArray(set.to) ? (set.to as string[]) : [set.to as string];
 					transition.do = targets.map(target => resolveTask(next, target).id);
 				}
@@ -754,16 +762,13 @@ export function applyOperations(
 						next,
 						anchors.map(anchor => anchor.id),
 					);
-					const nameOf = (id?: string) =>
-						id === undefined ? undefined : (next.find(t => t.id === id)?.name ?? id);
+					const anchorNames = anchors.map(a => a.name).join(', ');
 					applied.push(
 						result.wholeGraph
-							? `autolayout (the smallest single-entry/single-exit section around ${anchors
-									.map(a => a.name)
-									.join(', ')} spans the whole workflow; ${next.length} node(s) re-arranged)`
-							: `autolayout section (${result.memberIds.length} node(s) from ${
-									nameOf(result.entryId) ?? 'the start'
-								} to ${nameOf(result.exitId) ?? 'the end'}; ${result.shifted} surrounding node(s) shifted to fit)`,
+							? `autolayout (the smallest single-entry/single-exit section around ${anchorNames} spans the whole workflow; ${next.length} node(s) re-arranged)`
+							: result.usedFullLayout
+								? `autolayout (the section around ${anchorNames} could not be re-arranged in isolation — another task sits inside its area; full re-arrange of ${next.length} node(s))`
+								: `autolayout section (${sectionAppliedDetail(next, result)} to fit)`,
 					);
 				} else {
 					autoLayout(next);
@@ -842,10 +847,20 @@ export function applyOperations(
 	removeRedundantTerminalSuccessTransitions(next);
 	orderTransitionsByCondition(next);
 	ensureTaskDefaults(next);
+	let placed = 0;
 	if (structural && !explicitPositioning) {
-		autoLayoutAfterEdits(next, touched, applied);
+		placed = autoLayoutAfterEdits(next, touched, applied);
 	} else {
-		layoutNewTasks(next);
+		placed = layoutNewTasks(next);
+		if (structural && explicitPositioning) {
+			applied.push(
+				'note: automatic layout skipped because this batch positions tasks explicitly; ' +
+					'run an autolayout (optionally with section) if the structural edits left the canvas untidy',
+			);
+		}
+	}
+	if (placed > 0) {
+		applied.push(`note: placed ${placed} previously unpositioned task(s) without moving the rest`);
 	}
 	if (structural || explicitPositioning) {
 		const longEdges = findLongEdges(next);
@@ -863,52 +878,41 @@ export function applyOperations(
 	return { tasks: next, applied, workflow, verifyFields };
 }
 
+/** Human phrasing for a section layout result: "N node(s) around X" or "N node(s) from X to Y". */
+function sectionAppliedDetail(next: RawTask[], result: SectionLayoutResult): string {
+	const nameOf = (id?: string) => (id === undefined ? undefined : (next.find(t => t.id === id)?.name ?? id));
+	const entry = nameOf(result.entryId);
+	const exit = nameOf(result.exitId);
+	const around =
+		result.memberIds.length === 1 ? nameOf(result.memberIds[0]) : entry && entry === exit ? entry : undefined;
+	const span = around ? `around ${around}` : `from ${entry ?? 'its root'} to ${exit ?? 'its terminal'}`;
+	return `${result.memberIds.length} node(s) ${span}; ${result.shifted} surrounding node(s) shifted`;
+}
+
 /**
  * The automatic layout pass after a structural batch (#163, #188): instead of
  * re-arranging the whole canvas, re-lay out only the smallest single-entry/
  * single-exit section containing the tasks the batch touched, shifting the
  * surroundings to fit. Falls back to the full auto-layout when that section
- * spans the whole workflow or the anchors cannot be isolated, and to plain
- * new-task placement when the section has no positioned task to anchor to
- * (a brand-new pocket of the canvas).
+ * spans the whole workflow or another task sits inside its area; a section
+ * with no positioned member parks below the existing flow. Returns how many
+ * previously unpositioned tasks the trailing new-task pass placed.
  */
-function autoLayoutAfterEdits(next: RawTask[], touched: Set<string>, applied: string[]): void {
+function autoLayoutAfterEdits(next: RawTask[], touched: Set<string>, applied: string[]): number {
 	const present = new Set(next.map(t => t.id));
 	const anchors = [...touched].filter(id => present.has(id));
 	if (anchors.length === 0) {
 		// e.g. deleting an unconnected task — nothing else needs to move.
-		layoutNewTasks(next);
-		return;
+		return layoutNewTasks(next);
 	}
-	{
-		try {
-			const section = findSection(next, anchors);
-			if (!section.wholeGraph) {
-				const memberSet = new Set(section.memberIds);
-				const anchored = next.some(t => memberSet.has(t.id) && positionOf(t));
-				if (!anchored) {
-					// Nothing in the section has a position yet; place new tasks
-					// without disturbing the rest of the canvas.
-					layoutNewTasks(next);
-					return;
-				}
-				const result = layoutSection(next, section);
-				const nameOf = (id?: string) =>
-					id === undefined ? undefined : (next.find(t => t.id === id)?.name ?? id);
-				applied.push(
-					`autolayout section (automatic after structural edits: ${result.memberIds.length} node(s) from ${
-						nameOf(result.entryId) ?? 'the start'
-					} to ${nameOf(result.exitId) ?? 'the end'}; ${result.shifted} surrounding node(s) shifted)`,
-				);
-				layoutNewTasks(next);
-				return;
-			}
-		} catch {
-			// The anchors cannot be isolated (disconnected flow) — fall through.
-		}
+	const section = findSection(next, anchors);
+	const result = layoutSection(next, section);
+	if (result.wholeGraph || result.usedFullLayout) {
+		applied.push('autolayout (automatic after structural edits)');
+		return 0;
 	}
-	autoLayout(next);
-	applied.push('autolayout (automatic after structural edits)');
+	applied.push(`autolayout section (automatic after structural edits: ${sectionAppliedDetail(next, result)})`);
+	return layoutNewTasks(next);
 }
 
 // ---------------------------------------------------------------------------

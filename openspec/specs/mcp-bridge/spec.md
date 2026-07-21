@@ -818,7 +818,19 @@ arbitrary `scopeId` alongside an arbitrary mutation document with no
 verification that the two are related, so a scope-keyed approval there has no
 fixed relationship to what any given call actually does and MUST NOT be
 reused, even for a byte-identical repeat of the same query and scope (#177
-follow-up).
+follow-up). A section-scoped `buddy_workflow_autolayout` (a `section` input is
+present) SHALL be remembered under a separate approval scope from the
+full-canvas auto-layout of the same workflow, in both directions: approving a
+section re-arrange never silently authorizes a later full-canvas re-arrange,
+and vice versa (#188).
+
+#### Scenario: A section autolayout approval does not cover full-canvas autolayout
+
+- **GIVEN** the user approved a `buddy_workflow_autolayout` call with a
+  `section` for a workflow
+- **WHEN** a `buddy_workflow_autolayout` call without a `section` targets the
+  same workflow in the same session
+- **THEN** a fresh approval prompt is required
 
 #### Scenario: Reused mutation approval for a typed write capability
 
@@ -1204,12 +1216,16 @@ neighbors) is re-laid out per `Section-scoped auto-layout (#188)` and the
 `autolayout section (automatic after structural edits: …)` entry naming the
 chunk and how many surrounding tasks shifted. The system SHALL fall back to a
 full auto-layout — with the `autolayout (automatic after structural edits)`
-applied entry — when the smallest chunk spans the whole workflow or the edited
-tasks cannot be isolated into one. When the chunk contains no positioned task
-(a brand-new pocket of the canvas, or nothing left to anchor to), new tasks
-SHALL be placed by the position-less-task pass without moving anything else.
-Content-only edits (rename, input changes, `set_inputs`, `set_output`) SHALL
-NOT trigger auto-layout.
+applied entry — when the smallest chunk spans the whole workflow or when the
+section pass itself degrades (per `Section-scoped auto-layout (#188)`, e.g. a
+positioned non-member task sits inside the chunk's old bounding box). A
+structurally edited task's neighborhood includes the target a `set_transition`
+retargets away from and the target(s) of a transition removed by
+`disconnect`, so an orphaned task is re-anchored rather than left at its
+stale position. When a batch mixes structural edits with explicit positioning
+(which suppresses the automatic pass), the `applied` list SHALL carry a note
+saying the automatic layout was skipped. Content-only edits (rename, input
+changes, `set_inputs`, `set_output`) SHALL NOT trigger auto-layout.
 
 #### Scenario: Structural edit triggers a section-scoped auto-layout
 
@@ -1263,9 +1279,19 @@ divide-and-conquer tidying of large workflows. A section `autolayout` counts
 as explicit positioning, so it SHALL suppress the automatic post-structural
 full layout. When the smallest valid chunk is the entire workflow, a full
 auto-layout SHALL run and the applied entry SHALL say the section spans the
-whole workflow. Anchor tasks that cannot be isolated into such a chunk
-(disconnected flows) SHALL be rejected with an error that names full
-autolayout as the fallback.
+whole workflow. When no chunk closes at all — for example an orphaned cycle
+feeds an edge into the anchors' flow — the section SHALL degrade to the whole
+graph rather than erroring. The band shift assumes no outside task sits
+inside the chunk's old bounding box: when a positioned non-member task
+overlaps that box, the system SHALL fall back to a full auto-layout (with an
+applied entry explaining why) rather than overlap the intruding task. A chunk
+in which no task has a position yet SHALL be parked below the existing flow
+rather than at the canvas origin, and a task whose stored coordinates are not
+finite numbers SHALL be treated as unpositioned rather than poisoning the
+chunk's bounding box. The `buddy_workflow_autolayout` tool's `section` input
+SHALL accept a task name/id or a non-empty array of them and SHALL reject any
+other shape with an error — a malformed `section` must never silently degrade
+into a full-canvas re-arrange.
 
 #### Scenario: Section autolayout around a branch task
 

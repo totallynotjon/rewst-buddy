@@ -195,9 +195,9 @@ export const WORKFLOW_TOOL_SPECS: ToolSpec[] = withGeneratedArgsForAll([
 				orgId: { type: 'string', description: 'The id of the org that owns the workflow.' },
 				orgName: { type: 'string', description: 'The org name, shown in the approval prompt.' },
 				section: {
-					type: 'string',
+					anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }],
 					description:
-						'Optional task name or id: re-arrange only the smallest single-entry/single-exit chunk containing this task, shifting the surrounding tasks to fit instead of moving them all.',
+						'Optional task name or id (or a non-empty array of them): re-arrange only the smallest single-entry/single-exit chunk containing the task(s), shifting the surrounding tasks to fit instead of moving them all. Approval for a section layout is remembered separately from full-canvas layout.',
 				},
 				comment: { type: 'string', description: 'Optional patch comment describing the change.' },
 			},

@@ -27,7 +27,19 @@ export function workflowEditScope(name: string, input: unknown): WorkflowMutatio
 	const orgId = str(args.orgId);
 	const orgName = str(args.orgName);
 	if (!workflowId || !workflowName || !orgId || !orgName) return undefined;
-	return { scopeId: workflowId, scopeName: workflowName, orgId, orgName };
+	// A section autolayout is remembered under its own approval scope: the
+	// user approved re-arranging one chunk, which must not silently authorize
+	// a later full-canvas re-arrange of the workflow (and vice versa).
+	const section = args.section;
+	const hasSection =
+		name === WORKFLOW_AUTOLAYOUT_TOOL_NAME &&
+		((typeof section === 'string' && section.trim() !== '') || (Array.isArray(section) && section.length > 0));
+	return {
+		scopeId: hasSection ? `${workflowId}::autolayout-section` : workflowId,
+		scopeName: workflowName,
+		orgId,
+		orgName,
+	};
 }
 
 export function workflowMutationAlwaysPrompts(name: string): boolean {

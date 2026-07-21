@@ -26,12 +26,16 @@ export function nodeWidth(task: RawTask): number {
 	return WIDTH_BASE + WIDTH_PER_TRANSITION * Math.max(1, (task.next ?? []).length);
 }
 
-/** A task's canvas position, if its metadata carries numeric x/y. */
+/** A task's canvas position, if its metadata carries finite numeric x/y — a
+ * NaN/Infinity coordinate is treated as unpositioned rather than poisoning
+ * bounding boxes and shifts downstream. */
 export function positionOf(task: RawTask): { x: number; y: number } | undefined {
 	const metadata = task.metadata;
 	if (metadata && typeof metadata === 'object') {
 		const { x, y } = metadata as { x?: unknown; y?: unknown };
-		if (typeof x === 'number' && typeof y === 'number') return { x, y };
+		if (typeof x === 'number' && typeof y === 'number' && Number.isFinite(x) && Number.isFinite(y)) {
+			return { x, y };
+		}
 	}
 	return undefined;
 }
@@ -55,12 +59,14 @@ function overlaps(a: Box, b: Box): boolean {
 
 /**
  * Places any task that still lacks a position: directly below the action it is
- * connected from (same column, one node-height-plus-gap down), or below the
- * lowest existing node when it has no parent. If the spot would overlap an
- * existing node, it is nudged right by a node width until clear.
- * Existing positions are never moved.
+ * connected from (same column, one node-height-plus-gap down), directly above
+ * its first positioned target when it has no positioned parent (so a new root
+ * does not sink below its own children), or below the lowest existing node
+ * otherwise. If the spot would overlap an existing node, it is nudged right by
+ * a node width until clear. Existing positions are never moved.
+ * Returns how many tasks were placed.
  */
-export function layoutNewTasks(tasks: RawTask[]): void {
+export function layoutNewTasks(tasks: RawTask[]): number {
 	const placed: Box[] = [];
 	for (const task of tasks) {
 		const position = positionOf(task);
@@ -69,20 +75,33 @@ export function layoutNewTasks(tasks: RawTask[]): void {
 	const baseX = placed.length ? Math.min(...placed.map(b => b.x)) : 0;
 	const lowestBottom = placed.length ? Math.max(...placed.map(b => b.y + b.h)) : 0;
 
+	let placedCount = 0;
+	const byId = new Map(tasks.map(t => [t.id, t]));
 	for (const task of tasks) {
 		if (positionOf(task)) continue;
 		const parent = tasks.find(candidate => (candidate.next ?? []).some(t => (t.do ?? []).includes(task.id)));
-		const parentBox = parent
-			? placed.find(b => positionOf(parent)?.x === b.x && positionOf(parent)?.y === b.y)
-			: undefined;
+		const parentPosition = parent ? positionOf(parent) : undefined;
+		const childPosition = parentPosition
+			? undefined
+			: (task.next ?? [])
+					.flatMap(t => t.do ?? [])
+					.map(target => (target === task.id ? undefined : byId.get(target)))
+					.map(child => (child ? positionOf(child) : undefined))
+					.find(p => p !== undefined);
 		const w = nodeWidth(task);
-		let x = parentBox ? parentBox.x : baseX;
-		const y = parentBox ? parentBox.y + NODE_HEIGHT + V_GAP : lowestBottom + V_GAP;
+		let x = parentPosition ? parentPosition.x : childPosition ? childPosition.x : baseX;
+		const y = parentPosition
+			? parentPosition.y + NODE_HEIGHT + V_GAP
+			: childPosition
+				? childPosition.y - NODE_HEIGHT - V_GAP
+				: lowestBottom + V_GAP;
 		const padded = (): Box => ({ x: x - H_GAP, y: y - V_GAP, w: w + 2 * H_GAP, h: NODE_HEIGHT + 2 * V_GAP });
 		while (placed.some(box => overlaps(padded(), box))) x += w + H_GAP;
 		setPosition(task, x, y);
 		placed.push({ x, y, w, h: NODE_HEIGHT });
+		placedCount++;
 	}
+	return placedCount;
 }
 
 // One vertical row per rank.
@@ -201,8 +220,11 @@ export function autoLayout(tasks: RawTask[]): void {
 	// 3b. Tighten: pull a task down toward its children when that strictly
 	// shortens total line length (strictly more child lines shrink than parent
 	// lines grow), so a side root doesn't hang at the top of the canvas with
-	// one long line to a deep join (#188).
+	// one long line to a deep join (#188). The primary root — the workflow's
+	// entry — is exempt so the START anchor never leaves the top row.
+	const primaryRoot = roots.length ? roots[0] : firstId;
 	for (const id of mainIds.slice().sort((a, b) => rank.get(b)! - rank.get(a)!)) {
+		if (id === primaryRoot) continue;
 		const kids = forwardChildren(id).filter(v => mainSet.has(v));
 		if (kids.length === 0) continue;
 		const parents = forwardParents.get(id)!.filter(p => mainSet.has(p));
@@ -321,51 +343,76 @@ export interface SectionInfo {
 
 /**
  * Dominator sets by iterative fixed point, restricted to nodes reachable from
- * `root`. dom[v] is a boolean array over node indexes; unreachable nodes get
- * an empty set so they never qualify as candidates or members.
+ * `root`. dom[v][i] === 1 means node i dominates node v; unreachable nodes get
+ * an empty row so they never qualify as candidates or members. The refinement
+ * walks nodes in reverse postorder, so it converges in a few passes instead of
+ * O(n) passes on chain-shaped graphs.
  */
-function computeDominators(succ: number[][], root: number, total: number): boolean[][] {
+function computeDominators(succ: number[][], root: number, total: number): Uint8Array[] {
 	const pred: number[][] = Array.from({ length: total }, () => []);
 	for (let u = 0; u < total; u++) for (const v of succ[u]) pred[v].push(u);
-	const reachable = new Set<number>([root]);
-	const queue = [root];
-	while (queue.length) {
-		const u = queue.pop()!;
-		for (const v of succ[u]) {
-			if (!reachable.has(v)) {
-				reachable.add(v);
-				queue.push(v);
+
+	// Iterative DFS: state 0 = unvisited, 1 = on stack, 2 = done (reachable).
+	const state = new Uint8Array(total);
+	const order: number[] = [];
+	const stack: [number, number][] = [[root, 0]];
+	state[root] = 1;
+	while (stack.length) {
+		const frame = stack[stack.length - 1];
+		const u = frame[0];
+		if (frame[1] < succ[u].length) {
+			const v = succ[u][frame[1]++];
+			if (state[v] === 0) {
+				state[v] = 1;
+				stack.push([v, 0]);
 			}
+		} else {
+			stack.pop();
+			state[u] = 2;
+			order.push(u);
 		}
 	}
-	const dom: boolean[][] = Array.from({ length: total }, (_, v) => Array(total).fill(reachable.has(v) && v !== root));
-	dom[root] = Array(total).fill(false);
-	dom[root][root] = true;
-	for (const v of reachable) if (v !== root) dom[v][v] = true;
+	order.reverse();
+
+	const reachable = (v: number): boolean => state[v] === 2;
+	const dom: Uint8Array[] = Array.from({ length: total }, (_, v) => {
+		const row = new Uint8Array(total);
+		if (v === root) row[root] = 1;
+		else if (reachable(v)) row.fill(1);
+		return row;
+	});
 	let changed = true;
 	while (changed) {
 		changed = false;
-		for (const v of reachable) {
+		for (const v of order) {
 			if (v === root) continue;
-			const preds = pred[v].filter(p => reachable.has(p));
+			const preds = pred[v].filter(p => reachable(p));
+			const row = dom[v];
 			for (let i = 0; i < total; i++) {
-				if (i === v || !dom[v][i]) continue;
-				if (!preds.every(p => dom[p][i])) {
-					dom[v][i] = false;
+				if (i === v || row[i] === 0) continue;
+				let keep = true;
+				for (const p of preds) {
+					if (dom[p][i] === 0) {
+						keep = false;
+						break;
+					}
+				}
+				if (!keep) {
+					row[i] = 0;
 					changed = true;
 				}
 			}
 		}
 	}
-	for (let v = 0; v < total; v++) if (!reachable.has(v)) dom[v] = Array(total).fill(false);
 	return dom;
 }
 
 /**
  * Finds the smallest section (single inbound transition, single outbound
- * transition, counting loop back-edges as ordinary lines) containing every
- * anchor task. Falls back to the whole graph when nothing smaller closes, and
- * throws when the anchors cannot be isolated at all (disconnected flows).
+ * transition, counting loop back-edges as ordinary lines and parallel
+ * duplicate transitions as one line) containing every anchor task. When
+ * nothing smaller closes — including flows a stray orphaned cycle feeds into —
+ * it falls back to the whole graph rather than failing.
  */
 export function findSection(tasks: RawTask[], anchorIds: string[]): SectionInfo {
 	if (tasks.length === 0) throw new Error('findSection: the workflow has no tasks.');
@@ -380,15 +427,16 @@ export function findSection(tasks: RawTask[], anchorIds: string[]): SectionInfo 
 
 	const succ: number[][] = Array.from({ length: total }, () => []);
 	const edges: [number, number][] = [];
+	const edgeSeen = new Set<number>();
 	for (const task of tasks) {
 		const u = index.get(task.id)!;
 		for (const transition of task.next ?? []) {
 			for (const target of transition.do ?? []) {
 				const v = index.get(target);
-				if (v !== undefined) {
-					succ[u].push(v);
-					edges.push([u, v]);
-				}
+				if (v === undefined || edgeSeen.has(u * total + v)) continue;
+				edgeSeen.add(u * total + v);
+				succ[u].push(v);
+				edges.push([u, v]);
 			}
 		}
 	}
@@ -406,19 +454,30 @@ export function findSection(tasks: RawTask[], anchorIds: string[]): SectionInfo 
 	const pdom = computeDominators(reversed, SINK, total);
 
 	const anchorIdx = anchorIds.map(a => index.get(a)!);
+	const rowSize = (row: Uint8Array): number => {
+		let size = 0;
+		for (const bit of row) size += bit;
+		return size;
+	};
 	const candidateEntries: number[] = [];
 	const candidateExits: number[] = [];
 	for (let i = 0; i < total; i++) {
-		if (anchorIdx.every(a => dom[a][i])) candidateEntries.push(i);
-		if (anchorIdx.every(a => pdom[a][i])) candidateExits.push(i);
+		if (anchorIdx.every(a => dom[a][i] === 1)) candidateEntries.push(i);
+		if (anchorIdx.every(a => pdom[a][i] === 1)) candidateExits.push(i);
 	}
+	// Nearest (deepest) candidates first: a deeper dominator has more
+	// dominators of its own, and near pairs give the small member sets, so the
+	// early-exit below usually fires on the first few pairs.
+	candidateEntries.sort((a, b) => rowSize(dom[b]) - rowSize(dom[a]) || a - b);
+	candidateExits.sort((a, b) => rowSize(pdom[b]) - rowSize(pdom[a]) || a - b);
+	const minPossible = new Set(anchorIdx).size;
 
 	let best: Set<number> | undefined;
 	let bestBoundary: { entry?: number; exit?: number } = {};
-	for (const d of candidateEntries) {
+	search: for (const d of candidateEntries) {
 		for (const p of candidateExits) {
 			const members = new Set<number>();
-			for (let v = 0; v < n; v++) if (dom[v][d] && pdom[v][p]) members.add(v);
+			for (let v = 0; v < n; v++) if (dom[v][d] === 1 && pdom[v][p] === 1) members.add(v);
 			if (members.size === 0 || (best && members.size >= best.size)) continue;
 			let entry: number | undefined;
 			let exit: number | undefined;
@@ -443,13 +502,14 @@ export function findSection(tasks: RawTask[], anchorIds: string[]): SectionInfo 
 			if (outbound === 1 && exit !== p) continue;
 			best = members;
 			bestBoundary = { entry: inbound === 1 ? entry : undefined, exit: outbound === 1 ? exit : undefined };
+			if (best.size <= minPossible) break search;
 		}
 	}
 	if (!best) {
-		throw new Error(
-			'findSection: the anchor task(s) cannot be isolated into a single-entry/single-exit chunk — ' +
-				'the flow around them is disconnected from the main graph. Run a full autolayout instead.',
-		);
+		// No candidate closes — e.g. an orphaned (unreachable) cycle has an edge
+		// into the anchors' flow that no member set can absorb. Degrade to the
+		// whole graph so the caller can still run a full layout.
+		return { memberIds: tasks.map(t => t.id), entryId: undefined, exitId: undefined, wholeGraph: true };
 	}
 	const chosen = best;
 	return {
@@ -463,6 +523,12 @@ export function findSection(tasks: RawTask[], anchorIds: string[]): SectionInfo 
 export interface SectionLayoutResult extends SectionInfo {
 	/** How many tasks outside the section were shifted to absorb the size change. */
 	shifted: number;
+	/**
+	 * True when the section could not be re-arranged in isolation and a full
+	 * canvas layout ran instead (whole-graph section, or a non-member task
+	 * sitting inside the section's old bounding box would have been overlapped).
+	 */
+	usedFullLayout: boolean;
 }
 
 interface BBox {
@@ -506,14 +572,52 @@ export function layoutSectionContaining(tasks: RawTask[], anchorIds: string[]): 
 export function layoutSection(tasks: RawTask[], section: SectionInfo): SectionLayoutResult {
 	if (section.wholeGraph) {
 		autoLayout(tasks);
-		return { ...section, shifted: 0 };
+		return { ...section, shifted: 0, usedFullLayout: true };
 	}
 	const memberSet = new Set(section.memberIds);
 	const members = tasks.filter(t => memberSet.has(t.id));
 	const old = membersBBox(members);
+
+	// Band-shifting assumes no outside task sits inside the section's old
+	// bounding box; a hand-arranged intruder there would be run over by the
+	// fresh layout. Degrade to a full re-arrange instead of overlapping it.
+	if (old) {
+		const intruder = tasks.some(task => {
+			if (memberSet.has(task.id)) return false;
+			const position = positionOf(task);
+			if (!position) return false;
+			return (
+				position.x < old.x + old.w &&
+				old.x < position.x + nodeWidth(task) &&
+				position.y < old.y + old.h &&
+				old.y < position.y + NODE_HEIGHT
+			);
+		});
+		if (intruder) {
+			autoLayout(tasks);
+			return { ...section, shifted: 0, usedFullLayout: true };
+		}
+	}
+
 	autoLayout(members);
 	const fresh = membersBBox(members)!;
-	if (!old) return { ...section, shifted: 0 };
+	if (!old) {
+		// Nothing in the section had a position: park it below the existing
+		// flow instead of leaving it at the canvas origin.
+		const outside = tasks
+			.filter(t => !memberSet.has(t.id))
+			.map(positionOf)
+			.filter(p => p !== undefined);
+		if (outside.length) {
+			const baseX = Math.min(...outside.map(p => p!.x));
+			const bottom = Math.max(...outside.map(p => p!.y + NODE_HEIGHT));
+			for (const member of members) {
+				const position = positionOf(member)!;
+				setPosition(member, position.x - fresh.x + baseX, position.y - fresh.y + bottom + V_GAP);
+			}
+		}
+		return { ...section, shifted: 0, usedFullLayout: false };
+	}
 
 	// Anchor the re-laid-out chunk at its old top-left corner.
 	const shiftX = old.x - fresh.x;
@@ -541,7 +645,7 @@ export function layoutSection(tasks: RawTask[], section: SectionInfo): SectionLa
 			shifted++;
 		}
 	}
-	return { ...section, shifted };
+	return { ...section, shifted, usedFullLayout: false };
 }
 
 // ---------------------------------------------------------------------------
