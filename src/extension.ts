@@ -37,18 +37,49 @@ import {
 	RoboRewstyChatModelProvider,
 	SessionTreeDataProvider,
 	StatusBar,
+	WorkflowExportViewProvider,
 	WorkingScopeStatusBar,
 } from '@ui';
 import { log } from '@utils';
 import vscode from 'vscode';
 
-export async function activate(context: vscode.ExtensionContext) {
+export function registerWorkflowExportViewProvider(
+	context: Pick<vscode.ExtensionContext, 'extensionUri' | 'subscriptions'>,
+): WorkflowExportViewProvider {
+	const provider = new WorkflowExportViewProvider(context.extensionUri);
+	context.subscriptions.push(
+		provider,
+		vscode.window.registerWebviewViewProvider(WorkflowExportViewProvider.viewType, provider, {
+			webviewOptions: { retainContextWhenHidden: true },
+		}),
+	);
+	return provider;
+}
+
+export interface ActivationDependencies {
+	initializeBackend: typeof initializeBackend;
+	subscribeBackend: typeof subscribeBackend;
+	registerWorkflowExportViewProvider: typeof registerWorkflowExportViewProvider;
+}
+
+const defaultActivationDependencies: ActivationDependencies = {
+	initializeBackend,
+	subscribeBackend,
+	registerWorkflowExportViewProvider,
+};
+
+export async function activate(
+	context: vscode.ExtensionContext,
+	dependencies: ActivationDependencies = defaultActivationDependencies,
+) {
 	globalVSContext.init(context);
 	log.init();
 	// Extension-host unit tests use a separate runtime and never probe the user's server.
-	context.subscriptions.push(initializeBackend({ shared: context.extensionMode !== vscode.ExtensionMode.Test }));
 	context.subscriptions.push(
-		subscribeBackend(event => {
+		dependencies.initializeBackend({ shared: context.extensionMode !== vscode.ExtensionMode.Test }),
+	);
+	context.subscriptions.push(
+		dependencies.subscribeBackend(event => {
 			const value = event as {
 				type?: string;
 				template?: { id: string; name: string; updatedAt?: string | null };
@@ -87,6 +118,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(RewstViewProvider.viewType, rewstViewProvider),
 	);
+	dependencies.registerWorkflowExportViewProvider(context);
 
 	// Register commands and language providers first so they are available
 	// immediately; session loading and the HTTP server start in the background.

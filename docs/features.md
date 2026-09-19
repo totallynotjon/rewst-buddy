@@ -118,6 +118,24 @@ Templates that reference other templates via `{{ template('UUID') }}` are automa
 - **Auto-rebuild** — Bundles automatically update when templates are fetched or links change
 - **Manual rebuild** — Use `Rewst Buddy: Bundle Templates` from the command palette to refresh
 
+## Workflow Exporter
+
+The **Workflow Exporter** is in the Rewst Buddy sidebar, where you can select and export workflows without leaving VS Code.
+
+To open it, click the Rewst Buddy icon in the activity bar and select **Workflow Exporter**, or run `Rewst Buddy: Open Workflow Exporter` from the Command Palette.
+
+**Usage:**
+
+1. Choose an active Rewst organization. The exporter loads its workflow catalog and available tags.
+2. Search by workflow name or id, select tags, choose whether tags should match **any** or **all**, and optionally filter by creation or update date.
+3. Select the workflows to export. Use **Select filtered** to select every workflow currently visible.
+4. Choose **Separate files** or **Signed bundle**. Separate files can optionally use workflow names in their filenames.
+5. Choose a destination folder or bundle file, then start the export. Progress, cancellation, failures, and generated files appear in the exporter.
+
+The exporter remembers its selections and filters across view reloads. A signed bundle file can contain at most **25 workflows**; larger selections are split into bundle files of up to 25 workflows each. Existing export files are never overwritten, so the exporter chooses another filename for folder destinations and asks you to choose a new name for an explicit file destination.
+
+The **Export Workflows** command opens the catalog picker for a quick export without opening the sidebar. The sidebar and command follow the same export rules, including the 25-workflow bundle-file limit, automatic batching, and no-overwrite behavior.
+
 ## Crate Installer
 
 Install prebuilt Rewst Crates without leaving VS Code. Run `Rewst Buddy: Install Crate` from the command palette:

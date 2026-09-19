@@ -1,0 +1,48 @@
+* { box-sizing: border-box; }
+body { padding: 8px; margin: 0; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+header h2 { margin: 0 0 3px; font-size: 1.15em; }
+header p, .muted, small { color: var(--vscode-descriptionForeground); }
+.panel { margin: 8px 0; padding: 8px; border: 1px solid var(--vscode-panel-border); }
+h3 { margin: 0 0 6px; font-size: 1em; }
+input, button { font: inherit; }
+input[type="search"], input[type="date"] { width: 100%; padding: 5px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border); }
+button { padding: 5px 8px; color: var(--vscode-button-foreground); background: var(--vscode-button-background); border: 0; border-radius: 2px; cursor: pointer; }
+button:hover { background: var(--vscode-button-hoverBackground); }
+button.secondary { color: var(--vscode-foreground); background: var(--vscode-button-secondaryBackground); }
+button.danger { color: var(--vscode-errorForeground); background: var(--vscode-button-secondaryBackground); }
+button:disabled { opacity: .55; cursor: default; }
+.row, .heading-row, .selection-actions, .destination-actions, .actions, .segmented, .date-grid { display: flex; gap: 6px; align-items: center; }
+.row select, .row input { flex: 1; }
+.heading-row { justify-content: space-between; }
+.heading-row span { color: var(--vscode-descriptionForeground); }
+.filter-label { display: flex; justify-content: space-between; margin: 8px 0 4px; }
+.organization-list, .tag-list { max-height: 150px; overflow: auto; margin-top: 6px; border: 1px solid var(--vscode-panel-border); }
+.organization-option, .tag-option { display: flex; width: 100%; justify-content: space-between; gap: 8px; padding: 6px 8px; color: var(--vscode-foreground); background: transparent; border-radius: 0; text-align: left; }
+.organization-option:hover, .tag-option:hover { background: var(--vscode-list-hoverBackground); }
+.organization-option.selected, .tag-option.selected { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.organization-option strong, .organization-option small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.organization-option strong { flex: 1; }
+.organization-option small { max-width: 42%; color: var(--vscode-descriptionForeground); }
+.tag-option span { color: var(--vscode-textLink-foreground); }
+label { display: block; margin: 6px 0; }
+.segmented label { flex: 1; margin: 3px 0; font-weight: normal; }
+.segmented.vertical { display: block; }
+.date-grid > label { flex: 1; min-width: 0; }
+.selection-actions, .destination-actions { margin-top: 7px; }
+.workflow-list { max-height: 270px; overflow: auto; margin-top: 7px; border: 1px solid var(--vscode-panel-border); }
+button.workflow { display: flex; width: 100%; gap: 6px; margin: 0; padding: 6px; color: var(--vscode-foreground); background: transparent; border-radius: 0; border-bottom: 1px solid var(--vscode-panel-border); text-align: left; }
+button.workflow:hover { background: var(--vscode-list-hoverBackground); }
+button.workflow.selected { color: var(--vscode-list-activeSelectionForeground); background: var(--vscode-list-activeSelectionBackground); }
+.workflow:last-child { border-bottom: 0; }
+.workflow-check { width: 1.2em; flex: 0 0 1.2em; color: var(--vscode-textLink-foreground); font-weight: bold; }
+.workflow-main { min-width: 0; flex: 1; }
+.workflow-main strong, .workflow-main small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill { display: inline-block; margin: 3px 3px 0 0; padding: 1px 4px; border-radius: 8px; color: var(--vscode-badge-foreground); background: var(--vscode-badge-background); font-size: .8em; }
+.destination { display: flex; gap: 6px; margin: 8px 0; overflow: hidden; }
+.destination span { overflow: hidden; color: var(--vscode-descriptionForeground); text-overflow: ellipsis; white-space: nowrap; }
+.actions { flex-wrap: wrap; }
+#progress { width: 100%; }
+#status { min-height: 20px; margin: 6px 0 0; white-space: pre-wrap; }
+.error { color: var(--vscode-errorForeground); }
+#results { display: flex; flex-direction: column; gap: 4px; }
+.link { padding: 0; color: var(--vscode-textLink-foreground); background: transparent; text-align: left; }

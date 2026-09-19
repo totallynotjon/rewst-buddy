@@ -1,4 +1,11 @@
-import { clearCachedSession, getTestOrgId, getTestSession, hasTestToken, initTestEnvironment } from '@test';
+import {
+	clearCachedSession,
+	getTestOrgId,
+	getTestSession,
+	hasTestToken,
+	initTestEnvironment,
+	installMockSessionsAndWait,
+} from '@test';
 import * as assert from 'assert';
 import { mkdir, readFile, unlink } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -8,6 +15,7 @@ import { getCapability } from '../../../packages/mcp-server/src/capabilities/reg
 import { resolveDefaultExportDir } from '../../../packages/mcp-server/src/export/exportStorage';
 import type { Session } from '../../../packages/mcp-server/src/sessions';
 import { rawGraphqlOrThrow } from '../../capabilities/inputHelpers';
+import { editorDataClient } from '../../backend/editorDataClient';
 
 const { suite, test, suiteSetup, suiteTeardown } = Mocha;
 
@@ -67,6 +75,7 @@ suite('Integration: workflow export (read-only)', function () {
 			throw new Error('Safety invariant failed: test session is not sandbox-only.');
 		}
 		ctx = { session, orgId: targetOrgId, sessions: [session] };
+		await installMockSessionsAndWait([session]);
 
 		const data = (await rawGraphqlOrThrow(session, SANDBOX_WORKFLOWS, { orgId: targetOrgId })) as {
 			workflows?: WorkflowRow[];
@@ -136,6 +145,49 @@ suite('Integration: workflow export (read-only)', function () {
 			assert.deepStrictEqual(after.workflow, before.workflow);
 		} finally {
 			if (savedPath) await unlink(savedPath).catch(() => {});
+		}
+	});
+
+	test('exports through the editor data client and propagates backend errors', async function () {
+		if (workflows.length === 0) {
+			this.skip();
+			return;
+		}
+		const target = workflows[0] as WorkflowRow;
+		const sessionId = session.profile.user.id;
+		assert.ok(sessionId, 'Expected the integration session to have a user id.');
+
+		const catalog = await editorDataClient.listExportWorkflows({ sessionId, orgId: targetOrgId });
+		const catalogTarget = catalog.find(row => row.id === target.id);
+		assert.ok(catalogTarget, 'Expected the editor catalog operation to return the sandbox workflow.');
+
+		const defaultDirectory = await editorDataClient.getWorkflowExportDefaultDirectory();
+		const outputPath = join(defaultDirectory, `rb-itest-editor-export-${Date.now()}.json`);
+		await mkdir(dirname(outputPath), { recursive: true });
+		try {
+			const result = await editorDataClient.exportWorkflows({
+				sessionId,
+				orgId: targetOrgId,
+				workflowIds: [target.id],
+				outputPath,
+			});
+
+			assert.strictEqual(result.status, 'saved');
+			assert.strictEqual(result.outputPath, outputPath);
+			assert.deepStrictEqual(JSON.parse(await readFile(outputPath, 'utf8')).signing !== undefined, true);
+
+			await assert.rejects(
+				() =>
+					editorDataClient.exportWorkflows({
+						sessionId,
+						orgId: targetOrgId,
+						workflowIds: ['workflow-does-not-exist'],
+						outputPath: join(defaultDirectory, `rb-itest-editor-error-${Date.now()}.json`),
+					}),
+				/does not belong to organization|not found|workflow/i,
+			);
+		} finally {
+			await unlink(outputPath).catch(() => {});
 		}
 	});
 });

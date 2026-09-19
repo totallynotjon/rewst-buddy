@@ -37,6 +37,26 @@ let defaultExportDir: () => Promise<string> = ensureDefaultExportDir;
 /** Upper bound on workflows per export; keeps per-id owner checks and the bundle bounded. */
 export const MAX_WORKFLOWS_PER_EXPORT = 25;
 
+/** Host-owned limits forwarded to editor clients when bootstrapping workflow export UI. */
+export const WORKFLOW_EXPORT_BOOTSTRAP_PAYLOAD = Object.freeze({
+	maxWorkflowsPerExport: MAX_WORKFLOWS_PER_EXPORT,
+});
+
+/** Structured result shared by MCP text responses and trusted editor operations. */
+export interface WorkflowExportResult {
+	status: 'saved';
+	orgId: string;
+	workflowIds: string[];
+	recommendedFilename: string;
+	outputPath: string | null;
+	bytes: number;
+	version: number;
+	exportedAt: string;
+	objectCount: number;
+	signingPresent: boolean;
+	bundle?: ExportBundle;
+}
+
 /** Replaces external boundaries in unit tests; omit either argument to restore it. */
 export function _setWorkflowExportDependenciesForTesting(dependencies?: {
 	transport?: ExportTransport;
@@ -177,7 +197,7 @@ async function runWorkflowExport(input: Record<string, unknown>, ctx: Capability
 	});
 	throwIfCancelled(ctx.signal);
 
-	const result: Record<string, unknown> = {
+	const result: WorkflowExportResult = {
 		status: 'saved',
 		orgId: parsed.orgId,
 		workflowIds,

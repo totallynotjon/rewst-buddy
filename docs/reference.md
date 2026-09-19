@@ -12,6 +12,20 @@ Click the Rewst Buddy icon in the activity bar to open the sidebar:
     - Expired sessions display with red error icon
     - Sessions automatically refresh every 15 minutes to stay active
     - With automatic refresh, sessions can stay alive for about 1 week with daily extension use
+- **Workflow Exporter**: Browse, filter, select, and export workflows from an active organization. The view persists in the sidebar and retains its state across reloads.
+
+### Workflow Exporter
+
+The exporter supports:
+
+- Organization and workflow catalog selection
+- Search by workflow name or id
+- Tag filters with **any** or **all** matching
+- Created and updated date ranges
+- Exporting selected workflows as separate files or a signed bundle
+- Folder/file destination selection, progress reporting, cancellation, and failure summaries
+
+Exports do not overwrite existing files. Use the exporter’s destination controls to choose a new filename when needed.
 
 ## Template Bundles Panel
 
@@ -76,6 +90,11 @@ All commands are available via Command Palette (Cmd/Ctrl + Shift + P) under the 
 **Template Bundles**
 
 - `Bundle Templates` — Rebuild template bundle groupings
+
+**Workflow Export**
+
+- `Open Workflow Exporter` — Open and focus the persistent workflow exporter in the Rewst Buddy sidebar
+- `Export Workflows` — Open the workflow catalog picker and export selected workflows without opening the sidebar view
 
 **Crates**
 

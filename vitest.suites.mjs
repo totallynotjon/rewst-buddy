@@ -9,6 +9,7 @@
  * host). Everything else stays on the electron runner.
  */
 export const vitestSuites = [
+	'src/backend/editorDataClient.test.ts',
 	'src/backend/operations.test.ts',
 	'src/sessions/SessionManager.facade.test.ts',
 	'src/sessions/conversation/ConversationClient.facade.test.ts',

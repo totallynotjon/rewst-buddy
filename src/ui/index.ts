@@ -13,4 +13,10 @@ export { ProposedContentProvider, PROPOSED_SCHEME } from './chat/ProposedContent
 export * from './pickers';
 export { StatusBar } from './StatusBarIcon';
 export { WorkingScopeStatusBar } from './WorkingScopeStatusBar';
-export { BundleTreeDataProvider, RewstViewProvider, SessionTreeDataProvider, SessionTreeItem } from './webview';
+export {
+	BundleTreeDataProvider,
+	RewstViewProvider,
+	SessionTreeDataProvider,
+	SessionTreeItem,
+	WorkflowExportViewProvider,
+} from './webview';

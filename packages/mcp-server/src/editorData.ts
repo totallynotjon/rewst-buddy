@@ -12,6 +12,8 @@ import {
 	type UnpackSuccess,
 } from './crates/crateUnpack';
 import { runUnpackCrate } from './crates/unpackClient';
+import { workflowExportCapability, type WorkflowExportResult } from './capabilities/workflowExportCapability';
+import { ensureDefaultExportDir } from './export/exportStorage';
 import type { RuntimeHost } from './host';
 import { SessionManager } from './sessions/index';
 import type Session from './sessions/Session';
@@ -41,6 +43,9 @@ export interface PreviewWorkflowRow {
 	id?: string | null;
 	name?: string | null;
 	orgId?: string | null;
+	createdAt?: string | null;
+	updatedAt?: string | null;
+	tags?: { id?: string | null; name?: string | null }[] | null;
 }
 
 const WORKFLOWS_QUERY = `query RewstBuddyPreviewWorkflows($orgId: ID!, $limit: Int, $offset: Int) {
@@ -48,6 +53,9 @@ const WORKFLOWS_QUERY = `query RewstBuddyPreviewWorkflows($orgId: ID!, $limit: I
 		id
 		name
 		orgId
+		createdAt
+		updatedAt
+		tags { id name }
 	}
 }`;
 
@@ -183,8 +191,13 @@ async function requireSession(input: Record<string, unknown>, requireOrg = true)
 	return session;
 }
 
-async function execute(session: Session, query: string, variables: Record<string, unknown>): Promise<unknown> {
-	const result = await session.rawGraphql(query, variables);
+async function execute(
+	session: Session,
+	query: string,
+	variables: Record<string, unknown>,
+	options?: { signal?: AbortSignal },
+): Promise<unknown> {
+	const result = await session.rawGraphql(query, variables, options);
 	const error = firstErrorMessage(result);
 	if (error) throw new Error(error);
 	return result.data;
@@ -216,24 +229,55 @@ async function getJinjaFilters(
 	return filters;
 }
 
-async function previewWorkflows(input: Record<string, unknown>): Promise<PreviewWorkflowRow[]> {
+async function previewWorkflows(
+	input: Record<string, unknown>,
+	context?: EditorOperationContext,
+): Promise<PreviewWorkflowRow[]> {
 	const session = await requireSession(input);
 	const orgId = inputOrg(input);
 	const rows: PreviewWorkflowRow[] = [];
 	for (let page = 0; page < WORKFLOW_PICK_MAX_PAGES; page++) {
 		const pageRows =
 			(
-				(await execute(session, WORKFLOWS_QUERY, {
-					orgId,
-					limit: WORKFLOW_PICK_LIMIT,
-					offset: page * WORKFLOW_PICK_LIMIT,
-				})) as { workflows?: (PreviewWorkflowRow | null)[] } | undefined
+				(await execute(
+					session,
+					WORKFLOWS_QUERY,
+					{
+						orgId,
+						limit: WORKFLOW_PICK_LIMIT,
+						offset: page * WORKFLOW_PICK_LIMIT,
+					},
+					{ signal: context?.signal },
+				)) as { workflows?: (PreviewWorkflowRow | null)[] } | undefined
 			)?.workflows ?? [];
 		const usable = pageRows.filter((row): row is PreviewWorkflowRow => !!row?.id);
 		rows.push(...usable);
-		if (usable.length < WORKFLOW_PICK_LIMIT) break;
+		if (pageRows.length < WORKFLOW_PICK_LIMIT) break;
 	}
 	return rows;
+}
+
+async function exportWorkflows(
+	input: Record<string, unknown>,
+	context: EditorOperationContext,
+): Promise<WorkflowExportResult> {
+	const session = await requireSession(input);
+	const orgId = inputOrg(input);
+	const outputPath = input.outputPath ?? (await ensureDefaultExportDir());
+	const serialized = await workflowExportCapability.run(
+		{ ...input, outputPath, includeBundle: false },
+		{
+			session,
+			orgId,
+			sessions: SessionManager.getActiveSessions(),
+			signal: context.signal,
+		},
+	);
+	const result: unknown = JSON.parse(serialized);
+	if (!isPlainObject(result) || result.status !== 'saved') {
+		throw new Error('Workflow export returned an unexpected result.');
+	}
+	return result as unknown as WorkflowExportResult;
 }
 
 async function previewExecutions(input: Record<string, unknown>): Promise<ExecutionRow[]> {
@@ -320,9 +364,12 @@ export const editorDataOperations: Record<
 > = {
 	'jinja.render': input => renderJinja(input),
 	'jinja.filters': getJinjaFilters,
-	'preview.workflows': input => previewWorkflows(input),
+	'preview.workflows': (input, context) => previewWorkflows(input, context),
 	'preview.executions': input => previewExecutions(input),
 	'preview.context': input => previewContext(input),
+	'workflows.export.catalog': (input, context) => previewWorkflows(input, context),
+	'workflows.export.defaultDirectory': async () => ensureDefaultExportDir(),
+	'workflows.export.run': exportWorkflows,
 	'crates.list': input => listCrates(input),
 	'crates.detail': input => detailCrate(input),
 	'crates.unpack': unpackCrate,

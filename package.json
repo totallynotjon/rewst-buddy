@@ -392,6 +392,16 @@
 				"title": "Rewst Buddy: Install Crate"
 			},
 			{
+				"command": "rewst-buddy.prefix.ExportWorkflows",
+				"title": "Rewst Buddy: Export Workflows",
+				"icon": "$(export)"
+			},
+			{
+				"command": "rewst-buddy.prefix.OpenWorkflowExporter",
+				"title": "Rewst Buddy: Open Workflow Exporter",
+				"icon": "$(export)"
+			},
+			{
 				"command": "rewst-buddy.prefix.UnlinkAllTemplates",
 				"title": "Rewst Buddy: Unlink All Templates"
 			},
@@ -505,6 +515,12 @@
 					"icon": ""
 				},
 				{
+					"type": "webview",
+					"id": "rewst-buddy.workflowExporter",
+					"name": "Workflow Exporter",
+					"icon": ""
+				},
+				{
 					"id": "rewst-buddy.sessionTree",
 					"name": "Sessions",
 					"icon": ""
@@ -610,6 +626,14 @@
 				},
 				{
 					"command": "rewst-buddy.prefix.InstallCrate",
+					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.prefix.ExportWorkflows",
+					"when": "rewst-buddy.anyActiveSessions"
+				},
+				{
+					"command": "rewst-buddy.prefix.OpenWorkflowExporter",
 					"when": "rewst-buddy.anyActiveSessions"
 				},
 				{

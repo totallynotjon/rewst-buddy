@@ -19,6 +19,6 @@
 
 - [MCP server](../packages/mcp-server/README.md): launch flags, credential storage, working scope, and embedding.
 - [Editor settings and commands](reference.md): VS Code configuration and regional settings.
-- [Editor features](features.md): sync, Jinja tooling, template bundles, and more.
+- [Editor features](features.md): sync, Jinja tooling, template bundles, workflow export, and more.
 
 [← Project README](../README.md)

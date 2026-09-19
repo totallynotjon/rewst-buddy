@@ -78,7 +78,7 @@ Optional writes are controlled by organization scope and approval settings. You 
 
 ## Edit templates in VS Code
 
-The [VS Code extension](https://marketplace.visualstudio.com/items?itemName=JBramley.rewst-buddy) adds linked template files, sync-on-save with conflict detection, Jinja completion and live preview, and approval dialogs. Link one template or mirror an organization's templates into a folder, then work with your usual editor tools.
+The [VS Code extension](https://marketplace.visualstudio.com/items?itemName=JBramley.rewst-buddy) adds linked template files, sync-on-save with conflict detection, Jinja completion and live preview, workflow export, and approval dialogs. Link one template or mirror an organization's templates into a folder, then work with your usual editor tools.
 
 **[Set up template editing →](docs/quickstart.md)** · **[Explore editor features](docs/features.md)**
 

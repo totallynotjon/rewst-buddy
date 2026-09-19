@@ -1,5 +1,6 @@
 import { invoke } from './operations';
 import type { CrateDetail, UnpackSuccess } from '../crates/crateUnpack';
+import type { WorkflowExportResult } from '../../packages/mcp-server/src/capabilities/workflowExportCapability';
 
 export interface EditorDataInvokeOptions {
 	onEvent?: (event: unknown) => void;
@@ -23,7 +24,12 @@ export interface PreviewWorkflowRow {
 	id?: string | null;
 	name?: string | null;
 	orgId?: string | null;
+	createdAt?: string | null;
+	updatedAt?: string | null;
+	tags?: { id?: string | null; name?: string | null }[] | null;
 }
+
+export type ExportWorkflowRow = PreviewWorkflowRow;
 
 export interface PreviewExecutionRow {
 	id?: string | null;
@@ -71,6 +77,18 @@ export const editorDataClient = {
 		options?: EditorDataInvokeOptions,
 	) {
 		return call<Record<string, unknown>>('preview.context', input, options);
+	},
+	listExportWorkflows(input: { sessionId: string; orgId: string }, options?: EditorDataInvokeOptions) {
+		return call<ExportWorkflowRow[]>('workflows.export.catalog', input, options);
+	},
+	getWorkflowExportDefaultDirectory(options?: EditorDataInvokeOptions) {
+		return call<string>('workflows.export.defaultDirectory', {}, options);
+	},
+	exportWorkflows(
+		input: { sessionId: string; orgId: string; workflowIds: string[]; outputPath?: string },
+		options?: EditorDataInvokeOptions,
+	) {
+		return call<WorkflowExportResult>('workflows.export.run', input, options);
 	},
 	listCrates(input: { sessionId: string; orgId: string }, options?: EditorDataInvokeOptions) {
 		return call<CrateListRow[]>('crates.list', input, options);
