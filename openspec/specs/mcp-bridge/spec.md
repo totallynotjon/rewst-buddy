@@ -891,7 +891,8 @@ Jinja render context into one ordered digest, so an agent does not need the
 usual `buddy_workflow_executions` → `buddy_execution_logs` →
 `buddy_workflow_get` → `buddy_render_jinja` round trip. It SHALL accept an
 `executionId` directly, or a `workflowId` (with `orgId`) to find that
-workflow's most recent `FAILED` execution. It is `requiresOrg:false` with
+workflow's most recent failed execution, filtering on Rewst's lowercase
+`failed` execution status (the status enum rejects `FAILED`). It is `requiresOrg:false` with
 `scopedSessions:true`, and SHALL use the same multi-session sweep semantics
 as `buddy_execution_logs` to locate task logs across active sessions. When an
 execution's owner org differs from the workflow's org, the digest SHALL use the
@@ -946,9 +947,9 @@ the workflow definition and transition path.
 
 - **GIVEN** no `executionId` is known
 - **WHEN** `buddy_workflow_diagnose` is called with `workflowId` and `orgId`
-- **THEN** it finds and diagnoses that workflow's most recent `FAILED`
-  execution
-- **AND** it reports plainly when no `FAILED` execution exists rather than
+- **THEN** it finds that workflow's most recent failed execution by querying
+  executions with the lowercase `failed` status, and diagnoses it
+- **AND** it reports plainly when no failed execution exists rather than
   erroring
 
 #### Scenario: Best-effort supplementary sections

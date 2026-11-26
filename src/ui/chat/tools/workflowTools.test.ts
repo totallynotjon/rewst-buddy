@@ -4724,7 +4724,7 @@ suite('Unit: workflowTools', () => {
 			assert.deepStrictEqual((execCall.variables as { where?: unknown })?.where, {
 				workflowId: 'wf-1',
 				orgId: 'org-1',
-				status: 'FAILED',
+				status: 'failed',
 			});
 		});
 
