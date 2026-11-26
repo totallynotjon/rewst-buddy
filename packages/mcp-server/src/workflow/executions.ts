@@ -789,7 +789,7 @@ async function findLatestFailedExecutionId(
 	orgId: string,
 ): Promise<string | undefined> {
 	const result = await deps.execute(WORKFLOW_EXECUTIONS_QUERY, {
-		where: { workflowId, orgId, status: 'FAILED' },
+		where: { workflowId, orgId, status: 'failed' },
 		order: [['createdAt', 'desc']],
 		limit: 1,
 	});
